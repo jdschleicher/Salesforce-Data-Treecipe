@@ -284,7 +284,7 @@ const buildWorkspaceState = () => {
 // THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
 beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 answerInPanelConfirmationsThroughWarningMock();
@@ -2092,9 +2092,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
-            const typeFor = (orgDisplayDetail?: { isScratchOrg: boolean; expirationDate?: string }) => {
+            const typeFor = (scratchOrgDetail?: { isScratchOrg: boolean; expirationDate?: string }) => {
                 const content = RecipeCockpitService.buildInsertConfirmationContent(
-                    'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], orgDisplayDetail
+                    'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], scratchOrgDetail
                 );
                 const orgSection = content.sections?.find(section => section.title === 'Org and recipe');
                 return { badge: content.badge, typeLine: orgSection?.lines[1] };

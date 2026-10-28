@@ -131,24 +131,24 @@ export interface IOrgTypeDetail {
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
 /*
-    What "sf org display --json" says about an org (#458), and nothing else: a scratch org's
-    Organization row answers IsSandbox: true like a sandbox does, so this is what tells them apart.
-    The answer also carries an access token, which is never kept.
+    What the CLI's local authorization says about an org (#458, read in process since #499): a
+    scratch org's Organization row answers IsSandbox: true like a sandbox does, so this is what tells
+    them apart. Read with AuthInfo.getFields() and never getFields(true), so no token is decrypted.
 */
-export interface IOrgDisplayDetail {
+export interface IScratchOrgDetail {
     isScratchOrg: boolean;
-    // yyyy-MM-dd, ONLY WHEN THE ANSWER CARRIED A READABLE ONE
+    // yyyy-MM-dd, ONLY WHEN THE AUTHORIZATION CARRIED A READABLE ONE
     expirationDate?: string;
 }
-
-// ONLY A LABEL WAITS ON IT, SO A HUNG CLI GIVES UP LONG BEFORE "sf org list" WOULD
-export const ORG_DISPLAY_TIMEOUT_MILLISECONDS = 20000;
 
 export const SCRATCH_ORG_TYPE_LABEL = 'Scratch org';
 
 export const SANDBOX_ORG_TYPE_LABEL = 'Sandbox';
 
-const ORG_DISPLAY_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
+// AuthInfo TREATS A USERNAME OF THIS SHAPE AS AN ACCESS TOKEN RATHER THAN READING A FILE
+const ACCESS_TOKEN_SHAPED_USERNAME_PATTERN = /^00D\w{12,15}!/;
+
+const AUTHORIZATION_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
 
 // MATCHED EXACTLY: A CASE OR WHITESPACE VARIANT IS NOT AN ANSWER THE ORG GIVES, SO IT IS REFUSED
 export const DEVELOPER_EDITION_ORGANIZATION_TYPE = 'Developer Edition';
@@ -587,8 +587,8 @@ export class SalesforceOrgService {
 
     }
 
-    // THE ORGANIZATION ROW DECIDES SANDBOX OR NOT; "sf org display" ONLY NAMES WHICH KIND OF SANDBOX (#458)
-    static buildOrgTypeLabel(orgTypeDetail: IOrgTypeDetail | undefined, orgDisplayDetail?: IOrgDisplayDetail): string {
+    // THE ORGANIZATION ROW DECIDES SANDBOX OR NOT; THE LOCAL AUTHORIZATION ONLY NAMES WHICH KIND OF SANDBOX (#458)
+    static buildOrgTypeLabel(orgTypeDetail: IOrgTypeDetail | undefined, scratchOrgDetail?: IScratchOrgDetail): string {
 
         if ( !orgTypeDetail ) {
             return ORG_TYPE_UNKNOWN_LABEL;
@@ -598,11 +598,11 @@ export class SalesforceOrgService {
             return `Production · ${orgTypeDetail.organizationType || 'type unknown'}`;
         }
 
-        if ( orgDisplayDetail?.isScratchOrg !== true ) {
+        if ( scratchOrgDetail?.isScratchOrg !== true ) {
             return SANDBOX_ORG_TYPE_LABEL;
         }
 
-        return orgDisplayDetail.expirationDate ? `${SCRATCH_ORG_TYPE_LABEL} · expires ${orgDisplayDetail.expirationDate}` : SCRATCH_ORG_TYPE_LABEL;
+        return scratchOrgDetail.expirationDate ? `${SCRATCH_ORG_TYPE_LABEL} · expires ${scratchOrgDetail.expirationDate}` : SCRATCH_ORG_TYPE_LABEL;
 
     }
 
@@ -668,66 +668,25 @@ export class SalesforceOrgService {
         this.connectedOrgStatusCache = undefined;
         this.connectedOrgStatusRequest = undefined;
         this.connectedOrgStatusGeneration++;
-        this.clearOrgDisplayCache();
 
     }
 
     /*
-        "sf org display" per USERNAME, asked once per session (#458) and cleared with the
-        connected-org answer. Only the parsed facts are kept, never the CLI's answer, which carries
-        an access token. A failure is never cached. A request in flight IS a fresh answer, so a
-        clear lets it finish and shares it rather than starting a second process for the same
-        org, as the connected-org check does.
+        Whether an org is a scratch org, and when it expires, from the CLI's LOCAL authorization file
+        (#499, replacing #458's "sf org display"): no process and no network, so nothing is cached --
+        a fresh read follows a scratch org re-created under the same username. getFields() is called
+        WITHOUT decrypt, and only two facts are read from it, so no token is read or kept.
+        NEVER THROWS: an authorization that cannot be read is labelled by its Organization row alone.
     */
-    private static orgDisplayCache = new Map<string, IOrgDisplayDetail>();
+    static async readScratchOrgDetail(username: string): Promise<IScratchOrgDetail | undefined> {
 
-    private static orgDisplayRequests = new Map<string, Promise<IOrgDisplayDetail | undefined>>();
-
-    static clearOrgDisplayCache() {
-
-        this.orgDisplayCache.clear();
-
-    }
-
-    static buildOrgDisplayArguments(username: string): string[] {
-
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
-
-        return ['org', 'display', '--target-org', username, '--json'];
-
-    }
-
-    // NEVER THROWS: AN ORG THE CLI CANNOT DISPLAY IS LABELLED BY ITS ORGANIZATION ROW ALONE
-    static async readOrgDisplayDetail(username: string): Promise<IOrgDisplayDetail | undefined> {
-
-        const cachedDetail = this.orgDisplayCache.get(username);
-        if ( cachedDetail ) {
-            return cachedDetail;
+        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) || ACCESS_TOKEN_SHAPED_USERNAME_PATTERN.test(username) ) {
+            return undefined;
         }
-
-        const requestInFlight = this.orgDisplayRequests.get(username);
-        if ( requestInFlight ) {
-            return await requestInFlight;
-        }
-
-        const displayRequest = this.runOrgDisplayCommand(username).then(orgDisplayDetail => {
-            this.orgDisplayRequests.delete(username);
-            if ( orgDisplayDetail ) {
-                this.orgDisplayCache.set(username, orgDisplayDetail);
-            }
-            return orgDisplayDetail;
-        });
-
-        this.orgDisplayRequests.set(username, displayRequest);
-
-        return await displayRequest;
-
-    }
-
-    private static async runOrgDisplayCommand(username: string): Promise<IOrgDisplayDetail | undefined> {
 
         try {
-            return this.parseOrgDisplayOutput(await PicklistDependencyCheckService.runSalesforceCli(this.buildOrgDisplayArguments(username), undefined, ORG_DISPLAY_TIMEOUT_MILLISECONDS));
+            const authInfo = await AuthInfo.create({ username: username });
+            return this.parseScratchOrgAuthorizationFields(authInfo.getFields());
         } catch {
             return undefined;
         }
@@ -735,40 +694,29 @@ export class SalesforceOrgService {
     }
 
     /*
-        The --json is untrusted. Read only on status 0 with a result object, and from it only
-        devHubId -- which the CLI fills in for a scratch org from its Dev Hub's ScratchOrgInfo --
-        and expirationDate. A date that is not a real yyyy-MM-dd is no date, never a refusal.
+        The authorization file is untrusted. The file records a scratch org by devHubUsername (which
+        is what AuthInfo.listAllAuthorizations and "sf org display" both read it from); isScratchOrg
+        is accepted too, should a later @salesforce/core record it. A date that is not a real
+        yyyy-MM-dd is no date, never a refusal.
     */
-    static parseOrgDisplayOutput(invocationResult: ISalesforceCliInvocationResult): IOrgDisplayDetail | undefined {
+    static parseScratchOrgAuthorizationFields(authorizationFields: unknown): IScratchOrgDetail | undefined {
 
-        if ( invocationResult.spawnError || invocationResult.timedOut || invocationResult.isOutputTooLarge ) {
+        const fields = this.asRecord(authorizationFields);
+
+        if ( !fields ) {
             return undefined;
         }
 
-        let payload: Record<string, unknown> | undefined;
-
-        try {
-            payload = this.asRecord(JSON.parse(invocationResult.stdout));
-        } catch {
-            return undefined;
-        }
-
-        const displayResult = this.asRecord(payload?.result);
-
-        if ( payload?.status !== 0 || !displayResult ) {
-            return undefined;
-        }
-
-        const isScratchOrg = typeof displayResult.devHubId === 'string' && displayResult.devHubId.trim() !== '';
-        const expirationDate = isScratchOrg ? this.readOrgDisplayDate(displayResult.expirationDate) : undefined;
+        const isScratchOrg = fields.isScratchOrg === true || ( typeof fields.devHubUsername === 'string' && fields.devHubUsername.trim() !== '' );
+        const expirationDate = isScratchOrg ? this.readAuthorizationDate(fields.expirationDate) : undefined;
 
         return expirationDate ? { isScratchOrg: isScratchOrg, expirationDate: expirationDate } : { isScratchOrg: isScratchOrg };
 
     }
 
-    private static readOrgDisplayDate(candidateDate: unknown): string | undefined {
+    private static readAuthorizationDate(candidateDate: unknown): string | undefined {
 
-        const dateMatch = typeof candidateDate === 'string' ? ORG_DISPLAY_DATE_PATTERN.exec(candidateDate) : null;
+        const dateMatch = typeof candidateDate === 'string' ? AUTHORIZATION_DATE_PATTERN.exec(candidateDate) : null;
 
         if ( !dateMatch ) {
             return undefined;
@@ -837,8 +785,6 @@ export class SalesforceOrgService {
 
         if ( !this.connectedOrgStatusRequest ) {
             this.clearConnectedOrgStatusCache();
-        } else {
-            this.clearOrgDisplayCache();
         }
 
         return await this.listConnectedOrgAuthorizations();

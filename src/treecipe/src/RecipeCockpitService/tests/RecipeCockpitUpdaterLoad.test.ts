@@ -91,7 +91,7 @@ const loadRequest = (renderSequence: number, overrides: Record<string, unknown> 
 
 // AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
 beforeEach(() => {
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {

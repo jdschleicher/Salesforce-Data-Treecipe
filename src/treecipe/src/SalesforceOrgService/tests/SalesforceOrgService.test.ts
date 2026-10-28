@@ -10,7 +10,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 jest.mock('@salesforce/core', () => ({
-    AuthInfo: { listAllAuthorizations: jest.fn() },
+    AuthInfo: { listAllAuthorizations: jest.fn(), create: jest.fn() },
     StateAggregator: { clearInstance: jest.fn() },
     Org: { create: jest.fn() }
 }));
@@ -29,7 +29,6 @@ import {
     ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE,
     ORG_ORGANIZATION_QUERY,
     ORG_TYPE_UNKNOWN_LABEL,
-    ORG_DISPLAY_TIMEOUT_MILLISECONDS,
     DEVELOPER_EDITION_ORGANIZATION_TYPE,
     IOrgQuerySource,
     OrgConnectionStatusUnavailableError,
@@ -1999,62 +1998,87 @@ describe('SalesforceOrgService', () => {
     });
 
     /*
-        #458. The two answers are NOT recorded from a real org (none is reachable where this was
-        written): they follow plugin-org's "sf org display --json" shape, with every identifier and
-        the access token made up. Replace them with recorded, scrubbed answers when one is taken.
+        #458, read from the local authorization since #499. The two fixtures follow the shape of the
+        CLI's ~/.sfdx/<username>.json, with every identifier and token made up.
     */
-    describe('"sf org display" tells a scratch org from a sandbox (#458)', () => {
+    describe('the local authorization tells a scratch org from a sandbox (#458, #499)', () => {
 
-        const FIXTURE_ACCESS_TOKEN = '00DFIXTURE!fixture-access-token-not-real';
-        const readDisplayFixture = (fileName: string) => fs.readFileSync(path.join(__dirname, 'mocks', fileName), 'utf8');
-        const answeredWith = (stdout: string) => ({ stdout: stdout, stderr: '', exitCode: 0 });
+        const FIXTURE_TOKEN_TEXT = 'fixture-encrypted';
+        const readAuthFieldsFixture = (fileName: string) => JSON.parse(fs.readFileSync(path.join(__dirname, 'mocks', fileName), 'utf8'));
+
+        // AN AuthInfo STAND-IN WHOSE getFields IS SPIED ON, SO A DECRYPTING READ WOULD BE SEEN
+        const answerAuthInfoWith = (authorizationFields: unknown) => {
+            const getFields = jest.fn(() => authorizationFields);
+            (AuthInfo.create as jest.Mock).mockResolvedValue({ getFields: getFields });
+            return getFields;
+        };
 
         beforeEach(() => {
-            SalesforceOrgService.clearConnectedOrgStatusCache();
+            (AuthInfo.create as jest.Mock).mockReset();
+            (execFile as unknown as jest.Mock).mockClear();
         });
 
-        it('runs "sf org display --target-org <username> --json" with its own timeout and no project folder', async () => {
+        it('reads the authorization by username in process: no CLI, and getFields is never asked to decrypt', async () => {
 
-            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValue(answeredWith(readDisplayFixture('sfOrgDisplaySandbox.json')));
+            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
+            const getFields = answerAuthInfoWith(readAuthFieldsFixture('authFieldsScratchOrg.json'));
 
-            await SalesforceOrgService.readOrgDisplayDetail('qa@example.com.qa');
+            const scratchOrgDetail = await SalesforceOrgService.readScratchOrgDetail('test-fixture@example.com');
 
-            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(1);
-            expect(runSalesforceCliSpy.mock.calls[0][0]).toEqual(['org', 'display', '--target-org', 'qa@example.com.qa', '--json']);
-            expect(runSalesforceCliSpy.mock.calls[0][2]).toBe(ORG_DISPLAY_TIMEOUT_MILLISECONDS);
-            expect(runSalesforceCliSpy.mock.calls[0][3]).toBeUndefined();
-
-        });
-
-        it('reads a scratch org and its expiration date, and keeps nothing else of the answer', () => {
-
-            const orgDisplayDetail = SalesforceOrgService.parseOrgDisplayOutput(answeredWith(readDisplayFixture('sfOrgDisplayScratchOrg.json')));
-
-            expect(orgDisplayDetail).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
-            expect(JSON.stringify(orgDisplayDetail)).not.toContain(FIXTURE_ACCESS_TOKEN);
+            expect(AuthInfo.create).toHaveBeenCalledWith({ username: 'test-fixture@example.com' });
+            expect(getFields).toHaveBeenCalledTimes(1);
+            expect(getFields.mock.calls[0]).toEqual([]);
+            expect(runSalesforceCliSpy).not.toHaveBeenCalled();
+            expect(execFile).not.toHaveBeenCalled();
+            expect(scratchOrgDetail).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
 
         });
 
-        it('reads a sandbox as not a scratch org', () => {
+        it('keeps nothing of the authorization but the two facts, so no token is kept', async () => {
 
-            expect(SalesforceOrgService.parseOrgDisplayOutput(answeredWith(readDisplayFixture('sfOrgDisplaySandbox.json')))).toEqual({ isScratchOrg: false });
+            answerAuthInfoWith(readAuthFieldsFixture('authFieldsScratchOrg.json'));
+
+            const scratchOrgDetail = await SalesforceOrgService.readScratchOrgDetail('test-fixture@example.com');
+
+            expect(Object.keys(scratchOrgDetail ?? {})).toIncludeSameMembers(['isScratchOrg', 'expirationDate']);
+            expect(JSON.stringify(scratchOrgDetail)).not.toContain(FIXTURE_TOKEN_TEXT);
 
         });
 
-        it('reads no answer from a failure, a timeout, a missing CLI, output that is not JSON, or a result that is not an object', () => {
+        it('reads a sandbox as not a scratch org', async () => {
 
-            expect(SalesforceOrgService.parseOrgDisplayOutput({ stdout: JSON.stringify({ status: 1, name: 'NoOrgFound', message: 'No authorization' }), stderr: '', exitCode: 1 })).toBeUndefined();
-            expect(SalesforceOrgService.parseOrgDisplayOutput({ stdout: '', stderr: '', exitCode: null, timedOut: true })).toBeUndefined();
-            expect(SalesforceOrgService.parseOrgDisplayOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) })).toBeUndefined();
-            expect(SalesforceOrgService.parseOrgDisplayOutput(answeredWith('not json'))).toBeUndefined();
-            expect(SalesforceOrgService.parseOrgDisplayOutput(answeredWith(JSON.stringify({ status: 0, result: ['devHubId'] })))).toBeUndefined();
-            expect(SalesforceOrgService.parseOrgDisplayOutput(answeredWith(JSON.stringify({ status: '0', result: { devHubId: 'hub@example.com' } })))).toBeUndefined();
+            answerAuthInfoWith(readAuthFieldsFixture('authFieldsSandbox.json'));
+
+            expect(await SalesforceOrgService.readScratchOrgDetail('qa@example.com.qa')).toEqual({ isScratchOrg: false });
+
+        });
+
+        it('answers unknown when the authorization cannot be read, or reads as something other than an object', async () => {
+
+            (AuthInfo.create as jest.Mock).mockRejectedValue(Object.assign(new Error('No authorization information found for gone@example.com.'), { name: 'NamedOrgNotFoundError' }));
+            expect(await SalesforceOrgService.readScratchOrgDetail('gone@example.com')).toBeUndefined();
+
+            (AuthInfo.create as jest.Mock).mockResolvedValue({ getFields: () => { throw new Error('unreadable'); } });
+            expect(await SalesforceOrgService.readScratchOrgDetail('gone@example.com')).toBeUndefined();
+
+            for ( const unreadableFields of [undefined, null, 'devHubUsername', ['devHubUsername']] ) {
+                answerAuthInfoWith(unreadableFields);
+                expect(await SalesforceOrgService.readScratchOrgDetail('gone@example.com')).toBeUndefined();
+            }
+
+        });
+
+        it('reads no file for a username that is not a usable target org, or that AuthInfo would take as an access token', async () => {
+
+            expect(await SalesforceOrgService.readScratchOrgDetail('--json')).toBeUndefined();
+            expect(await SalesforceOrgService.readScratchOrgDetail('00D000000000001AAA!fixture.token')).toBeUndefined();
+            expect(AuthInfo.create).not.toHaveBeenCalled();
 
         });
 
         it('keeps a scratch org with no date when the expiration date is missing, mistyped or not a real day', () => {
 
-            const scratchOrgWith = (expirationDate: unknown) => SalesforceOrgService.parseOrgDisplayOutput(answeredWith(JSON.stringify({ status: 0, result: { devHubId: 'hub@example.com', expirationDate: expirationDate } })));
+            const scratchOrgWith = (expirationDate: unknown) => SalesforceOrgService.parseScratchOrgAuthorizationFields({ devHubUsername: 'hub@example.com', expirationDate: expirationDate });
 
             expect(scratchOrgWith(undefined)).toEqual({ isScratchOrg: true });
             expect(scratchOrgWith(20261101)).toEqual({ isScratchOrg: true });
@@ -2064,63 +2088,24 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('reads an empty or mistyped devHubId as not a scratch org', () => {
+        it('reads an empty or mistyped devHubUsername as not a scratch org, and an isScratchOrg of exactly true as one', () => {
 
-            expect(SalesforceOrgService.parseOrgDisplayOutput(answeredWith(JSON.stringify({ status: 0, result: { devHubId: '  ', expirationDate: '2026-11-01' } })))).toEqual({ isScratchOrg: false });
-            expect(SalesforceOrgService.parseOrgDisplayOutput(answeredWith(JSON.stringify({ status: 0, result: { devHubId: true } })))).toEqual({ isScratchOrg: false });
-
-        });
-
-        it('asks once per username, shares a request in flight, and asks again after the connected-org cache is cleared', async () => {
-
-            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValue(answeredWith(readDisplayFixture('sfOrgDisplayScratchOrg.json')));
-
-            const [firstAnswer, sharedAnswer] = await Promise.all([
-                SalesforceOrgService.readOrgDisplayDetail('dev@example.com'),
-                SalesforceOrgService.readOrgDisplayDetail('dev@example.com')
-            ]);
-            await SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
-
-            expect(firstAnswer).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
-            expect(sharedAnswer).toBe(firstAnswer);
-            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(1);
-
-            SalesforceOrgService.clearConnectedOrgStatusCache();
-            await SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
-
-            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(2);
+            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ devHubUsername: '  ', expirationDate: '2026-11-01' })).toEqual({ isScratchOrg: false });
+            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ devHubUsername: true })).toEqual({ isScratchOrg: false });
+            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ isScratchOrg: 'true' })).toEqual({ isScratchOrg: false });
+            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ isScratchOrg: true, expirationDate: '2026-11-01' })).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
 
         });
 
-        it('caches no failure, and never throws when the CLI call itself throws', async () => {
+        it('caches nothing: every read is a fresh local read, so a re-created scratch org is labelled by its new authorization', async () => {
 
-            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli')
-                .mockRejectedValueOnce(new Error('boom'))
-                .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: null, timedOut: true })
-                .mockResolvedValueOnce(answeredWith(readDisplayFixture('sfOrgDisplaySandbox.json')));
+            answerAuthInfoWith(readAuthFieldsFixture('authFieldsScratchOrg.json'));
+            expect(await SalesforceOrgService.readScratchOrgDetail('test-fixture@example.com')).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
 
-            expect(await SalesforceOrgService.readOrgDisplayDetail('qa@example.com.qa')).toBeUndefined();
-            expect(await SalesforceOrgService.readOrgDisplayDetail('qa@example.com.qa')).toBeUndefined();
-            expect(await SalesforceOrgService.readOrgDisplayDetail('qa@example.com.qa')).toEqual({ isScratchOrg: false });
-            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(3);
+            answerAuthInfoWith({ ...readAuthFieldsFixture('authFieldsScratchOrg.json'), expirationDate: '2026-11-30' });
+            expect(await SalesforceOrgService.readScratchOrgDetail('test-fixture@example.com')).toEqual({ isScratchOrg: true, expirationDate: '2026-11-30' });
 
-        });
-
-        it('shares a request in flight across a clear rather than starting a second process for the same org', async () => {
-
-            let answerFirstRequest: (stdout: ReturnType<typeof answeredWith>) => void = () => undefined;
-            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli')
-                .mockImplementationOnce(() => new Promise(resolveRequest => { answerFirstRequest = resolveRequest; }));
-
-            const firstRequest = SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
-            await new Promise(resolveYield => setImmediate(resolveYield));
-            SalesforceOrgService.clearConnectedOrgStatusCache();
-            const requestAfterClear = SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
-            answerFirstRequest(answeredWith(readDisplayFixture('sfOrgDisplayScratchOrg.json')));
-
-            expect(await firstRequest).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
-            expect(await requestAfterClear).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
-            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(1);
+            expect(AuthInfo.create).toHaveBeenCalledTimes(2);
 
         });
 
@@ -2134,12 +2119,6 @@ describe('SalesforceOrgService', () => {
             expect(SalesforceOrgService.buildOrgTypeLabel(sandboxRow, undefined)).toBe('Sandbox');
             expect(SalesforceOrgService.buildOrgTypeLabel({ isSandbox: false, organizationType: 'Enterprise Edition' }, { isScratchOrg: true, expirationDate: '2026-11-01' })).toBe('Production · Enterprise Edition');
             expect(SalesforceOrgService.buildOrgTypeLabel(undefined, { isScratchOrg: true })).toBe(ORG_TYPE_UNKNOWN_LABEL);
-
-        });
-
-        it('refuses a username that is not a usable target org before any process starts', () => {
-
-            expect(() => SalesforceOrgService.buildOrgDisplayArguments('--json')).toThrow();
 
         });
 

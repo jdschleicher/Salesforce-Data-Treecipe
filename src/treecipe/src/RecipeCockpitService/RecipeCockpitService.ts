@@ -46,7 +46,7 @@ import {
     IDataOrgListing,
     IOrgDescribeSource,
     IOrgQuerySource,
-    IOrgDisplayDetail,
+    IScratchOrgDetail,
     IOrgTypeDetail,
     IHiddenAuthorizedOrg,
     INormalizedOrgField,
@@ -2712,8 +2712,8 @@ export interface IRecipeCockpitDataOrgSelection {
     orgDetail: IAuthenticatedOrgDetail;
     requestSequence: number;
     orgTypeDetail?: IOrgTypeDetail;
-    // WHAT "sf org display" SAID (#458): WHICH KIND OF SANDBOX IT IS, FOR THE LABEL ONLY
-    orgDisplayDetail?: IOrgDisplayDetail;
+    // WHAT THE LOCAL AUTHORIZATION SAYS (#458, #499): WHICH KIND OF SANDBOX IT IS, FOR THE LABEL ONLY
+    scratchOrgDetail?: IScratchOrgDetail;
     // SET WHEN NO CONNECTION COULD BE OPENED TO IT: A QUERY (#439), WHICH READS FROM ANY ORG THAT ANSWERED, REFUSES IT
     isConnectionFailed?: boolean;
     /*
@@ -12123,7 +12123,7 @@ export class RecipeCockpitService {
             {
                 summary: [],
                 org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
-                badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail),
+                badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.scratchOrgDetail),
                 warnings: hasRecordTypePicklist ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [],
                 sections: [
                     {
@@ -12637,7 +12637,7 @@ export class RecipeCockpitService {
             {
                 summary: [`Back to the values ${snapshotName} saved on ${snapshot.takenAt}.`],
                 org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
-                badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail),
+                badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.scratchOrgDetail),
                 warnings: restoreWarnings,
                 sections: [
                     {
@@ -14596,7 +14596,7 @@ export class RecipeCockpitService {
         const dataOrgSelection: IRecipeCockpitDataOrgSelection = { orgIndex: orgIndex, orgDetail: orgDetail, requestSequence: requestSequence };
         const orgLabel = this.buildDataOrgLabel(orgDetail);
         let isOrgTypeAnswered = false;
-        let isOrgDisplayAnswered = false;
+        let isScratchOrgDetailAnswered = false;
 
         panelState.dataOrgSelection = dataOrgSelection;
         panelState.dataOrgUsername = orgDetail.username;
@@ -14619,19 +14619,19 @@ export class RecipeCockpitService {
         });
 
         /*
-            A sandbox's label waits for "sf org display" to say whether it is a scratch org (#458);
-            nothing else does. It is asked only once the org has answered that it is a sandbox -- so
-            a production default never starts it, and the connection has already refreshed the
-            token the CLI reads -- and it runs beside the describes, never ahead of them.
+            A sandbox's label waits for the local authorization to say whether it is a scratch org
+            (#458, read in process since #499); nothing else does. It is read only once the org has
+            answered that it is a sandbox -- the Organization row decides sandbox or not -- and it
+            runs beside the describes, never ahead of them.
         */
         const buildSelectionTypeLabel = () => {
             if ( !isOrgTypeAnswered ) {
                 return '';
             }
-            if ( dataOrgSelection.orgTypeDetail?.isSandbox === true && !isOrgDisplayAnswered ) {
+            if ( dataOrgSelection.orgTypeDetail?.isSandbox === true && !isScratchOrgDetailAnswered ) {
                 return '';
             }
-            return SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail);
+            return SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.scratchOrgDetail);
         };
 
         postSelection();
@@ -14681,9 +14681,9 @@ export class RecipeCockpitService {
 
         postSelection();
 
-        void SalesforceOrgService.readOrgDisplayDetail(orgDetail.username).then(orgDisplayDetail => {
-            dataOrgSelection.orgDisplayDetail = orgDisplayDetail;
-            isOrgDisplayAnswered = true;
+        void SalesforceOrgService.readScratchOrgDetail(orgDetail.username).then(scratchOrgDetail => {
+            dataOrgSelection.scratchOrgDetail = scratchOrgDetail;
+            isScratchOrgDetailAnswered = true;
             postSelection();
         });
 
@@ -15327,7 +15327,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
             {
-                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.orgDisplayDetail),
+                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail),
                 org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 isDestructive: true,
                 changeOrg: { restartMessage: { command: 'insertTree', treeKey: treeKey }, isSandboxOnly: true }
@@ -15683,7 +15683,7 @@ export class RecipeCockpitService {
                                             fakerService: string,
                                             recipeFileLabel: string,
                                             orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = [],
-                                            orgDisplayDetail?: IOrgDisplayDetail): IRecipeCockpitConfirmContent {
+                                            scratchOrgDetail?: IScratchOrgDetail): IRecipeCockpitConfirmContent {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
@@ -15711,7 +15711,7 @@ export class RecipeCockpitService {
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
             .flatMap(([occurrenceKey, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`));
 
-        const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, orgDisplayDetail);
+        const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, scratchOrgDetail);
 
         return {
             summary: [`Generate ${totalRecordCount} ${totalRecordCount === 1 ? 'record' : 'records'} and insert ${totalRecordCount === 1 ? 'it' : 'them'} into ${orgLabel}.`],

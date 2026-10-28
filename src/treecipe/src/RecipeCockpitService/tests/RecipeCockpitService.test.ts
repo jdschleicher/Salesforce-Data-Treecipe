@@ -139,7 +139,7 @@ function buildRecipeViewModel(overrides: Partial<IRecipeCockpitRecipeViewModel> 
 
 // AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
 beforeEach(() => {
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService', () => {

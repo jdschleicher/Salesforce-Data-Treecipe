@@ -64,7 +64,7 @@ const CONNECTED_ORG_LABELS = ['qa', 'activeScratch'];
 
 // AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
 beforeEach(() => {
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService, every org picker lists only the orgs the Salesforce CLI reports connected', () => {

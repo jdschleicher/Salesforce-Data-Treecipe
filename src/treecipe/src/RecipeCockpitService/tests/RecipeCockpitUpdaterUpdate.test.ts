@@ -105,7 +105,7 @@ answerInPanelConfirmationsThroughWarningMock();
 
 // AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
 beforeEach(() => {
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
@@ -619,7 +619,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
-            panelState().dataOrgSelection.orgDisplayDetail = { isScratchOrg: true, expirationDate: '2026-11-01' };
+            panelState().dataOrgSelection.scratchOrgDetail = { isScratchOrg: true, expirationDate: '2026-11-01' };
             await requestUpdate();
 
             expect(updateConfirmations()).toHaveLength(1);
