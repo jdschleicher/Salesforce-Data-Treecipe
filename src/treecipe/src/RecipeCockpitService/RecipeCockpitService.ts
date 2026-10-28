@@ -443,6 +443,15 @@ export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+ Add friend';
 // THE DEEPEST friends: LEVEL A NESTED ROW IS INDENTED FOR (#467); A DEEPER ONE IS DRAWN AT THIS INDENT, SO A CARD NEVER RUNS OFF A NARROW PANEL
 export const RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH = 8;
 export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
+// AN OBJECT HEADER IS ITS PADDING, THE CHAIN LINK, ONE GAP, THEN THE ▸ (#494): THE FIELD CHECKBOXES START WHERE THE ▸ DOES
+export const RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM = 0.6;
+export const RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM = 2.6;
+export const RECIPE_COCKPIT_TREE_HEADER_GAP_REM = 0.5;
+export const RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM = RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM + RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM + RECIPE_COCKPIT_TREE_HEADER_GAP_REM;
+// AN OBJECT'S CONTROLS ROW AND ITS FIELDS ARE EACH A BORDERED BOX (#494), PADDED INSIDE, WITH A ROW'S OWN INSET INSIDE THAT
+export const RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM = 0.25;
+export const RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM = 0.25;
+export const RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT = `calc(${Math.round(( RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM - RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM - RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM ) * 100) / 100}rem - 1px)`;
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = 'Wire to…';
 // AN EMPTY LOOKUP'S TWO DECISIONS (#421), EACH NAMING THE PARENT BETWEEN ITS PREFIX AND SUFFIX
@@ -19540,7 +19549,7 @@ ${this.buildPaletteCustomProperties()}
         margin: 0.6rem 0;
         overflow: hidden;
     }
-    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: ${RECIPE_COCKPIT_TREE_HEADER_GAP_REM}rem; }
     .treeHeader {
         display: flex;
         flex-wrap: wrap;
@@ -19743,7 +19752,7 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingSubTabs.movingRight .troubleshootingSubTab::after, .troubleshootingSubTabs.movingLeft .troubleshootingSubTab.selected::after { transform-origin: right; }
     .troubleshootingSubTabs.movingLeft .troubleshootingSubTab::after, .troubleshootingSubTabs.movingRight .troubleshootingSubTab.selected::after { transform-origin: left; }
     .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
-    .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
+    .treeObjectHeader { padding: 0.35rem ${RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM}rem; align-items: center; }
     .treeObject { position: relative; }
     .treeObject.treeObjectNested { border-left: 2px solid var(--sdt-border); }
 ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, depthIndex) => `    .treeObject.treeObjectDepth${depthIndex + 1} { margin-left: ${( depthIndex + 1 ) * RECIPE_COCKPIT_NESTING_INDENT_REM}rem; }`).join('\n')}
@@ -19758,8 +19767,8 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeObjectInclude, .treeObjectIncludeSpacer {
         box-sizing: border-box;
         flex: none;
-        width: 2.6rem;
-        height: 2.6rem;
+        width: ${RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM}rem;
+        height: ${RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM}rem;
     }
     .treeObjectInclude { position: relative; z-index: 2; padding: 0.15rem; }
     .treeObjectIncludeSpacer { display: inline-block; }
@@ -19774,6 +19783,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
         content: '';
         position: absolute;
         inset: 0;
+        border-radius: inherit;
         background-color: var(--sdt-excluded-overlay);
         pointer-events: none;
         z-index: 1;
@@ -19936,8 +19946,16 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeChipEmoji { flex: none; }
     .treeObjectBody { padding-bottom: 0.25rem; }
-    .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
-    .treeFieldSelectAllRow { padding: 0.25rem 0.6rem 0.25rem 2.1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.2rem; }
+    .treeFieldSelectAllRow, .treeFieldsBox {
+        box-sizing: border-box;
+        margin: 0.35rem ${RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM}rem 0.35rem ${RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT};
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .treeFieldSelectAllRow:not(:has(> :not(.hidden))), .treeFieldsBox:not(:has(> .treeField:not(.hidden))) { display: none; }
+    .treeFieldsBox { padding: ${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM}rem; }
+    .treeField { padding: 0.25rem 0.35rem 0.25rem ${RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem; border-radius: 3px; }
+    .treeFieldSelectAllRow { padding: ${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM + RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.2rem; }
     .treeFieldSelectAllCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
     .treeFieldSelectAllLabel { cursor: pointer; }
     .treeFieldSelectAllCheck.disabled .treeFieldSelectAllLabel { color: var(--sdt-muted); cursor: not-allowed; }
@@ -24434,11 +24452,16 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (hasSelectableFields || treeObjectState.todoCount > 0) {
                 treeObjectState.bodyElement.appendChild(buildSelectAllFieldsElement(treeObjectState, hasSelectableFields));
             }
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
-                applyTreeFieldVisibility(fieldState);
-                treeObjectState.bodyElement.appendChild(fieldState.rowElement);
-            });
+            // THE FIELDS ARE ONE BORDERED BOX (#494), THEIR CHECKBOXES UNDER THE OBJECT'S ▸
+            if (treeObjectState.fieldStates.length > 0) {
+                const fieldsBoxElement = createElement('div', 'treeFieldsBox');
+                treeObjectState.fieldStates.forEach(function (fieldState) {
+                    fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
+                    applyTreeFieldVisibility(fieldState);
+                    fieldsBoxElement.appendChild(fieldState.rowElement);
+                });
+                treeObjectState.bodyElement.appendChild(fieldsBoxElement);
+            }
             treeObjectState.isBodyBuilt = true;
             if (drawObjectFieldSelection(treeObjectState)) { drawStructureMatchCount(treeObjectState.treeState); }
         }

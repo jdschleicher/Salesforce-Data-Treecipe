@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.166.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
+## [3.167.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
 
 [#495](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/495). **Edit values** stayed on screen, unchanged, above its own open tiles, and a second click on it closed them and dropped any unsaved ticks without saying so, so it looked like a second way to finish the edit.
 
@@ -8,6 +8,15 @@
 - **× and Escape stay.** They still close the tiles without saving, and are the way out while "Loading values…" is drawn, before Save and Cancel exist.
 - **Help and guide.** The ? help's Edit values note and `docs/RECIPE-COCKPIT-GUIDE.md` say the button is hidden while editing and that Save or Cancel ends the edit.
 - **Tests.** `RecipeCockpitPicklistValueChoice.test.ts`: the button hidden while open and back with focus after Cancel and an accepted Save, kept hidden by a refusal and an unanswered Save, × and Escape while the values load, and a locked picklist's Cancel; `RecipeCockpitPlaceRestore.test.ts`: a restored open editor keeps the button hidden.
+
+## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
+
+[#494](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/494). An expanded object's controls row and field rows ran straight into the next object's header, so nothing showed where one object's fields ended, and the field checkboxes were indented a fixed 2.1rem, about 1.6rem left of the object's ▸.
+
+- **Two boxes.** The controls row (All fields · Standard fields · Hide unselected · TODOs only) is a bordered box, and every field row of the object now sits in a second one, `treeFieldsBox`. Both are drawn in `--sdt-border`, padded on every side, with space between them and around them, so no checkbox, row hover or excluded-field overlay touches an edge. A fields box whose rows are all hidden by a search or filter is not drawn (`:has()`); the same rule guards the controls row, which today always holds TODOs only. The unticked-field overlay takes the row's rounded corners.
+- **Checkboxes under the ▸.** The header's padding, the chain-link width and the header gap are now named constants (`RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM`, `RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM`, `RECIPE_COCKPIT_TREE_HEADER_GAP_REM`), and the boxes' margin is derived from them (`RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT`), so each field's checkbox and the All fields box start where the ▸ does, at every nesting depth, on an iteration and on the ungrouped card.
+- **Layout only.** No message, model or place field changed, and no colour pair was added.
+- **Tests.** `RecipeCockpitFieldBoxes.test.ts` (the fields box holds every field row, after the controls row; a never-expanded object builds neither box; the stylesheet's offsets add up to the ▸'s, the padding and border rules, the empty-box rule); `RecipeCockpitExcludeFields.test.ts` reads a field row inside the box.
 
 ## [3.165.0] - Recipe Cockpit: the Treecipe tab's filters and "Manage record types" sit in one tile under the search, and a count says "record(s)"
 
