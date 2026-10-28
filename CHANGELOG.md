@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.165.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
+
+[#495](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/495). **Edit values** stayed on screen, unchanged, above its own open tiles, and a second click on it closed them and dropped any unsaved ticks without saying so, so it looked like a second way to finish the edit.
+
+- **Hidden while editing.** Opening the tiles hides **Edit values** (`hidden`, so it is out of the Tab order too) and moves focus to the editor's **×**. **Save** the host accepts, **Reset to generated** the host accepts, and **Cancel** close the tiles and show **Edit values** again with focus on it. A Save the host refuses keeps the tiles open and the button hidden, and a restored place that had the tiles open opens them with the button hidden.
+- **× and Escape stay.** They still close the tiles without saving, and are the way out while "Loading values…" is drawn, before Save and Cancel exist.
+- **Help and guide.** The ? help's Edit values note and `docs/RECIPE-COCKPIT-GUIDE.md` say the button is hidden while editing and that Save or Cancel ends the edit.
+- **Tests.** `RecipeCockpitPicklistValueChoice.test.ts`: the button hidden while open and back with focus after Cancel and an accepted Save, kept hidden by a refusal and an unanswered Save, and × and Escape while the values load.
+
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 
 [#487](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/487). Only the GitHub icon at the top right opened the CHANGELOG, though the version beside it read as part of the link; the open help could only be closed from **?**; and **?** was taller than its neighbours and looked the same open or closed.

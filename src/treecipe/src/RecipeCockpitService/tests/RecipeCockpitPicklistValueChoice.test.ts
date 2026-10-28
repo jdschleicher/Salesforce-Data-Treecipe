@@ -814,16 +814,16 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
     it.each([
         ['Cancel', (panel: any, editorElement: any) => panel.findAll(editorElement, 'picklistEditorCancel')[0].dispatch('click')],
         ['the × button', (panel: any, editorElement: any) => panel.findAll(editorElement, 'picklistEditorClose')[0].dispatch('click')],
-        ['Escape', (panel: any, editorElement: any) => tilesOf(panel, editorElement)[0].dispatch('keydown', { key: 'Escape' })],
-        ['Edit values again', (_panel: any, _editorElement: any, toggleElement: any) => toggleElement.dispatch('click')]
-    ])('closes on %s, posts nothing, and gives focus back to Edit values', (_caseName, close) => {
+        ['Escape', (panel: any, editorElement: any) => tilesOf(panel, editorElement)[0].dispatch('keydown', { key: 'Escape' })]
+    ])('closes on %s, posts nothing, and shows Edit values again with focus on it', (_caseName, close) => {
 
         const { panel, editorElement, toggleElement } = openEditor();
         tilesOf(panel, editorElement)[0].dispatch('click');
 
-        close(panel, editorElement, toggleElement);
+        close(panel, editorElement);
 
         expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
         expect(toggleElement.attributes['aria-expanded']).toBe('false');
         expect(panel.activeElement()).toBe(toggleElement);
         expect(choiceMessages(panel)).toEqual([]);
@@ -837,7 +837,7 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         expect(tileStates(panel, editorElement)).toEqual([['Open', 'false'], ['Closed', 'true']]);
         expect(panel.findAll(editorElement, 'picklistEditorNote')).toEqual([]);
 
-        toggleElement.dispatch('click');
+        panel.findAll(editorElement, 'picklistEditorCancel')[0].dispatch('click');
         toggleElement.dispatch('click');
         expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toHaveLength(2);
         expect(panel.findAll(editorElement, 'picklistLoading')).toHaveLength(1);
@@ -858,7 +858,7 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         panel.postToPanel({ command: 'picklistValues', objectApiName: 'Lead', fieldApiName: 'Status', treeKey: ACCOUNT_TREE_KEY, picklistValues: ['Wrong'], recordTypePicklistValues: [], renderSequence: 1 });
         expect(tilesOf(panel, editorElement)).toEqual([]);
 
-        toggleElement.dispatch('click');
+        panel.findAll(rowElement, 'picklistEditorClose')[0].dispatch('click');
         panel.postToPanel({ command: 'picklistValues', objectApiName: 'Lead', fieldApiName: 'Status', treeKey: LEAD_TREE_KEY, picklistValues: ['Late'], recordTypePicklistValues: [], renderSequence: 1 });
         expect(tilesOf(panel, editorElement)).toEqual([]);
 
@@ -891,16 +891,76 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
 
     });
 
-    it('closes on Edit values after a Save the host has not answered, though the place already says closed', () => {
+    it('keeps Edit values hidden after a Save the host has not answered, though the place already says closed, and closes on Cancel (#495)', () => {
 
         const { panel, editorElement, toggleElement } = openEditor();
         tilesOf(panel, editorElement)[0].dispatch('click');
         saveOf(panel, editorElement).dispatch('click');
 
+        // A CLICK THAT REACHES THE HIDDEN BUTTON ANYWAY CHANGES NOTHING
         toggleElement.dispatch('click');
+        expect(panel.isHidden(editorElement)).toBe(false);
+        expect(panel.isHidden(toggleElement)).toBe(true);
 
+        panel.findAll(editorElement, 'picklistEditorCancel')[0].dispatch('click');
         expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
         expect(toggleElement.attributes['aria-expanded']).toBe('false');
+
+    });
+
+    it('hides Edit values while the tiles are open, so Save or Cancel ends the edit, and shows it again with focus on it (#495)', () => {
+
+        const { panel, rowElement, editorElement, toggleElement } = openEditor();
+        expect(panel.isHidden(toggleElement)).toBe(true);
+        expect(panel.isHidden(editorElement)).toBe(false);
+
+        // CANCEL POSTS NOTHING AND PUTS THE BUTTON BACK
+        panel.findAll(editorElement, 'picklistEditorCancel')[0].dispatch('click');
+        expect(choiceMessages(panel)).toEqual([]);
+        expect(resetMessages(panel)).toEqual([]);
+        expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
+        expect(panel.activeElement()).toBe(toggleElement);
+
+        // AN ACCEPTED SAVE CLOSES THE TILES AND PUTS THE BUTTON BACK
+        toggleElement.dispatch('click');
+        expect(panel.isHidden(toggleElement)).toBe(true);
+        panel.postToPanel({ command: 'picklistValues', objectApiName: 'Lead', fieldApiName: 'Status', treeKey: LEAD_TREE_KEY, picklistValues: ['Open', 'Closed'], recordTypePicklistValues: [], renderSequence: 1 });
+        tilesOf(panel, editorElement)[0].dispatch('click');
+        saveOf(panel, editorElement).dispatch('click');
+        panel.postToPanel({ command: 'fieldEditResult', renderSequence: 1, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'picklistValues', refusal: 'Not saved' });
+        expect(panel.isHidden(toggleElement)).toBe(true);
+        panel.postToPanel({ command: 'fieldEditResult', renderSequence: 1, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'picklistValues' });
+        expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
+        expect(panel.activeElement()).toBe(toggleElement);
+        expect(panel.findAll(rowElement, 'picklistToggle')).toEqual([toggleElement]);
+
+    });
+
+    it('closes with × or Escape while the values load, before Save and Cancel are drawn, and shows Edit values again (#495)', () => {
+
+        const { panel, rowElement } = openRow(LEAD_TREE_KEY, 'Lead', 'Status');
+        const toggleElement = panel.findAll(rowElement, 'picklistToggle')[0];
+        const editorElement = panel.findAll(rowElement, 'picklistEditor')[0];
+        const closeElement = panel.findAll(rowElement, 'picklistEditorClose')[0];
+
+        toggleElement.dispatch('click');
+        expect(panel.isHidden(toggleElement)).toBe(true);
+        expect(panel.findAll(editorElement, 'picklistLoading')).toHaveLength(1);
+        expect(panel.findAll(editorElement, 'picklistEditorCancel')).toEqual([]);
+        // FOCUS MOVES INTO THE EDITOR RATHER THAN STAYING ON A BUTTON THAT IS GONE
+        expect(panel.activeElement()).toBe(closeElement);
+
+        closeElement.dispatch('click');
+        expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
+
+        toggleElement.dispatch('click');
+        editorElement.dispatch('keydown', { key: 'Escape' });
+        expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
 
     });
 
