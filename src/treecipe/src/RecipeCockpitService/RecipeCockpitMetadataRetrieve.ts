@@ -14,7 +14,8 @@ import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './Recipe
 
     Every kind is named one by one in a package.xml (--manifest): a tree can hold hundreds, and one
     --metadata each would pass the 8,191 characters cmd.exe allows on Windows. Validation rules and
-    record types are LISTED in the org first ("sf org list metadata", #401), since the point is to
+    record types are LISTED in the org first (the Metadata API's listMetadata on a jsforce connection,
+    #401, #498), since the point is to
     bring what the project does not hold yet and so cannot name: a "<Type>:<Object>.*" wildcard is no
     answer, because the Metadata API expands "*" only as a whole member name and these are child
     types of CustomObject. Every name comes from the HOST's model of the tree, the project or the
@@ -99,9 +100,20 @@ export type MetadataListOutcome =
         // ENTRIES OF THE KIND'S TYPE LEFT OUT: A FULL NAME THAT IS NOT A STRING, OR ONE OF A TREE OBJECT THAT IS NOT AN API NAME IN THE TYPE'S SHAPE
         skippedCount: number;
     }
-    | { kind: 'cliNotInstalled'; failureMessage: string }
+    | { kind: 'cancelled' }
     | { kind: 'unconfirmed'; failureMessage: string }
     | { kind: 'failed'; failureMessage: string };
+
+// WHAT THE LISTING NEEDS OF A jsforce CONNECTION: ITS METADATA API'S listMetadata
+export interface IMetadataListSource {
+    list(query: { type: string }): Promise<unknown>;
+}
+
+// A vscode CancellationToken'S SHAPE, SO THIS FILE STAYS FREE OF vscode
+export interface IMetadataListCancellation {
+    readonly isCancellationRequested: boolean;
+    onCancellationRequested(listener: () => void): unknown;
+}
 
 export class RecipeCockpitMetadataRetrieve {
 
@@ -130,46 +142,82 @@ export class RecipeCockpitMetadataRetrieve {
 
     }
 
-    // THE ORG'S COMPONENTS OF ONE TYPE, EVERY OBJECT'S: THE LISTING HAS NO PER-OBJECT FILTER, SO parseListMetadataOutput KEEPS THE TREE'S
-    static buildListMetadataArguments(retrieveKind: MetadataRetrieveListedKind, orgUsername: string): string[] {
+    /*
+        The org's components of one type, every object's, from the Metadata API's listMetadata on a
+        connection opened by username (#498, replacing "sf org list metadata"): the listing has no
+        per-object filter, so readListedEntries keeps the tree's. Opening the connection and the call
+        are both raced against the cancellation and the timeout, and the one that loses is abandoned:
+        a listing reads nothing it is not answered, so there is nothing to stop. A connection that
+        could not be opened is one fixed message, since its error can carry an auth url or token text.
+    */
+    static async listOrgMetadata(openListSource: () => Promise<IMetadataListSource>,
+                                    retrieveKind: MetadataRetrieveListedKind,
+                                    objectApiNames: readonly string[],
+                                    timeoutMilliseconds: number,
+                                    cancellation: IMetadataListCancellation): Promise<MetadataListOutcome> {
 
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+        if ( cancellation.isCancellationRequested ) {
+            return { kind: 'cancelled' };
+        }
 
-        return [
-            'org', 'list', 'metadata',
-            '--json',
-            '--target-org', orgUsername,
-            '--metadata-type', METADATA_RETRIEVE_TYPE_BY_KIND[retrieveKind]
-        ];
+        const unknownClause = `which ${RETRIEVE_WORDS[retrieveKind].many} the org holds is unknown`;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const listing = (async (): Promise<MetadataListOutcome> => {
+
+            let listSource: IMetadataListSource;
+            try {
+                listSource = await openListSource();
+            } catch {
+                return { kind: 'failed', failureMessage: `The org could not be connected to, so ${unknownClause}.` };
+            }
+
+            let listedResult: unknown;
+            try {
+                listedResult = await listSource.list({ type: METADATA_RETRIEVE_TYPE_BY_KIND[retrieveKind] });
+            } catch (listError) {
+                return { kind: 'failed', failureMessage: this.describeListError(listError) };
+            }
+
+            return this.readListedEntries(retrieveKind, listedResult, objectApiNames);
+
+        })();
+
+        const cancelled = new Promise<MetadataListOutcome>(resolve => {
+            cancellation.onCancellationRequested(() => resolve({ kind: 'cancelled' }));
+        });
+
+        const timedOut = new Promise<MetadataListOutcome>(resolve => {
+            timer = setTimeout(() => resolve({ kind: 'unconfirmed', failureMessage: `The listing did not finish in time and was stopped, so ${unknownClause}.` }), timeoutMilliseconds);
+        });
+
+        try {
+            const outcome = await Promise.race([listing, cancelled, timedOut]);
+            // A CANCEL REQUESTED WHILE THE ANSWER WAS ON ITS WAY STILL WINS: THE READER WAS TOLD NOTHING WOULD BE RETRIEVED
+            return cancellation.isCancellationRequested ? { kind: 'cancelled' } : outcome;
+        } finally {
+            clearTimeout(timer);
+        }
 
     }
 
     /*
-        The listing's answer, type-checked: listed only on status 0 with a result array (one entry
-        not wrapped in an array is read as one entry, as the Metadata API answers a single
-        component). An entry of the kind's type is kept when its full name is "<Object>.<Name>", both
-        api names, and its object is one of the tree's, case-insensitively. An entry of a tree object
-        that is not in that shape, or whose full name is not a string, is left out and counted; another
-        object's is ignored, so the count is about this tree. The listing is never read as "none"
-        unless the org said so.
+        The listing's answer, type-checked: an array of entries (one entry not wrapped in an array is
+        read as one entry, as the Metadata API answers a single component). An entry of the kind's
+        type is kept when its full name is "<Object>.<Name>", both api names, and its object is one of
+        the tree's, case-insensitively. An entry of a tree object that is not in that shape, or whose
+        full name is not a string, is left out and counted; another object's is ignored, so the count
+        is about this tree. Anything else is a failure: the listing is never read as "none" unless the
+        org said so.
     */
-    static parseListMetadataOutput(retrieveKind: MetadataRetrieveListedKind,
-                                    invocationResult: ISalesforceCliInvocationResult,
-                                    objectApiNames: readonly string[],
-                                    payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): MetadataListOutcome {
+    static readListedEntries(retrieveKind: MetadataRetrieveListedKind, listedResult: unknown, objectApiNames: readonly string[]): MetadataListOutcome {
 
-        const invocationFailure = this.readInvocationFailure(retrieveKind, invocationResult, `which ${RETRIEVE_WORDS[retrieveKind].many} the org holds is unknown`);
-        if ( invocationFailure ) {
-            return invocationFailure;
-        }
-
-        const rawResult = payload?.result;
-        const entries = Array.isArray(rawResult) ? rawResult
-            : rawResult !== null && typeof rawResult === 'object' ? [rawResult]
+        const entries = Array.isArray(listedResult) ? listedResult
+            : listedResult !== null && typeof listedResult === 'object' ? [listedResult]
             : undefined;
 
-        if ( !entries || payload?.status !== 0 ) {
-            return { kind: 'failed', failureMessage: ScratchOrgService.buildCliFailureDetail(payload, invocationResult) };
+        if ( !entries ) {
+            return { kind: 'failed', failureMessage: 'The org\'s answer was not a listing.' };
         }
 
         const metadataType = METADATA_RETRIEVE_TYPE_BY_KIND[retrieveKind];
@@ -203,6 +251,18 @@ export class RecipeCockpitMetadataRetrieve {
             components: [...membersByLowerName.values()].sort().map(member => ({ type: metadataType, member: member })),
             skippedCount: skippedCount
         };
+
+    }
+
+    // WHAT THE ORG SAID: ITS ERROR CODE AND MESSAGE, ON ONE LINE, WITH ANYTHING SHAPED LIKE A TOKEN OR AN AUTH URL TAKEN OUT
+    private static describeListError(listError: unknown): string {
+
+        const errorRecord = listError !== null && typeof listError === 'object' ? listError as Record<string, unknown> : {};
+        const errorCode = [errorRecord.errorCode, errorRecord.name].find((value): value is string => typeof value === 'string' && value.length > 0 && value !== 'Error');
+        const message = typeof errorRecord.message === 'string' ? errorRecord.message : String(listError);
+        const detail = errorCode && !message.startsWith(errorCode) ? `${errorCode}: ${message}` : message;
+
+        return ScratchOrgService.redactSecretText(detail.replace(/\s+/g, ' ').trim()) || 'The org did not say why.';
 
     }
 
@@ -396,7 +456,7 @@ export class RecipeCockpitMetadataRetrieve {
     private static readInvocationFailure(retrieveKind: MetadataRetrieveKind,
                                             invocationResult: ISalesforceCliInvocationResult,
                                             unknownClause: string,
-                                            runNoun: string = 'The listing'): Exclude<MetadataListOutcome, { kind: 'listed' }> | undefined {
+                                            runNoun: string): Exclude<MetadataRetrieveOutcome, { kind: 'retrieved' }> | undefined {
 
         if ( invocationResult.spawnError ) {
             return invocationResult.spawnError.code === 'ENOENT'

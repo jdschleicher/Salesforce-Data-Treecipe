@@ -13584,7 +13584,7 @@ export class RecipeCockpitService {
         and made the selection only when there is none (#480); then a confirmation names what is retrieved, the
         org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start --manifest" runs in project mode, cancellable. Validation rules and
-        record types are first LISTED in the org ("sf org list metadata", #401), after the prompt
+        record types are first LISTED in the org (listMetadata on a jsforce connection, #401, #498), after the prompt
         and before the confirmation, so the confirmation and the package.xml name each one. Nothing is deployed, and the
         recipe is not regenerated: the notification offers Generate Treecipe. One retrieve per window,
         whatever its kind.
@@ -13718,33 +13718,24 @@ export class RecipeCockpitService {
 
         if ( isListed ) {
 
-            let listArguments: string[];
-            try {
-                listArguments = RecipeCockpitMetadataRetrieve.buildListMetadataArguments(retrieveKind, orgDetail.username);
-            } catch (argumentError) {
-                return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
-            }
-
             stepStartedAt = new Date();
-            const listRun = await this.runCancellableCli(
-                RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${orgDetail.username}`),
-                listArguments,
+            const listingUsername = orgDetail.username;
+            const listOutcome = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${listingUsername}`),
+                cancellable: true
+            }, async (_progress, cancellationToken) => await RecipeCockpitMetadataRetrieve.listOrgMetadata(
+                async () => ( await SalesforceOrgService.getConnection(listingUsername) ).metadata,
+                retrieveKind,
+                objectApiNames,
                 METADATA_LIST_TIMEOUT_MILLISECONDS,
-                workspaceRoot,
-                SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
-            );
+                cancellationToken
+            ));
 
             // A LISTING WRITES NOTHING, SO A CANCEL OR A FAILURE HERE OFFERS NO GENERATE TREECIPE
-            if ( listRun.isCancelled ) {
+            if ( listOutcome.kind === 'cancelled' ) {
                 recordStep('cancelled', { detail: 'The listing was cancelled, so nothing was retrieved.' });
                 return refuse(`The listing of ${manyNoun} in ${orgLabel} was cancelled, so nothing was retrieved.`);
-            }
-
-            const listOutcome = RecipeCockpitMetadataRetrieve.parseListMetadataOutput(retrieveKind, listRun.invocation, objectApiNames);
-
-            if ( listOutcome.kind === 'cliNotInstalled' ) {
-                recordStep('failed', { detail: listOutcome.failureMessage });
-                return refuse(listOutcome.failureMessage);
             }
 
             if ( listOutcome.kind !== 'listed' ) {

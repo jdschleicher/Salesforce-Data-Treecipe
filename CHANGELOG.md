@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.167.0] - Recipe Cockpit: Retrieve validation rules / record types lists the org's components through jsforce, not `sf org list metadata`
+
+[#498](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/498), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). Before **Retrieve validation rules…** and **Retrieve record types…**, the cockpit started a separate `sf org list metadata` process, which took seconds and needed the CLI on PATH, only to ask the org which rules or record types it holds.
+
+- **One API call.** The listing is now the Metadata API's `listMetadata`, through `connection.metadata.list({ type: 'ValidationRule' | 'RecordType' })` on the connection `SalesforceOrgService.getConnection` opens by username (`RecipeCockpitMetadataRetrieve.listOrgMetadata`). `buildListMetadataArguments` and `parseListMetadataOutput` are gone; the retrieve itself is still `sf project retrieve start --manifest`.
+- **The same checks.** `readListedEntries` keeps what `parseListMetadataOutput` kept: an `<Object>.<Name>` of api names in the type's shape for a tree object (case-insensitive), a tree object's bad entry left out and counted in the Skipped note, another object's ignored, one entry answered unwrapped still read as one. An answer that is not a listing, a listing that throws (its error code and message, any token taken out), a connection that will not open (one fixed message, quoting nothing of its error) and a timeout are each one warning and never read as none; an empty listing is still one information notice with no retrieve, and more than 10,000 components is still refused before the confirmation. Never a `<Type>:<Object>.*` wildcard.
+- **Cancel.** The connection and the call are raced against the progress notification's Cancel and the 5-minute timeout, and the listing is abandoned; a Cancel that arrives with the answer is still a cancel. The History (#485) records the step as before, from the listing's start.
+- **Tests.** `RecipeCockpitValidationRuleRetrieve.test.ts` and `RecipeCockpitMetadataRetrieve.test.ts` fake the connection instead of the CLI: the entry checks, an unwrapped entry, a thrown, unusable or null answer, a connection that fails, a timeout, a cancel before and with the answer, the query each kind sends and the username it is opened by, and no CLI listing argv.
+
 ## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
 
 [#494](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/494). An expanded object's controls row and field rows ran straight into the next object's header, so nothing showed where one object's fields ended, and the field checkboxes were indented a fixed 2.1rem, about 1.6rem left of the object's ▸.
