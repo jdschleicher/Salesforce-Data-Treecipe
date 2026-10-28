@@ -500,9 +500,20 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             await openCockpit();
             await generate();
 
-            const resultFileNames = fs.readdirSync(path.join(runArtifactsFolderPath, 'PermissionSets'));
-            expect(resultFileNames).toEqual([expect.stringMatching(/^\d{8}-\d{6}-permission-set-generate\.json$/)]);
-            expect(JSON.parse(fs.readFileSync(path.join(runArtifactsFolderPath, 'PermissionSets', resultFileNames[0]), 'utf8'))).toEqual({
+            const resultFileNames = fs.readdirSync(path.join(runArtifactsFolderPath, 'PermissionSets')).sort();
+            expect(resultFileNames).toEqual([
+                expect.stringMatching(/^\d{8}-\d{6}-permission-set-generate-summary\.json$/),
+                expect.stringMatching(/^\d{8}-\d{6}-permission-set-generate\.json$/)
+            ]);
+            // THE HISTORY'S SUMMARY (#485) NAMES THE RECORD BESIDE IT
+            expect(JSON.parse(fs.readFileSync(path.join(runArtifactsFolderPath, 'PermissionSets', resultFileNames[0]), 'utf8'))).toEqual(expect.objectContaining({
+                step: 'permission-set-generate',
+                outcome: 'succeeded',
+                orgUsername: null,
+                succeededCount: ACCOUNT_TREE_PLAN.fieldPermissions.length,
+                fileNames: [resultFileNames[1]]
+            }));
+            expect(JSON.parse(fs.readFileSync(path.join(runArtifactsFolderPath, 'PermissionSets', resultFileNames[1]), 'utf8'))).toEqual({
                 operation: 'permission-set-generate',
                 writtenAt: expect.any(String),
                 treeFolderName: ACCOUNT_TREE_KEY,
@@ -522,7 +533,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             fs.writeFileSync(path.join(runArtifactsFolderPath, '.gitignore'), '*\n!*.json\n');
             await generate();
 
-            expect(fs.readdirSync(path.join(runArtifactsFolderPath, 'PermissionSets'))).toHaveLength(2);
+            expect(fs.readdirSync(path.join(runArtifactsFolderPath, 'PermissionSets'))).toHaveLength(4);
             expect(informationCalls()).toHaveLength(1);
             expect(warningTexts().at(-1)).toContain(`Wrote ${ACCOUNT_TREE_PERMISSION_SET_NAME} to ${ACCOUNT_TREE_FILE_PATH}`);
             expect(warningTexts().at(-1)).toContain(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE));

@@ -667,6 +667,16 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             const resultFiles = fs.readdirSync(operationsFolderPath);
             expect(resultFiles.filter(fileName => fileName.endsWith('-permission-set-assign.json'))).toHaveLength(1);
             expect(resultFiles.filter(fileName => fileName.includes('deploy'))).toEqual([]);
+            // THE HISTORY'S SUMMARY (#485) NAMES THE RESULT FILE BESIDE IT
+            const summaryFileName = resultFiles.find(fileName => fileName.endsWith('-permission-set-assign-summary.json')) as string;
+            expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath, summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({
+                step: 'permission-set-assign',
+                outcome: 'succeeded',
+                orgUsername: QA_USERNAME,
+                orgAlias: 'qa',
+                succeededCount: 2,
+                fileNames: resultFiles.filter(fileName => fileName.endsWith('-permission-set-assign.json'))
+            }));
 
             // FIELD-LEVEL SECURITY CHANGES WHAT A DESCRIBE ANSWERS: THE COVERED OBJECTS ARE DESCRIBED AFRESH FOR THE CARD
             ACCOUNT_TREE_OBJECTS.forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
@@ -965,6 +975,14 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             expect(failure.actions).toEqual([RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]);
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
             expect(VSCodeWorkspaceService.openFileInEditor).toHaveBeenCalledWith(expect.stringMatching(/-permission-set-assign\.json$/));
+            const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
+            const summaryFileName = fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-summary.json')) as string;
+            expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath, summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({
+                outcome: 'partial',
+                succeededCount: 1,
+                failedCount: 1,
+                detail: 'Contact_Reader could not be assigned: Permission set "Contact_Reader" not found in target org.'
+            }));
             // THE CARD DRAWS NO LINE OF ITS OWN, SO NOTHING ABOUT THE OUTCOME IS POSTED
             expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 

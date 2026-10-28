@@ -34,9 +34,12 @@ Generate Treecipe marks what still needs a hand edit with a TODO comment, such a
 Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one (or the **TODOs only** beside an opened object's **All fields** for that object alone), or open its **Troubleshooting** tab, whose **TODO's** list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line (**↗ yml**).
 Its **Open** list holds the TODOs still in the recipe, and **Removed** the ones you took out.
 
-The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**, each with its own search.
+The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types**, **Global Value Sets** and **History**, each with its own search.
 It opens on the one you chose last.
 Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.
+**History** lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, **Assign permission sets** or **Generate permission set**), the org, how it ended and what it counted, the run, and its files, each a link that opens it.
+Click a column's header to sort by it, and again to turn the order; it starts newest first.
+A step from before this was recorded shows *Not recorded*, since only its time and files are known.
 **Validation Rules** lists each object's validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did (such as *2 applied · 1 not applied*): whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not.
 **Show formula** opens a rule's formula.
 
@@ -99,7 +102,7 @@ The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…`
 Each insert of a data set saves its results, and how it ended, in the data set's `InsertAttempts` folder.
 Under **Previously Used Data Sets**, each row shows its last insert: ✅ **Inserted**, ⚠️ **Partly inserted**, ❌ **Insert failed**, 🚫 **Insert cancelled** or ❔ **Insert outcome unknown** (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip.
 **View results** opens that insert's results file.
-What the **Troubleshooting** and **Treecipe Adapter** tabs run for a tree is kept with its recipe, in `GeneratedRecipes/<run>/<tree folder>/RunArtifacts/`: the package.xml and CLI answer of each deploy, retrieve and permission set assignment (`OrgOperations/<username>/`), a record of each **Generate permission set…** (`PermissionSets/`), the Adapter's retrieved metadata (`OrgOperations/<username>/`), its update snapshots and results (`UpdateAttempts/`), and query exports (`QueryResults/`).
+What the **Troubleshooting** and **Treecipe Adapter** tabs run for a tree is kept with its recipe, in `GeneratedRecipes/<run>/<tree folder>/RunArtifacts/`: the package.xml and CLI answer of each deploy, retrieve and permission set assignment (`OrgOperations/<username>/`), a record of each **Generate permission set…** (`PermissionSets/`), a `<time>-<step>-summary.json` beside each Troubleshooting step's files saying how it ended (what **History** lists), the Adapter's retrieved metadata (`OrgOperations/<username>/`), its update snapshots and results (`UpdateAttempts/`), and query exports (`QueryResults/`).
 Git ignores that folder through its own `.gitignore`, and a notification says so when that file no longer ignores everything.
 Files written before this, under `treecipe/OrgOperations`, `treecipe/UpdateAttempts` and `treecipe/QueryResults`, stay where they are. **Restore previous values…** lists the tree's snapshots from every run, so a regeneration hides none, and still lists the older ones there.
 A scratch org is not made for one tree, so its output stays in `treecipe/OrgOperations`.

@@ -104,6 +104,7 @@ import {
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
 import { IRecipeCockpitRunArtifactsLocation, RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
+import { IRunHistoryStepRecord, RUN_HISTORY_STEP_LABELS, RunHistoryOutcome, RunHistoryRowStatus, RunHistoryStep, RecipeCockpitRunHistory } from './RecipeCockpitRunHistory';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, IOrgStagedFieldDetail, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
@@ -587,7 +588,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
-            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
+            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
+            'History lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, Assign permission sets or Generate permission set), the org, how it ended and what it counted, the run, and its files, each a link that opens it. Click a column\'s header to sort by it, and again to turn the order; it starts newest first. A step from before this was recorded shows Not recorded, since only its time and files are known.',
             'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
         ]
     },
@@ -632,7 +634,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
             'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file.',
-            'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
+            'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
@@ -1280,6 +1282,9 @@ export interface IRecipeCockpitPanelMessage {
     // THE UPDATER'S RESTORE (#419): A SNAPSHOT'S FILE NAME, AND THE LIST THE PANEL DREW IT FROM
     snapshotName?: unknown;
     snapshotsSequence?: unknown;
+    // THE TROUBLESHOOTING HISTORY (#485): THE ROWS THE PANEL DREW, AND ONE OF THEIR FILES BY ITS INDEX
+    historySequence?: unknown;
+    fileIndex?: unknown;
     // A ROW OF THE TODO'S SUB-TAB'S REMOVED LIST (#391)
     removalKey?: unknown;
     filePath?: unknown;
@@ -1380,6 +1385,8 @@ export interface IRecipeCockpitPanelTreePlace {
     // THE TODO'S SUB-TAB'S REMOVED LIST (#391), ONLY WHEN IT IS THE ONE OPEN, AND ITS SEARCH, ONLY WHEN THERE IS ONE
     todosView?: 'removed';
     removedTodosSearchText?: string;
+    // THE HISTORY SUB-TAB'S SORT (#485), ONLY WHEN IT IS NOT TIME, NEWEST FIRST
+    troubleshootingHistorySort?: { column: RecipeCockpitHistorySortColumn; isDescending: boolean };
     // THE TREECIPE UPDATER TAB'S CHOSEN FIELDS ("<object>\n<field>") AND OPENED OBJECTS (#415), EACH ONLY WHEN THERE IS ONE
     updaterChosenFieldKeys?: string[];
     updaterExpandedObjectKeys?: string[];
@@ -1966,6 +1973,42 @@ export interface IRecipeCockpitUpdaterSnapshotsMessage {
     snapshotsSequence: number;
 }
 
+/*
+    One row of the Troubleshooting tab's History (#485). Times are epoch milliseconds the panel
+    formats; files are named by their index in the host-only list kept for this message, never by
+    a path. orgLabel is the alias, else the username.
+*/
+export interface IRecipeCockpitTroubleshootingHistoryRowViewModel {
+    step: RunHistoryStep;
+    stepLabel: string;
+    status: RunHistoryRowStatus;
+    timeMs: number;
+    timeLabel: string;
+    finishedAtMs?: number;
+    finishedAtLabel?: string;
+    runFolderName: string;
+    orgLabel?: string;
+    orgUsername?: string;
+    succeededCount?: number;
+    failedCount?: number;
+    detail?: string;
+    files: Array<{ fileIndex: number; fileName: string }>;
+}
+
+/*
+    A tree's History, read when the sub-tab first opens and again after a step ends. renderSequence
+    names the model it was read for, and the panel drops it for any other; historySequence is echoed
+    by the panel's "troubleshootingHistoryRendered", and only that ack opens these rows' files.
+*/
+export interface IRecipeCockpitTroubleshootingHistoryMessage {
+    command: 'troubleshootingHistory';
+    renderSequence: number;
+    treeKey: string;
+    historySequence: number;
+    rows: IRecipeCockpitTroubleshootingHistoryRowViewModel[];
+    hiddenRowCount: number;
+}
+
 export interface IRecipeCockpitUpdaterValuesMessage {
     command: 'updaterValues';
     renderSequence: number;
@@ -2220,7 +2263,7 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
     picks another, which the place keeps. Each has its own search box. Only the selected one is
     shown, so the tab draws one area at a time.
 */
-export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS = ['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets'] as const;
+export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS = ['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets', 'history'] as const;
 export type RecipeCockpitTroubleshootingSubTab = typeof RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS[number];
 export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS: Readonly<Record<RecipeCockpitTroubleshootingSubTab, string>> = Object.freeze({
     todos: 'TODO\'s',
@@ -2228,7 +2271,8 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS: Readonly<Record<Reci
     permissions: 'Permissions',
     validationRules: 'Validation Rules',
     recordTypes: 'Record Types',
-    globalValueSets: 'Global Value Sets'
+    globalValueSets: 'Global Value Sets',
+    history: 'History'
 });
 export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS: Readonly<Record<RecipeCockpitTroubleshootingSubTab, string>> = Object.freeze({
     todos: 'Search TODOs by object, field or text',
@@ -2236,9 +2280,40 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS: Readonly<Recor
     permissions: 'Search permission set actions',
     validationRules: 'Search validation rules by object, rule, field or message',
     recordTypes: 'Search record type actions',
-    globalValueSets: 'Search global value set actions'
+    globalValueSets: 'Search global value set actions',
+    history: 'Search history by step, org, outcome, run or file'
 });
 export const RECIPE_COCKPIT_NO_TREE_TODOS_NOTE = 'No TODO comments in this tree\'s recipe.';
+export const RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT = 'That run file no longer exists in this workspace.';
+
+/*
+    The History sub-tab (#485): one table of the tree's Troubleshooting steps, its columns, what each
+    row's outcome says, and its notes. Constants injected into the panel script, written with
+    textContent. Every column but Files sorts.
+*/
+export const RECIPE_COCKPIT_HISTORY_COLUMNS = [
+    { key: 'time', label: 'Time' },
+    { key: 'step', label: 'Step' },
+    { key: 'org', label: 'Org' },
+    { key: 'outcome', label: 'Outcome' },
+    { key: 'run', label: 'Run' },
+    { key: 'files', label: 'Files' }
+] as const;
+export const RECIPE_COCKPIT_HISTORY_SORT_COLUMNS = ['time', 'step', 'org', 'outcome', 'run'] as const;
+export type RecipeCockpitHistorySortColumn = typeof RECIPE_COCKPIT_HISTORY_SORT_COLUMNS[number];
+export const RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY: Readonly<Record<RunHistoryRowStatus, { emoji: string; label: string }>> = {
+    succeeded: { emoji: '✅', label: 'Succeeded' },
+    partial: { emoji: '⚠️', label: 'Partly succeeded' },
+    failed: { emoji: '❌', label: 'Failed' },
+    cancelled: { emoji: '🚫', label: 'Cancelled' },
+    unknown: { emoji: '❔', label: 'Outcome unknown' },
+    unreadable: { emoji: '❗', label: 'Summary unreadable' },
+    unrecorded: { emoji: '➖', label: 'Not recorded' }
+};
+export const RECIPE_COCKPIT_HISTORY_LOADING_NOTE = 'Reading this tree\'s history…';
+export const RECIPE_COCKPIT_HISTORY_EMPTY_NOTE = 'No Troubleshooting step has been run for this tree yet. Each deploy, retrieve, permission set assignment and Generate permission set is listed here once it has run.';
+export const RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE = 'This step ran before Treecipe recorded how a step ended, so only its time and files are known.';
+export const RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE = 'This step\'s summary file could not be read, so how it ended is not shown.';
 
 /*
     The TODO's sub-tab's Open and Removed lists (#391), and why a TODO's Remove TODO is disabled.
@@ -2441,6 +2516,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitAdapterChildPreviewMessage
                                         | IRecipeCockpitUpdaterValuesMessage
                                         | IRecipeCockpitUpdaterSnapshotsMessage
+                                        | IRecipeCockpitTroubleshootingHistoryMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitRunSwitchCancelledMessage
@@ -2736,6 +2812,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadTroubleshootingSummary'; treeKey: string; renderSequence: number }
     | { kind: 'loadTreeQueries'; treeKey: string; renderSequence: number }
     | { kind: 'loadValidationRules'; treeKey: string; renderSequence: number }
+    | { kind: 'loadTroubleshootingHistory'; treeKey: string }
+    | { kind: 'activateTroubleshootingHistory'; treeKey: string }
+    | { kind: 'openTroubleshootingHistoryFile'; filePath: string }
     | { kind: 'saveTreeQueryEdit'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'runTreeQuery'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
@@ -2883,6 +2962,14 @@ export interface IRecipeCockpitPanelState {
     */
     pendingRestorableSnapshots: Map<string, { snapshotsSequence: number; snapshotPathsByName: Map<string, string> }>;
     restorableSnapshots: Map<string, Map<string, string>>;
+    /*
+        The Troubleshooting History (#485): per card, the host-only file paths of the rows last
+        posted, a pending/active pair like the snapshots. PENDING is set with the rows; only the
+        panel's "troubleshootingHistoryRendered" echoing its historySequence makes it ACTIVE, and a
+        ready, a new model and a failure to draw empty both.
+    */
+    pendingHistoryFiles: Map<string, { historySequence: number; filePaths: string[] }>;
+    historyFiles: Map<string, { historySequence: number; filePaths: string[] }>;
     // HOST-ONLY, REPLACED WITH THE MODEL: THE WRAPPER THE QUERY TAB'S QUERIES ARE READ FROM (#367)
     objectsWrapperFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
@@ -3077,6 +3164,12 @@ export class RecipeCockpitService {
                 ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} ),
                 ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
                 ...( this.isBoundedText(candidateTree.removedTodosSearchText) && candidateTree.removedTodosSearchText !== '' ? { removedTodosSearchText: candidateTree.removedTodosSearchText } : {} ),
+                ...( this.isPlainRecord(candidateTree.troubleshootingHistorySort)
+                        && ( RECIPE_COCKPIT_HISTORY_SORT_COLUMNS as readonly unknown[] ).includes(candidateTree.troubleshootingHistorySort.column)
+                        && typeof candidateTree.troubleshootingHistorySort.isDescending === 'boolean'
+                        && !( candidateTree.troubleshootingHistorySort.column === 'time' && candidateTree.troubleshootingHistorySort.isDescending )
+                    ? { troubleshootingHistorySort: { column: candidateTree.troubleshootingHistorySort.column as RecipeCockpitHistorySortColumn, isDescending: candidateTree.troubleshootingHistorySort.isDescending } }
+                    : {} ),
                 ...( updaterChosenFieldKeys.length > 0 ? { updaterChosenFieldKeys: updaterChosenFieldKeys } : {} ),
                 ...( updaterExpandedObjectKeys.length > 0 ? { updaterExpandedObjectKeys: updaterExpandedObjectKeys } : {} ),
                 ...( candidateTree.updaterStep === 'structure' && updaterParentObjectApiName !== undefined ? { updaterStep: 'structure' as const } : {} ),
@@ -6437,6 +6530,8 @@ export class RecipeCockpitService {
             updatableTreeKeys: new Set(),
             pendingRestorableSnapshots: new Map(),
             restorableSnapshots: new Map(),
+            pendingHistoryFiles: new Map(),
+            historyFiles: new Map(),
             isGenerateTreecipeInFlight: false,
             pendingIsGenerateTreecipeOffered: false,
             isGenerateTreecipeOffered: false,
@@ -6947,6 +7042,8 @@ export class RecipeCockpitService {
         // AND A SNAPSHOT LIST (#419): THE NEW MODEL'S CARDS ASK FOR THEIR OWN
         panelState.pendingRestorableSnapshots = new Map();
         panelState.restorableSnapshots = new Map();
+        panelState.pendingHistoryFiles = new Map();
+        panelState.historyFiles = new Map();
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -7184,6 +7281,8 @@ export class RecipeCockpitService {
                 panelState.updatableTreeKeys = new Set();
                 panelState.pendingRestorableSnapshots = new Map();
                 panelState.restorableSnapshots = new Map();
+                panelState.pendingHistoryFiles = new Map();
+                panelState.historyFiles = new Map();
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
@@ -7241,6 +7340,8 @@ export class RecipeCockpitService {
                     panelState.updatableTreeKeys = new Set();
                     panelState.pendingRestorableSnapshots = new Map();
                     panelState.restorableSnapshots = new Map();
+                    panelState.pendingHistoryFiles = new Map();
+                    panelState.historyFiles = new Map();
                     // A REVEAL OF A PANEL THAT FAILED TO DRAW MUST NOT KEEP RE-OPENING THE TAB AN OPEN ASKED FOR
                     panelState.openFocusTree = undefined;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
@@ -7568,6 +7669,26 @@ export class RecipeCockpitService {
             case 'loadValidationRules':
 
                 await this.postTreeValidationRules(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
+                return;
+
+            case 'loadTroubleshootingHistory':
+
+                this.postTroubleshootingHistory(cockpitPanel, panelState, panelAction.treeKey);
+                return;
+
+            case 'activateTroubleshootingHistory': {
+
+                const pendingFiles = panelState.pendingHistoryFiles.get(panelAction.treeKey);
+                if ( pendingFiles ) {
+                    panelState.historyFiles.set(panelAction.treeKey, pendingFiles);
+                }
+                return;
+
+            }
+
+            case 'openTroubleshootingHistoryFile':
+
+                await VSCodeWorkspaceService.openWorkspaceResultFile(panelAction.filePath, panelState.workspaceRoot, RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT);
                 return;
 
             case 'saveTreeQueryEdit':
@@ -9079,6 +9200,7 @@ export class RecipeCockpitService {
 
                 this.isPermissionSetAssignInFlight = false;
                 this.setPermissionSetAssignState({ command: 'permissionSetAssignState', isRunning: false, treeKey: treeKey });
+                this.refreshTroubleshootingHistory(treeKey);
 
             }
 
@@ -12201,6 +12323,68 @@ export class RecipeCockpitService {
     */
     private static updaterSnapshotsSequence = 0;
 
+    private static troubleshootingHistorySequence = 0;
+
+    /*
+        The Troubleshooting tab's History (#485): every Troubleshooting step of the card, from its
+        tree folder's RunArtifacts in every run (the run on screen first, as the snapshots are
+        listed), newest first and capped. The file paths stay on the host as a PENDING list; only
+        the panel's ack of these rows opens one. A card with no folder gets nothing.
+    */
+    private static postTroubleshootingHistory(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const tree = recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !recipeDataMessage || !tree?.folderName ) {
+            return;
+        }
+
+        const listing = RecipeCockpitRunHistory.listTreeHistory(this.resolveTreeSnapshotLocations(panelState.workspaceRoot, recipeDataMessage.recipe, tree));
+        const filePaths: string[] = [];
+        const historyMessage: IRecipeCockpitTroubleshootingHistoryMessage = {
+            command: 'troubleshootingHistory',
+            renderSequence: recipeDataMessage.renderSequence,
+            treeKey: treeKey,
+            historySequence: ++this.troubleshootingHistorySequence,
+            rows: listing.rows.map(row => {
+                const orgLabel = row.orgAlias ?? row.orgUsername;
+                return {
+                    step: row.step,
+                    stepLabel: RUN_HISTORY_STEP_LABELS[row.step],
+                    status: row.status,
+                    timeMs: row.timeMs,
+                    timeLabel: RecipeCockpitRunHistory.formatTimeLabel(row.timeMs),
+                    ...( row.finishedAtMs !== undefined ? { finishedAtMs: row.finishedAtMs, finishedAtLabel: RecipeCockpitRunHistory.formatTimeLabel(row.finishedAtMs) } : {} ),
+                    runFolderName: row.runFolderName,
+                    ...( orgLabel !== undefined ? { orgLabel: orgLabel } : {} ),
+                    ...( row.orgUsername !== undefined ? { orgUsername: row.orgUsername } : {} ),
+                    ...( row.succeededCount !== undefined ? { succeededCount: row.succeededCount } : {} ),
+                    ...( row.failedCount !== undefined ? { failedCount: row.failedCount } : {} ),
+                    ...( row.detail !== undefined ? { detail: row.detail } : {} ),
+                    files: row.filePaths.map(filePath => ({ fileIndex: filePaths.push(filePath) - 1, fileName: path.basename(filePath) }))
+                };
+            }),
+            hiddenRowCount: listing.hiddenRowCount
+        };
+
+        panelState.pendingHistoryFiles.set(treeKey, { historySequence: historyMessage.historySequence, filePaths: filePaths });
+        this.postToPanel(cockpitPanel, historyMessage);
+
+    }
+
+    // A STEP ENDED: ITS CARD'S HISTORY IS LISTED AGAIN, ONLY WHEN THIS MODEL ALREADY DREW IT
+    private static refreshTroubleshootingHistory(treeKey: string) {
+
+        const cockpitPanel = this.recipeCockpitPanel;
+        const panelState = this.recipeCockpitPanelState;
+
+        if ( cockpitPanel && panelState.pendingHistoryFiles.has(treeKey) ) {
+            this.postTroubleshootingHistory(cockpitPanel, panelState, treeKey);
+        }
+
+    }
+
     private static postUpdaterSnapshots(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
 
         const recipeDataMessage = panelState.recipeDataMessage;
@@ -13032,6 +13216,7 @@ export class RecipeCockpitService {
                 this.setMetadataDeployState({ command: 'metadataDeployState', isRunning: false, treeKey: treeKey, deployKind: deployKind });
                 closingState.showOutcome?.();
                 await this.refreshTroubleshootingSummary(treeKey);
+                this.refreshTroubleshootingHistory(treeKey);
 
             }
 
@@ -13215,19 +13400,32 @@ export class RecipeCockpitService {
         const operationDate = new Date();
         const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
         let deployArguments: string[];
+        let packageXmlWrittenFilePath: string | undefined;
         try {
             const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
             const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, operationName, operationDate) : undefined;
-            const writtenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
-            if ( !writtenFilePath ) {
+            packageXmlWrittenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
+            if ( !packageXmlWrittenFilePath ) {
                 return refuse(`Nothing was deployed: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
-            deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
+            deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlWrittenFilePath), orgDetail.username);
         } catch (argumentError) {
             return refuse(this.describeThrown(argumentError));
         }
 
         const cliStarted: IRecipeCockpitMetadataDeployClosingState = { cliStartedFor: { orgDetail: orgDetail, objectApiNames: touchedObjectApiNames } };
+        let deployOutputFilePath: string | undefined;
+        // THE HISTORY'S RECORD OF THIS DEPLOY (#485), WRITTEN ONCE THE CLI HAS RUN, WHATEVER IT ANSWERED
+        const recordStep = (outcome: RunHistoryOutcome, counts: Pick<IRunHistoryStepRecord, 'succeededCount' | 'failedCount' | 'detail'> = {}) => this.recordTroubleshootingStep(runArtifactsLocation, {
+            step: operationName,
+            outcome: outcome,
+            orgUsername: orgDetail.username,
+            orgAlias: orgDetail.alias,
+            startedAt: operationDate,
+            finishedAt: new Date(),
+            ...counts,
+            filePaths: [packageXmlWrittenFilePath, deployOutputFilePath]
+        });
 
         const deployRun = await this.runCancellableCli(
             RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`),
@@ -13238,18 +13436,20 @@ export class RecipeCockpitService {
         );
 
         if ( deployRun.isCancelled ) {
+            recordStep('cancelled');
             return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled, so whether it landed is unknown.`, cliStarted);
         }
 
         const deployPayload = ScratchOrgService.readCliJsonPayload(deployRun.invocation);
         const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployRun.invocation, deployPayload);
-        const deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
+        deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
             ? undefined
             : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, operationName, deployRun.invocation, operationDate, deployPayload, runArtifactsLocation);
 
         switch ( deployOutcome.kind ) {
 
             case 'deployed':
+                recordStep('succeeded', { succeededCount: components.length });
                 return {
                     ...cliStarted,
                     isDeployed: true,
@@ -13263,9 +13463,11 @@ export class RecipeCockpitService {
                 };
 
             case 'cliNotInstalled':
+                recordStep('failed', { detail: deployOutcome.failureMessage });
                 return refuse(deployOutcome.failureMessage, cliStarted);
 
             case 'unconfirmed':
+                recordStep('unknown', { detail: deployOutcome.failureMessage });
                 this.showMetadataDeployNotification('warning', deployOutcome.failureMessage, deployOutputFilePath, workspaceRoot);
                 return cliStarted;
 
@@ -13275,6 +13477,7 @@ export class RecipeCockpitService {
                 const failureText = shownFailures.length > 0
                     ? `${shownFailures.join('; ')}${hiddenFailureCount > 0 ? `; and ${hiddenFailureCount} more` : ''}`
                     : deployOutcome.failureMessage;
+                recordStep('failed', { failedCount: deployOutcome.componentFailureMessages.length, detail: failureText });
                 this.showMetadataDeployNotification('warning', `Nothing was deployed to ${orgLabel}: ${failureText}`, deployOutputFilePath, workspaceRoot);
                 return cliStarted;
             }
@@ -13406,6 +13609,7 @@ export class RecipeCockpitService {
         } finally {
             this.isMetadataRetrieveInFlight = false;
             this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
+            this.refreshTroubleshootingHistory(treeKey);
             if ( isCliStarted ) {
                 await this.refreshTroubleshootingSummary(treeKey);
                 if ( retrieveKind === 'validationRules' ) {
@@ -13484,6 +13688,22 @@ export class RecipeCockpitService {
                 : '';
         };
 
+        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST CLI THAT RAN -- THE LISTING, FOR A LISTED KIND
+        let stepStartedAt = new Date();
+        let retrievePackageXmlFilePath: string | undefined;
+        let retrieveOutputFilePath: string | undefined;
+        const retrievingOrgDetail = orgDetail;
+        const recordStep = (outcome: RunHistoryOutcome, counts: Pick<IRunHistoryStepRecord, 'succeededCount' | 'failedCount' | 'detail'>) => this.recordTroubleshootingStep(this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree), {
+            step: METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind],
+            outcome: outcome,
+            orgUsername: retrievingOrgDetail.username,
+            orgAlias: retrievingOrgDetail.alias,
+            startedAt: stepStartedAt,
+            finishedAt: new Date(),
+            ...counts,
+            filePaths: [retrievePackageXmlFilePath, retrieveOutputFilePath]
+        });
+
         if ( isListed ) {
 
             let listArguments: string[];
@@ -13493,6 +13713,7 @@ export class RecipeCockpitService {
                 return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
             }
 
+            stepStartedAt = new Date();
             const listRun = await this.runCancellableCli(
                 RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${orgDetail.username}`),
                 listArguments,
@@ -13503,28 +13724,33 @@ export class RecipeCockpitService {
 
             // A LISTING WRITES NOTHING, SO A CANCEL OR A FAILURE HERE OFFERS NO GENERATE TREECIPE
             if ( listRun.isCancelled ) {
+                recordStep('cancelled', { detail: 'The listing was cancelled, so nothing was retrieved.' });
                 return refuse(`The listing of ${manyNoun} in ${orgLabel} was cancelled, so nothing was retrieved.`);
             }
 
             const listOutcome = RecipeCockpitMetadataRetrieve.parseListMetadataOutput(retrieveKind, listRun.invocation, objectApiNames);
 
             if ( listOutcome.kind === 'cliNotInstalled' ) {
+                recordStep('failed', { detail: listOutcome.failureMessage });
                 return refuse(listOutcome.failureMessage);
             }
 
             if ( listOutcome.kind !== 'listed' ) {
+                recordStep('failed', { detail: `The ${manyNoun} could not be listed. ${listOutcome.failureMessage}` });
                 return refuse(`No ${manyNoun} were retrieved: the ${manyNoun} ${orgLabel} holds could not be listed. ${listOutcome.failureMessage}`);
             }
 
             skippedListedCount = listOutcome.skippedCount;
 
             if ( listOutcome.components.length === 0 ) {
+                recordStep('succeeded', { succeededCount: 0, detail: `The org holds no ${RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1)} for these objects, so nothing was retrieved.` });
                 const skippedText = describeSkipped();
                 this.showMetadataRetrieveNotification(skippedText ? 'warning' : 'information', `${orgLabel} holds no ${RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1)} for the ${objectsText} of ${treeLabel}, so nothing was retrieved.${skippedText}`, undefined, workspaceRoot, false);
                 return false;
             }
 
             if ( listOutcome.components.length > METADATA_RETRIEVE_MAX_COMPONENTS ) {
+                recordStep('failed', { detail: `The org holds ${listOutcome.components.length}, and one retrieve can bring at most ${METADATA_RETRIEVE_MAX_COMPONENTS}.` });
                 return refuse(`No ${manyNoun} were retrieved: ${orgLabel} holds ${listOutcome.components.length} for the ${objectsText} of ${treeLabel}, and one retrieve can bring at most ${METADATA_RETRIEVE_MAX_COMPONENTS}.`);
             }
 
@@ -13569,15 +13795,18 @@ export class RecipeCockpitService {
         try {
             const packageXml = RecipeCockpitMetadataRetrieve.buildRetrievePackageXml(manifestComponents, this.readSourceApiVersion(workspaceRoot));
             const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date()) : undefined;
-            const writtenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
-            if ( !writtenFilePath ) {
+            retrievePackageXmlFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
+            if ( !retrievePackageXmlFilePath ) {
                 return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
-            retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
+            retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, retrievePackageXmlFilePath), orgDetail.username);
         } catch (argumentError) {
             return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
         }
 
+        if ( !isListed ) {
+            stepStartedAt = new Date();
+        }
         const retrieveRun = await this.runCancellableCli(
             RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving ${manyNoun} from ${orgDetail.username}`),
             retrieveArguments,
@@ -13588,13 +13817,14 @@ export class RecipeCockpitService {
 
         // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
+            recordStep('cancelled', { detail: 'Which files were written is unknown.' });
             this.showMetadataRetrieveNotification('warning', `The retrieve of ${manyNoun} from ${orgLabel} was cancelled, so which files were written is unknown.`, undefined, workspaceRoot, true);
             return true;
         }
 
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
         const retrieveOutcome: MetadataRetrieveOutcome = RecipeCockpitMetadataRetrieve.parseRetrieveOutput(retrieveKind, retrieveRun.invocation, askedNames, retrievePayload);
-        const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
+        retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
             : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload, runArtifactsLocation);
         const refusedText = describeSkipped();
@@ -13604,6 +13834,10 @@ export class RecipeCockpitService {
             case 'retrieved': {
                 const { componentCount, namesWithComponents, failureMessages } = retrieveOutcome;
                 const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, objectApiNames, treeLabel, orgLabel);
+                recordStep(failureMessages.length === 0 ? 'succeeded' : componentCount > 0 ? 'partial' : 'failed', {
+                    succeededCount: componentCount,
+                    ...( failureMessages.length > 0 ? { failedCount: failureMessages.length, detail: RecipeCockpitMetadataDeploy.describeCappedList(failureMessages) } : {} )
+                });
                 if ( failureMessages.length > 0 ) {
                     this.showMetadataRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${RecipeCockpitMetadataDeploy.describeCappedList(failureMessages)}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, componentCount > 0);
                     return true;
@@ -13613,13 +13847,16 @@ export class RecipeCockpitService {
             }
 
             case 'cliNotInstalled':
+                recordStep('failed', { detail: retrieveOutcome.failureMessage });
                 return refuse(retrieveOutcome.failureMessage);
 
             case 'unconfirmed':
+                recordStep('unknown', { detail: retrieveOutcome.failureMessage });
                 this.showMetadataRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
                 return true;
 
             case 'failed':
+                recordStep('failed', { detail: retrieveOutcome.failureMessage });
                 this.showMetadataRetrieveNotification('warning', `No ${manyNoun} were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
                 return true;
 
@@ -13733,6 +13970,7 @@ export class RecipeCockpitService {
         } finally {
             this.isPermissionSetGenerateInFlight = false;
             await this.refreshTroubleshootingSummary(treeKey);
+            this.refreshTroubleshootingHistory(treeKey);
         }
 
     }
@@ -13820,6 +14058,7 @@ export class RecipeCockpitService {
         }
 
         const permissionSetFolderPath = path.dirname(permissionSetFilePath);
+        const stepStartedAt = new Date();
         try {
             // THE DEEPEST FOLDER THAT EXISTS IS CHECKED BEFORE ANY IS MADE: A LINKED ANCESTOR WOULD OTHERWISE GET FOLDERS MADE OUTSIDE THE WORKSPACE
             let existingAncestorPath = permissionSetFolderPath;
@@ -13846,6 +14085,14 @@ export class RecipeCockpitService {
                 plan
             ), 'utf8');
         } catch (writeError) {
+            this.recordTroubleshootingStep(this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree), {
+                step: 'permission-set-generate',
+                outcome: 'failed',
+                startedAt: stepStartedAt,
+                finishedAt: new Date(),
+                detail: `${relativeFilePath} could not be written: ${this.describeThrown(writeError)}`,
+                filePaths: []
+            });
             refuse(this.describeThrown(writeError));
             return;
         }
@@ -13875,6 +14122,15 @@ export class RecipeCockpitService {
             notGrantableFieldCount: plan.notGrantableFieldCount,
             requiredUnknownFieldCount: plan.requiredUnknownFieldCount
         }, writtenAt);
+        this.recordTroubleshootingStep(runArtifactsLocation, {
+            step: 'permission-set-generate',
+            outcome: 'succeeded',
+            startedAt: stepStartedAt,
+            finishedAt: new Date(),
+            succeededCount: plan.fieldPermissions.length,
+            detail: `${permissionSetName} at ${relativeFilePath}${isOverwrite ? ', overwritten' : ''}: Create and Read on ${objectCountText}, access to ${fieldCountText}.`,
+            filePaths: [resultFilePath]
+        });
         const generatedNotice = this.withRunArtifactsGitIgnoreNote('information', `Wrote ${permissionSetName} to ${relativeFilePath}: Create and Read on ${objectCountText}, access to ${fieldCountText}.${leftOutTexts.length > 0 ? ` Left out: ${leftOutTexts.join('; ')}.` : ''} Deploy it, then assign it.`, resultFilePath);
 
         this.showGeneratedPermissionSetNotification(
@@ -14087,15 +14343,31 @@ export class RecipeCockpitService {
 
         onCliStarted(orgDetail, coveredObjectApiNames);
 
+        // THE HISTORY'S RECORD OF THIS ASSIGNMENT (#485), WRITTEN ONCE THE CLI HAS RUN, WHATEVER IT ANSWERED
+        const stepStartedAt = new Date();
+        const assigningOrgDetail = orgDetail;
+        let assignOutputFilePath: string | undefined;
+        const recordStep = (outcome: RunHistoryOutcome, counts: Pick<IRunHistoryStepRecord, 'succeededCount' | 'failedCount' | 'detail'>) => this.recordTroubleshootingStep(runArtifactsLocation, {
+            step: 'permission-set-assign',
+            outcome: outcome,
+            orgUsername: assigningOrgDetail.username,
+            orgAlias: assigningOrgDetail.alias,
+            startedAt: stepStartedAt,
+            finishedAt: new Date(),
+            ...counts,
+            filePaths: [assignOutputFilePath]
+        });
+
         const assignRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`), assignArguments, PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, workspaceRoot);
 
         if ( assignRun.isCancelled ) {
+            recordStep('cancelled', { detail: 'Which permission sets were assigned is unknown.' });
             return refuse(`The assignment of ${permissionSetText} in ${orgLabel} was cancelled, so which were assigned is unknown.`, confirmed);
         }
 
         const assignPayload = ScratchOrgService.readCliJsonPayload(assignRun.invocation);
         const assignOutcome: PermissionSetAssignOutcome = RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(assignRun.invocation, permissionSetNames, assignPayload);
-        const assignOutputFilePath = assignRun.invocation.spawnError || assignRun.invocation.isOutputTooLarge
+        assignOutputFilePath = assignRun.invocation.spawnError || assignRun.invocation.isOutputTooLarge
             ? undefined
             : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload, runArtifactsLocation);
 
@@ -14106,6 +14378,7 @@ export class RecipeCockpitService {
                     ? ` ${assignOutcome.alreadyAssignedNames.join(', ')} ${assignOutcome.alreadyAssignedNames.length === 1 ? 'was' : 'were'} already assigned.`
                     : '';
                 const assignedText = `Assigned ${permissionSetText} for ${treeLabel} to ${orgDetail.username} in ${orgLabel}.${alreadyText}`;
+                recordStep('succeeded', { succeededCount: permissionSetNames.length, detail: `${permissionSetNames.join(', ')}.${alreadyText}` });
                 if ( assignOutputFilePath && RecipeCockpitRunArtifacts.isRunFileExposedToGit(assignOutputFilePath) ) {
                     this.showPermissionSetNotification(assignedText, assignOutputFilePath, workspaceRoot);
                 } else {
@@ -14115,14 +14388,21 @@ export class RecipeCockpitService {
             }
 
             case 'cliNotInstalled':
+                recordStep('failed', { detail: assignOutcome.failureMessage });
                 return refuse(assignOutcome.failureMessage, confirmed);
 
             case 'unconfirmed':
+                recordStep('unknown', { detail: assignOutcome.failureMessage });
                 this.showPermissionSetNotification(assignOutcome.failureMessage, assignOutputFilePath, workspaceRoot);
                 return confirmed;
 
             case 'notAllAssigned': {
                 const landedNames = [...assignOutcome.assignedNames, ...assignOutcome.alreadyAssignedNames];
+                recordStep(landedNames.length > 0 ? 'partial' : 'failed', {
+                    succeededCount: landedNames.length,
+                    failedCount: assignOutcome.failedNames.length,
+                    detail: `${assignOutcome.failedNames.join(', ')} could not be assigned: ${assignOutcome.failureMessages.join('; ')}`
+                });
                 this.showPermissionSetNotification([
                     `${assignOutcome.failedNames.join(', ')} could not be assigned to ${orgDetail.username} in ${orgLabel}: ${assignOutcome.failureMessages.join('; ')}`,
                     ...( landedNames.length > 0 ? [`Assigned: ${landedNames.join(', ')}.`] : [] )
@@ -14130,6 +14410,19 @@ export class RecipeCockpitService {
                 return { ...confirmed, isAssigned: landedNames.length > 0 };
             }
 
+        }
+
+    }
+
+    /*
+        A step the History lists (#485): its summary, beside its files in the tree's RunArtifacts; a
+        card with no folder records nothing. A detail can be the CLI's own stderr, which can echo an
+        auth URL or a token, so it is redacted as the step's result file is.
+    */
+    private static recordTroubleshootingStep(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation | undefined, record: IRunHistoryStepRecord) {
+
+        if ( runArtifactsLocation ) {
+            RecipeCockpitRunHistory.writeSummary(runArtifactsLocation, record.detail === undefined ? record : { ...record, detail: ScratchOrgService.redactSecretText(record.detail) });
         }
 
     }
@@ -16711,6 +17004,62 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'loadValidationRules', treeKey: treeKey, renderSequence: renderSequence as number };
+
+            }
+
+            // THE HISTORY (#485) READS LOCAL FILES AND NOTHING ELSE, SO IT IS ANSWERED WHATEVER ELSE RUNS
+            case 'loadTroubleshootingHistory': {
+
+                const { treeKey, renderSequence } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                return { kind: 'loadTroubleshootingHistory', treeKey: treeKey };
+
+            }
+
+            // THE PANEL DREW A CARD'S HISTORY ROWS, ON THE MODEL IT ACKNOWLEDGED: THEIR FILES OPEN FROM HERE
+            case 'troubleshootingHistoryRendered': {
+
+                const { treeKey, historySequence } = panelMessage;
+                const pendingFiles = typeof treeKey === 'string' ? panelState.pendingHistoryFiles.get(treeKey) : undefined;
+
+                if ( typeof treeKey !== 'string'
+                        || !pendingFiles
+                        || !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
+                        || historySequence !== pendingFiles.historySequence ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateTroubleshootingHistory', treeKey: treeKey };
+
+            }
+
+            // A HISTORY ROW'S FILE BY ITS INDEX IN THE ROWS THE PANEL ACKNOWLEDGED: NEVER A PATH, AND NOTHING FOR AN OLDER LIST
+            case 'openTroubleshootingHistoryFile': {
+
+                const { treeKey, historySequence, fileIndex } = panelMessage;
+                const activeFiles = typeof treeKey === 'string' ? panelState.historyFiles.get(treeKey) : undefined;
+
+                if ( !activeFiles
+                        || !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || historySequence !== activeFiles.historySequence
+                        || typeof fileIndex !== 'number'
+                        || !Number.isInteger(fileIndex)
+                        || fileIndex < 0
+                        || fileIndex >= activeFiles.filePaths.length ) {
+                    return undefined;
+                }
+
+                return { kind: 'openTroubleshootingHistoryFile', filePath: activeFiles.filePaths[fileIndex] };
 
             }
 
@@ -19779,6 +20128,23 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .treeQueryText:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
     .treeQueryResult { margin-top: 0.4rem; }
     .treeQueryTableWrap { overflow: auto; max-height: 24rem; margin-top: 0.2rem; }
+    .historyTableWrap { overflow: auto; max-height: 28rem; margin-top: 0.2rem; }
+    .historyTable { border-collapse: collapse; font-size: 0.9em; width: 100%; }
+    .historyTable th, .historyTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; }
+    .historyTable th { white-space: nowrap; }
+    .historyStatus {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        white-space: nowrap;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .historyDetail { display: block; margin-top: 0.1rem; word-break: break-word; }
+    .historyFiles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
+    .historyHiddenNote { margin-top: 0.3rem; }
     .treeQueryTable { border-collapse: collapse; font-size: 0.9em; }
     .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
     /*
@@ -20063,6 +20429,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const REFERENCE_ID_REQUIRED_TODO_TEXT = ${JSON.stringify(RelationshipService.referenceIdRequiredTodo)};
     const VALIDATION_RULE_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS)};
     const VALIDATION_RULES_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE)};
+    const HISTORY_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_COLUMNS)};
+    const HISTORY_SORT_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_SORT_COLUMNS)};
+    const HISTORY_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY)};
+    const HISTORY_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_LOADING_NOTE)};
+    const HISTORY_EMPTY_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_EMPTY_NOTE)};
+    const HISTORY_UNRECORDED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE)};
+    const HISTORY_UNREADABLE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE)};
     const NO_LOCAL_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE)};
     const OBJECT_NO_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE)};
     const VALIDATION_RULE_NOT_IN_RUN_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE)};
@@ -24522,7 +24895,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     function versionLabelOf(treeState, runFolderName) {
 
-        const version = runFolderName === null ? null : treeState.tree.history.versions.find(function (candidateVersion) {
+        // A CARD WITH NO HISTORY STILL DRAWS TROUBLESHOOTING, AND ITS HISTORY SUB-TAB (#485) NAMES RUNS TOO
+        const versions = treeState.tree.history && Array.isArray(treeState.tree.history.versions) ? treeState.tree.history.versions : [];
+        const version = runFolderName === null ? null : versions.find(function (candidateVersion) {
             return candidateVersion.runFolderName === runFolderName;
         });
 
@@ -25922,6 +26297,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             } else if (subTab === 'globalValueSets') {
                 addDeployItem(subTabState, 'globalValueSets');
                 addActionItem(subTabState, buildRetrieveAction(treeState, 'globalValueSets'));
+            } else if (subTab === 'history') {
+                buildTroubleshootingHistory(treeState, subTabState);
             }
 
         });
@@ -25991,6 +26368,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         treeState.troubleshootingSubTab = subTab;
         if (isAnimated && subTab === 'validationRules') { requestTreeValidationRules(treeState); }
+        if (isAnimated && subTab === 'history') { requestTroubleshootingHistory(treeState); }
 
         subTabStates.forEach(function (subTabState) {
             const isSelected = subTabState.subTab === subTab;
@@ -26428,6 +26806,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                         function (groupState, isExpanded) { setValidationRuleGroupExpanded(treeState, groupState, isExpanded, false); });
                 }
 
+                // THE HISTORY COUNTS ITS STEPS (#485); A ROW IS MATCHED BY WHAT IT DRAWS, SAVED WHEN IT WAS BUILT
+                if (subTabState.historyRows) {
+                    matchingCount = 0;
+                    total = subTabState.historyRows.length;
+                    subTabState.historyRows.forEach(function (rowState) {
+                        const isMatch = !searchQuery || rowState.searchText.indexOf(searchQuery) !== -1;
+                        if (isMatch) { matchingCount++; }
+                        setShownIfChanged(rowState, rowState.element, isMatch);
+                    });
+                }
+
             }
 
             subTabState.search.matchCountElement.textContent = !searchQuery
@@ -26478,6 +26867,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeState.isTroubleshootingSummaryWanted = false;
         vscodeApi.postMessage({ command: 'loadTroubleshootingSummary', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
         if (treeState.troubleshootingSubTab === 'validationRules') { requestTreeValidationRules(treeState); }
+        if (treeState.troubleshootingSubTab === 'history') { requestTroubleshootingHistory(treeState); }
 
     }
 
@@ -28760,6 +29150,215 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    /*
+        The History (#485): the tree's Troubleshooting steps as one table, read by the host when the
+        sub-tab first opens (loadTroubleshootingHistory) and posted again when a step ends, so the
+        posted model does not carry it. Every value is written with textContent; a file is opened by
+        its index in the rows the host posted, never by a path.
+    */
+    function buildTroubleshootingHistory(treeState, subTabState) {
+
+        subTabState.noun = ['step', 'steps'];
+        subTabState.historyRows = [];
+        treeState.historySubTabState = subTabState;
+        if (!treeState.historySort) { treeState.historySort = readHistorySort(null); }
+        treeState.historyListElement = createElement('div', 'troubleshootingHistory');
+        treeState.historyListElement.appendChild(createElement('div', 'treeEmpty muted', HISTORY_LOADING_NOTE));
+        subTabState.listElement.appendChild(treeState.historyListElement);
+
+    }
+
+    // A SAVED SORT IS KEPT ONLY IN ITS OWN SHAPE; ANYTHING ELSE IS TIME, NEWEST FIRST
+    function readHistorySort(savedSort) {
+
+        if (savedSort && typeof savedSort === 'object' && HISTORY_SORT_COLUMNS.indexOf(savedSort.column) !== -1 && typeof savedSort.isDescending === 'boolean') {
+            return { column: savedSort.column, isDescending: savedSort.isDescending };
+        }
+        return { column: 'time', isDescending: true };
+
+    }
+
+    // ASKED ONCE PER MODEL WHEN THE SUB-TAB IS SHOWN; THE HOST POSTS IT AGAIN WHEN A STEP OF THIS TREE ENDS
+    function requestTroubleshootingHistory(treeState) {
+
+        if (renderedSequence === null || treeState.isHistoryRequested || !treeState.historyListElement) { return; }
+
+        treeState.isHistoryRequested = true;
+        vscodeApi.postMessage({ command: 'loadTroubleshootingHistory', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+
+    }
+
+    function renderTroubleshootingHistory(historyMessage) {
+
+        if (renderedSequence === null || historyMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(historyMessage.treeKey);
+        if (!treeState || !treeState.historyListElement) { return; }
+
+        treeState.historyMessage = historyMessage;
+        drawTroubleshootingHistory(treeState);
+        vscodeApi.postMessage({ command: 'troubleshootingHistoryRendered', renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence });
+
+    }
+
+    function historyStatusOf(row) {
+
+        return hasOwnKey(HISTORY_STATUS_DISPLAY, row.status) ? HISTORY_STATUS_DISPLAY[row.status] : { emoji: '', label: String(row.status) };
+
+    }
+
+    // WHAT A ROW SORTS BY IN EACH COLUMN; A TIE IS BROKEN BY TIME, NEWEST FIRST
+    function historySortValue(treeState, row, column) {
+
+        if (column === 'time') { return Number(row.timeMs) || 0; }
+        if (column === 'step') { return String(row.stepLabel).toLowerCase(); }
+        if (column === 'org') { return typeof row.orgLabel === 'string' ? row.orgLabel.toLowerCase() : ''; }
+        if (column === 'outcome') { return historyStatusOf(row).label.toLowerCase(); }
+        return versionLabelOf(treeState, typeof row.runFolderName === 'string' ? row.runFolderName : null).toLowerCase();
+
+    }
+
+    function sortHistoryRowStates(treeState, rowStates) {
+
+        const sort = treeState.historySort;
+        return rowStates.slice().sort(function (first, second) {
+            const firstValue = historySortValue(treeState, first.row, sort.column);
+            const secondValue = historySortValue(treeState, second.row, sort.column);
+            const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
+            if (order !== 0) { return sort.isDescending ? -order : order; }
+            return (Number(second.row.timeMs) || 0) - (Number(first.row.timeMs) || 0);
+        });
+
+    }
+
+    function drawTroubleshootingHistory(treeState) {
+
+        const historyMessage = treeState.historyMessage;
+        const subTabState = treeState.historySubTabState;
+        const listElement = treeState.historyListElement;
+        const rows = Array.isArray(historyMessage.rows) ? historyMessage.rows : [];
+        listElement.textContent = '';
+        subTabState.historyRows = [];
+
+        if (rows.length === 0) {
+            listElement.appendChild(createElement('div', 'treeEmpty muted', HISTORY_EMPTY_NOTE));
+            applyTroubleshootingFilter(treeState, 'history');
+            return;
+        }
+
+        const wrapElement = createElement('div', 'historyTableWrap');
+        const tableElement = createElement('table', 'historyTable');
+        const headElement = createElement('thead');
+        const headRowElement = createElement('tr');
+        const bodyElement = createElement('tbody');
+        treeState.historySortButtons = Object.create(null);
+
+        HISTORY_COLUMNS.forEach(function (column) {
+            const headerElement = createElement('th', 'historyHeader historyHeader-' + column.key);
+            headerElement.setAttribute('scope', 'col');
+            if (HISTORY_SORT_COLUMNS.indexOf(column.key) === -1) {
+                headerElement.textContent = column.label;
+            } else {
+                const isSorted = treeState.historySort.column === column.key;
+                headerElement.setAttribute('aria-sort', isSorted ? (treeState.historySort.isDescending ? 'descending' : 'ascending') : 'none');
+                const sortButton = createButton('link', 'historySort historySort-' + column.key, column.label + (isSorted ? (treeState.historySort.isDescending ? ' ↓' : ' ↑') : ''));
+                sortButton.addEventListener('click', function () { sortTroubleshootingHistory(treeState, column.key); });
+                treeState.historySortButtons[column.key] = sortButton;
+                headerElement.appendChild(sortButton);
+            }
+            headRowElement.appendChild(headerElement);
+        });
+
+        rows.forEach(function (row) {
+            subTabState.historyRows.push(buildHistoryRow(treeState, historyMessage, row));
+        });
+
+        sortHistoryRowStates(treeState, subTabState.historyRows).forEach(function (rowState) { bodyElement.appendChild(rowState.element); });
+
+        headElement.appendChild(headRowElement);
+        tableElement.appendChild(headElement);
+        tableElement.appendChild(bodyElement);
+        wrapElement.appendChild(tableElement);
+        listElement.appendChild(wrapElement);
+        treeState.historyBodyElement = bodyElement;
+
+        if (historyMessage.hiddenRowCount > 0) {
+            listElement.appendChild(createElement('div', 'historyHiddenNote muted', pluralize(historyMessage.hiddenRowCount, 'older step is', 'older steps are') + ' not shown.'));
+        }
+
+        applyTroubleshootingFilter(treeState, 'history');
+
+    }
+
+    function buildHistoryRow(treeState, historyMessage, row) {
+
+        const rowElement = createElement('tr', 'historyRow historyRow-' + String(row.status));
+        const statusDisplay = historyStatusOf(row);
+        const runLabel = versionLabelOf(treeState, typeof row.runFolderName === 'string' ? row.runFolderName : null);
+        const files = Array.isArray(row.files) ? row.files : [];
+
+        const timeCell = createElement('td', 'historyTime', String(row.timeLabel));
+        if (typeof row.finishedAtLabel === 'string') { timeCell.setAttribute('title', 'Ended ' + row.finishedAtLabel); }
+
+        const orgCell = createElement('td', 'historyOrg', typeof row.orgLabel === 'string' ? row.orgLabel : '');
+        if (typeof row.orgUsername === 'string') { orgCell.setAttribute('title', row.orgUsername); }
+
+        const outcomeCell = createElement('td', 'historyOutcome');
+        const statusElement = createElement('span', 'historyStatus historyStatus-' + String(row.status));
+        const emojiElement = createElement('span', 'historyStatusEmoji', statusDisplay.emoji);
+        emojiElement.setAttribute('aria-hidden', 'true');
+        statusElement.appendChild(emojiElement);
+        statusElement.appendChild(createElement('span', 'historyStatusLabel', statusDisplay.label));
+        outcomeCell.appendChild(statusElement);
+
+        const detailParts = [];
+        if (typeof row.succeededCount === 'number') { detailParts.push(row.succeededCount + ' succeeded'); }
+        if (typeof row.failedCount === 'number') { detailParts.push(row.failedCount + ' failed'); }
+        if (typeof row.detail === 'string') { detailParts.push(row.detail); }
+        if (row.status === 'unrecorded') { detailParts.push(HISTORY_UNRECORDED_NOTE); }
+        if (row.status === 'unreadable') { detailParts.push(HISTORY_UNREADABLE_NOTE); }
+        const detailText = detailParts.join(' · ');
+        if (detailText) { outcomeCell.appendChild(createElement('span', 'historyDetail muted', detailText)); }
+
+        const filesCell = createElement('td', 'historyFiles');
+        files.forEach(function (file) {
+            const fileButton = createButton('link', 'historyFile', String(file.fileName));
+            fileButton.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'openTroubleshootingHistoryFile', renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence, fileIndex: file.fileIndex });
+            });
+            filesCell.appendChild(fileButton);
+        });
+
+        rowElement.appendChild(timeCell);
+        rowElement.appendChild(createElement('td', 'historyStep', String(row.stepLabel)));
+        rowElement.appendChild(orgCell);
+        rowElement.appendChild(outcomeCell);
+        rowElement.appendChild(createElement('td', 'historyRun', runLabel));
+        rowElement.appendChild(filesCell);
+
+        const searchTexts = [String(row.timeLabel), String(row.stepLabel), statusDisplay.label, runLabel, detailText]
+            .concat(typeof row.orgLabel === 'string' ? [row.orgLabel] : [])
+            .concat(typeof row.orgUsername === 'string' ? [row.orgUsername] : [])
+            .concat(files.map(function (file) { return String(file.fileName); }));
+
+        return { row: row, element: rowElement, isShown: true, searchText: searchTexts.join('\\n').toLowerCase() };
+
+    }
+
+    // A HEADER CLICK SORTS BY ITS COLUMN; THE SAME COLUMN AGAIN TURNS THE ORDER. TIME STARTS NEWEST FIRST, THE REST A TO Z
+    function sortTroubleshootingHistory(treeState, column) {
+
+        treeState.historySort = treeState.historySort.column === column
+            ? { column: column, isDescending: !treeState.historySort.isDescending }
+            : { column: column, isDescending: column === 'time' };
+        drawTroubleshootingHistory(treeState);
+        // THE HEADERS ARE DRAWN AGAIN, SO FOCUS MOVES TO THE NEW BUTTON OF THE COLUMN CLICKED
+        const sortButton = treeState.historySortButtons && treeState.historySortButtons[column];
+        if (sortButton && typeof sortButton.focus === 'function') { sortButton.focus(); }
+        savePanelPlace();
+
+    }
+
     // ASKED ONCE PER MODEL WHEN THE SUB-TAB IS SHOWN; ONE SHOWN BEFORE THE ACK ASKS WITH THE TAB'S COUNTS ONCE IT IS
     function requestTreeValidationRules(treeState) {
 
@@ -29638,6 +30237,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const isRemovedTodosView = treeState.todosView === 'removed';
         const removedTodosSearchText = treeState.searchTexts[troubleshootingSearchKey('todosRemoved')] || '';
         if (isRemovedTodosView || removedTodosSearchText) { hasSearch = true; }
+        // THE HISTORY'S SORT (#485), ONLY WHEN IT IS NOT THE DEFAULT
+        const historySort = treeState.historySort && !(treeState.historySort.column === 'time' && treeState.historySort.isDescending) ? treeState.historySort : null;
+        if (historySort) { hasSearch = true; }
 
         const updaterChosenFieldKeys = Object.keys(treeState.updaterChosenFieldKeys);
         const updaterExpandedObjectKeys = Object.keys(treeState.updaterExpandedObjectKeys);
@@ -29672,6 +30274,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (hasTroubleshootingSearch) { treePlace.troubleshootingSearchQueries = troubleshootingSearchQueries; }
         if (isRemovedTodosView) { treePlace.todosView = 'removed'; }
         if (removedTodosSearchText) { treePlace.removedTodosSearchText = removedTodosSearchText; }
+        if (historySort) { treePlace.troubleshootingHistorySort = { column: historySort.column, isDescending: historySort.isDescending }; }
         if (updaterChosenFieldKeys.length > 0) { treePlace.updaterChosenFieldKeys = updaterChosenFieldKeys; }
         if (updaterExpandedObjectKeys.length > 0) { treePlace.updaterExpandedObjectKeys = updaterExpandedObjectKeys; }
         if (isUpdaterStructureStep) { treePlace.updaterStep = 'structure'; }
@@ -29894,6 +30497,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const removedTodosSearchKey = troubleshootingSearchKey('todosRemoved');
             treeState.searchTexts[removedTodosSearchKey] = typeof savedTree.removedTodosSearchText === 'string' ? savedTree.removedTodosSearchText : '';
             treeState.searchQueries[removedTodosSearchKey] = treeState.searchTexts[removedTodosSearchKey].trim().toLowerCase();
+            treeState.historySort = readHistorySort(savedTree.troubleshootingHistorySort);
 
             // BEFORE THE DATA SETS TAB IS BUILT, WHICH APPLIES IT; A TAB ALREADY BUILT APPLIES IT NOW
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
@@ -30758,6 +31362,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (hostMessage.command === 'treeValidationRules') {
             renderTreeValidationRules(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'troubleshootingHistory') {
+            renderTroubleshootingHistory(hostMessage);
             return;
         }
 
