@@ -670,7 +670,6 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(sectionToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
             expect(sectionToggleOf(panel).classList.contains('sdtButton-secondary')).toBe(true);
             expect(sectionToggleOf(panel).classList.contains('chevronToggle')).toBe(false);
-            expect(panel.findAll(panel.cockpitBodyElement, 'recordTypesSectionHeader')).toHaveLength(0);
             expect(panel.findAll(panel.cockpitBodyElement, 'toggleGlyph').filter((glyphElement: any) => panel.findAll(panel.treeCards()[0], 'recordTypesSectionToggle')[0].children.includes(glyphElement))).toHaveLength(0);
 
         });

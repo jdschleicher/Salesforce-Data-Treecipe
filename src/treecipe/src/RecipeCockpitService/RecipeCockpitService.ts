@@ -590,7 +590,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
-            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
+            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'History lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, Assign permission sets or Generate permission set), the org, how it ended and what it counted, the run, and its files, each a link that opens it. Click a column\'s header to sort by it, and again to turn the order; it starts newest first. A step from before this was recorded shows Not recorded, since only its time and files are known.',
             'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
@@ -25163,8 +25163,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     function appendRecordTypeFieldsToggle(treeState, tileElement) {
 
-        const searchElement = createElement('div', 'treecipeFilterRow');
-        tileElement.appendChild(searchElement);
+        const rowElement = createElement('div', 'treecipeFilterRow');
+        tileElement.appendChild(rowElement);
         // THE SAME BOX EVERY OTHER CHECKBOX DRAWS (#343), WITH ITS LABEL BESIDE IT AS "Remember this selection" HAS
         const checkElement = createElement('span', 'treeRecordTypeFieldsCheck');
         const toggleElement = createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle');
@@ -25193,10 +25193,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeState.recordTypeFieldsToggleElement = toggleElement;
         checkElement.appendChild(toggleElement);
         checkElement.appendChild(labelElement);
-        searchElement.appendChild(checkElement);
+        rowElement.appendChild(checkElement);
 
         if (!hasRecordTypeObjects(treeState)) {
-            searchElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
+            rowElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
         }
 
         drawRecordTypeFieldsToggle(treeState);
@@ -25221,8 +25221,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     function appendTodosToggle(treeState, tileElement) {
 
-        const searchElement = createElement('div', 'treecipeFilterRow');
-        tileElement.appendChild(searchElement);
+        const rowElement = createElement('div', 'treecipeFilterRow');
+        tileElement.appendChild(rowElement);
         const todoCount = todoCountOf(treeState);
         const checkElement = createElement('span', 'treeTodosCheck');
         const toggleElement = createButton('check', 'treeFieldInclude treeTodosToggle');
@@ -25251,10 +25251,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeState.todosToggleElement = toggleElement;
         checkElement.appendChild(toggleElement);
         checkElement.appendChild(labelElement);
-        searchElement.appendChild(checkElement);
+        rowElement.appendChild(checkElement);
 
         if (todoCount === 0) {
-            searchElement.appendChild(createElement('span', 'treeTodosNote muted', NO_TODOS_NOTE));
+            rowElement.appendChild(createElement('span', 'treeTodosNote muted', NO_TODOS_NOTE));
         }
 
         drawTodosToggle(treeState);

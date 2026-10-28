@@ -31,7 +31,7 @@ A friend, an object nested under another's `friends:` in a faker-js recipe, show
 Each chip reads the parent's nickname and the friend's place among that parent's friends (**Account_NickName-2**); click it to jump to that parent.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
-Tick **Click to show fields with open TODOs**, in the tile under a card's Treecipe search, to see just the fields and objects with one (or the **TODOs only** beside an opened object's **All fields** for that object alone), or open its **Troubleshooting** tab, whose **TODO's** list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line (**↗ yml**).
+Tick **Click to show fields with open TODOs**, in the tile under a card's Treecipe search, to see just the fields and objects with one (or the **TODOs only** beside an opened object's **All fields** for that object alone), or open its **Troubleshooting** tab, whose **TODO's** list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line (**↗ yml**). The same tile holds **Click to show record type impacted fields only**, for the picklist fields a record type restricts, and **Manage record types**, which opens the record types the tree is generated with.
 Its **Open** list holds the TODOs still in the recipe, and **Removed** the ones you took out.
 
 The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types**, **Global Value Sets** and **History**, each with its own search.
