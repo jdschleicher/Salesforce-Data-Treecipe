@@ -43,6 +43,7 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import { execFile } from 'child_process';
+import { Org } from '@salesforce/core';
 
 import {
     IRecipeCockpitPanelState,
@@ -50,7 +51,7 @@ import {
     RECIPE_COCKPIT_OPEN_ORG_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { ScratchOrgService } from '../../ScratchOrgService/ScratchOrgService';
+import { ORG_FRONT_DOOR_FAILURE_TEXTS, ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
@@ -60,11 +61,13 @@ const QA_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias
 const UAT_ORG = { targetOrgIdentifier: 'uat', username: 'uat@example.com.uat', alias: 'uat' };
 
 const SESSION_ID = '00D000000000001!AQEAQsessionSecret';
-const ORG_OPEN_URL = `https://acme--qa.sandbox.my.salesforce.com/secur/frontdoor.jsp?sid=${SESSION_ID}`;
+const ONE_TIME_CODE = 'oneTimeCodeSecret';
+const INSTANCE_URL = 'https://acme--qa.sandbox.my.salesforce.com';
+const ORG_OPEN_URL = `${INSTANCE_URL}/secur/frontdoor.jsp?otp=${ONE_TIME_CODE}&cshc=x`;
 
 const IDLE_STATE = { command: 'orgOpenState', isRunning: false };
 
-describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)', () => {
+describe('RecipeCockpitService, "Open in browser" beside the selected org (#279, #501)', () => {
 
     describe('routePanelMessage', () => {
 
@@ -170,10 +173,14 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             panelState().dataOrgSelection = { orgIndex: 0, orgDetail: QA_ORG, requestSequence: 2 };
         };
 
-        const answerOrgOpen = (stdout: string, extra: { error?: unknown; stderr?: string } = {}) => {
-            (execFile as unknown as jest.Mock).mockImplementation((_command: string, _argumentList: string[], _options: unknown, callback: any) => {
-                setImmediate(() => callback(extra.error ?? null, stdout, extra.stderr ?? ''));
-                return { kill: jest.fn() };
+        let requestGetMock: jest.Mock;
+
+        // THE ORG'S OWN CONNECTION ANSWERS THE SINGLE-ACCESS REQUEST; ITS ACCESS TOKEN MUST REACH NOTHING
+        const answerOrgOpen = (singleAccessAnswer: () => Promise<unknown>) => {
+            requestGetMock = jest.fn().mockImplementation(singleAccessAnswer);
+            (Org.create as jest.Mock).mockResolvedValue({
+                refreshAuth: jest.fn().mockResolvedValue(undefined),
+                getConnection: () => ({ instanceUrl: INSTANCE_URL, accessToken: SESSION_ID, requestGet: requestGetMock })
             });
         };
 
@@ -196,6 +203,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
             (execFile as unknown as jest.Mock).mockReset();
+            (Org.create as jest.Mock).mockReset();
             (vscode.env.openExternal as jest.Mock).mockReset();
             (vscode.env.openExternal as jest.Mock).mockResolvedValue(true);
             (vscode.window.showErrorMessage as jest.Mock).mockReset();
@@ -223,27 +231,28 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
-        it('runs "sf org open --url-only --json" for the selected USERNAME and hands the https: URL to the browser, and to nothing else', async () => {
+        it('asks the selected USERNAME\'s org for a one-time address, runs no CLI, and hands the https: URL to the browser, and to nothing else', async () => {
 
-            answerOrgOpen(JSON.stringify({ status: 0, result: { orgId: '00D000000000001', url: ORG_OPEN_URL, username: QA_ORG.username } }));
+            answerOrgOpen(async () => ({ frontdoor_uri: ORG_OPEN_URL }));
             await openSelectedCockpit();
             const postedBefore = postedPanelMessages.length;
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
 
-            expect((execFile as unknown as jest.Mock).mock.calls).toHaveLength(1);
-            const [, argumentList, execOptions] = (execFile as unknown as jest.Mock).mock.calls[0];
-            expect(argumentList).toEqual(['org', 'open', '--target-org', QA_ORG.username, '--url-only', '--json']);
-            expect(execOptions.cwd).toBeUndefined();
+            expect(execFile).not.toHaveBeenCalled();
+            expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: QA_ORG.username });
+            expect(requestGetMock).toHaveBeenCalledWith(`${INSTANCE_URL}${ORG_FRONT_DOOR_SINGLE_ACCESS_PATH}`);
             expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
             expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: ORG_OPEN_URL, isStrict: true });
 
             expect(postedPanelMessages.slice(postedBefore)).toEqual([IDLE_STATE]);
             expect(JSON.stringify(postedPanelMessages)).not.toContain(SESSION_ID);
+            expect(JSON.stringify(postedPanelMessages)).not.toContain(ONE_TIME_CODE);
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
             expect(warningSpy).not.toHaveBeenCalled();
             expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
             expect(everythingWritten()).not.toContain('sessionSecret');
+            expect(everythingWritten()).not.toContain(ONE_TIME_CODE);
             expect(panelState().isOrgOpenInFlight).toBe(false);
 
         });
@@ -255,45 +264,63 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 1 });
 
+            expect(Org.create).not.toHaveBeenCalled();
             expect(execFile).not.toHaveBeenCalled();
             expect(vscode.env.openExternal).not.toHaveBeenCalled();
             expect(postedPanelMessages.slice(postedBefore)).toEqual([IDLE_STATE]);
 
         });
 
-        it('shows the CLI\'s failure, escaped and naming the org, without ever opening a browser', async () => {
+        it('answers a refused request with ONE fixed-text notification naming the org, quoting neither the error nor a token, and opens nothing', async () => {
 
-            answerOrgOpen(JSON.stringify({ status: 1, name: 'NoAuthInfoFound', message: 'No authorization for [qa](command:workbench.action.terminal.new).' }), { error: Object.assign(new Error('Command failed'), { code: 1 }) });
+            answerOrgOpen(async () => { throw new Error(`403 [qa](command:workbench.action.terminal.new) ${INSTANCE_URL}/secur/frontdoor.jsp?sid=${SESSION_ID}`); });
             await openSelectedCockpit();
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
 
             expect(vscode.env.openExternal).not.toHaveBeenCalled();
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification(
-                'qa · qa@example.com.qa was not opened: NoAuthInfoFound: No authorization for [qa](command:workbench.action.terminal.new).'
+                `qa · qa@example.com.qa was not opened: ${ORG_FRONT_DOOR_FAILURE_TEXTS.requestFailed}`
             ));
-            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).not.toContain('](command:');
+            expect(JSON.stringify((vscode.window.showErrorMessage as jest.Mock).mock.calls)).not.toContain(SESSION_ID);
+            expect(JSON.stringify((vscode.window.showErrorMessage as jest.Mock).mock.calls)).not.toContain('command:');
             expect(postedPanelMessages.at(-1)).toEqual(IDLE_STATE);
+
+        });
+
+        it('answers an org whose authorization cannot be used with its fixed text', async () => {
+
+            (Org.create as jest.Mock).mockRejectedValue(new Error(`NoAuthInfoFound ${SESSION_ID}`));
+            await openSelectedCockpit();
+
+            await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
+
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification(
+                `qa · qa@example.com.qa was not opened: ${ORG_FRONT_DOOR_FAILURE_TEXTS.connectionFailed}`
+            ));
+            expect(vscode.env.openExternal).not.toHaveBeenCalled();
+            expect(execFile).not.toHaveBeenCalled();
 
         });
 
         it('never opens an address that is not https:', async () => {
 
-            answerOrgOpen(JSON.stringify({ status: 0, result: { url: 'command:workbench.action.terminal.new' } }));
+            answerOrgOpen(async () => ({ frontdoor_uri: 'command:workbench.action.terminal.new' }));
             await openSelectedCockpit();
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
 
             expect(vscode.env.openExternal).not.toHaveBeenCalled();
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification(
-                'qa · qa@example.com.qa was not opened: The Salesforce CLI answered with an address that is not https, so it was not opened.'
+                `qa · qa@example.com.qa was not opened: ${ORG_FRONT_DOOR_FAILURE_TEXTS.notHttps}`
             ));
 
         });
 
         it('names an org with no alias by its username, and a notification that fails to show changes nothing', async () => {
 
-            answerOrgOpen(JSON.stringify({ status: 0, result: { url: 'http://acme.my.salesforce.com/' } }));
+            answerOrgOpen(async () => ({ frontdoor_uri: 'http://acme.my.salesforce.com/' }));
             (vscode.window.showErrorMessage as jest.Mock).mockRejectedValue(new Error('notification failed'));
             await openSelectedCockpit();
             const unaliasedOrg = { targetOrgIdentifier: 'plain@example.com', username: 'plain@example.com' };
@@ -308,43 +335,29 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
 
         });
 
-        it('says the CLI is required when it is not installed', async () => {
-
-            jest.spyOn(ScratchOrgService, 'resolveOrgOpenUrl').mockResolvedValue(ScratchOrgService.parseOrgOpenOutput({
-                stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' })
-            }));
-            await openSelectedCockpit();
-
-            await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
-
-            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('is required to open an org');
-            expect(vscode.env.openExternal).not.toHaveBeenCalled();
-
-        });
-
         it('warns, without quoting the address, when the browser does not accept it', async () => {
 
-            answerOrgOpen(JSON.stringify({ status: 0, result: { url: ORG_OPEN_URL } }));
+            answerOrgOpen(async () => ({ frontdoor_uri: ORG_OPEN_URL }));
             (vscode.env.openExternal as jest.Mock).mockResolvedValue(false);
             await openSelectedCockpit();
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
 
             expect(warningSpy).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('qa · qa@example.com.qa was not opened: the browser did not accept the address.'));
-            expect(JSON.stringify(warningSpy.mock.calls)).not.toContain(SESSION_ID);
+            expect(JSON.stringify(warningSpy.mock.calls)).not.toContain(ONE_TIME_CODE);
 
         });
 
         it('answers a throw with a fixed message that quotes nothing, and never leaves the button disabled', async () => {
 
-            answerOrgOpen(JSON.stringify({ status: 0, result: { url: ORG_OPEN_URL } }));
+            answerOrgOpen(async () => ({ frontdoor_uri: ORG_OPEN_URL }));
             (vscode.env.openExternal as jest.Mock).mockRejectedValue(new Error(`could not open ${ORG_OPEN_URL}`));
             await openSelectedCockpit();
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
 
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('qa · qa@example.com.qa was not opened: the browser could not be started.'));
-            expect(JSON.stringify((vscode.window.showErrorMessage as jest.Mock).mock.calls)).not.toContain(SESSION_ID);
+            expect(JSON.stringify((vscode.window.showErrorMessage as jest.Mock).mock.calls)).not.toContain(ONE_TIME_CODE);
             expect(postedPanelMessages.at(-1)).toEqual(IDLE_STATE);
             expect(panelState().isOrgOpenInFlight).toBe(false);
             expect((RecipeCockpitService as any).isOrgOpenInFlightForWindow).toBe(false);
@@ -354,7 +367,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
         it('holds one open per window: a panel reopened mid-open is told it is running, refuses a second, and gets the closing state', async () => {
 
             let finishOrgOpen: () => void = () => undefined;
-            jest.spyOn(ScratchOrgService, 'resolveOrgOpenUrl').mockImplementation(() => new Promise(resolve => {
+            jest.spyOn(SalesforceOrgService, 'requestOrgFrontDoorUrl').mockImplementation(() => new Promise(resolve => {
                 finishOrgOpen = () => resolve({ isOpenable: true, url: ORG_OPEN_URL });
             }));
             await openSelectedCockpit();
@@ -370,7 +383,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             expect(postedPanelMessages).toContainEqual({ command: 'orgOpenState', isRunning: true });
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
-            expect(ScratchOrgService.resolveOrgOpenUrl).toHaveBeenCalledTimes(1);
+            expect(SalesforceOrgService.requestOrgFrontDoorUrl).toHaveBeenCalledTimes(1);
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'orgOpenState', isRunning: true });
 
             finishOrgOpen();

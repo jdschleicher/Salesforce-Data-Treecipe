@@ -24,6 +24,9 @@ import {
     SalesforceOrgService,
     IOrgDescribeSource,
     NO_AUTHORIZED_ORGS_MESSAGE,
+    ORG_FRONT_DOOR_FAILURE_TEXTS,
+    ORG_FRONT_DOOR_SINGLE_ACCESS_PATH,
+    ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS,
     ORG_DESCRIBE_CANCELLED_MESSAGE,
     ORG_DESCRIBE_CONCURRENCY,
     ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE,
@@ -498,6 +501,119 @@ describe('SalesforceOrgService', () => {
 
             expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: 'devhub' });
             expect(actualConnection).toBe(fakeConnection);
+
+        });
+
+    });
+
+    describe('requestOrgFrontDoorUrl (#501)', () => {
+
+        const ACCESS_TOKEN = '00D000000000001!AQEAQaccessTokenSecret';
+        const FRONT_DOOR_URI = 'https://acme--qa.sandbox.my.salesforce.com/secur/frontdoor.jsp?otp=oneTimeCode&cshc=x';
+
+        const answerOrg = (requestGet: jest.Mock, refreshAuth: jest.Mock = jest.fn().mockResolvedValue(undefined)) => {
+            const connection = { instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com', accessToken: ACCESS_TOKEN, requestGet };
+            (Org.create as jest.Mock).mockResolvedValue({ refreshAuth, getConnection: () => connection });
+            return { connection, refreshAuth };
+        };
+
+        it('asks the single-access endpoint of the org named by USERNAME, after refreshing its authorization, and opens its https: one-time address', async () => {
+
+            const requestGet = jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI });
+            const { refreshAuth } = answerOrg(requestGet);
+
+            await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toEqual({ isOpenable: true, url: FRONT_DOOR_URI });
+
+            expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: 'qa@example.com.qa' });
+            expect(refreshAuth).toHaveBeenCalledTimes(1);
+            expect(refreshAuth.mock.invocationCallOrder[0]).toBeLessThan(requestGet.mock.invocationCallOrder[0]);
+            expect(requestGet).toHaveBeenCalledWith(`https://acme--qa.sandbox.my.salesforce.com${ORG_FRONT_DOOR_SINGLE_ACCESS_PATH}`);
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('never builds an address carrying the access token', async () => {
+
+            answerOrg(jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI }));
+
+            const frontDoorResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+
+            expect(JSON.stringify(frontDoorResult)).not.toContain(ACCESS_TOKEN);
+            expect(fs.readFileSync(path.join(__dirname, '..', 'SalesforceOrgService.ts'), 'utf-8')).not.toMatch(/getOrgFrontDoorUrl\s*\(|frontdoor\.jsp\?sid=\$\{|accessToken/);
+
+        });
+
+        it('answers a connection that cannot be made, and a request that fails, with fixed texts that quote nothing', async () => {
+
+            (Org.create as jest.Mock).mockRejectedValue(new Error(`NoAuthInfoFound ${ACCESS_TOKEN}`));
+            const connectionResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+            expect(connectionResult).toEqual({ isOpenable: false, failure: 'connectionFailed', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.connectionFailed });
+
+            answerOrg(jest.fn(), jest.fn().mockRejectedValue(new Error('expired')));
+            await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toMatchObject({ failure: 'connectionFailed' });
+
+            answerOrg(jest.fn().mockRejectedValue(new Error(`403 for https://acme.my.salesforce.com/secur/frontdoor.jsp?sid=${ACCESS_TOKEN}`)));
+            const requestResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+            expect(requestResult).toEqual({ isOpenable: false, failure: 'requestFailed', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.requestFailed });
+
+            expect(JSON.stringify([connectionResult, requestResult])).not.toContain(ACCESS_TOKEN);
+
+        });
+
+        it('gives up after its timeout with a fixed text', async () => {
+
+            jest.useFakeTimers();
+            try {
+                answerOrg(jest.fn().mockImplementation(() => new Promise(() => undefined)));
+                const pendingResult = SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+                await jest.advanceTimersByTimeAsync(ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+                await expect(pendingResult).resolves.toEqual({ isOpenable: false, failure: 'timedOut', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.timedOut });
+            } finally {
+                jest.useRealTimers();
+            }
+
+        });
+
+        it('clears its timer on success, and drops an address that arrives after the timeout', async () => {
+
+            jest.useFakeTimers();
+            try {
+                answerOrg(jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI }));
+                await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toMatchObject({ isOpenable: true });
+                expect(jest.getTimerCount()).toBe(0);
+
+                let answerLate: (response: unknown) => void = () => undefined;
+                answerOrg(jest.fn().mockImplementation(() => new Promise(resolve => { answerLate = resolve; })));
+                const pendingResult = SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+                await jest.advanceTimersByTimeAsync(ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+                answerLate({ frontdoor_uri: FRONT_DOOR_URI });
+                await expect(pendingResult).resolves.toMatchObject({ isOpenable: false, failure: 'timedOut' });
+                expect(jest.getTimerCount()).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
+
+        });
+
+        it('opens nothing but an https: frontdoor_uri string', () => {
+
+            ['http://acme.my.salesforce.com/', 'javascript:alert(1)', 'file:///etc/passwd', 'command:workbench.action.terminal.new', 'not a url'].forEach(frontdoor_uri => {
+                expect(SalesforceOrgService.readOrgFrontDoorResponse({ frontdoor_uri }))
+                    .toEqual({ isOpenable: false, failure: 'notHttps', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.notHttps });
+            });
+
+            [undefined, null, 'https://acme.my.salesforce.com/', [FRONT_DOOR_URI], {}, { frontdoor_uri: 42 }, { frontdoor_uri: '' }, { url: FRONT_DOOR_URI }].forEach(response => {
+                expect(SalesforceOrgService.readOrgFrontDoorResponse(response))
+                    .toEqual({ isOpenable: false, failure: 'noAddress', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.noAddress });
+            });
+
+        });
+
+        it('words every failure without a URL, a token or a parenthesis the notification escaper would mangle', () => {
+
+            Object.values(ORG_FRONT_DOOR_FAILURE_TEXTS).forEach(failureText => {
+                expect(failureText).not.toMatch(/https?:|sid=|otp=|[()[\]]/);
+            });
 
         });
 
