@@ -142,10 +142,10 @@ flowchart TB
 | Generator → disk | Apex source and `-meta.xml` | `assertClassesDirectoryContainedInWorkspace` — symlink-resolved containment check before any write |
 | Extension → CLI | Org identifier, file paths | `execFile` argv form (no shell) on macOS/Linux; org-identifier regex; explicit Windows quoting with double-quote rejection |
 | CLI → org | Authenticated session | Owned by the Salesforce CLI for the deploy and the test run |
-| Extension → org | Tooling API query over the `@salesforce/core` connection | `@salesforce/core` reads the token from the CLI's local authorization into the extension host, for that request only. The extension never writes, logs or posts it |
+| Extension → org | Tooling API query over the `@salesforce/core` connection | `@salesforce/core` reads the token from the CLI's local authorization into the extension host to make the request, and may keep it in memory for the life of the extension host, as every Recipe Cockpit connection does. The extension never writes, logs or posts it |
 | Org → extension | Test results JSON | Parsed defensively; unknown shapes are treated as failure, never as pass |
 
-**Credential posture:** this component holds no secrets of its own and has no configuration file containing credentials. Authentication is the user's existing `sf` authorization, made out of band. The deploy and the test run delegate it to `sf`; the deployed-check query opens a `@salesforce/core` connection from it, so the access token is read into the extension host for that request (#497). It is never written, logged or posted to a webview.
+**Credential posture:** this component holds no secrets of its own and has no configuration file containing credentials. Authentication is the user's existing `sf` authorization, made out of band. The deploy and the test run delegate it to `sf`; the deployed-check query opens a `@salesforce/core` connection from it, so the access token is read into the extension host, where `@salesforce/core` may keep it in memory for the life of the extension host (#497). It is never written, logged or posted to a webview.
 
 ---
 

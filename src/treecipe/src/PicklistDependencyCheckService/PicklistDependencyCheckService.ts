@@ -71,7 +71,6 @@ export interface ISalesforceCliJsonPayload {
     message?: string;
     result?: {
         tests?: ISalesforceApexTestMethodResult[];
-        totalSize?: number;
         success?: boolean;
         numberComponentsDeployed?: number;
         details?: {

@@ -41,7 +41,8 @@ const SOURCE_ROOT_PATH = path.resolve(SERVICES_DIRECTORY_PATH, '../..');
 
 const STATIC_METHOD_PATTERN = /^\s*(?:private |public |protected )?static (?:async )?(\w+)\s*[(<]/;
 
-const SALESFORCE_CLI_CALL_PATTERN = /\b(?:runSalesforceCli|runCancellableCli)\(/g;
+// A CALL, SPACED OR NOT, OR A REFERENCE HANDED ON THROUGH bind/call/apply; A COMMENT NAMING THE METHOD IS NEITHER
+const SALESFORCE_CLI_CALL_PATTERN = /\b(?:runSalesforceCli|runCancellableCli)\s*(?:\(|\.\s*(?:bind|call|apply)\b)/g;
 
 function listSourceFilePaths(directoryPath: string): string[] {
 
@@ -147,7 +148,7 @@ describe('shouldStartTheSalesforceCliOnlyWhereEpic496HasNotReplacedIt', () => {
     it('shouldNeverImportJsforceDirectly', () => {
 
         const jsforceImporters = sourceFiles
-            .filter(sourceFile => /from ['"](?:@jsforce\/)?jsforce[^'"]*['"]|require\(['"](?:@jsforce\/)?jsforce[^'"]*['"]\)/.test(sourceFile.sourceText))
+            .filter(sourceFile => /from\s*['"](?:@jsforce\/)?jsforce[^'"]*['"]|(?:require|import)\s*\(\s*['"](?:@jsforce\/)?jsforce[^'"]*['"]\s*\)/.test(sourceFile.sourceText))
             .map(sourceFile => sourceFile.relativePath);
 
         expect(jsforceImporters).toBeEmpty();

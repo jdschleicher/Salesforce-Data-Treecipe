@@ -878,6 +878,7 @@ describe('shouldDetectWhetherTestSuiteIsDeployedInOrg', () => {
     });
 
 });
+
 describe('shouldDeployPicklistDependencyClasses', () => {
 
     it('shouldThrowGuidanceWhenClassesDirectoryDoesNotExist', async () => {
