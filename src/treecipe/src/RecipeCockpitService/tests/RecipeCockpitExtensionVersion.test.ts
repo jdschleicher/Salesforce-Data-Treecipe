@@ -271,6 +271,21 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
 
         });
 
+        it('makes "?" as tall as the CHANGELOG button, and draws the version in the title bar\'s muted text colour (#487)', () => {
+
+            const helpToggleRule = styleSheet().match(/\.cockpitMeta \.helpToggle \{[^}]*\}/)?.[0] ?? '';
+            const changelogRule = styleSheet().match(/\.cockpitChangelog \{[^}]*\}/)?.[0] ?? '';
+
+            expect(helpToggleRule).toContain('height: 2rem;');
+            expect(helpToggleRule).toContain('min-height: 0;');
+            expect(helpToggleRule).toContain('box-sizing: border-box;');
+            expect(changelogRule).toContain('height: 2rem;');
+            expect(changelogRule).toContain('box-sizing: border-box;');
+            expect(changelogRule).toContain('color: var(--sdt-on-header-muted);');
+            expect(styleSheet()).toContain('.cockpitChangelog:hover:not(:disabled) { color: var(--sdt-on-header);');
+
+        });
+
         it('never carries the CHANGELOG address: the host holds it', () => {
 
             expect(shellHtml()).not.toContain(RECIPE_COCKPIT_CHANGELOG_URL);
@@ -294,13 +309,15 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
         const versionElementOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.cockpitMetaElement, 'cockpitVersion')[0];
         const changelogElementOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.cockpitMetaElement, 'cockpitChangelog')[0];
 
-        it('draws the GitHub mark as inline SVG beside an empty version before the host has answered', () => {
+        it('draws the GitHub mark as inline SVG and an empty version INSIDE one button before the host has answered (#487)', () => {
 
             const panel = runPanelScript();
             const changelogElement = changelogElementOf(panel);
             const glyphElement = changelogElement.children[0];
 
-            expect(panel.cockpitMetaElement.children).toEqual([versionElementOf(panel), changelogElement, panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0]]);
+            expect(panel.cockpitMetaElement.children).toEqual([changelogElement, panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0]]);
+            expect(changelogElement.children).toEqual([glyphElement, versionElementOf(panel)]);
+            expect(versionElementOf(panel).tagName).toBe('span');
             expect(versionElementOf(panel).textContent).toBe('');
             expect(changelogElement.tagName).toBe('button');
             expect(changelogElement.attributes).toMatchObject({ 'type': 'button', 'aria-label': RECIPE_COCKPIT_CHANGELOG_LINK_LABEL, 'title': RECIPE_COCKPIT_CHANGELOG_LINK_LABEL });
@@ -322,6 +339,38 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
 
         });
 
+        it('posts openChangelog and nothing else when the VERSION text is clicked, since it is part of the button (#487)', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'extensionInfo', version: '3.90.0' });
+            panel.postedHostMessages.length = 0;
+
+            versionElementOf(panel).dispatch('click');
+
+            expect(panel.postedHostMessages).toEqual([{ command: 'openChangelog' }]);
+
+        });
+
+        it('names the version in the button\'s accessible name once there is one, and only the link without one (#487)', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'extensionInfo', version: '3.90.0' });
+
+            expect(changelogElementOf(panel).attributes).toMatchObject({
+                'aria-label': `${RECIPE_COCKPIT_CHANGELOG_LINK_LABEL}, v3.90.0`,
+                'title': `${RECIPE_COCKPIT_CHANGELOG_LINK_LABEL}, v3.90.0`
+            });
+
+            panel.postToPanel({ command: 'extensionInfo', version: 42 });
+
+            expect(versionElementOf(panel).textContent).toBe('');
+            expect(changelogElementOf(panel).attributes).toMatchObject({ 'aria-label': RECIPE_COCKPIT_CHANGELOG_LINK_LABEL, 'title': RECIPE_COCKPIT_CHANGELOG_LINK_LABEL });
+            panel.postedHostMessages.length = 0;
+            changelogElementOf(panel).dispatch('click');
+            expect(panel.postedHostMessages).toEqual([{ command: 'openChangelog' }]);
+
+        });
+
         it.each([
             ['the no-run empty state', () => ({ command: 'recipeData', recipe: NO_RUN_RECIPE, renderSequence: 1 })],
             ['a drawn run', () => ({ command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 })],
@@ -334,7 +383,8 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
 
             const helpToggleElement = panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0];
             expect(versionElementOf(panel).textContent).toBe('v3.90.0');
-            expect(panel.cockpitMetaElement.children).toEqual([versionElementOf(panel), changelogElementOf(panel), helpToggleElement]);
+            expect(panel.cockpitMetaElement.children).toEqual([changelogElementOf(panel), helpToggleElement]);
+            expect(versionElementOf(panel).parentNode).toBe(changelogElementOf(panel));
             expect(panel.findAll(panel.cockpitBodyElement, 'cockpitChangelog')).toBeEmpty();
             expect(panel.findAll(panel.cockpitBodyElement, 'helpToggle')).toBeEmpty();
             // ? TOGGLES A SECTION THE BODY HOLDS, SO IT IS DISABLED ONLY WHEN THE BODY HOLDS NONE

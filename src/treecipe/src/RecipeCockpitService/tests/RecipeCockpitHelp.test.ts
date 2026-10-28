@@ -20,6 +20,8 @@ import {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_HELP_BACKEND_NOTE,
+    RECIPE_COCKPIT_HELP_CLOSE_ARIA_LABEL,
+    RECIPE_COCKPIT_HELP_CLOSE_LABEL,
     RECIPE_COCKPIT_HELP_GUIDE_LABEL,
     RECIPE_COCKPIT_HELP_GUIDE_URL,
     RECIPE_COCKPIT_HELP_NO_DIFFERENCE,
@@ -87,6 +89,7 @@ describe('RecipeCockpitService help section (#332)', () => {
 
     const toggleOf = (panel: Panel) => panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0];
     const sectionOf = (panel: Panel) => panel.findAll(panel.cockpitBodyElement, 'helpSection')[0];
+    const closeOf = (panel: Panel) => panel.findAll(sectionOf(panel), 'helpClose')[0];
     const textsOf = (panel: Panel, rootElement: any, className: string) => panel.findAll(rootElement, className).map((element: any) => element.textContent);
     const summaryLinesOf = (panel: Panel) => panel.findAll(sectionOf(panel), 'helpSummary')[0].children.map((element: any) => element.textContent);
 
@@ -129,6 +132,72 @@ describe('RecipeCockpitService help section (#332)', () => {
             expect(toggleOf(panel).attributes['aria-expanded']).toBe('false');
             expect(panel.isHidden(sectionOf(panel))).toBeTrue();
             expect(panel.savedState()).not.toHaveProperty('isHelpExpanded');
+
+        });
+
+        it('draws an ✕ beside the title that closes the section, saves the place and hands focus back to "?" (#487)', () => {
+
+            const panel = drawRecipe(loadRecipe());
+            const closeButton = closeOf(panel);
+
+            expect(closeButton.tagName).toBe('button');
+            expect(closeButton.textContent).toBe(RECIPE_COCKPIT_HELP_CLOSE_LABEL);
+            expect(closeButton.attributes).toMatchObject({ 'aria-label': RECIPE_COCKPIT_HELP_CLOSE_ARIA_LABEL, 'title': RECIPE_COCKPIT_HELP_CLOSE_ARIA_LABEL, 'aria-controls': sectionOf(panel).attributes.id });
+            expect(closeButton.parentNode).toBe(panel.findAll(sectionOf(panel), 'helpHeader')[0]);
+            expect(textsOf(panel, sectionOf(panel), 'helpTitle')).toHaveLength(1);
+
+            toggleOf(panel).dispatch('click');
+            panel.postedHostMessages.length = 0;
+            closeButton.dispatch('click');
+
+            expect(toggleOf(panel).attributes['aria-expanded']).toBe('false');
+            expect(panel.isHidden(sectionOf(panel))).toBeTrue();
+            expect(panel.savedState()).not.toHaveProperty('isHelpExpanded');
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'savePlace')).toHaveLength(1);
+            expect(panel.postedHostMessages.find(hostMessage => hostMessage.command === 'savePlace').place).not.toHaveProperty('isHelpExpanded');
+            expect(panel.activeElement()).toBe(toggleOf(panel));
+
+            // "?" STILL OPENS IT AGAIN
+            toggleOf(panel).dispatch('click');
+            expect(panel.isHidden(sectionOf(panel))).toBeFalse();
+
+        });
+
+        it('closes on Escape inside the open section, and ignores other keys (#487)', () => {
+
+            const panel = drawRecipe(loadRecipe());
+            toggleOf(panel).dispatch('click');
+
+            panel.findAll(sectionOf(panel), 'helpTitle')[0].dispatch('keydown', { key: 'Enter' });
+            expect(panel.isHidden(sectionOf(panel))).toBeFalse();
+
+            panel.findAll(sectionOf(panel), 'helpTitle')[0].dispatch('keydown', { key: 'Escape' });
+            expect(toggleOf(panel).attributes['aria-expanded']).toBe('false');
+            expect(panel.isHidden(sectionOf(panel))).toBeTrue();
+            expect(panel.activeElement()).toBe(toggleOf(panel));
+
+        });
+
+        it('draws "?" pressed only while the help is open, by CSS on aria-expanded, never colour alone (#487)', () => {
+
+            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const pressedRule = shellHtml.match(/\.cockpitMeta \.helpToggle\[aria-expanded="true"\] \{[^}]*\}/)?.[0] ?? '';
+
+            expect(pressedRule).toContain('color: var(--sdt-on-action);');
+            expect(pressedRule).toContain('background-color: var(--sdt-on-header);');
+            expect(pressedRule).toContain('box-shadow: inset 0 0 0 2px var(--sdt-action);');
+
+            const panel = drawRecipe(loadRecipe());
+            toggleOf(panel).dispatch('click');
+            expect(toggleOf(panel).attributes['aria-expanded']).toBe('true');
+            closeOf(panel).dispatch('click');
+            expect(toggleOf(panel).attributes['aria-expanded']).toBe('false');
+
+            // A DISABLED "?" CARRIES NO aria-expanded, SO THE PRESSED RULE CANNOT MATCH IT
+            const failedPanel = runPanelScript();
+            failedPanel.postToPanel({ command: 'recipeData', recipe: { runs: null }, renderSequence: 1 });
+            expect(toggleOf(failedPanel).disabled).toBeTrue();
+            expect(toggleOf(failedPanel).attributes).not.toHaveProperty('aria-expanded');
 
         });
 
@@ -342,6 +411,9 @@ describe('RecipeCockpitService help section (#332)', () => {
 
             expect(toggleOf(panel).attributes['aria-expanded']).toBe('true');
             expect(panel.isHidden(sectionOf(panel))).toBeFalse();
+            // SO "?" IS DRAWN PRESSED (#487), AND THE ✕ CLOSES WHAT THE PLACE OPENED
+            closeOf(panel).dispatch('click');
+            expect(panel.isHidden(sectionOf(panel))).toBeTrue();
 
         });
 

@@ -264,6 +264,8 @@ describe('RecipeCockpitService', () => {
             ['onHeader', 'header'],
             ['onHeaderMuted', 'header'],
             ['onAction', 'action'],
+            // A PRESSED "?" (#487): navy ON THE TITLE BAR'S LIGHT TEXT COLOUR
+            ['onAction', 'onHeader'],
             // THE TREECIPES HEADING IS NAVY TEXT ON THE PAGE, THE TARGET ORG MANAGER HEADING ON ITS OWN TINT (#433, #434)
             ['header', 'page'],
             ['header', 'orgSection']
@@ -538,7 +540,7 @@ describe('RecipeCockpitService', () => {
 
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
-            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(31);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(32);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
 
         });
@@ -548,7 +550,7 @@ describe('RecipeCockpitService', () => {
 
             expect(contrastRatioOf('#FFFFFF', RECIPE_COCKPIT_PALETTE.action)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
             expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.action, RECIPE_COCKPIT_PALETTE.surface)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
-            expect(findContrastFailures({ ...RECIPE_COCKPIT_PALETTE, onAction: '#FFFFFF' })).toEqual(['onAction on action (1.89:1)']);
+            expect(findContrastFailures({ ...RECIPE_COCKPIT_PALETTE, onAction: '#FFFFFF' })).toEqual(['onAction on action (1.89:1)', 'onAction on onHeader (1.08:1)']);
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             expect(styleSheet).not.toMatch(/(^|[^-])color: var\(--sdt-action(-edge)?\)/);

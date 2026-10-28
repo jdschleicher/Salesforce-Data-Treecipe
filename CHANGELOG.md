@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.163.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
+
+[#487](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/487). Only the GitHub icon at the top right opened the CHANGELOG, though the version beside it read as part of the link; the open help could only be closed from **?**; and **?** was taller than its neighbours and looked the same open or closed.
+
+- **One CHANGELOG button.** The version (`v3.163.0`) is now inside the GitHub icon's button, so a click on either posts `openChangelog` and the host opens the latest CHANGELOG as before. The button's accessible name and tooltip add the version once the host has sent one (`Open CHANGELOG on GitHub, v3.163.0`); without one it is the icon alone and still works. The version is still written as text from `extensionInfo`, and no address reaches the panel.
+- **✕ and Escape close the help.** The help section's title row ends with an ✕ (`Close help`, an `icon` button controlling the section). It and Escape inside the open section close it as **?** does, save the place as closed, and hand focus back to **?**, which still toggles it.
+- **? matches its neighbours, and is drawn pressed while open.** **?** and the CHANGELOG button are both 2rem tall. While the help is open (`aria-expanded="true"`), **?** is navy on the title bar's light text colour with a teal inset ring, a change of fill and an edge rather than colour alone; a disabled **?** carries no `aria-expanded`, so it is never drawn pressed. The new pair (navy on that light colour) is in the contrast test's list.
+- **Guide.** `docs/RECIPE-COCKPIT-GUIDE.md` says how to close the help and that the version and icon are one button, and the screenshot script sends the extension's version so the header picture shows it.
+- **Tests.** `RecipeCockpitExtensionVersion.test.ts` (the version inside the button, a click on it, the accessible name with and without a version, both buttons' height) and `RecipeCockpitHelp.test.ts` (✕ closes, saves and refocuses ?, Escape, the pressed rule only while open, a restored open place).
+
 ## [3.162.0] - Recipe Cockpit: a tree's Troubleshooting and Adapter run files are kept with its recipe
 
 [#470](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/470). The files a tree's deploys, retrieves, permission set assignments, Adapter retrieves, update snapshots and query exports leave were spread across `treecipe/OrgOperations/<username>/`, `treecipe/UpdateAttempts/<folder>/` and `treecipe/QueryResults/<folder>/`, and the `OrgOperations` ones did not say which tree they were for, so nothing could show what was done for a recipe.
