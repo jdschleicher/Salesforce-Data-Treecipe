@@ -2,22 +2,22 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as xml2js from 'xml2js';
 
-import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import type { IOrgPermissionSet } from '../SalesforceOrgService/SalesforceOrgService';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
 
 /*
     "Assign permission sets to me…" (#274, #302): the project's permission sets that grant anything
-    on one relationship tree's objects, which of the reader's picks the org already holds, the argv
-    that assigns those to the user the org is authorized as, and the CLI's answer read back. Nothing
+    on one relationship tree's objects, which of the reader's picks the org already holds, the
+    PermissionSetAssignment rows that assign those to the user the org is authorized as (#500: one
+    insert on the cockpit's own connection, no CLI), and the org's save results read back. Nothing
     is deployed: a pick the org does not hold is named for the reader to deploy themselves. It
     imports no vscode: the cockpit owns the pick, the org, the confirmation and the progress.
 
     Every permission set comes from the HOST -- files on disk under the strict package directories,
     each inside the workspace -- never from a panel message, and its name, taken from the file name,
-    reaches an argv only if it is an api name.
+    reaches a query only if it is an api name.
 */
 
 export const PERMISSION_SET_FILE_SUFFIX = '.permissionset-meta.xml';
@@ -26,21 +26,28 @@ export const PERMISSION_SET_FILE_SUFFIX = '.permissionset-meta.xml';
 export const PERMISSION_SET_SEARCH_DEPTH = 6;
 
 /*
-    One --name per pick, so the command line grows with the pick; on Windows the
-    CLI runs through cmd.exe, which refuses a line past 8,191 characters. Fifty names of at most 80
-    characters stay well under it.
+    One assignment row per pick, and every row goes in ONE sObject Collections request, which carries
+    at most 200 records (#500). One request is also why the insert has no Cancel: once it is sent it
+    cannot be taken back, so a cancel could only stop waiting for an answer that still lands.
 */
-export const PERMISSION_SET_MAX_PICKS = 50;
+export const PERMISSION_SET_MAX_PICKS = 200;
+
+export const PERMISSION_SET_ASSIGNMENT_OBJECT_API_NAME = 'PermissionSetAssignment';
 
 // HOW MANY SKIPPED FILES A WARNING NAMES BEFORE IT COUNTS THE REST
 export const PERMISSION_SET_NOTIFICATION_SKIPS_SHOWN = 10;
 
+// HOW LONG THE INSERT IS WAITED FOR BEFORE WHICH PERMISSION SETS WERE ASSIGNED IS REPORTED UNKNOWN
 export const PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
 
+// THE DEFAULT OUTPUT BUFFER OF THE COCKPIT'S OTHER CLI RUNS (DEPLOYS, RETRIEVES)
 export const PERMISSION_SET_MAX_BUFFER_BYTES = 1024 * 1024 * 64;
 
-// WHAT THE CLI SAYS WHEN THE USER ALREADY HOLDS THE PERMISSION SET: THAT IS THE GOAL MET, NOT A FAILURE
+// WHAT THE ORG SAYS WHEN THE USER ALREADY HOLDS THE PERMISSION SET: THAT IS THE GOAL MET, NOT A FAILURE
+const ALREADY_ASSIGNED_STATUS_CODE = 'DUPLICATE_VALUE';
 const ALREADY_ASSIGNED_PATTERN = /duplicate\s+PermissionSetAssignment|already\s+assigned/i;
+
+const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 export interface IPermissionSetCandidate {
     name: string;
@@ -62,10 +69,29 @@ export interface IPermissionSetDiscovery {
 
 export type PermissionSetAssignOutcome =
     { kind: 'assigned'; assignedNames: string[]; alreadyAssignedNames: string[] }
-    // NOT EVERY PICK IS ASSIGNED: failedNames SAYS WHICH, failureMessages WHAT THE CLI SAID
+    // NOT EVERY PICK IS ASSIGNED: failedNames SAYS WHICH, failureMessages WHAT THE ORG SAID
     | { kind: 'notAllAssigned'; assignedNames: string[]; alreadyAssignedNames: string[]; failedNames: string[]; failureMessages: string[] }
-    | { kind: 'cliNotInstalled'; failureMessage: string }
+    // THE INSERT THREW OR WAS NOT ANSWERED IN TIME: THE ORG MAY HAVE SAVED ANY OF IT
     | { kind: 'unconfirmed'; failureMessage: string };
+
+export interface IPermissionSetAssignmentRecord {
+    AssigneeId: string;
+    PermissionSetId: string;
+}
+
+// WHAT ONE INSERT SENDS: A ROW PER PICK THE ORG HOLDS ONE UNAMBIGUOUS PERMISSION SET FOR, IN THE ORDER PICKED
+export interface IPermissionSetAssignmentPlan {
+    sentNames: string[];
+    records: IPermissionSetAssignmentRecord[];
+    // PICKS NO ROW IS SENT FOR, AND WHY: THEY ARE FAILED, NEVER ASSIGNED
+    unresolvedNames: string[];
+    unresolvedMessages: string[];
+}
+
+// THE ONE CALL THE INSERT MAKES ON A jsforce CONNECTION
+export interface IPermissionSetAssignmentConnection {
+    sobject(objectApiName: string): { create(records: IPermissionSetAssignmentRecord[], options: { allowRecursive: boolean; allOrNone: boolean }): Promise<unknown> };
+}
 
 // THE PICKS THE ORG HOLDS, WHICH ARE ASSIGNED, AND THE ONES IT DOES NOT, WHICH THE READER IS TOLD TO DEPLOY
 export interface IPermissionSetOrgPresence {
@@ -258,138 +284,129 @@ export class RecipeCockpitPermissionSetAssign {
 
     }
 
-    private static assertPermissionSetNames(permissionSetNames: readonly string[]) {
+    /*
+        The rows that assign the picks the org holds to one user, and nothing else: the assignee is
+        the user the org is authorized as, never anyone else. A pick is matched to the org's
+        permission sets case-insensitively; when the org holds more than one of that name (a
+        packaged one beside the project's), the one with no namespace is the project's, and with no
+        such one the pick is not sent rather than guessed at.
+    */
+    static planAssignments(assigneeId: string, permissionSetNames: readonly string[], orgPermissionSets: readonly IOrgPermissionSet[]): IPermissionSetAssignmentPlan {
 
+        if ( !SALESFORCE_RECORD_ID_PATTERN.test(String(assigneeId)) ) {
+            throw new Error('The user to assign to has no Salesforce Id, so nothing was assigned.');
+        }
         if ( permissionSetNames.length === 0 ) {
             throw new Error('No permission set was named, so nothing was assigned.');
         }
+        if ( permissionSetNames.length > PERMISSION_SET_MAX_PICKS ) {
+            throw new Error(`At most ${PERMISSION_SET_MAX_PICKS} permission sets are assigned at once, so nothing was assigned.`);
+        }
+
+        const plan: IPermissionSetAssignmentPlan = { sentNames: [], records: [], unresolvedNames: [], unresolvedMessages: [] };
 
         permissionSetNames.forEach(permissionSetName => {
+
             if ( !SalesforceApiName.isApiName(permissionSetName) ) {
                 throw new Error(`"${permissionSetName}" is not a Salesforce api name, so nothing was assigned.`);
             }
+
+            const namedSets = orgPermissionSets.filter(orgPermissionSet => orgPermissionSet.name.toLowerCase() === permissionSetName.toLowerCase()
+                && SALESFORCE_RECORD_ID_PATTERN.test(orgPermissionSet.id));
+            const unmanagedSets = namedSets.filter(orgPermissionSet => orgPermissionSet.namespacePrefix === undefined);
+            const chosenSet = unmanagedSets.length === 1 ? unmanagedSets[0]
+                : unmanagedSets.length === 0 && namedSets.length === 1 ? namedSets[0]
+                    : undefined;
+
+            if ( !chosenSet ) {
+                plan.unresolvedNames.push(permissionSetName);
+                plan.unresolvedMessages.push(namedSets.length === 0
+                    ? `the org did not name an Id for ${permissionSetName}`
+                    : `the org holds more than one permission set named ${permissionSetName}`);
+                return;
+            }
+
+            plan.sentNames.push(permissionSetName);
+            plan.records.push({ AssigneeId: assigneeId, PermissionSetId: chosenSet.id });
+
         });
 
-    }
-
-    // NO --on-behalf-of: THE ASSIGNEE IS THE USER THE ORG IS AUTHORIZED AS, AND NO ONE ELSE. --target-org IS THE
-    // USERNAME, NEVER AN ALIAS, WHICH CAN BE RE-POINTED BETWEEN THE CONFIRMATION AND THE RUN
-    static buildPermissionSetAssignArguments(permissionSetNames: readonly string[], orgUsername: string): string[] {
-
-        this.assertPermissionSetNames(permissionSetNames);
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
-
-        return [
-            'org', 'assign', 'permset',
-            '--json',
-            '--target-org', orgUsername,
-            ...permissionSetNames.flatMap(permissionSetName => ['--name', permissionSetName])
-        ];
+        return plan;
 
     }
 
-    static buildCliRequiredMessage(): string {
+    // ONE REQUEST, allOrNone OFF SO EACH PICK LANDS OR FAILS ON ITS OWN, AND allowRecursive OFF SO jsforce NEVER SPLITS IT
+    static async insertAssignments(connection: IPermissionSetAssignmentConnection, records: readonly IPermissionSetAssignmentRecord[]): Promise<unknown> {
 
-        return `The Salesforce CLI is required to assign permission sets, and "${PicklistDependencyCheckService.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
+        if ( records.length > PERMISSION_SET_MAX_PICKS ) {
+            throw new Error(`One assignment request carries at most ${PERMISSION_SET_MAX_PICKS} rows, and ${records.length} were given.`);
+        }
+
+        return connection.sobject(PERMISSION_SET_ASSIGNMENT_OBJECT_API_NAME).create([...records], { allowRecursive: false, allOrNone: false });
 
     }
 
     /*
-        The assign's answer, type-checked: result.successes name each assigned permission set as
-        "value", and result.failures carry a "message" that need not name the set. A pick is
-        assigned when a success names it, already assigned when a failure naming it says so, and
-        failed when a failure naming it says anything else. A failure that names none of the picks
-        is matched to the picks nothing accounted for: when every such failure says "already
-        assigned" they all are, and otherwise they are counted failed -- a pick the answer never
-        accounts for is never reported assigned.
+        The org's save results, type-checked: one per row sent, in the order sent. A pick is assigned
+        when its result says success with an Id, already assigned when an error says the assignment
+        is a duplicate, and failed otherwise -- a pick with no readable result, or an answer whose
+        length is not the rows sent, is never reported assigned. The picks no row was sent for are
+        failed with the plan's reason.
     */
-    static parsePermissionSetAssignOutput(invocationResult: ISalesforceCliInvocationResult,
-                                            permissionSetNames: readonly string[],
-                                            payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): PermissionSetAssignOutcome {
-
-        if ( invocationResult.spawnError ) {
-            return invocationResult.spawnError.code === 'ENOENT'
-                ? { kind: 'cliNotInstalled', failureMessage: this.buildCliRequiredMessage() }
-                : this.failEvery(permissionSetNames, `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}`);
-        }
-
-        if ( invocationResult.isOutputTooLarge ) {
-            return { kind: 'unconfirmed', failureMessage: 'The Salesforce CLI\'s answer was too large to read, so which permission sets were assigned is unknown.' };
-        }
-
-        if ( invocationResult.timedOut ) {
-            return { kind: 'unconfirmed', failureMessage: 'The assignment did not finish in time and was stopped, so which permission sets were assigned is unknown.' };
-        }
-
-        const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result)
-            ? payload.result as Record<string, unknown>
-            : undefined;
-
-        if ( !result ) {
-            return this.failEvery(permissionSetNames, ScratchOrgService.buildCliFailureDetail(payload, invocationResult));
-        }
-
-        const toRecords = (entries: unknown): Record<string, unknown>[] => ( Array.isArray(entries) ? entries : [] )
-            .filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === 'object' && !Array.isArray(entry));
-
-        const successValues = new Set(toRecords(result.successes)
-            .map(success => success.value)
-            .filter((value): value is string => typeof value === 'string'));
-        const failures = toRecords(result.failures).map(failure => ({
-            name: typeof failure.name === 'string' ? failure.name : '',
-            message: typeof failure.message === 'string' ? failure.message : ''
-        }));
-
-        const namesFailure = (failure: { name: string; message: string }, permissionSetName: string) => failure.name === permissionSetName
-            || new RegExp(`(^|[^A-Za-z0-9_])${permissionSetName}($|[^A-Za-z0-9_])`).test(failure.message);
+    static readAssignmentSaveResults(plan: IPermissionSetAssignmentPlan, saveResults: unknown): PermissionSetAssignOutcome {
 
         const assignedNames: string[] = [];
         const alreadyAssignedNames: string[] = [];
-        const failedNames: string[] = [];
-        const unaccountedNames: string[] = [];
-        const attributedFailures = new Set<number>();
+        const failedNames: string[] = [...plan.unresolvedNames];
+        const failureMessages: string[] = [...plan.unresolvedMessages];
+        const asRecord = (candidateValue: unknown) => candidateValue !== null && typeof candidateValue === 'object' && !Array.isArray(candidateValue)
+            ? candidateValue as Record<string, unknown>
+            : undefined;
+        const resultList = Array.isArray(saveResults) ? saveResults : [saveResults];
 
-        permissionSetNames.forEach(permissionSetName => {
+        if ( resultList.length !== plan.sentNames.length ) {
+            failedNames.push(...plan.sentNames);
+            failureMessages.push('The org\'s answer could not be matched to the permission sets sent.');
+        } else {
+            plan.sentNames.forEach((permissionSetName, resultIndex) => {
 
-            if ( successValues.has(permissionSetName) ) {
-                assignedNames.push(permissionSetName);
-                return;
-            }
+                const saveResult = asRecord(resultList[resultIndex]);
 
-            const failureIndex = failures.findIndex(failure => namesFailure(failure, permissionSetName));
-            if ( failureIndex === -1 ) {
-                unaccountedNames.push(permissionSetName);
-                return;
-            }
+                if ( saveResult?.success === true && typeof saveResult.id === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(saveResult.id) ) {
+                    assignedNames.push(permissionSetName);
+                    return;
+                }
 
-            attributedFailures.add(failureIndex);
-            ( ALREADY_ASSIGNED_PATTERN.test(failures[failureIndex].message) ? alreadyAssignedNames : failedNames ).push(permissionSetName);
+                const saveErrors = ( Array.isArray(saveResult?.errors) ? saveResult.errors as unknown[] : [] )
+                    .map(saveError => asRecord(saveError))
+                    .filter((saveError): saveError is Record<string, unknown> => saveError !== undefined)
+                    .map(saveError => ({
+                        statusCode: typeof saveError.statusCode === 'string' ? saveError.statusCode : '',
+                        message: typeof saveError.message === 'string' ? saveError.message.trim() : ''
+                    }));
 
-        });
+                if ( saveResult?.success === false && saveErrors.some(saveError => saveError.statusCode === ALREADY_ASSIGNED_STATUS_CODE || ALREADY_ASSIGNED_PATTERN.test(saveError.message)) ) {
+                    alreadyAssignedNames.push(permissionSetName);
+                    return;
+                }
 
-        const unattributedFailures = failures.filter((_failure, failureIndex) => !attributedFailures.has(failureIndex));
+                failedNames.push(permissionSetName);
+                const errorTexts = saveErrors.map(saveError => saveError.message || saveError.statusCode).filter(errorText => errorText !== '');
+                failureMessages.push(...( errorTexts.length > 0 ? errorTexts : [`the org gave no reason for ${permissionSetName}`] ));
 
-        if ( unaccountedNames.length > 0 ) {
-            const isEveryUnattributedAlreadyAssigned = unattributedFailures.length > 0
-                && unattributedFailures.every(failure => ALREADY_ASSIGNED_PATTERN.test(failure.message));
-            ( isEveryUnattributedAlreadyAssigned ? alreadyAssignedNames : failedNames ).push(...unaccountedNames);
+            });
         }
 
         if ( failedNames.length === 0 ) {
             return { kind: 'assigned', assignedNames: assignedNames, alreadyAssignedNames: alreadyAssignedNames };
         }
 
-        const failureMessages = [...new Set(failures
-            .filter(failure => !ALREADY_ASSIGNED_PATTERN.test(failure.message))
-            .map(failure => failure.message.trim())
-            .filter(message => message !== ''))];
-
         return {
             kind: 'notAllAssigned',
             assignedNames: assignedNames,
             alreadyAssignedNames: alreadyAssignedNames,
             failedNames: failedNames,
-            failureMessages: failureMessages.length > 0 ? failureMessages : [ScratchOrgService.buildCliFailureDetail(payload, invocationResult)]
+            failureMessages: [...new Set(failureMessages)]
         };
 
     }
@@ -417,12 +434,6 @@ export class RecipeCockpitPermissionSetAssign {
         const isOne = missingPermissionSetNames.length === 1;
 
         return `Not in ${orgLabel}: ${missingPermissionSetNames.join(', ')}. Deploy ${isOne ? 'this permission set' : 'these permission sets'} to the org, then assign ${isOne ? 'it' : 'them'}.`;
-
-    }
-
-    private static failEvery(permissionSetNames: readonly string[], failureMessage: string): PermissionSetAssignOutcome {
-
-        return { kind: 'notAllAssigned', assignedNames: [], alreadyAssignedNames: [], failedNames: [...permissionSetNames], failureMessages: [failureMessage] };
 
     }
 

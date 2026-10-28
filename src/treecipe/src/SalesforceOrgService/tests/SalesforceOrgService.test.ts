@@ -1062,16 +1062,23 @@ describe('SalesforceOrgService', () => {
 
     });
 
-    describe('queryPermissionSetNames (#302)', () => {
+    describe('queryPermissionSets (#302, #500)', () => {
 
-        it('asks for the named permission sets in one query and keeps only the api names the org answers with', async () => {
+        it('asks for the named permission sets in one query and keeps only api names with a Salesforce Id, with each one\'s namespace', async () => {
 
             const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [
-                { Name: 'Account_Tree_Access' }, { Name: 'bad name' }, { Name: 7 }, null, { Id: '0PS000000000001' }
+                { Id: '0PS000000000001AAA', Name: 'Account_Tree_Access', NamespacePrefix: null },
+                { Id: '0PS000000000002AAA', Name: 'Account_Tree_Access', NamespacePrefix: 'pkg' },
+                { Id: '0PS000000000003AAA', Name: 'bad name' }, { Id: '0PS000000000004AAA', Name: 7 }, null,
+                { Id: 'not-an-id', Name: 'Contact_Reader' }, { Name: 'Contact_Reader' }, { Id: '0PS000000000005', Name: 'Gadget_Access', NamespacePrefix: '' }
             ] }) };
 
-            expect(await SalesforceOrgService.queryPermissionSetNames(querySource, ['Account_Tree_Access', 'Contact_Reader'])).toEqual(['Account_Tree_Access']);
-            expect(querySource.query).toHaveBeenCalledWith('SELECT Name FROM PermissionSet WHERE Name IN (\'Account_Tree_Access\', \'Contact_Reader\')');
+            expect(await SalesforceOrgService.queryPermissionSets(querySource, ['Account_Tree_Access', 'Contact_Reader', 'Gadget_Access'])).toEqual([
+                { id: '0PS000000000001AAA', name: 'Account_Tree_Access', namespacePrefix: undefined },
+                { id: '0PS000000000002AAA', name: 'Account_Tree_Access', namespacePrefix: 'pkg' },
+                { id: '0PS000000000005', name: 'Gadget_Access', namespacePrefix: undefined }
+            ]);
+            expect(querySource.query).toHaveBeenCalledWith('SELECT Id, Name, NamespacePrefix FROM PermissionSet WHERE Name IN (\'Account_Tree_Access\', \'Contact_Reader\', \'Gadget_Access\')');
 
         });
 
@@ -1079,17 +1086,39 @@ describe('SalesforceOrgService', () => {
 
             const querySource: IOrgQuerySource = { query: jest.fn() };
 
-            expect(await SalesforceOrgService.queryPermissionSetNames(querySource, [])).toEqual([]);
-            await expect(SalesforceOrgService.queryPermissionSetNames(querySource, ['Ok', "x') OR Name != ('"])).rejects.toThrow('is not a Salesforce api name');
+            expect(await SalesforceOrgService.queryPermissionSets(querySource, [])).toEqual([]);
+            await expect(SalesforceOrgService.queryPermissionSets(querySource, ['Ok', "x') OR Name != ('"])).rejects.toThrow('is not a Salesforce api name');
             expect(querySource.query).not.toHaveBeenCalled();
 
         });
 
         it('throws, rather than answering "none", for a failed query or an answer with no records list', async () => {
 
-            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, ['A'])).rejects.toThrow('INVALID_SESSION_ID');
-            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockResolvedValue({ records: 'x' }) }, ['A'])).rejects.toThrow('could not be read');
-            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockResolvedValue(undefined) }, ['A'])).rejects.toThrow('could not be read');
+            await expect(SalesforceOrgService.queryPermissionSets({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, ['A'])).rejects.toThrow('INVALID_SESSION_ID');
+            await expect(SalesforceOrgService.queryPermissionSets({ query: jest.fn().mockResolvedValue({ records: 'x' }) }, ['A'])).rejects.toThrow('could not be read');
+            await expect(SalesforceOrgService.queryPermissionSets({ query: jest.fn().mockResolvedValue(undefined) }, ['A'])).rejects.toThrow('could not be read');
+
+        });
+
+    });
+
+    describe('queryUserId (#500)', () => {
+
+        it('asks for the user by its username, with backslashes and quotes escaped, and answers its Id', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [{ Id: '005000000000001AAA' }] }) };
+
+            expect(await SalesforceOrgService.queryUserId(querySource, "o'brien\\x@example.com")).toBe('005000000000001AAA');
+            expect(querySource.query).toHaveBeenCalledWith("SELECT Id FROM User WHERE Username = 'o\\'brien\\\\x@example.com'");
+
+        });
+
+        it('throws for a failed query, no user, more than one, or an Id that is not a Salesforce Id', async () => {
+
+            await expect(SalesforceOrgService.queryUserId({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, 'a@b.c')).rejects.toThrow('INVALID_SESSION_ID');
+            for ( const answer of [undefined, { records: 'x' }, { records: [] }, { records: [{ Id: '005000000000001' }, { Id: '005000000000002' }] }, { records: [{ Id: 'x' }] }, { records: [null] }] ) {
+                await expect(SalesforceOrgService.queryUserId({ query: jest.fn().mockResolvedValue(answer) }, 'a@b.c')).rejects.toThrow('could not be read');
+            }
 
         });
 
