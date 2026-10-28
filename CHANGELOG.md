@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
+
+[#494](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/494). An expanded object's controls row and field rows ran straight into the next object's header, so nothing showed where one object's fields ended, and the field checkboxes were indented a fixed 2.1rem, about 1.6rem left of the object's ▸.
+
+- **Two boxes.** The controls row (All fields · Standard fields · Hide unselected · TODOs only) is a bordered box, and every field row of the object now sits in a second one, `treeFieldsBox`. Both are drawn in `--sdt-border`, padded on every side, with space between them and around them, so no checkbox, row hover or excluded-field overlay touches an edge. A fields box whose rows are all hidden by a search or filter is not drawn (`:has()`); the same rule guards the controls row, which today always holds TODOs only. The unticked-field overlay takes the row's rounded corners.
+- **Checkboxes under the ▸.** The header's padding, the chain-link width and the header gap are now named constants (`RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM`, `RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM`, `RECIPE_COCKPIT_TREE_HEADER_GAP_REM`), and the boxes' margin is derived from them (`RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT`), so each field's checkbox and the All fields box start where the ▸ does, at every nesting depth, on an iteration and on the ungrouped card.
+- **Layout only.** No message, model or place field changed, and no colour pair was added.
+- **Tests.** `RecipeCockpitFieldBoxes.test.ts` (the fields box holds every field row, after the controls row; a never-expanded object builds neither box; the stylesheet's offsets add up to the ▸'s, the padding and border rules, the empty-box rule); `RecipeCockpitExcludeFields.test.ts` reads a field row inside the box.
+
 ## [3.165.0] - Recipe Cockpit: the Treecipe tab's filters and "Manage record types" sit in one tile under the search, and a count says "record(s)"
 
 [#490](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/490). The Treecipe tab squeezed its two filter checks into the search row, the Record types section opened from a ▸ header that did not read as clickable, and an object's count said "record" or "records" depending on the number.
