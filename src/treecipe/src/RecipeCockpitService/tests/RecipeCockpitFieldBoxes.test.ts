@@ -125,6 +125,7 @@ describe('RecipeCockpitService, an object\'s fields and controls in bordered box
             expect(boxRule).toContain('box-sizing: border-box;');
 
             expect(ruleBody('.treeFieldsBox')).toContain(`padding: ${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM}rem;`);
+            expect(ruleBody('.treeField.fieldExcluded::after')).toContain('border-radius: inherit;');
             expect(ruleBody('.treeField')).toContain(`padding: 0.25rem 0.35rem 0.25rem ${RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem;`);
             expect(ruleBody('.treeFieldSelectAllRow')).toContain(`padding: ${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM + RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem;`);
 

@@ -19780,6 +19780,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
         content: '';
         position: absolute;
         inset: 0;
+        border-radius: inherit;
         background-color: var(--sdt-excluded-overlay);
         pointer-events: none;
         z-index: 1;
