@@ -29,6 +29,7 @@ const VIEWPORT = { width: 900, height: 640 };
 const NONCE = 'screenshotNonce';
 const PAGE_URL = 'http://recipe-cockpit.test/';
 const MAXIMUM_IMAGE_BYTES = 200 * 1024;
+const EXTENSION_VERSION = JSON.parse(fs.readFileSync(path.join(REPOSITORY_ROOT, 'package.json'), 'utf8')).version;
 
 // THE FONT VARIABLES ARE THE ONLY ONES THE COCKPIT READS FROM VS CODE; ANYTHING ELSE IS ITS OWN PALETTE
 const VS_CODE_FONT_STYLE = ':root { --vscode-font-family: "DejaVu Sans", "Segoe UI", Arial, sans-serif; --vscode-editor-font-family: "DejaVu Sans Mono", Consolas, monospace; --vscode-font-size: 13px; }';
@@ -133,7 +134,8 @@ class RecipeCockpitScreenshots {
 
         await page.evaluate((hostMessages) => {
             hostMessages.forEach((hostMessage) => window.postMessage(hostMessage, '*'));
-        }, [{ command: 'recipeData', recipe: recipe, renderSequence: 1 }, { command: 'loadPhase', message: '' }]);
+        // THE VERSION SITS INSIDE THE CHANGELOG BUTTON AT THE TOP RIGHT (#487), SO THE PICTURES SHOW IT AS THE HOST SENDS IT
+        }, [{ command: 'extensionInfo', version: EXTENSION_VERSION }, { command: 'recipeData', recipe: recipe, renderSequence: 1 }, { command: 'loadPhase', message: '' }]);
         await page.waitForSelector('.toolbar');
 
         return page;

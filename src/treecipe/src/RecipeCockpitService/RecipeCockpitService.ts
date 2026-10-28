@@ -558,6 +558,11 @@ export const RECIPE_COCKPIT_HELP_TOGGLE_LABEL = '?';
 
 export const RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL = 'About this cockpit';
 
+// THE HELP SECTION'S OWN WAY OUT (#487), BESIDE ? AND ESCAPE
+export const RECIPE_COCKPIT_HELP_CLOSE_LABEL = '✕';
+
+export const RECIPE_COCKPIT_HELP_CLOSE_ARIA_LABEL = 'Close help';
+
 export const RECIPE_COCKPIT_HELP_TITLE = 'About the Recipe Cockpit';
 
 export const RECIPE_COCKPIT_HELP_RUN_PREFIX = 'On screen now: ';
@@ -19486,7 +19491,27 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.6rem 0.8rem;
         margin-top: 0.75rem;
     }
-    .cockpitMeta .helpToggle { border-radius: 999px; padding: 0.4rem 0.75rem; }
+    /*
+        ? IS AS TALL AS THE CHANGELOG BUTTON BESIDE IT (#487), AND WHILE THE HELP IS OPEN IT IS
+        DRAWN PRESSED: navy on the title bar's light text colour with a teal inset ring, so the
+        state is a change of fill AND an edge, never colour alone.
+    */
+    .cockpitMeta .helpToggle {
+        box-sizing: border-box;
+        height: 2rem;
+        min-height: 0;
+        min-width: 2rem;
+        padding: 0 0.7rem;
+        font-size: 1em;
+        line-height: 1;
+        border-radius: 999px;
+    }
+    .cockpitMeta .helpToggle[aria-expanded="true"] {
+        color: var(--sdt-on-action);
+        background-color: var(--sdt-on-header);
+        border-color: var(--sdt-action);
+        box-shadow: inset 0 0 0 2px var(--sdt-action);
+    }
     .helpSection {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
@@ -19495,7 +19520,9 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.6rem 0.9rem;
         margin: 0.25rem 0 0.75rem 0;
     }
+    .helpHeader { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
     .helpTitle { font-weight: 600; font-size: 1.1em; }
+    .helpClose { flex: none; width: 2rem; height: 2rem; font-size: 1.1em; line-height: 1; }
     .helpRun { margin-top: 0.2rem; }
     .helpPart { margin-top: 0.6rem; }
     .helpHeading { font-weight: 600; }
@@ -20256,8 +20283,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
     .cockpitHeader h1 { margin: 0; }
     .cockpitMeta { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; margin-left: auto; color: var(--sdt-on-header-muted); }
-    .cockpitChangelog { padding: 0.25rem; }
-    .cockpitChangelog:hover:not(:disabled) { background-color: transparent; border-color: var(--sdt-on-header-muted); }
+    .cockpitChangelog { box-sizing: border-box; height: 2rem; gap: 0.4rem; padding: 0 0.5rem; font: inherit; color: var(--sdt-on-header-muted); }
+    .cockpitChangelog:hover:not(:disabled) { color: var(--sdt-on-header); background-color: transparent; border-color: var(--sdt-on-header-muted); }
     .githubGlyph { display: block; width: 18px; height: 18px; }
     .githubGlyph path { fill: var(--sdt-on-header-muted); }
     .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }
@@ -20348,6 +20375,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const GITHUB_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX)};
     const GITHUB_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_PATH)};
     let cockpitVersionElement = null;
+    let cockpitChangelogElement = null;
     const AUTO_EXPAND_OBJECT_LIMIT = ${RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT};
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
@@ -20528,6 +20556,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
     const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
+    const HELP_CLOSE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_CLOSE_LABEL)};
+    const HELP_CLOSE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_CLOSE_ARIA_LABEL)};
     const HELP_TITLE = ${JSON.stringify(RECIPE_COCKPIT_HELP_TITLE)};
     const HELP_RUN_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_HELP_RUN_PREFIX)};
     const HELP_GUIDE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_GUIDE_LABEL)};
@@ -20909,7 +20939,19 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         helpSectionElement = createElement('section', 'helpSection hidden');
         helpSectionElement.setAttribute('id', 'cockpitHelp');
         helpSectionElement.setAttribute('aria-label', HELP_TITLE);
-        helpSectionElement.appendChild(createElement('div', 'helpTitle', HELP_TITLE));
+        const helpHeaderElement = createElement('div', 'helpHeader');
+        helpHeaderElement.appendChild(createElement('div', 'helpTitle', HELP_TITLE));
+        const helpCloseElement = createButton('icon', 'helpClose', HELP_CLOSE_LABEL);
+        helpCloseElement.setAttribute('type', 'button');
+        helpCloseElement.setAttribute('aria-label', HELP_CLOSE_ARIA_LABEL);
+        helpCloseElement.setAttribute('title', HELP_CLOSE_ARIA_LABEL);
+        helpCloseElement.setAttribute('aria-controls', 'cockpitHelp');
+        helpCloseElement.addEventListener('click', closeHelp);
+        helpHeaderElement.appendChild(helpCloseElement);
+        helpSectionElement.appendChild(helpHeaderElement);
+        helpSectionElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && isHelpExpanded) { closeHelp(); }
+        });
 
         if (hasObjects && recipe.selectedRunFolderName) {
             helpSectionElement.appendChild(createElement('div', 'helpRun muted', HELP_RUN_PREFIX + recipe.selectedRunFolderName));
@@ -20955,6 +20997,16 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             helpToggleElement.setAttribute('aria-controls', 'cockpitHelp');
         }
         setHelpExpanded(isHelpExpanded, false);
+
+    }
+
+    // ✕ AND ESCAPE CLOSE THE HELP AS ? DOES, AND HAND FOCUS BACK TO ? (#487)
+    function closeHelp() {
+
+        if (!helpSectionElement) { return; }
+        setHelpExpanded(false, true);
+        savePanelPlace();
+        if (helpToggleElement && !helpToggleElement.disabled) { helpToggleElement.focus(); }
 
     }
 
@@ -31096,25 +31148,25 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The version, the CHANGELOG link and ? at the top right (#333, #350), drawn once beside the
-        title and outside the body, so every load, empty state and failure to draw keeps them. The
-        version arrives from the host and is written as text; the link posts no address -- the host
-        owns it. ? toggles the help section a render draws in the body, and is disabled while there
-        is none: before the first model, and after a failure to draw.
+        The CHANGELOG button and ? at the top right (#333, #350), drawn once beside the title and
+        outside the body, so every load, empty state and failure to draw keeps them. The version is
+        INSIDE the CHANGELOG button (#487), so a click on either opens it; it arrives from the host
+        and is written as text, and the button posts no address -- the host owns it. ? toggles the
+        help section a render draws in the body, and is disabled while there is none: before the
+        first model, and after a failure to draw.
     */
     function renderCockpitMeta() {
 
         if (!cockpitMetaElement) { return; }
 
-        cockpitVersionElement = createElement('span', 'cockpitVersion', '');
-
         const changelogElement = createButton('icon', 'cockpitChangelog');
+        cockpitChangelogElement = changelogElement;
+        cockpitVersionElement = createElement('span', 'cockpitVersion', '');
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
 
         changelogElement.setAttribute('type', 'button');
-        changelogElement.setAttribute('aria-label', CHANGELOG_LINK_LABEL);
-        changelogElement.setAttribute('title', CHANGELOG_LINK_LABEL);
+        labelChangelog('');
         glyphElement.setAttribute('class', 'githubGlyph');
         glyphElement.setAttribute('viewBox', GITHUB_GLYPH_VIEW_BOX);
         glyphElement.setAttribute('aria-hidden', 'true');
@@ -31122,6 +31174,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         pathElement.setAttribute('d', GITHUB_GLYPH_PATH);
         glyphElement.appendChild(pathElement);
         changelogElement.appendChild(glyphElement);
+        changelogElement.appendChild(cockpitVersionElement);
 
         changelogElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'openChangelog' });
@@ -31138,7 +31191,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
         disableHelpToggle();
 
-        cockpitMetaElement.appendChild(cockpitVersionElement);
         cockpitMetaElement.appendChild(changelogElement);
         cockpitMetaElement.appendChild(helpToggleElement);
 
@@ -31156,7 +31208,18 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function renderExtensionInfo(hostMessage) {
 
         if (!cockpitVersionElement) { return; }
-        cockpitVersionElement.textContent = typeof hostMessage.version === 'string' && hostMessage.version ? 'v' + hostMessage.version : '';
+        const versionText = typeof hostMessage.version === 'string' && hostMessage.version ? 'v' + hostMessage.version : '';
+        cockpitVersionElement.textContent = versionText;
+        labelChangelog(versionText);
+
+    }
+
+    function labelChangelog(versionText) {
+
+        if (!cockpitChangelogElement) { return; }
+        const label = versionText ? CHANGELOG_LINK_LABEL + ', ' + versionText : CHANGELOG_LINK_LABEL;
+        cockpitChangelogElement.setAttribute('aria-label', label);
+        cockpitChangelogElement.setAttribute('title', label);
 
     }
 

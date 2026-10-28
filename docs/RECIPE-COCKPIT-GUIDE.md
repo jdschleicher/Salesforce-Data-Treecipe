@@ -1,7 +1,7 @@
 # Recipe Cockpit guide
 
 The Recipe Cockpit shows the recipes Generate Treecipe wrote as cards you can open, trim and generate from.
-Click **?** at the top right of the cockpit, beside the version and the GitHub icon, for the short version of this page.
+Click **?** at the top right of the cockpit for the short version of this page. **?** stays pressed while the help is open; close it with **?** again, the **✕** at the help's top right, or Escape. The version and the GitHub icon beside it are one button that opens the CHANGELOG.
 
 A few words used below:
 
