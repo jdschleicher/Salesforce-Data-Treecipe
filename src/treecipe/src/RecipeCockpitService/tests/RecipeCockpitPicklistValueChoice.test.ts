@@ -975,7 +975,7 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
 
     it('draws a locked picklist\'s tiles disabled with the reason, and a click changes nothing', () => {
 
-        const { panel, editorElement } = openEditor({ picklistValues: ['Very Hot'] }, [ACCOUNT_TREE_KEY, 'Account', 'Sub_Rating__c']);
+        const { panel, editorElement, toggleElement } = openEditor({ picklistValues: ['Very Hot'] }, [ACCOUNT_TREE_KEY, 'Account', 'Sub_Rating__c']);
 
         const reasonElement = panel.findAll(editorElement, 'picklistEditorReason')[0];
         expect(reasonElement.textContent).not.toBe('');
@@ -987,6 +987,14 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         expect(tileStates(panel, editorElement)).toEqual([['Very Hot', 'true']]);
         saveOf(panel, editorElement).dispatch('click');
         expect(choiceMessages(panel)).toEqual([]);
+
+        // A LOCKED FIELD IS NEVER STRANDED WITH EDIT VALUES HIDDEN (#495): CANCEL STAYS ENABLED
+        expect(panel.isHidden(toggleElement)).toBe(true);
+        const cancelElement = panel.findAll(editorElement, 'picklistEditorCancel')[0];
+        expect(cancelElement.disabled).toBe(false);
+        cancelElement.dispatch('click');
+        expect(panel.isHidden(editorElement)).toBe(true);
+        expect(panel.isHidden(toggleElement)).toBe(false);
 
     });
 
