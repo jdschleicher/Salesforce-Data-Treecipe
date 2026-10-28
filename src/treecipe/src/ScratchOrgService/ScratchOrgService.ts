@@ -9,11 +9,6 @@ import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '.
 // AN ALIAS THE CLI KEEPS IN ~/.sfdx/alias.json AND THE READER TYPES BACK: LONG ENOUGH FOR A NAME, SHORT ENOUGH FOR A PICKER
 export const SCRATCH_ORG_ALIAS_MAX_LENGTH = 80;
 
-// WHAT AN https: URL FROM "sf org open --url-only" MAY BE, BEFORE IT IS HANDED TO THE READER'S BROWSER
-export const ORG_OPEN_URL_PROTOCOL = 'https:';
-
-export const ORG_OPEN_TIMEOUT_MILLISECONDS = 60000;
-
 // WINDOWS RESERVES THESE AS DEVICE NAMES, WITH OR WITHOUT AN EXTENSION: A FOLDER BY THAT NAME CANNOT BE MADE
 export const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
@@ -75,10 +70,6 @@ export interface IScratchOrgAliasChoice {
     alias: string;
     aliasHolderUsername?: string;
 }
-
-export type OrgOpenParseResult =
-    { isOpenable: true; url: string }
-    | { isOpenable: false; failureMessage: string };
 
 export type ScratchOrgCreateParseResult =
     { isCreated: true; username: string }
@@ -278,75 +269,6 @@ export class ScratchOrgService {
         PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
 
         return `sf project deploy start --target-org ${username}`;
-
-    }
-
-    /*
-        --url-only: THE EXTENSION OPENS THE URL ITSELF, WHICH ALSO WORKS WHERE THE CLI HAS NO BROWSER
-        (REMOTE, WSL, CODESPACES).
-    */
-    static buildOrgOpenArguments(username: string): string[] {
-
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
-
-        return ['org', 'open', '--target-org', username, '--url-only', '--json'];
-
-    }
-
-    // NOT PROJECT MODE: NO cwd, SO sf IS FOUND ON PATH THE WAY "sf org list" FINDS IT
-    static async resolveOrgOpenUrl(username: string): Promise<OrgOpenParseResult> {
-
-        const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(this.buildOrgOpenArguments(username), undefined, ORG_OPEN_TIMEOUT_MILLISECONDS);
-
-        return this.parseOrgOpenOutput(invocationResult);
-
-    }
-
-    /*
-        "sf org open --url-only --json" (#279). The answer is untrusted and the URL carries a
-        session id, so it is only ever handed to the browser: openable on status 0 and a result.url
-        that parses as https:, and a failure message never quotes it.
-    */
-    static parseOrgOpenOutput(invocationResult: ISalesforceCliInvocationResult): OrgOpenParseResult {
-
-        if ( invocationResult.spawnError ) {
-            return {
-                isOpenable: false,
-                failureMessage: invocationResult.spawnError.code === 'ENOENT'
-                    ? `The Salesforce CLI ("${PicklistDependencyCheckService.getSalesforceCliExecutable()}") is required to open an org, and it is not installed or not on PATH. Install it and try again.`
-                    : `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}`
-            };
-        }
-
-        if ( invocationResult.timedOut ) {
-            return { isOpenable: false, failureMessage: 'The Salesforce CLI did not answer in time.' };
-        }
-
-        const payload = this.readCliJsonPayload(invocationResult);
-        const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result) ? payload.result as Record<string, unknown> : undefined;
-        const url = result?.url;
-
-        if ( payload?.status === 0 && typeof url === 'string' ) {
-
-            let parsedUrl: URL | undefined;
-
-            try {
-                parsedUrl = new URL(url);
-            } catch {
-                parsedUrl = undefined;
-            }
-
-            return parsedUrl && parsedUrl.protocol === ORG_OPEN_URL_PROTOCOL
-                ? { isOpenable: true, url: parsedUrl.toString() }
-                : { isOpenable: false, failureMessage: 'The Salesforce CLI answered with an address that is not https, so it was not opened.' };
-
-        }
-
-        if ( payload?.status === 0 ) {
-            return { isOpenable: false, failureMessage: 'The Salesforce CLI answered without an address to open.' };
-        }
-
-        return { isOpenable: false, failureMessage: this.redactSecretText(this.buildCliFailureDetail(payload, invocationResult)) };
 
     }
 
@@ -571,7 +493,7 @@ export class ScratchOrgService {
     static redactSecretText(text: string): string {
 
         return String(text ?? '')
-            // A FRONTDOOR ADDRESS ("sf org open --url-only") LOGS WHOEVER HAS IT IN, WHATEVER FORM ITS SESSION PARAMETER TAKES
+            // A FRONTDOOR ADDRESS LOGS WHOEVER HAS IT IN, WHATEVER FORM ITS SESSION PARAMETER TAKES
             .replace(/https?:\/\/[^\s"']*[?&](?:sid|otp)=[^\s"']*/gi, ORG_OPERATION_REDACTED_VALUE)
             .replace(/00D[A-Za-z0-9]{12,15}![A-Za-z0-9._-]+/g, ORG_OPERATION_REDACTED_VALUE)
             .replace(/force:\/\/[^\s"']+/g, ORG_OPERATION_REDACTED_VALUE);

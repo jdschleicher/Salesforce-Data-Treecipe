@@ -30,6 +30,31 @@ const OBJECT_API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 */
 export const ORG_DESCRIBE_CONCURRENCY = 5;
 
+// "Open in browser" (#501): Salesforce's single-access endpoint, which answers a ONE-TIME frontdoor address
+export const ORG_FRONT_DOOR_SINGLE_ACCESS_PATH = '/services/oauth2/singleaccess';
+
+export const ORG_FRONT_DOOR_URL_PROTOCOL = 'https:';
+
+export const ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS = 60000;
+
+export type OrgFrontDoorFailure = 'connectionFailed' | 'requestFailed' | 'noAddress' | 'notHttps' | 'timedOut';
+
+/*
+    Every failure is one of these FIXED texts: an error from the org or jsforce can quote the
+    request, and the request carries the access token, so nothing it says is ever shown.
+*/
+export const ORG_FRONT_DOOR_FAILURE_TEXTS: Readonly<Record<OrgFrontDoorFailure, string>> = {
+    connectionFailed: 'its saved authorization could not be used. Log in to it again with "sf org login web" and try again.',
+    requestFailed: 'Salesforce did not give a one-time login address for it.',
+    noAddress: 'Salesforce answered without an address to open.',
+    notHttps: 'Salesforce answered with an address that is not https, so it was not opened.',
+    timedOut: 'Salesforce did not answer in time.'
+};
+
+export type OrgFrontDoorResult =
+    { isOpenable: true; url: string }
+    | { isOpenable: false; failure: OrgFrontDoorFailure; failureMessage: string };
+
 export interface INormalizedOrgPicklistValue {
     value: string;
     label: string;
@@ -616,6 +641,82 @@ export class SalesforceOrgService {
         const authorizedOrg = await Org.create({ aliasOrUsername: aliasOrUsername });
 
         return authorizedOrg.getConnection();
+
+    }
+
+    /*
+        A ONE-TIME frontdoor address for the org (#501), as "sf org open" builds it: never
+        frontdoor.jsp?sid=<access token>, which would leave the long-lived token in the browser's
+        history. The endpoint answers 403 to an expired token and jsforce refreshes only on a 401,
+        so the authorization is refreshed first. The address is only ever handed to the browser.
+    */
+    static async requestOrgFrontDoorUrl(username: string): Promise<OrgFrontDoorResult> {
+
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        const timedOut = new Promise<OrgFrontDoorResult>(resolve => {
+            timeoutHandle = setTimeout(() => resolve(this.buildOrgFrontDoorFailure('timedOut')), ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+        });
+
+        try {
+            return await Promise.race([this.fetchOrgFrontDoorUrl(username), timedOut]);
+        } finally {
+            clearTimeout(timeoutHandle);
+        }
+
+    }
+
+    private static async fetchOrgFrontDoorUrl(username: string): Promise<OrgFrontDoorResult> {
+
+        let connection: Connection;
+
+        try {
+            const authorizedOrg = await Org.create({ aliasOrUsername: username });
+            await authorizedOrg.refreshAuth();
+            connection = authorizedOrg.getConnection();
+        } catch {
+            return this.buildOrgFrontDoorFailure('connectionFailed');
+        }
+
+        let response: unknown;
+
+        try {
+            response = await connection.requestGet(new URL(ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, connection.instanceUrl).toString());
+        } catch {
+            return this.buildOrgFrontDoorFailure('requestFailed');
+        }
+
+        return this.readOrgFrontDoorResponse(response);
+
+    }
+
+    // THE ANSWER CAME OVER THE NETWORK: OPENABLE ONLY AS A frontdoor_uri STRING THAT PARSES AS https:
+    static readOrgFrontDoorResponse(response: unknown): OrgFrontDoorResult {
+
+        const frontDoorUri = response !== null && typeof response === 'object' && !Array.isArray(response)
+            ? (response as Record<string, unknown>).frontdoor_uri
+            : undefined;
+
+        if ( typeof frontDoorUri !== 'string' || frontDoorUri === '' ) {
+            return this.buildOrgFrontDoorFailure('noAddress');
+        }
+
+        let parsedUrl: URL | undefined;
+
+        try {
+            parsedUrl = new URL(frontDoorUri);
+        } catch {
+            parsedUrl = undefined;
+        }
+
+        return parsedUrl && parsedUrl.protocol === ORG_FRONT_DOOR_URL_PROTOCOL
+            ? { isOpenable: true, url: parsedUrl.toString() }
+            : this.buildOrgFrontDoorFailure('notHttps');
+
+    }
+
+    private static buildOrgFrontDoorFailure(failure: OrgFrontDoorFailure): OrgFrontDoorResult {
+
+        return { isOpenable: false, failure: failure, failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS[failure] };
 
     }
 

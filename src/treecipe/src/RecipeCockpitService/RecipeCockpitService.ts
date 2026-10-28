@@ -2887,7 +2887,7 @@ export interface IRecipeCockpitPanelState {
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
-    // "Open in browser" (#279): ONE "sf org open" AT A TIME, SO A DOUBLE CLICK OPENS ONE TAB
+    // "Open in browser" (#279, #501): ONE OPEN AT A TIME, SO A DOUBLE CLICK OPENS ONE TAB
     isOrgOpenInFlight?: boolean;
     isGenerateTreecipeInFlight: boolean;
     pendingIsGenerateTreecipeOffered: boolean;
@@ -8940,11 +8940,11 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Open in browser" (#279): "sf org open --url-only --json" for the selected org's USERNAME,
-        and the https: URL it answers handed to the reader's browser by VS Code, which also works
-        where the CLI has no browser of its own. The URL logs the reader in -- it carries a session
-        id -- so it goes to openExternal and nowhere else: never posted, saved, logged or quoted in
-        a notification. Notifications are not awaited, so the button comes back without a click.
+        "Open in browser" (#279, #501): a ONE-TIME frontdoor address for the selected org's USERNAME,
+        asked of Salesforce over the org's own connection (no CLI), handed to the reader's browser
+        by VS Code. The address logs the reader in, so it goes to openExternal and nowhere else:
+        never posted, saved, logged or quoted in a notification, and every failure is a fixed text.
+        Notifications are not awaited, so the button comes back without a click.
 
         One open per WINDOW, like the scratch org run: a panel closed and reopened mid-open starts
         from this flag, is told the open is running when its document loads, and is the panel the
@@ -8961,7 +8961,7 @@ export class RecipeCockpitService {
 
         try {
 
-            const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username);
+            const openOutcome = await SalesforceOrgService.requestOrgFrontDoorUrl(orgDetail.username);
 
             if ( 'failureMessage' in openOutcome ) {
                 this.showOrgOpenError(`${orgLabel} was not opened: ${openOutcome.failureMessage}`);
