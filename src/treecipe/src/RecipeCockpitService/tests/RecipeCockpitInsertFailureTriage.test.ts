@@ -48,7 +48,8 @@ describe('RecipeCockpitInsertFailureTriage', () => {
 
             const routedSubTabs: InsertFailureTroubleshootingSubTab[] = ['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets'];
 
-            expect([...RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS].sort()).toEqual([...routedSubTabs].sort());
+            // THE HISTORY (#485) LISTS STEPS ALREADY TAKEN, SO NO INSERT ERROR POINTS AT IT
+            expect([...RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS].filter(subTab => subTab !== 'history').sort()).toEqual([...routedSubTabs].sort());
 
         });
 

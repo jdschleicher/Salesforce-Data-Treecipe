@@ -72,15 +72,15 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
     describe('the strip', () => {
 
-        it('draws six sub-tabs, in order, as a tab list, with the first selected and only its panel shown', () => {
+        it('draws seven sub-tabs, in order, as a tab list, with the first selected and only its panel shown', () => {
 
             const panel = drawRecipe();
             const accountCard = accountCardOf(panel);
             panel.openTab(accountCard, 'Troubleshooting');
 
             const subTabs = subTabsOf(panel, accountCard);
-            expect(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS).toEqual(['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets']);
-            expect(subTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['TODO\'s (5)', 'Fields', 'Permissions', 'Validation Rules', 'Record Types', 'Global Value Sets']);
+            expect(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS).toEqual(['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets', 'history']);
+            expect(subTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['TODO\'s (5)', 'Fields', 'Permissions', 'Validation Rules', 'Record Types', 'Global Value Sets', 'History']);
             expect(subTabs[0].parentNode.attributes.role).toBe('tablist');
             subTabs.forEach((tabElement: any, tabIndex: number) => {
                 expect(tabElement.attributes.role).toBe('tab');

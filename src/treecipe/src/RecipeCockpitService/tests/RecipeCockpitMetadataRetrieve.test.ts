@@ -604,6 +604,47 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
         });
 
+        it('writes each retrieve\'s summary for the History once a CLI has run, the listing included, and none for a quiet cancel (#485)', async () => {
+
+            const operationsFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts', 'OrgOperations', PROD_USERNAME);
+            const summaries = () => ( fs.existsSync(operationsFolderPath) ? fs.readdirSync(operationsFolderPath) : [] )
+                .filter(fileName => /-summary(-\d+)?\.json$/.test(fileName))
+                .sort()
+                .map(fileName => JSON.parse(fs.readFileSync(path.join(operationsFolderPath, fileName), 'utf-8')));
+
+            retrieveHandler = () => ({ stdout: buildRetrieveAnswer([retrievedFile('RecordType', 'Account.Business'), retrievedFile('RecordType', 'Account.Wholesale')]) });
+            await openCockpit();
+
+            modalAnswer = undefined;
+            await retrieve('recordTypes');
+            // THE LISTING RAN, BUT A DISMISSED CONFIRMATION CHANGED NOTHING: NO ROW
+            expect(summaries()).toEqual([]);
+
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+            modalAnswer = RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL;
+            await retrieve('recordTypes');
+
+            const landed = summaries().find(summary => summary.outcome === 'succeeded');
+            expect(landed).toEqual(expect.objectContaining({ step: 'record-type-retrieve', orgUsername: PROD_USERNAME, succeededCount: 2 }));
+            expect(landed.fileNames).toEqual([
+                expect.stringMatching(/^\d{8}-\d{6}-record-type-retrieve-package\.xml$/),
+                expect.stringMatching(/^\d{8}-\d{6}-record-type-retrieve\.json$/)
+            ]);
+
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+            listHandler = () => ({ stdout: '{"status":1,"message":"No authorization"}', error: Object.assign(new Error('exit 1'), { code: 1 }) });
+            await retrieve('recordTypes');
+
+            expect(summaries().map(summary => summary.outcome).sort()).toEqual(['failed', 'succeeded']);
+
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+            listHandler = () => ({ stdout: '', error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
+            await retrieve('recordTypes');
+
+            expect(summaries().map(summary => summary.outcome).sort()).toEqual(['failed', 'failed', 'succeeded']);
+
+        });
+
         describe('the org it reads from: the Target Org Manager selection (#480)', () => {
 
             const QA_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com', alias: 'qa' };

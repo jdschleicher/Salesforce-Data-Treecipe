@@ -767,6 +767,59 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
+        it('writes each deploy\'s summary beside its files once the CLI has run, for the History (#485): landed, failed and cancelled', async () => {
+
+            const summaries = () => operationFiles()
+                .filter(fileName => fileName.endsWith('-summary.json') || /-summary-\d+\.json$/.test(fileName))
+                .sort()
+                .map(fileName => JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), fileName), 'utf-8')));
+
+            await openCockpitWithQaSelected();
+            await deploy('deployTreeFields');
+
+            expect(summaries()).toEqual([expect.objectContaining({
+                schemaVersion: 1,
+                step: 'field-deploy',
+                outcome: 'succeeded',
+                orgUsername: QA_USERNAME,
+                orgAlias: 'qa',
+                succeededCount: 7,
+                fileNames: [packageXmlFiles()[0], operationFiles().find(fileName => /^\d{8}-\d{6}-field-deploy(-\d+)?\.json$/.test(fileName))]
+            })]);
+
+            deployHandler = () => ({ stdout: buildDeployAnswer(0, [{ fullName: 'Account.Rating__c', problem: 'Value set Account_Ratings not found' }]) });
+            await deploy('deployTreeFields');
+
+            expect(summaries().map(summary => [summary.outcome, summary.failedCount, summary.detail])).toEqual(expect.arrayContaining([
+                ['failed', 1, 'Account.Rating__c: Value set Account_Ratings not found']
+            ]));
+
+            deployHandler = () => 'hold';
+            const deployDone = deploy('deployTreeFields');
+            while ( deployCalls().length < 3 ) {
+                await flushAsyncWork();
+            }
+            cancellationToken.isCancellationRequested = true;
+            cancellationListeners.forEach(listener => listener());
+            heldCallbacks.forEach(answer => answer());
+            await deployDone;
+            await flushAsyncWork();
+
+            expect(summaries().map(summary => summary.outcome).sort()).toEqual(['cancelled', 'failed', 'succeeded']);
+
+        });
+
+        it('writes no summary when nothing ran: a cancelled modal starts no process and leaves no History row (#485)', async () => {
+
+            await openCockpitWithQaSelected();
+            modalAnswer = undefined;
+
+            await deploy('deployTreeFields');
+
+            expect(operationFiles()).toEqual([]);
+
+        });
+
         it('stops after the modal when an insert started while it was open', async () => {
 
             await openCockpitWithQaSelected();
@@ -1112,7 +1165,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
         const deployButtonOf = (panel: ReturnType<typeof runPanelScript>, deployKind: string, objectApiName = 'OtherChildObject__c') =>
             panel.findAll(cardOf(panel, objectApiName), `troubleshootingDeploy-${deployKind}`)[0];
 
-        it('draws Troubleshooting after Treecipe and Previously Used Data Sets, with six sub-tabs each searched by its own box, and asks the host for its counts when selected', () => {
+        it('draws Troubleshooting after Treecipe and Previously Used Data Sets, with seven sub-tabs each searched by its own box, and asks the host for its counts when selected', () => {
 
             const panel = renderTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
@@ -1124,9 +1177,9 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             panel.openTab(accountCard, 'Troubleshooting');
 
-            expect(panel.findAll(accountCard, 'troubleshootingSubTab').map((tabElement: any) => tabElement.textContent)).toEqual(['TODO\'s (5)', 'Fields', 'Permissions', 'Validation Rules', 'Record Types', 'Global Value Sets']);
+            expect(panel.findAll(accountCard, 'troubleshootingSubTab').map((tabElement: any) => tabElement.textContent)).toEqual(['TODO\'s (5)', 'Fields', 'Permissions', 'Validation Rules', 'Record Types', 'Global Value Sets', 'History']);
             // ONE PER SUB-TAB, AND THE TODO'S REMOVED LIST'S OWN (#391)
-            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabSearchInput')).toHaveLength(7);
+            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabSearchInput')).toHaveLength(8);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([{ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 }]);
             // THE ASSIGN, GENERATE AND RETRIEVE BUTTONS ARE HERE NOW, AND NOWHERE ELSE ON THE CARD
             ['treePermissionSets', 'treeGeneratePermissionSet', 'treeRetrieveValidationRules'].forEach(className => {
