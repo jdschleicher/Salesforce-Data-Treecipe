@@ -93,7 +93,7 @@ flowchart LR
 
 ## 3. Architecture
 
-Three tiers, two trust boundaries. The extension never touches the org directly — every org interaction is delegated to the authenticated Salesforce CLI.
+Three tiers, two trust boundaries. The org is reached two ways: the deploy and the test run go through the authenticated Salesforce CLI, and the deployed-check query goes through a `@salesforce/core` connection opened from the same local authorization (`SalesforceOrgService.getConnection`, #497). Epic #496 moves the remaining CLI calls to that connection where it can.
 
 ```mermaid
 flowchart TB
@@ -103,6 +103,7 @@ flowchart TB
             CMD["ExtensionCommandService<br/><i>command orchestration, prompts, consent</i>"]
             GEN["PicklistDependencyTestService<br/><i>metadata → Apex source</i>"]
             CHK["PicklistDependencyCheckService<br/><i>CLI invocation, result parsing</i>"]
+            CORE["@salesforce/core connection<br/><i>reads the local authorization</i>"]
         end
         DISK[("Workspace repo<br/>force-app/.../classes<br/>treecipe/PicklistDependencyResults")]
         CLI["Salesforce CLI (sf)<br/><i>holds the org credentials</i>"]
@@ -118,6 +119,8 @@ flowchart TB
     CMD --> CHK
     GEN -->|"writeFileSync<br/>path-containment checked"| DISK
     CHK -->|"execFile, argv form<br/>no shell on macOS/Linux"| CLI
+    CHK -->|"getConnection"| CORE
+    CORE -->|"Tooling API query<br/>TestSuiteMembership"| DEPLOY
     DISK -.->|"--source-dir, explicit file list"| CLI
     CLI -->|"authenticated session"| DEPLOY
     CLI -->|"sf apex run test"| TEST
@@ -138,10 +141,11 @@ flowchart TB
 | Repo XML → generator | Untrusted text (`<fullName>`, `<controllingField>`, value settings) from files that may originate from any branch or contributor | API-name regex allow-list `^[A-Za-z0-9_]+$`; Apex string-literal escaping for values |
 | Generator → disk | Apex source and `-meta.xml` | `assertClassesDirectoryContainedInWorkspace` — symlink-resolved containment check before any write |
 | Extension → CLI | Org identifier, file paths | `execFile` argv form (no shell) on macOS/Linux; org-identifier regex; explicit Windows quoting with double-quote rejection |
-| CLI → org | Authenticated session | **Owned entirely by the Salesforce CLI.** The extension never reads, stores or transmits a token |
+| CLI → org | Authenticated session | Owned by the Salesforce CLI for the deploy and the test run |
+| Extension → org | Tooling API query over the `@salesforce/core` connection | `@salesforce/core` reads the token from the CLI's local authorization into the extension host, for that request only. The extension never writes, logs or posts it |
 | Org → extension | Test results JSON | Parsed defensively; unknown shapes are treated as failure, never as pass |
 
-**Credential posture:** this component holds no secrets. It has no configuration file containing credentials, performs no network I/O of its own, and delegates all authentication to `sf`, which the user has already authorised out of band. There is no code path in which an access token is read into the extension host.
+**Credential posture:** this component holds no secrets of its own and has no configuration file containing credentials. Authentication is the user's existing `sf` authorization, made out of band. The deploy and the test run delegate it to `sf`; the deployed-check query opens a `@salesforce/core` connection from it, so the access token is read into the extension host for that request (#497). It is never written, logged or posted to a webview.
 
 ---
 
@@ -704,6 +708,7 @@ flowchart LR
         S2["Generated -meta.xml"]
         S3["Filesystem writes"]
         S4["Salesforce CLI process"]
+        S5["@salesforce/core connection<br/>(Tooling API query)"]
     end
 
     X1 --> C1 --> S1
@@ -712,6 +717,7 @@ flowchart LR
     X3 --> C4
     X4 --> C4 --> S3
     X5 --> C5 --> S4
+    C5 --> S5
 
     style untrusted fill:#fee2e2,stroke:#b91c1c
     style controls fill:#dcfce7,stroke:#15803d
@@ -788,7 +794,7 @@ flowchart TB
 |---|---|---|---|
 | Generate specs | Extension (local) | **None on the platform.** Filesystem write to the workspace only | Safe to run in any environment, including one with no org connection |
 | List authorised orgs | `sf` CLI | None — reads the local CLI auth store | The extension surfaces only orgs the user has already authorised |
-| Query `ApexClass` (deploy-needed check) | `sf data query` | **API Enabled**; read access to the `ApexClass` tooling/standard object, which in practice accompanies **View Setup and Configuration** **[verify-in-org]** | A failure is treated as "not deployed" — the design prefers a redundant prompt over a skipped deploy |
+| Query `TestSuiteMembership` (deploy-needed check) | Extension, Tooling API over a `@salesforce/core` connection | **API Enabled**; read access to the `TestSuiteMembership` tooling object, which in practice accompanies **View Setup and Configuration** **[verify-in-org]** | A failure is treated as "not deployed" — the design prefers a redundant prompt over a skipped deploy |
 | Deploy the classes | `sf project deploy start` | **API Enabled** + **Author Apex** **[verify-in-org]** | Author Apex is the governing permission for creating/updating `ApexClass` via the Metadata API |
 | Run the test class | `sf apex run test` | **API Enabled** + Apex test execution rights, conventionally granted with **Author Apex** **[verify-in-org]** | Creates no records; reads describe only |
 

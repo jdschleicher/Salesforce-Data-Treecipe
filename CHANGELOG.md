@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.165.0] - Picklist Dependency Check: the deployed-check asks the org through a connection, not the sf CLI
+
+[#497](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/497), the first slice of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496) (replace Salesforce CLI calls with `@salesforce/core` where it makes sense). Before deploying, **Run Picklist Dependency Check** asks whether the generated test suite and its class are in the org. That question started an `sf data query --use-tooling-api` process, which took seconds and needed `sf` on PATH.
+
+- **One Tooling query on a connection.** `PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg` opens the org with `SalesforceOrgService.getConnection` and sends the same `TestSuiteMembership` query through `connection.tooling.query`. No `sf` process starts. It still asks about suite MEMBERSHIP, never the suite's existence, and the org identifier is still checked before any connection opens.
+- **A failure still reads as "not deployed".** A connection that does not open, a query the org rejects, and an answer with no records list all answer `false`, so the check prompts to deploy rather than skipping a deploy it needs.
+- **A guard on every remaining sf call.** `SalesforceCliCallSites.test.ts` lists each place that still starts an `sf` process, by file and method (13 after this change, plus the Recipe Cockpit's cancellable wrapper), and fails on a new one, a removed one left listed, a new file importing `child_process`, or a direct `jsforce` import (`jsforce` is a devDependency; the connection `@salesforce/core` returns is the API that ships). Each #496 slice deletes its entry.
+- **Docs.** `docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md` no longer says every org interaction goes through the CLI: its architecture diagram, trust boundaries, credential posture (the access token is now read into the extension host for this one request, and never written, logged or posted), sinks and §9.1 permissions row (which still named the older `ApexClass` query) say what the check does. `PICKLIST-DEPENDENCY-FLOW.md`'s run diagram names the current method and the connection. CLAUDE.md adds the rule that org work goes through a `@salesforce/core` connection.
+- **Tests.** `PicklistDependencyCheckService.test.ts`: true for a record, false for none, for a rejected query, for a connection that does not open and for four malformed answers; the query goes through `tooling.query` on the named org with the suite and class names; no `execFile`; an unusable identifier opens no connection.
+
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 
 [#487](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/487). Only the GitHub icon at the top right opened the CHANGELOG, though the version beside it read as part of the link; the open help could only be closed from **?**; and **?** was taller than its neighbours and looked the same open or closed.
