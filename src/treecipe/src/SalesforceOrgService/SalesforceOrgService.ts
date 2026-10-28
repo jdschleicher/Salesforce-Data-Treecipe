@@ -153,6 +153,15 @@ export interface IOrgTypeDetail {
     organizationType: string;
 }
 
+// A PERMISSION SET THE ORG HOLDS (#500): ITS NAME AS THE ORG SPELLS IT, ITS ID, AND THE NAMESPACE OF A PACKAGED ONE
+export interface IOrgPermissionSet {
+    id: string;
+    name: string;
+    namespacePrefix?: string;
+}
+
+export const PERMISSION_SET_QUERY_NAME_CHUNK_SIZE = 50;
+
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
 /*
@@ -449,12 +458,13 @@ export class SalesforceOrgService {
     }
 
     /*
-        Which of the named permission sets the org holds, as the org spells them. Every name is held
-        to the api-name rule before it is quoted into the SOQL, so a name cannot close the quote, and
-        every answer is type-checked: it came over the network. A query that fails throws, so a
-        caller never reads a failed query as "the org has none of them".
+        The named permission sets the org holds, as the org spells them, with each one's Id and
+        namespace (#500: the Id is what an assignment row names). Every name is held to the api-name
+        rule before it is quoted into the SOQL, so a name cannot close the quote, and every answer is
+        type-checked: it came over the network. A query that fails throws, so a caller never reads a
+        failed query as "the org has none of them".
     */
-    static async queryPermissionSetNames(querySource: IOrgQuerySource, permissionSetNames: readonly string[]): Promise<string[]> {
+    static async queryPermissionSets(querySource: IOrgQuerySource, permissionSetNames: readonly string[]): Promise<IOrgPermissionSet[]> {
 
         if ( permissionSetNames.length === 0 ) {
             return [];
@@ -466,16 +476,51 @@ export class SalesforceOrgService {
             }
         });
 
-        const quotedNames = permissionSetNames.map(permissionSetName => `'${permissionSetName}'`).join(', ');
-        const queryRecords = this.asRecord(await querySource.query(`SELECT Name FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
-
-        if ( !Array.isArray(queryRecords) ) {
-            throw new Error('The org\'s answer about its permission sets could not be read.');
+        // A QUERY GOES IN THE URL, AND 200 NAMES OF 80 CHARACTERS WOULD PASS ITS LENGTH LIMIT: SO AT MOST PERMISSION_SET_QUERY_NAME_CHUNK_SIZE A QUERY
+        const queryRecords: unknown[] = [];
+        for ( let chunkStart = 0; chunkStart < permissionSetNames.length; chunkStart += PERMISSION_SET_QUERY_NAME_CHUNK_SIZE ) {
+            const quotedNames = permissionSetNames.slice(chunkStart, chunkStart + PERMISSION_SET_QUERY_NAME_CHUNK_SIZE).map(permissionSetName => `'${permissionSetName}'`).join(', ');
+            const chunkRecords = this.asRecord(await querySource.query(`SELECT Id, Name, NamespacePrefix FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
+            if ( !Array.isArray(chunkRecords) ) {
+                throw new Error('The org\'s answer about its permission sets could not be read.');
+            }
+            queryRecords.push(...chunkRecords);
         }
 
         return queryRecords
-            .map(queryRecord => this.asRecord(queryRecord)?.Name)
-            .filter((permissionSetName): permissionSetName is string => typeof permissionSetName === 'string' && SalesforceApiName.isApiName(permissionSetName));
+            .map(queryRecord => this.asRecord(queryRecord))
+            .filter((queryRecord): queryRecord is Record<string, unknown> => queryRecord !== undefined
+                && typeof queryRecord.Name === 'string' && SalesforceApiName.isApiName(queryRecord.Name)
+                && typeof queryRecord.Id === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(queryRecord.Id))
+            .map(queryRecord => ({
+                id: queryRecord.Id as string,
+                name: queryRecord.Name as string,
+                namespacePrefix: typeof queryRecord.NamespacePrefix === 'string' && queryRecord.NamespacePrefix !== '' ? queryRecord.NamespacePrefix : undefined
+            }));
+
+    }
+
+    /*
+        The Id of the user an org is authorized as (#500): the one assignee an assignment names. The
+        username is quoted with its backslashes and quotes escaped, and an answer that is not exactly
+        one record with a Salesforce Id throws, so no assignment is ever made for a guessed user.
+    */
+    static async queryUserId(querySource: IOrgQuerySource, username: string): Promise<string> {
+
+        // A CONTROL CHARACTER COULD NOT CLOSE THE QUOTE, BUT NO USERNAME HOLDS ONE: IT IS REFUSED RATHER THAN SENT
+        if ( /[\u0000-\u001f\u007f\u0085\u2028\u2029]/.test(String(username)) ) {
+            throw new Error('The username holds a control character, so it was not sent to the org.');
+        }
+
+        const quotedUsername = String(username).replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
+        const queryRecords = this.asRecord(await querySource.query(`SELECT Id FROM User WHERE Username = '${quotedUsername}'`))?.records;
+        const userId = Array.isArray(queryRecords) && queryRecords.length === 1 ? this.asRecord(queryRecords[0])?.Id : undefined;
+
+        if ( typeof userId !== 'string' || !SALESFORCE_RECORD_ID_PATTERN.test(userId) ) {
+            throw new Error('The org\'s answer about the user it is authorized as could not be read.');
+        }
+
+        return userId;
 
     }
 

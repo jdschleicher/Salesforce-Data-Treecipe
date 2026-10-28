@@ -9,6 +9,8 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import {
+    IPermissionSetAssignmentConnection,
+    IPermissionSetAssignmentPlan,
     IPermissionSetCandidate,
     PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS,
     PERMISSION_SET_MAX_BUFFER_BYTES,
@@ -45,6 +47,7 @@ import {
     IDataOrgDetail,
     IDataOrgListing,
     IOrgDescribeSource,
+    IOrgPermissionSet,
     IOrgQuerySource,
     IOrgDisplayDetail,
     IOrgTypeDetail,
@@ -9169,7 +9172,7 @@ export class RecipeCockpitService {
         const treeLabel = tree.customName || tree.title;
         const objectApiNames = [...new Set(tree.objects.map(treeObject => treeObject.objectApiName))];
         let closingState: IRecipeCockpitPermissionSetClosingState = {};
-        let cliStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
+        let assignStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
 
         this.setPermissionSetAssignState({ command: 'permissionSetAssignState', isRunning: true, treeKey: treeKey });
 
@@ -9180,7 +9183,7 @@ export class RecipeCockpitService {
                 treeLabel,
                 objectApiNames,
                 assignSelection ? async () => assignSelection.orgDetail : async () => this.promptForPermissionSetOrg(),
-                (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
+                (orgDetail, coveredObjectApiNames) => { assignStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
                 { restartMessage: { command: 'assignTreePermissionSets', treeKey: treeKey, orgIndex: null }, isSandboxOnly: true },
                 panelState.recipeDataMessage ? this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, panelState.recipeDataMessage.recipe, tree) : undefined
             );
@@ -9189,16 +9192,16 @@ export class RecipeCockpitService {
 
             try {
 
-                if ( cliStartedFor ) {
-                    const { orgDetail, objectApiNames: coveredObjectApiNames } = cliStartedFor;
+                if ( assignStartedFor ) {
+                    const { orgDetail, objectApiNames: coveredObjectApiNames } = assignStartedFor;
                     coveredObjectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName));
                 }
 
                 const currentPanel = this.recipeCockpitPanel;
                 const currentPanelState = this.recipeCockpitPanelState;
 
-                if ( closingState.isAssigned === true && cliStartedFor && assignSelection && currentPanel && currentPanelState.dataOrgSelection === assignSelection ) {
-                    const lowerCoveredNames = new Set(cliStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+                if ( closingState.isAssigned === true && assignStartedFor && assignSelection && currentPanel && currentPanelState.dataOrgSelection === assignSelection ) {
+                    const lowerCoveredNames = new Set(assignStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
                     await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => lowerCoveredNames.has(treeObject.objectApiName.toLowerCase())));
                 }
 
@@ -14229,13 +14232,16 @@ export class RecipeCockpitService {
         Everything is found and picked BEFORE an org is asked for, so a project with no permission
         set for the tree opens no picker; a dismissed pick or org prompt is a quiet cancel. After the
         confirmation the org is asked again whether it is a sandbox and, on the same connection,
-        which picks it holds. No CLI process starts for a pick the org does not hold.
+        which picks it holds and which user it is authorized as; the picks it holds are assigned to
+        that user by ONE PermissionSetAssignment insert on that connection (#500), and nothing is
+        sent for a pick the org does not hold. The insert has no Cancel: one request cannot be
+        taken back once sent, and a timeout reports which landed as unknown.
     */
     private static async performPermissionSetAssign(workspaceRoot: string,
                                                     treeLabel: string,
                                                     objectApiNames: string[],
                                                     resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
-                                                    onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
+                                                    onAssignStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
                                                     changeOrg?: IRecipeCockpitConfirmChangeOrg,
                                                     runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): Promise<IRecipeCockpitPermissionSetClosingState> {
 
@@ -14306,10 +14312,12 @@ export class RecipeCockpitService {
             return {};
         }
 
+        let connection: Connection;
         let querySource: IOrgQuerySource;
         let orgTypeDetail: IOrgTypeDetail | undefined;
         try {
-            querySource = SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username));
+            connection = await SalesforceOrgService.getConnection(orgDetail.username);
+            querySource = SalesforceOrgService.toQuerySource(connection);
             orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
         } catch (connectionError) {
             return refuse(`Nothing was assigned: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`);
@@ -14322,14 +14330,14 @@ export class RecipeCockpitService {
         // ONLY AN ORG THAT ANSWERED IT IS A SANDBOX BECOMES THE SELECTION, WHATEVER FOLLOWS
         const confirmed: IRecipeCockpitPermissionSetClosingState = { orgDetail: orgDetail, isConfirmed: true };
 
-        let orgPermissionSetNames: string[];
+        let orgPermissionSets: IOrgPermissionSet[];
         try {
-            orgPermissionSetNames = await SalesforceOrgService.queryPermissionSetNames(querySource, pickedPermissionSets.map(permissionSet => permissionSet.name));
+            orgPermissionSets = await SalesforceOrgService.queryPermissionSets(querySource, pickedPermissionSets.map(permissionSet => permissionSet.name));
         } catch {
             return refuse(`Nothing was assigned: ${orgLabel} could not be asked which of the permission sets it holds. Try again.`, confirmed);
         }
 
-        const { presentPermissionSets, missingPermissionSets } = RecipeCockpitPermissionSetAssign.partitionByOrgPresence(pickedPermissionSets, orgPermissionSetNames);
+        const { presentPermissionSets, missingPermissionSets } = RecipeCockpitPermissionSetAssign.partitionByOrgPresence(pickedPermissionSets, orgPermissionSets.map(orgPermissionSet => orgPermissionSet.name));
 
         if ( missingPermissionSets.length > 0 ) {
             this.showPermissionSetNotification(
@@ -14343,6 +14351,14 @@ export class RecipeCockpitService {
             return confirmed;
         }
 
+        // THE ASSIGNEE IS THE USER THE ORG IS AUTHORIZED AS, ASKED ON THE SAME CONNECTION, AND NO ONE ELSE
+        let assigneeId: string;
+        try {
+            assigneeId = await SalesforceOrgService.queryUserId(querySource, orgDetail.username);
+        } catch {
+            return refuse(`Nothing was assigned: ${orgLabel} could not be asked which user it is authorized as. Try again.`, confirmed);
+        }
+
         const permissionSetNames = presentPermissionSets.map(permissionSet => permissionSet.name);
         const permissionSetText = describePermissionSets(permissionSetNames.length);
         // EVERY OBJECT A PICK GRANTS ON, NOT ONLY THIS TREE'S: ANOTHER CARD'S DESCRIBE OF IT CHANGES TOO
@@ -14351,11 +14367,11 @@ export class RecipeCockpitService {
             ...objectApiNames,
             ...presentPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).filter(objectApiName => SalesforceApiName.isApiName(objectApiName))
         ])].filter(objectApiName => lowerGrantedNames.has(objectApiName.toLowerCase()));
-        const assignArguments = RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(permissionSetNames, orgDetail.username);
+        const assignmentPlan = RecipeCockpitPermissionSetAssign.planAssignments(assigneeId, permissionSetNames, orgPermissionSets);
 
-        onCliStarted(orgDetail, coveredObjectApiNames);
+        onAssignStarted(orgDetail, coveredObjectApiNames);
 
-        // THE HISTORY'S RECORD OF THIS ASSIGNMENT (#485), WRITTEN ONCE THE CLI HAS RUN, WHATEVER IT ANSWERED
+        // THE HISTORY'S RECORD OF THIS ASSIGNMENT (#485), WRITTEN ONCE THE INSERT WAS SENT, WHATEVER IT ANSWERED
         const stepStartedAt = new Date();
         const assigningOrgDetail = orgDetail;
         let assignOutputFilePath: string | undefined;
@@ -14370,18 +14386,24 @@ export class RecipeCockpitService {
             filePaths: [assignOutputFilePath]
         });
 
-        const assignRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`), assignArguments, PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, workspaceRoot);
+        const assignRun = await this.insertPermissionSetAssignments(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`),
+            { sobject: objectApiName => ({ create: async (records, options) => await connection.sobject(objectApiName).create(records, options) }) },
+            assignmentPlan
+        );
 
-        if ( assignRun.isCancelled ) {
-            recordStep('cancelled', { detail: 'Which permission sets were assigned is unknown.' });
-            return refuse(`The assignment of ${permissionSetText} in ${orgLabel} was cancelled, so which were assigned is unknown.`, confirmed);
-        }
+        const assignOutcome: PermissionSetAssignOutcome = assignRun.failureMessage !== undefined
+            ? { kind: 'unconfirmed', failureMessage: assignRun.failureMessage }
+            : RecipeCockpitPermissionSetAssign.readAssignmentSaveResults(assignmentPlan, assignRun.saveResults);
 
-        const assignPayload = ScratchOrgService.readCliJsonPayload(assignRun.invocation);
-        const assignOutcome: PermissionSetAssignOutcome = RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(assignRun.invocation, permissionSetNames, assignPayload);
-        assignOutputFilePath = assignRun.invocation.spawnError || assignRun.invocation.isOutputTooLarge
-            ? undefined
-            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload, runArtifactsLocation);
+        assignOutputFilePath = runArtifactsLocation && ScratchOrgService.writeOrgOperationPayload(workspaceRoot, orgDetail.username, 'permission-set-assign', {
+            assigneeUsername: orgDetail.username,
+            assigneeId: assigneeId,
+            permissionSets: assignmentPlan.sentNames.map((permissionSetName, recordIndex) => ({ name: permissionSetName, id: assignmentPlan.records[recordIndex].PermissionSetId })),
+            ...( assignmentPlan.unresolvedNames.length > 0 ? { notSent: assignmentPlan.unresolvedNames.map((permissionSetName, nameIndex) => ({ name: permissionSetName, reason: assignmentPlan.unresolvedMessages[nameIndex] })) } : {} ),
+            ...( assignRun.failureMessage !== undefined ? { failure: assignRun.failureMessage } : { saveResults: assignRun.saveResults } ),
+            outcome: assignOutcome
+        }, new Date(), runArtifactsLocation);
 
         switch ( assignOutcome.kind ) {
 
@@ -14398,10 +14420,6 @@ export class RecipeCockpitService {
                 }
                 return { ...confirmed, isAssigned: true };
             }
-
-            case 'cliNotInstalled':
-                recordStep('failed', { detail: assignOutcome.failureMessage });
-                return refuse(assignOutcome.failureMessage, confirmed);
 
             case 'unconfirmed':
                 recordStep('unknown', { detail: assignOutcome.failureMessage });
@@ -14423,6 +14441,46 @@ export class RecipeCockpitService {
             }
 
         }
+
+    }
+
+    /*
+        The one assignment insert (#500) behind a progress notification with no Cancel, raced with
+        PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS. A request that throws or is not answered in time
+        may still have been saved, so it is a failureMessage saying which landed is unknown, never
+        "none assigned". The error's own text is not quoted: it can carry a session id.
+    */
+    private static async insertPermissionSetAssignments(progressTitle: string,
+                                                        connection: IPermissionSetAssignmentConnection,
+                                                        assignmentPlan: IPermissionSetAssignmentPlan): Promise<{ saveResults?: unknown; failureMessage?: string }> {
+
+        if ( assignmentPlan.records.length === 0 ) {
+            return { saveResults: [] };
+        }
+
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: progressTitle,
+            cancellable: false
+        }, async () => {
+
+            let timeoutHandle: NodeJS.Timeout | undefined;
+            const timedOut = new Promise<'timedOut'>(resolve => {
+                timeoutHandle = setTimeout(() => resolve('timedOut'), PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS);
+            });
+
+            try {
+                const answer = await Promise.race([RecipeCockpitPermissionSetAssign.insertAssignments(connection, assignmentPlan.records), timedOut]);
+                return answer === 'timedOut'
+                    ? { failureMessage: 'The assignment did not finish in time, so which permission sets were assigned is unknown.' }
+                    : { saveResults: answer };
+            } catch {
+                return { failureMessage: 'The org did not answer the assignment, so which permission sets were assigned is unknown.' };
+            } finally {
+                clearTimeout(timeoutHandle);
+            }
+
+        });
 
     }
 

@@ -417,15 +417,32 @@ export class ScratchOrgService {
                                     payload: Record<string, unknown> | undefined = this.readCliJsonPayload(invocationResult),
                                     runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string | undefined {
 
+        return this.writeOrgOperationPayload(
+            workspaceRoot,
+            folderName,
+            operationName,
+            payload ?? { stdout: this.redactSecretText(invocationResult.stdout), stderr: this.redactSecretText(invocationResult.stderr), exitCode: invocationResult.exitCode },
+            date,
+            runArtifactsLocation
+        );
+
+    }
+
+    // THE SAME FILE FOR AN OPERATION THAT RAN NO CLI (#500: AN ASSIGNMENT INSERTED ON A CONNECTION): ITS RECORD, REDACTED
+    static writeOrgOperationPayload(workspaceRoot: string,
+                                    folderName: string,
+                                    operationName: OrgOperationName,
+                                    payload: Record<string, unknown>,
+                                    date: Date,
+                                    runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string | undefined {
+
         const resultFilePath = this.buildOrgOperationResultFilePath(workspaceRoot, folderName, operationName, date, runArtifactsLocation);
 
         if ( !resultFilePath ) {
             return undefined;
         }
 
-        const resultFileContent = payload
-            ? JSON.stringify(this.redactSecrets(payload), null, 2)
-            : JSON.stringify({ stdout: this.redactSecretText(invocationResult.stdout), stderr: this.redactSecretText(invocationResult.stderr), exitCode: invocationResult.exitCode }, null, 2);
+        const resultFileContent = JSON.stringify(this.redactSecrets(payload), null, 2);
 
         if ( runArtifactsLocation ) {
             if ( !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, path.dirname(resultFilePath)) ) {

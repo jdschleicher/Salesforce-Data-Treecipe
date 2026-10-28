@@ -496,6 +496,21 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
+        it('writes the record of an operation that ran no CLI (#500) as JSON, redacted like a CLI answer', () => {
+
+            const resultFilePath = ScratchOrgService.writeOrgOperationPayload(workspaceRoot, 'qa@example.com', 'permission-set-assign', {
+                assigneeId: '005000000000001AAA',
+                saveResults: [{ success: true, id: '0Pa000000000001AAA' }],
+                authFields: { accessToken: '00Dxx!secret-token' }
+            }, PLAN_DATE) as string;
+
+            expect(path.basename(resultFilePath)).toBe('20261010-142233-permission-set-assign.json');
+            const written = fs.readFileSync(resultFilePath, 'utf-8');
+            expect(written).not.toContain('secret-token');
+            expect(JSON.parse(written)).toMatchObject({ assigneeId: '005000000000001AAA', saveResults: [{ success: true, id: '0Pa000000000001AAA' }] });
+
+        });
+
         // TWO OPERATIONS IN ONE SECOND -- A SECOND METADATA DEPLOY (#211) -- KEEP BOTH RESULTS
         it('writes a later result of the same second beside the first as <name>-2, never over it', () => {
 

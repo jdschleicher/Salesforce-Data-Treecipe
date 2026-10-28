@@ -20,7 +20,6 @@ const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataDeploy',
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataRetrieve',
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataRetrieve',
-    'RecipeCockpitService/RecipeCockpitService.ts#performPermissionSetAssign',
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
     'SalesforceOrgService/SalesforceOrgService.ts#runOrgDisplayCommand',
     'SalesforceOrgService/SalesforceOrgService.ts#runOrgListCommand',
