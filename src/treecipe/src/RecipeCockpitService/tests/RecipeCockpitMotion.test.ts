@@ -292,7 +292,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
         });
 
-        it('fades a picklist\'s values in and out on its ▸', () => {
+        it('fades a picklist\'s values in on Edit values and out on ×', () => {
 
             const panel = renderPanel();
             clickCard(panel, ACCOUNT_TREE_KEY);
@@ -308,7 +308,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
             expect(picklistValues.classList.contains('motionReveal')).toBe(true);
             jest.advanceTimersByTime(RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS);
 
-            picklistToggle.dispatch('click');
+            panel.findAll(ratingRow, 'picklistEditorClose')[0].dispatch('click');
             expect(panel.isHidden(picklistValues)).toBe(true);
             expect(picklistValues.classList.contains('motionConceal')).toBe(true);
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');

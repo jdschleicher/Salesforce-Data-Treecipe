@@ -2249,7 +2249,7 @@ describe('RecipeCockpitService', () => {
             expect(textOf(panel, ratingValuesElement, 'recordTypeHeading')).toEqual(['Record type: Business', 'Record type: Partner']);
             expect(textOf(panel, ratingValuesElement, 'picklistValue')).toEqual(['Hot', 'Warm', 'Cold', 'Hot', 'Warm', 'Cold']);
 
-            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+            panel.findAll(ratingRow, 'picklistEditorCancel')[0].dispatch('click');
             expect(panel.isHidden(ratingValuesElement)).toBe(true);
 
             // A SECOND OPEN ASKS AGAIN: AN EDIT SINCE THE FIRST CHANGES WHICH TILES START TICKED
@@ -2326,7 +2326,10 @@ describe('RecipeCockpitService', () => {
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('true');
             expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
-            picklistToggle.dispatch('click');
+            // HIDDEN WHILE THE TILES ARE OPEN (#495): × CLOSES THEM WHILE THE VALUES LOAD
+            expect(panel.isHidden(picklistToggle)).toBe(true);
+            panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistEditorClose')[0].dispatch('click');
+            expect(panel.isHidden(picklistToggle)).toBe(false);
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
             expect(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL).toBe('Edit values');

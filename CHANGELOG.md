@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.167.0] - Recipe Cockpit: "Open in browser" opens the org through a one-time login address, without the Salesforce CLI
+## [3.168.0] - Recipe Cockpit: "Open in browser" opens the org through a one-time login address, without the Salesforce CLI
 
 [#501](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/501), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). **Open in browser** in the Target Org Manager ran `sf org open --target-org <username> --url-only --json` for every click.
 
@@ -10,6 +10,15 @@
 - **Removed.** `ScratchOrgService.buildOrgOpenArguments`, `resolveOrgOpenUrl`, `parseOrgOpenOutput`, `OrgOpenParseResult`, `ORG_OPEN_URL_PROTOCOL` and `ORG_OPEN_TIMEOUT_MILLISECONDS`, and the "Salesforce CLI is required to open an org" message.
 - **Docs.** README and the CLAUDE.md "Open in browser" bullet describe the new path.
 - **Tests.** `SalesforceOrgService.test.ts` (username, refresh before the request, the endpoint, no CLI, no token in the address or the source, fixed texts for each failure, the timeout, https only); `RecipeCockpitOpenOrg.test.ts` (runs no CLI, the URL and the token reach no posted message or written file, one fixed-text notification per failure); `ScratchOrgService.test.ts` (no `sf org open` argv is left).
+
+## [3.167.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
+
+[#495](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/495). **Edit values** stayed on screen, unchanged, above its own open tiles, and a second click on it closed them and dropped any unsaved ticks without saying so, so it looked like a second way to finish the edit.
+
+- **Hidden while editing.** Opening the tiles hides **Edit values** (`hidden`, so it is out of the Tab order too) and moves focus to the editor's **×**. **Save** the host accepts, **Reset to generated** the host accepts, and **Cancel** close the tiles and show **Edit values** again with focus on it. A Save the host refuses keeps the tiles open and the button hidden, and a restored place that had the tiles open opens them with the button hidden.
+- **× and Escape stay.** They still close the tiles without saving, and are the way out while "Loading values…" is drawn, before Save and Cancel exist.
+- **Help and guide.** The ? help's Edit values note and `docs/RECIPE-COCKPIT-GUIDE.md` say the button is hidden while editing and that Save or Cancel ends the edit.
+- **Tests.** `RecipeCockpitPicklistValueChoice.test.ts`: the button hidden while open and back with focus after Cancel and an accepted Save, kept hidden by a refusal and an unanswered Save, × and Escape while the values load, and a locked picklist's Cancel; `RecipeCockpitPlaceRestore.test.ts`: a restored open editor keeps the button hidden.
 
 ## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
 
