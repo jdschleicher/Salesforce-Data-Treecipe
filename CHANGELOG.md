@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.165.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
+## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
 
 [#494](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/494). An expanded object's controls row and field rows ran straight into the next object's header, so nothing showed where one object's fields ended, and the field checkboxes were indented a fixed 2.1rem, about 1.6rem left of the object's ▸.
 
@@ -8,6 +8,16 @@
 - **Checkboxes under the ▸.** The header's padding, the chain-link width and the header gap are now named constants (`RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM`, `RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM`, `RECIPE_COCKPIT_TREE_HEADER_GAP_REM`), and the boxes' margin is derived from them (`RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT`), so each field's checkbox and the All fields box start where the ▸ does, at every nesting depth, on an iteration and on the ungrouped card.
 - **Layout only.** No message, model or place field changed, and no colour pair was added.
 - **Tests.** `RecipeCockpitFieldBoxes.test.ts` (the fields box holds every field row, after the controls row; a never-expanded object builds neither box; the stylesheet's offsets add up to the ▸'s, the padding and border rules, the empty-box rule); `RecipeCockpitExcludeFields.test.ts` reads a field row inside the box.
+
+## [3.165.0] - Recipe Cockpit: the Treecipe tab's filters and "Manage record types" sit in one tile under the search, and a count says "record(s)"
+
+[#490](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/490). The Treecipe tab squeezed its two filter checks into the search row, the Record types section opened from a ▸ header that did not read as clickable, and an object's count said "record" or "records" depending on the number.
+
+- **Search on its own row, then a filter tile.** Under **Generate fake data and insert**, the Treecipe search box now has its row to itself. Under it, one tile (`treecipeFilterTile`, a `role="group"`) holds, one per row: **Click to show record type impacted fields only** (#320's check), **Click to show fields with open TODOs** (#354's, still with the card's TODO count), and **Manage record types**. The checks filter exactly as before and are still saved in the place as `isRecordTypeFieldsOnly` / `isTodosOnly`; a check that is disabled still says why beside it.
+- **Manage record types is a button.** It replaces the section's ▸ header line: a `secondary` button carrying `aria-expanded`, `aria-controls` (the body) and `aria-describedby` (the summary beside it, still `1 object · changed` and so on). The Record types body opens under the tile, above the first object. A card with no object offering two or more record types draws the button disabled, with the reason as its tooltip and beside it, and no body (#338). A saved `isRecordTypesExpanded`, a regenerate's focus, **Change record types** and a section-search result open it as before.
+- **"record(s)".** An object row's count reads `Create [5 ✎] Contact record(s)`, and a faker-js friend's `… record(s) per Account`, whatever the count; the button's and the number box's accessible names say `record(s)` too, the parent still `per Account record`. Notifications and confirmations keep their own wording.
+- **Help, guide, README and CLAUDE.md.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name both new check labels, **Manage record types** and the count wording; the README and the CLAUDE.md record types bullet describe the tile and the button.
+- **Tests.** `RecipeCockpitRecordTypes.test.ts` (the tile's place between the search and the body, the button's kind, label and ARIA, the disabled button with its reason, a click on the disabled button, its row or the tile saving nothing, a card with no objects drawing the tile with both checks and the button disabled and posting nothing), `RecipeCockpitRecordTypeFields.test.ts` and `RecipeCockpitTodos.test.ts` (each check in the tile, not the search row, with its new label), `RecipeCockpitObjectCounts.test.ts` and `RecipeCockpitOccurrenceSelections.test.ts` (`record(s)`), `RecipeCockpitButtonKinds.test.ts` (opens the section through the button).
 
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 
