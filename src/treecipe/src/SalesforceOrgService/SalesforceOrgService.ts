@@ -30,6 +30,31 @@ const OBJECT_API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 */
 export const ORG_DESCRIBE_CONCURRENCY = 5;
 
+// "Open in browser" (#501): Salesforce's single-access endpoint, which answers a ONE-TIME frontdoor address
+export const ORG_FRONT_DOOR_SINGLE_ACCESS_PATH = '/services/oauth2/singleaccess';
+
+export const ORG_FRONT_DOOR_URL_PROTOCOL = 'https:';
+
+export const ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS = 60000;
+
+export type OrgFrontDoorFailure = 'connectionFailed' | 'requestFailed' | 'noAddress' | 'notHttps' | 'timedOut';
+
+/*
+    Every failure is one of these FIXED texts: an error from the org or jsforce can quote the
+    request, and the request carries the access token, so nothing it says is ever shown.
+*/
+export const ORG_FRONT_DOOR_FAILURE_TEXTS: Readonly<Record<OrgFrontDoorFailure, string>> = {
+    connectionFailed: 'its saved authorization could not be used. Log in to it again with "sf org login web" and try again.',
+    requestFailed: 'Salesforce did not give a one-time login address for it.',
+    noAddress: 'Salesforce answered without an address to open.',
+    notHttps: 'Salesforce answered with an address that is not https, so it was not opened.',
+    timedOut: 'Salesforce did not answer in time.'
+};
+
+export type OrgFrontDoorResult =
+    { isOpenable: true; url: string }
+    | { isOpenable: false; failure: OrgFrontDoorFailure; failureMessage: string };
+
 export interface INormalizedOrgPicklistValue {
     value: string;
     label: string;
@@ -127,6 +152,15 @@ export interface IOrgTypeDetail {
     isSandbox: boolean;
     organizationType: string;
 }
+
+// A PERMISSION SET THE ORG HOLDS (#500): ITS NAME AS THE ORG SPELLS IT, ITS ID, AND THE NAMESPACE OF A PACKAGED ONE
+export interface IOrgPermissionSet {
+    id: string;
+    name: string;
+    namespacePrefix?: string;
+}
+
+export const PERMISSION_SET_QUERY_NAME_CHUNK_SIZE = 50;
 
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
@@ -421,12 +455,13 @@ export class SalesforceOrgService {
     }
 
     /*
-        Which of the named permission sets the org holds, as the org spells them. Every name is held
-        to the api-name rule before it is quoted into the SOQL, so a name cannot close the quote, and
-        every answer is type-checked: it came over the network. A query that fails throws, so a
-        caller never reads a failed query as "the org has none of them".
+        The named permission sets the org holds, as the org spells them, with each one's Id and
+        namespace (#500: the Id is what an assignment row names). Every name is held to the api-name
+        rule before it is quoted into the SOQL, so a name cannot close the quote, and every answer is
+        type-checked: it came over the network. A query that fails throws, so a caller never reads a
+        failed query as "the org has none of them".
     */
-    static async queryPermissionSetNames(querySource: IOrgQuerySource, permissionSetNames: readonly string[]): Promise<string[]> {
+    static async queryPermissionSets(querySource: IOrgQuerySource, permissionSetNames: readonly string[]): Promise<IOrgPermissionSet[]> {
 
         if ( permissionSetNames.length === 0 ) {
             return [];
@@ -438,16 +473,51 @@ export class SalesforceOrgService {
             }
         });
 
-        const quotedNames = permissionSetNames.map(permissionSetName => `'${permissionSetName}'`).join(', ');
-        const queryRecords = this.asRecord(await querySource.query(`SELECT Name FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
-
-        if ( !Array.isArray(queryRecords) ) {
-            throw new Error('The org\'s answer about its permission sets could not be read.');
+        // A QUERY GOES IN THE URL, AND 200 NAMES OF 80 CHARACTERS WOULD PASS ITS LENGTH LIMIT: SO AT MOST PERMISSION_SET_QUERY_NAME_CHUNK_SIZE A QUERY
+        const queryRecords: unknown[] = [];
+        for ( let chunkStart = 0; chunkStart < permissionSetNames.length; chunkStart += PERMISSION_SET_QUERY_NAME_CHUNK_SIZE ) {
+            const quotedNames = permissionSetNames.slice(chunkStart, chunkStart + PERMISSION_SET_QUERY_NAME_CHUNK_SIZE).map(permissionSetName => `'${permissionSetName}'`).join(', ');
+            const chunkRecords = this.asRecord(await querySource.query(`SELECT Id, Name, NamespacePrefix FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
+            if ( !Array.isArray(chunkRecords) ) {
+                throw new Error('The org\'s answer about its permission sets could not be read.');
+            }
+            queryRecords.push(...chunkRecords);
         }
 
         return queryRecords
-            .map(queryRecord => this.asRecord(queryRecord)?.Name)
-            .filter((permissionSetName): permissionSetName is string => typeof permissionSetName === 'string' && SalesforceApiName.isApiName(permissionSetName));
+            .map(queryRecord => this.asRecord(queryRecord))
+            .filter((queryRecord): queryRecord is Record<string, unknown> => queryRecord !== undefined
+                && typeof queryRecord.Name === 'string' && SalesforceApiName.isApiName(queryRecord.Name)
+                && typeof queryRecord.Id === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(queryRecord.Id))
+            .map(queryRecord => ({
+                id: queryRecord.Id as string,
+                name: queryRecord.Name as string,
+                namespacePrefix: typeof queryRecord.NamespacePrefix === 'string' && queryRecord.NamespacePrefix !== '' ? queryRecord.NamespacePrefix : undefined
+            }));
+
+    }
+
+    /*
+        The Id of the user an org is authorized as (#500): the one assignee an assignment names. The
+        username is quoted with its backslashes and quotes escaped, and an answer that is not exactly
+        one record with a Salesforce Id throws, so no assignment is ever made for a guessed user.
+    */
+    static async queryUserId(querySource: IOrgQuerySource, username: string): Promise<string> {
+
+        // A CONTROL CHARACTER COULD NOT CLOSE THE QUOTE, BUT NO USERNAME HOLDS ONE: IT IS REFUSED RATHER THAN SENT
+        if ( /[\u0000-\u001f\u007f\u0085\u2028\u2029]/.test(String(username)) ) {
+            throw new Error('The username holds a control character, so it was not sent to the org.');
+        }
+
+        const quotedUsername = String(username).replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
+        const queryRecords = this.asRecord(await querySource.query(`SELECT Id FROM User WHERE Username = '${quotedUsername}'`))?.records;
+        const userId = Array.isArray(queryRecords) && queryRecords.length === 1 ? this.asRecord(queryRecords[0])?.Id : undefined;
+
+        if ( typeof userId !== 'string' || !SALESFORCE_RECORD_ID_PATTERN.test(userId) ) {
+            throw new Error('The org\'s answer about the user it is authorized as could not be read.');
+        }
+
+        return userId;
 
     }
 
@@ -613,6 +683,83 @@ export class SalesforceOrgService {
         const authorizedOrg = await Org.create({ aliasOrUsername: aliasOrUsername });
 
         return authorizedOrg.getConnection();
+
+    }
+
+    /*
+        A ONE-TIME frontdoor address for the org (#501), as "sf org open" builds it: never
+        frontdoor.jsp?sid=<access token>, which would leave the long-lived token in the browser's
+        history. The endpoint answers 403 to an expired token and jsforce refreshes only on a 401,
+        so the authorization is refreshed first. The address is only ever handed to the browser.
+    */
+    static async requestOrgFrontDoorUrl(username: string): Promise<OrgFrontDoorResult> {
+
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        const timedOut = new Promise<OrgFrontDoorResult>(resolve => {
+            timeoutHandle = setTimeout(() => resolve(this.buildOrgFrontDoorFailure('timedOut')), ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+        });
+
+        // A FETCH THE TIMEOUT BEAT IS LEFT TO SETTLE ON ITS OWN: IT CATCHES EVERYTHING, AND ITS ADDRESS GOES NOWHERE
+        try {
+            return await Promise.race([this.fetchOrgFrontDoorUrl(username), timedOut]);
+        } finally {
+            clearTimeout(timeoutHandle);
+        }
+
+    }
+
+    private static async fetchOrgFrontDoorUrl(username: string): Promise<OrgFrontDoorResult> {
+
+        let connection: Connection;
+
+        try {
+            const authorizedOrg = await Org.create({ aliasOrUsername: username });
+            await authorizedOrg.refreshAuth();
+            connection = authorizedOrg.getConnection();
+        } catch {
+            return this.buildOrgFrontDoorFailure('connectionFailed');
+        }
+
+        let response: unknown;
+
+        try {
+            response = await connection.requestGet(new URL(ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, connection.instanceUrl).toString());
+        } catch {
+            return this.buildOrgFrontDoorFailure('requestFailed');
+        }
+
+        return this.readOrgFrontDoorResponse(response);
+
+    }
+
+    // THE ANSWER CAME OVER THE NETWORK: OPENABLE ONLY AS A frontdoor_uri STRING THAT PARSES AS https:
+    static readOrgFrontDoorResponse(response: unknown): OrgFrontDoorResult {
+
+        const frontDoorUri = response !== null && typeof response === 'object' && !Array.isArray(response)
+            ? (response as Record<string, unknown>).frontdoor_uri
+            : undefined;
+
+        if ( typeof frontDoorUri !== 'string' || frontDoorUri === '' ) {
+            return this.buildOrgFrontDoorFailure('noAddress');
+        }
+
+        let parsedUrl: URL | undefined;
+
+        try {
+            parsedUrl = new URL(frontDoorUri);
+        } catch {
+            parsedUrl = undefined;
+        }
+
+        return parsedUrl && parsedUrl.protocol === ORG_FRONT_DOOR_URL_PROTOCOL
+            ? { isOpenable: true, url: parsedUrl.toString() }
+            : this.buildOrgFrontDoorFailure('notHttps');
+
+    }
+
+    private static buildOrgFrontDoorFailure(failure: OrgFrontDoorFailure): OrgFrontDoorResult {
+
+        return { isOpenable: false, failure: failure, failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS[failure] };
 
     }
 
