@@ -38,7 +38,8 @@ import {
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
     TARGET_ORG_ENVIRONMENT_VARIABLE,
     LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
-    ORG_PARENT_SEARCH_RESULT_LIMIT
+    ORG_PARENT_SEARCH_RESULT_LIMIT,
+    PERMISSION_SET_QUERY_NAME_CHUNK_SIZE
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
@@ -1082,6 +1083,23 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('asks for at most PERMISSION_SET_QUERY_NAME_CHUNK_SIZE names a query, so 200 long names stay under the URL limit, and joins the answers', async () => {
+
+            const names = Array.from({ length: 2 * PERMISSION_SET_QUERY_NAME_CHUNK_SIZE + 1 }, (_unused, nameIndex) => `Set_${nameIndex}`);
+            const querySource: IOrgQuerySource = { query: jest.fn().mockImplementation(async (soql: string) => ({
+                records: names.filter(name => soql.includes(`'${name}'`)).map((name, nameIndex) => ({ Id: `0PS${String(nameIndex).padStart(12, '0')}`, Name: name }))
+            })) };
+
+            expect((await SalesforceOrgService.queryPermissionSets(querySource, names)).map(permissionSet => permissionSet.name)).toEqual(names);
+            expect(querySource.query).toHaveBeenCalledTimes(3);
+            (querySource.query as jest.Mock).mock.calls.forEach(([soql]) => expect((soql.match(/'/g) ?? []).length / 2).toBeLessThanOrEqual(PERMISSION_SET_QUERY_NAME_CHUNK_SIZE));
+
+            // ONE CHUNK THAT CANNOT BE READ FAILS THE WHOLE ANSWER: NEVER "THE ORG HOLDS ONLY THE OTHERS"
+            const failingSource: IOrgQuerySource = { query: jest.fn().mockResolvedValueOnce({ records: [] }).mockResolvedValueOnce({}) };
+            await expect(SalesforceOrgService.queryPermissionSets(failingSource, names)).rejects.toThrow('could not be read');
+
+        });
+
         it('sends no query for no names, and refuses a name that could close the quote before any query', async () => {
 
             const querySource: IOrgQuerySource = { query: jest.fn() };
@@ -1116,6 +1134,11 @@ describe('SalesforceOrgService', () => {
         it('throws for a failed query, no user, more than one, or an Id that is not a Salesforce Id', async () => {
 
             await expect(SalesforceOrgService.queryUserId({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, 'a@b.c')).rejects.toThrow('INVALID_SESSION_ID');
+            const unsentSource: IOrgQuerySource = { query: jest.fn() };
+            for ( const username of ['a@b.c\n', 'a\u2028@b.c', 'a\u0000b@c.d'] ) {
+                await expect(SalesforceOrgService.queryUserId(unsentSource, username)).rejects.toThrow('control character');
+            }
+            expect(unsentSource.query).not.toHaveBeenCalled();
             for ( const answer of [undefined, { records: 'x' }, { records: [] }, { records: [{ Id: '005000000000001' }, { Id: '005000000000002' }] }, { records: [{ Id: 'x' }] }, { records: [null] }] ) {
                 await expect(SalesforceOrgService.queryUserId({ query: jest.fn().mockResolvedValue(answer) }, 'a@b.c')).rejects.toThrow('could not be read');
             }

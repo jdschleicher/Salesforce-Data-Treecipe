@@ -3026,7 +3026,7 @@ interface IRecipeCockpitPermissionSetClosingState {
 
 // HOW A TROUBLESHOOTING DEPLOY ENDED (#346): WHICH ORG'S DESCRIBES OF WHICH OBJECTS TO DROP ONCE THE CLI RAN, AND WHETHER IT LANDED
 interface IRecipeCockpitMetadataDeployClosingState {
-    assignStartedFor?: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] };
+    cliStartedFor?: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] };
     isDeployed?: boolean;
     // A LANDED DEPLOY'S NOTIFICATION, SHOWN ONCE THE RUN HAS ENDED SO ITS "Assign permission sets to me…" IS NOT REFUSED AS BUSY
     showOutcome?: () => void;
@@ -13211,17 +13211,17 @@ export class RecipeCockpitService {
 
             try {
 
-                const { assignStartedFor } = closingState;
+                const { cliStartedFor } = closingState;
 
-                if ( assignStartedFor ) {
-                    assignStartedFor.objectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(assignStartedFor.orgDetail.username, objectApiName));
+                if ( cliStartedFor ) {
+                    cliStartedFor.objectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(cliStartedFor.orgDetail.username, objectApiName));
                 }
 
                 const currentPanel = this.recipeCockpitPanel;
                 const currentPanelState = this.recipeCockpitPanelState;
 
-                if ( closingState.isDeployed === true && assignStartedFor && deploySelection && currentPanel && currentPanelState.dataOrgSelection === deploySelection ) {
-                    const lowerObjectNames = new Set(assignStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+                if ( closingState.isDeployed === true && cliStartedFor && deploySelection && currentPanel && currentPanelState.dataOrgSelection === deploySelection ) {
+                    const lowerObjectNames = new Set(cliStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
                     await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => lowerObjectNames.has(treeObject.objectApiName.toLowerCase())));
                 }
 
@@ -13428,7 +13428,7 @@ export class RecipeCockpitService {
             return refuse(this.describeThrown(argumentError));
         }
 
-        const cliStarted: IRecipeCockpitMetadataDeployClosingState = { assignStartedFor: { orgDetail: orgDetail, objectApiNames: touchedObjectApiNames } };
+        const cliStarted: IRecipeCockpitMetadataDeployClosingState = { cliStartedFor: { orgDetail: orgDetail, objectApiNames: touchedObjectApiNames } };
         let deployOutputFilePath: string | undefined;
         // THE HISTORY'S RECORD OF THIS DEPLOY (#485), WRITTEN ONCE THE CLI HAS RUN, WHATEVER IT ANSWERED
         const recordStep = (outcome: RunHistoryOutcome, counts: Pick<IRunHistoryStepRecord, 'succeededCount' | 'failedCount' | 'detail'> = {}) => this.recordTroubleshootingStep(runArtifactsLocation, {
@@ -14388,7 +14388,7 @@ export class RecipeCockpitService {
 
         const assignRun = await this.insertPermissionSetAssignments(
             RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`),
-            connection as unknown as IPermissionSetAssignmentConnection,
+            { sobject: objectApiName => ({ create: async (records, options) => await connection.sobject(objectApiName).create(records, options) }) },
             assignmentPlan
         );
 

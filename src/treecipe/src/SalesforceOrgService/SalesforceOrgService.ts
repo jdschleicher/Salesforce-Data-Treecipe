@@ -135,6 +135,8 @@ export interface IOrgPermissionSet {
     namespacePrefix?: string;
 }
 
+export const PERMISSION_SET_QUERY_NAME_CHUNK_SIZE = 50;
+
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
 /*
@@ -449,11 +451,15 @@ export class SalesforceOrgService {
             }
         });
 
-        const quotedNames = permissionSetNames.map(permissionSetName => `'${permissionSetName}'`).join(', ');
-        const queryRecords = this.asRecord(await querySource.query(`SELECT Id, Name, NamespacePrefix FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
-
-        if ( !Array.isArray(queryRecords) ) {
-            throw new Error('The org\'s answer about its permission sets could not be read.');
+        // A QUERY GOES IN THE URL, AND 200 NAMES OF 80 CHARACTERS WOULD PASS ITS LENGTH LIMIT: SO AT MOST PERMISSION_SET_QUERY_NAME_CHUNK_SIZE A QUERY
+        const queryRecords: unknown[] = [];
+        for ( let chunkStart = 0; chunkStart < permissionSetNames.length; chunkStart += PERMISSION_SET_QUERY_NAME_CHUNK_SIZE ) {
+            const quotedNames = permissionSetNames.slice(chunkStart, chunkStart + PERMISSION_SET_QUERY_NAME_CHUNK_SIZE).map(permissionSetName => `'${permissionSetName}'`).join(', ');
+            const chunkRecords = this.asRecord(await querySource.query(`SELECT Id, Name, NamespacePrefix FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
+            if ( !Array.isArray(chunkRecords) ) {
+                throw new Error('The org\'s answer about its permission sets could not be read.');
+            }
+            queryRecords.push(...chunkRecords);
         }
 
         return queryRecords
@@ -475,6 +481,11 @@ export class SalesforceOrgService {
         one record with a Salesforce Id throws, so no assignment is ever made for a guessed user.
     */
     static async queryUserId(querySource: IOrgQuerySource, username: string): Promise<string> {
+
+        // A CONTROL CHARACTER COULD NOT CLOSE THE QUOTE, BUT NO USERNAME HOLDS ONE: IT IS REFUSED RATHER THAN SENT
+        if ( /[\u0000-\u001f\u007f\u0085\u2028\u2029]/.test(String(username)) ) {
+            throw new Error('The username holds a control character, so it was not sent to the org.');
+        }
 
         const quotedUsername = String(username).replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
         const queryRecords = this.asRecord(await querySource.query(`SELECT Id FROM User WHERE Username = '${quotedUsername}'`))?.records;
