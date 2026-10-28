@@ -26,7 +26,7 @@ If an insert fails, its message offers **View failed file** (the generated file 
 To generate without inserting, use **Run Faker by Recipe** from the command palette.
 
 Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card.
-Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted (**↖ Account_NickName**), and clicking it jumps back to that object.
+Click it to list the fields that point to it, under *Click to go to a child reference*, and jump to one; a field holding a nickname shows it highlighted (**↖ Account_NickName**), and clicking it lists that object under *Click to go to the parent reference*, one click away.
 A friend, an object nested under another's `friends:` in a faker-js recipe, shows a 👥 chip for each parent it belongs to: the one it is nested under first, then any other its lookups name.
 Each chip reads the parent's nickname and the friend's place among that parent's friends (**Account_NickName-2**); click it to jump to that parent.
 

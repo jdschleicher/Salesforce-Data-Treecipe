@@ -13,7 +13,13 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { RecipeCockpitService, IRecipeCockpitRecipeViewModel, RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI } from '../RecipeCockpitService';
+import {
+    RecipeCockpitService,
+    IRecipeCockpitRecipeViewModel,
+    RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI,
+    RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT,
+    RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT
+} from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -88,6 +94,8 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
     const nicknameChipOf = (panel: any, nickname: string) => panel.findAll(objectElementNamed(panel, nickname).children[0], 'treeNickname')[0];
     const menuItemsOf = (panel: any, nickname: string) => panel.findAll(objectElementNamed(panel, nickname).children[0], 'treeNicknameMenuItem');
     const menuItemLabels = (panel: any, nickname: string) => menuItemsOf(panel, nickname).map((itemElement: any) => itemElement.textContent);
+    const backLinkOf = (panel: any, nickname: string, fieldApiName: string) => panel.findAll(panel.fieldRowNamed(objectElementNamed(panel, nickname), fieldApiName), 'treeNicknameBackLink')[0];
+    const backLinkMenuItemsOf = (panel: any, nickname: string, fieldApiName: string) => panel.findAll(panel.fieldRowNamed(objectElementNamed(panel, nickname), fieldApiName), 'treeNicknameMenuItem');
 
     describe('the model', () => {
 
@@ -305,8 +313,9 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
 
             const caseContactRow = panel.fieldRowNamed(objectElementNamed(panel, 'Case_NickName'), 'ContactId');
             const contactBackLink = panel.findAll(caseContactRow, 'treeNicknameBackLink')[0];
-            expect(contactBackLink.attributes['aria-label']).toBe('Go to Contact_NickName, the Contact this field points to');
-            panel.findAll(panel.fieldRowNamed(objectElementNamed(panel, 'Case_NickName'), 'AccountId'), 'treeNicknameBackLink')[0].dispatch('click');
+            expect(contactBackLink.attributes['aria-label']).toBe('Contact_NickName: show the Contact this field points to');
+            backLinkOf(panel, 'Case_NickName', 'AccountId').dispatch('click');
+            backLinkMenuItemsOf(panel, 'Case_NickName', 'AccountId')[0].dispatch('click');
 
             expect(panel.isHidden(accountElement.children[1])).toBe(false);
             expect(accountElement.scrolledIntoViewCount).toBe(1);
@@ -326,6 +335,7 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
             nicknameChipOf(panel, 'Account_NickName').dispatch('click');
             menuItemsOf(panel, 'Account_NickName')[0].dispatch('click');
             panel.findAll(panel.cockpitBodyElement, 'treeNicknameBackLink')[0].dispatch('click');
+            panel.findAll(panel.cockpitBodyElement, 'treeNicknameMenuItem')[0].dispatch('click');
 
             expect(panel.postedHostMessages.slice(postedCount).filter((hostMessage: any) => hostMessage.command !== 'savePlace')).toEqual([]);
 
@@ -340,6 +350,170 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
             nicknameChipOf(panel, 'Contact_NickName').dispatch('click');
 
             expect(menuItemLabels(panel, 'Contact_NickName')).toEqual(['Case.ContactId — excluded']);
+
+        });
+
+    });
+
+    describe('a hint on each references list (#491)', () => {
+
+        beforeEach(() => writeWorkspace(FAKER_JS_RECIPE, ['Account', 'Contact', 'Case', 'Opportunity', 'Lead'], 'Account'));
+
+        const openMenuOf = (panel: any, objectElement: any) => panel.findAll(objectElement, 'treeNicknameMenu').find((menuElement: any) => !panel.isHidden(menuElement));
+
+        it('starts a nickname\'s list with a line saying a click goes to a child reference, which names the list and is never focused', () => {
+
+            const panel = renderModel(loadModel());
+            nicknameChipOf(panel, 'Account_NickName').dispatch('click');
+
+            const menuElement = openMenuOf(panel, objectElementNamed(panel, 'Account_NickName').children[0]);
+            const hintElement = menuElement.children[0];
+            expect(hintElement.classList.contains('treeNicknameMenuHint')).toBe(true);
+            expect(hintElement.textContent).toBe(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT);
+            expect(hintElement.tagName.toLowerCase()).toBe('span');
+            expect(hintElement.attributes.tabindex).toBeUndefined();
+            expect(menuElement.attributes['aria-labelledby']).toBe(hintElement.attributes.id);
+            expect(menuElement.attributes['aria-label']).toBeUndefined();
+
+            const items = menuItemsOf(panel, 'Account_NickName');
+            expect(panel.activeElement()).toBe(items[0]);
+            items[0].dispatch('keydown', { key: 'ArrowUp' });
+            expect(panel.activeElement()).toBe(items[items.length - 1]);
+            items[items.length - 1].dispatch('keydown', { key: 'Home' });
+            expect(panel.activeElement()).toBe(items[0]);
+
+        });
+
+        it('gives each opened list its own hint id', () => {
+
+            const panel = renderModel(loadModel());
+            nicknameChipOf(panel, 'Account_NickName').dispatch('click');
+            const firstId = openMenuOf(panel, objectElementNamed(panel, 'Account_NickName').children[0]).attributes['aria-labelledby'];
+            nicknameChipOf(panel, 'Contact_NickName').dispatch('click');
+            const secondId = openMenuOf(panel, objectElementNamed(panel, 'Contact_NickName').children[0]).attributes['aria-labelledby'];
+
+            expect(secondId).not.toBe(firstId);
+
+        });
+
+        it('makes a field\'s way back open a list of its parent, led by a line saying a click goes to the parent reference', () => {
+
+            const panel = renderModel(loadModel());
+            const caseElement = objectElementNamed(panel, 'Case_NickName');
+            panel.expandObject(caseElement);
+            const backLink = backLinkOf(panel, 'Case_NickName', 'ContactId');
+            const contactElement = objectElementNamed(panel, 'Contact_NickName');
+
+            expect(backLink.attributes['aria-haspopup']).toBe('menu');
+            expect(backLink.attributes['aria-expanded']).toBe('false');
+            expect(backLink.attributes.title).toBe('Show the Contact that holds Contact_NickName');
+
+            backLink.dispatch('click');
+
+            expect(backLink.attributes['aria-expanded']).toBe('true');
+            expect(contactElement.scrolledIntoViewCount || 0).toBe(0);
+            const menuElement = openMenuOf(panel, panel.fieldRowNamed(caseElement, 'ContactId'));
+            expect(menuElement.children[0].textContent).toBe(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT);
+            expect(menuElement.attributes['aria-labelledby']).toBe(menuElement.children[0].attributes.id);
+            const items = backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId');
+            expect(items.map((itemElement: any) => itemElement.textContent)).toEqual(['Contact']);
+            expect(items[0].attributes.role).toBe('menuitem');
+            expect(panel.activeElement()).toBe(items[0]);
+
+        });
+
+        it('opens the parent row from its list by click or Enter, focusing the parent\'s nickname', () => {
+
+            const panel = renderModel(loadModel());
+            const caseElement = objectElementNamed(panel, 'Case_NickName');
+            panel.expandObject(caseElement);
+            const contactElement = objectElementNamed(panel, 'Contact_NickName');
+
+            backLinkOf(panel, 'Case_NickName', 'ContactId').dispatch('click');
+            backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')[0].dispatch('click');
+
+            expect(contactElement.scrolledIntoViewCount).toBe(1);
+            expect(panel.activeElement()).toBe(nicknameChipOf(panel, 'Contact_NickName'));
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(0);
+            expect(backLinkOf(panel, 'Case_NickName', 'ContactId').attributes['aria-expanded']).toBe('false');
+
+            backLinkOf(panel, 'Case_NickName', 'AccountId').dispatch('click');
+            backLinkMenuItemsOf(panel, 'Case_NickName', 'AccountId')[0].dispatch('keydown', { key: 'Enter' });
+            expect(objectElementNamed(panel, 'Account_NickName').scrolledIntoViewCount).toBe(1);
+            expect(panel.activeElement()).toBe(nicknameChipOf(panel, 'Account_NickName'));
+
+        });
+
+        it('names a parent written more than once by its nickname, and marks an excluded parent', () => {
+
+            const panel = renderModel(loadModel());
+            const iterationElement = objectElementNamed(panel, 'Account_child_NickName');
+            panel.expandObject(iterationElement);
+            objectElementNamed(panel, 'Account_NickName').classList.add('excluded');
+
+            backLinkOf(panel, 'Account_child_NickName', 'ParentId').dispatch('click');
+
+            expect(backLinkMenuItemsOf(panel, 'Account_child_NickName', 'ParentId').map((itemElement: any) => itemElement.textContent)).toEqual(['Account · Account_NickName — excluded']);
+
+        });
+
+        it('closes the parent list on Escape (focus back), Tab, a second click and a click elsewhere', () => {
+
+            const panel = renderModel(loadModel());
+            panel.expandObject(objectElementNamed(panel, 'Case_NickName'));
+            const backLink = backLinkOf(panel, 'Case_NickName', 'ContactId');
+
+            backLink.dispatch('click');
+            backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')[0].dispatch('keydown', { key: 'Escape' });
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(0);
+            expect(panel.activeElement()).toBe(backLink);
+            expect(backLink.attributes['aria-expanded']).toBe('false');
+
+            backLink.dispatch('click');
+            backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')[0].dispatch('keydown', { key: 'Tab' });
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(0);
+
+            backLink.dispatch('click');
+            backLink.dispatch('click');
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(0);
+            expect(panel.activeElement()).toBe(backLink);
+
+            backLink.dispatch('click');
+            objectElementNamed(panel, 'Lead_NickName').children[0].dispatch('click');
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(0);
+
+        });
+
+        it('keeps one list open across both kinds', () => {
+
+            const panel = renderModel(loadModel());
+            panel.expandObject(objectElementNamed(panel, 'Case_NickName'));
+            const backLink = backLinkOf(panel, 'Case_NickName', 'ContactId');
+
+            nicknameChipOf(panel, 'Account_NickName').dispatch('click');
+            backLink.dispatch('click');
+            expect(menuItemsOf(panel, 'Account_NickName')).toHaveLength(0);
+            expect(nicknameChipOf(panel, 'Account_NickName').attributes['aria-expanded']).toBe('false');
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(1);
+
+            nicknameChipOf(panel, 'Account_NickName').dispatch('click');
+            expect(backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')).toHaveLength(0);
+            expect(backLink.attributes['aria-expanded']).toBe('false');
+            expect(menuItemsOf(panel, 'Account_NickName')).toHaveLength(4);
+
+        });
+
+        it('posts nothing to the host but the saved place', () => {
+
+            const panel = renderModel(loadModel());
+            panel.expandObject(objectElementNamed(panel, 'Case_NickName'));
+            const postedCount = panel.postedHostMessages.length;
+
+            nicknameChipOf(panel, 'Contact_NickName').dispatch('click');
+            backLinkOf(panel, 'Case_NickName', 'ContactId').dispatch('click');
+            backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId')[0].dispatch('click');
+
+            expect(panel.postedHostMessages.slice(postedCount).filter((hostMessage: any) => hostMessage.command !== 'savePlace')).toEqual([]);
 
         });
 

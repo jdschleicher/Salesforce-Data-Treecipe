@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.165.0] - Recipe Cockpit: each references list says where a click goes, and a field's ↖ lists its parent
+
+[#491](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/491). The 🌳 nickname list (#380) named fields with nothing saying what a click did, and a field's `↖ <nickname>` jumped away without saying where.
+
+- **A hint line on every references list.** A 🌳 list now starts with *Click to go to a child reference*. It is plain muted text (`--sdt-muted` on `--sdt-surface`, a pair the contrast test already holds), never focused and never a stop for the arrow keys, Home or End, and it is the list's accessible name (`aria-labelledby`, an id per open, in place of the old `aria-label`).
+- **↖ opens a list of its parent.** A field's back-link no longer jumps: it opens a list under the field row, led by *Click to go to the parent reference*, with one item, the parent (`<Object>`, ` · <nickname>` for an object written more than once, ` — excluded` when the tree icon excluded it). Choosing it does what the back-link did: opens the parent row and focuses its 🌳. The back-link carries `aria-haspopup="menu"` and `aria-expanded`, and its name and tooltip say it shows the parent.
+- **One list open at a time, of either kind.** Both lists are drawn by one `openReferenceMenu`: keys, Escape (focus back to whatever opened it), Tab, a second click and a click elsewhere close either, and opening one closes the other.
+- **Nothing posted or saved.** No message, allow-list or place field changed.
+- **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe both lines.
+- **Tests.** `RecipeCockpitNicknameReferences.test.ts`: the hint text, order, id and that keys skip it; the back-link's list, its item by click or Enter, an excluded parent, every way it closes, one list across both kinds, nothing posted.
+
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 
 [#487](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/487). Only the GitHub icon at the top right opened the CHANGELOG, though the version beside it read as part of the link; the open help could only be closed from **?**; and **?** was taller than its neighbours and looked the same open or closed.
