@@ -65,7 +65,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
     describe('the check', () => {
 
         // #343: THE SAME treeFieldInclude BOX EVERY OTHER CHECKBOX DRAWS, ITS LABEL BESIDE IT
-        it('sits in the Treecipe tab\'s search row, off by default, as the cockpit\'s own checkbox box with its label', () => {
+        it('sits in the filter tile under the Treecipe tab\'s search box, off by default, as the cockpit\'s own checkbox box with its label (#490)', () => {
 
             const panel = drawRecipe();
             const checkElement = checkOf(panel, accountCardOf(panel));
@@ -73,7 +73,11 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             const labelElement = wrapperElement.children[1];
 
             expect(wrapperElement.classList.contains('treeRecordTypeFieldsCheck')).toBe(true);
-            expect(wrapperElement.parentNode.classList.contains('tabSearch')).toBe(true);
+            expect(wrapperElement.parentNode.classList.contains('treecipeFilterRow')).toBe(true);
+            expect(wrapperElement.parentNode.parentNode.classList.contains('treecipeFilterTile')).toBe(true);
+            expect(wrapperElement.parentNode.parentNode.children[0]).toBe(wrapperElement.parentNode);
+            expect(panel.findAll(panel.findAll(accountCardOf(panel), 'tabSearch')[0], 'treeRecordTypeFieldsToggle')).toHaveLength(0);
+            expect(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL).toBe('Click to show record type impacted fields only');
             expect(checkElement.classList.contains('treeFieldInclude')).toBe(true);
             expect(checkElement.classList.contains('historyAction')).toBe(false);
             expect(checkElement.attributes.role).toBe('checkbox');

@@ -425,7 +425,7 @@ export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
-export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
+export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Click to show record type impacted fields only';
 export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
 export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: the ticked values are what the field already generates.';
 export const RECIPE_COCKPIT_PICKLIST_RESET_LABEL = 'Reset to generated';
@@ -434,7 +434,7 @@ export const RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = 'Tick at least one va
 export const RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = 'This field has an edit that is not a choice of its values. Saving a choice replaces it.';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 // THE TREECIPE TAB'S "TODOs only" CHECK (#354), AND WHY IT IS DISABLED ON A CARD WHOSE RECIPE HAS NO TODO COMMENT
-export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'TODOs only';
+export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'Click to show fields with open TODOs';
 // WHAT A FIELD'S TODO ROW SAYS WHEN THE TODO IS IN THE VALUE THE ROW ALREADY DRAWS (#354)
 export const RECIPE_COCKPIT_TODO_IN_VALUE_LABEL = 'TODO in the value above';
 export const RECIPE_COCKPIT_NO_TODOS_NOTE = 'No object of this tree has a TODO comment in the recipe.';
@@ -493,6 +493,9 @@ export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selecti
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
+// THE BUTTON IN THE TREECIPE TAB'S FILTER TILE THAT OPENS THE RECORD TYPES SECTION (#490)
+export const RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL = 'Manage record types';
+export const RECIPE_COCKPIT_TREECIPE_FILTER_TILE_LABEL = 'Treecipe filters and record types';
 // THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
 export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Manager';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
@@ -594,7 +597,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
-            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
+            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'History lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, Assign permission sets or Generate permission set), the org, how it ended and what it counted, the run, and its files, each a link that opens it. Click a column\'s header to sort by it, and again to turn the order; it starts newest first. A step from before this was recorded shows Not recorded, since only its time and files are known.',
             'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
@@ -608,7 +611,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         items: [
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
-            'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
+            'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact record(s) per Account (a friend\'s count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
         ]
@@ -19806,14 +19809,20 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     }
     .sdtButton-check[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
     .sdtButton-check:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
-    .recordTypesSection { margin: 0.25rem 0.6rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
-    .recordTypesSectionHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; cursor: pointer; }
-    .recordTypesSectionTitle { font-weight: 600; }
-    .recordTypesSection.disabled .recordTypesSectionHeader { cursor: default; }
-    .recordTypesSection.disabled .recordTypesSectionTitle { color: var(--sdt-muted); }
-    .recordTypesSection.disabled .recordTypesSectionToggle { cursor: default; }
-    .recordTypesSection.disabled .toggleGlyph path { stroke: var(--sdt-muted); }
-    .recordTypesSectionBody { padding: 0 0.75rem 0.75rem; border-top: 1px solid var(--sdt-border); }
+    /* THE TREECIPE TAB'S FILTER TILE (#490): ONE ROW PER CHECK, THEN "Manage record types" */
+    .treecipeFilterTile {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin: 0 0.6rem 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+    }
+    .treecipeFilterRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .recordTypesManageRow.disabled .recordTypesSectionSummary { font-size: 0.9em; }
+    .recordTypesSectionBody { margin: 0 0.6rem 0.5rem; padding: 0 0.75rem 0.75rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .recordTypesIntro { margin: 0.5rem 0; }
     .recordTypeObject { margin: 0.6rem 0; }
     .recordTypeObjectHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-weight: 600; }
@@ -20522,6 +20531,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
     const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
     const RECORD_TYPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE)};
+    const MANAGE_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL)};
+    const TREECIPE_FILTER_TILE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREECIPE_FILTER_TILE_LABEL)};
     const ORG_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_ORG_SECTION_TITLE)};
     const TREECIPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SECTION_TITLE)};
     const TREECIPE_PICKER_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREECIPE_PICKER_LABEL)};
@@ -24489,7 +24500,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     /*
         The count right of an object's name (#255) reads as what is created (#438): "Create [5 ✎]
-        Contact records per Account", a nested faker-js friend's count being records PER parent
+        Contact record(s) per Account", a nested faker-js friend's count being records PER parent
         record, as "count:" means there. The count is a button; a click anywhere on it swaps in the
         number box, where Enter or leaving the box keeps the count and Escape puts the button back.
         Only a whole number of one or more is posted, anything else is refused on the row and the box
@@ -24535,10 +24546,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    // "1 Contact record per Account", ANY OTHER COUNT "records"; THE PARENT'S RECORD IS ALWAYS ONE
-    function describeRecordCount(object, recordCount) {
+    // "Contact record(s) per Account" WHATEVER THE COUNT (#490); THE PARENT'S RECORD IS ALWAYS ONE
+    function describeRecordCount(object) {
 
-        return object.objectApiName + (recordCount === 1 ? ' record' : ' records') + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName : '');
+        return object.objectApiName + ' record(s)' + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName : '');
 
     }
 
@@ -24564,14 +24575,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeObjectState.countDrawnKey = drawnKey;
 
         treeObjectState.countValueElement.textContent = String(recordCount);
-        treeObjectState.countLabelElement.textContent = describeRecordCount(object, recordCount);
+        treeObjectState.countLabelElement.textContent = describeRecordCount(object);
         buttonElement.disabled = !!isExcluded;
         if (isChanged) { buttonElement.classList.add('changed'); } else { buttonElement.classList.remove('changed'); }
         if (isChanged) { treeObjectState.countChangedElement.classList.remove('hidden'); } else { treeObjectState.countChangedElement.classList.add('hidden'); }
         buttonElement.setAttribute('title', isExcluded
             ? 'Excluded objects are not generated, so their count cannot be changed.'
             : (isChanged ? 'recipe: ' + object.recordCount + '. ' : '') + 'Click to change the count.');
-        buttonElement.setAttribute('aria-label', 'Create ' + recordCount + ' ' + object.objectApiName + (recordCount === 1 ? ' record' : ' records')
+        buttonElement.setAttribute('aria-label', 'Create ' + recordCount + ' ' + object.objectApiName + ' record(s)'
             + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : '')
             + (isChanged ? ', changed from the recipe\\'s ' + object.recordCount : '')
             + ', edit count');
@@ -24589,7 +24600,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         inputElement.setAttribute('type', 'text');
         inputElement.setAttribute('inputmode', 'numeric');
-        inputElement.setAttribute('aria-label', object.objectApiName + ' records' + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : ''));
+        inputElement.setAttribute('aria-label', object.objectApiName + ' record(s)' + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : ''));
         inputElement.addEventListener('keydown', function (event) {
             if (event.key === 'Enter') {
                 if (typeof event.preventDefault === 'function') { event.preventDefault(); }
@@ -24828,13 +24839,21 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         structureElement.appendChild(buildTreecipeHeader(treeState));
 
         treeState.structureSearch = buildTabSearch(treeState, 'treecipe', 'Search objects, fields and faker expressions', applyStructureFilter);
-        appendRecordTypeFieldsToggle(treeState, treeState.structureSearch.element);
-        appendTodosToggle(treeState, treeState.structureSearch.element);
         structureElement.appendChild(treeState.structureSearch.element);
 
-        structureElement.appendChild(listRecordTypeObjects(treeState).length > 0
-            ? buildRecordTypesSection(treeState)
-            : buildUnavailableRecordTypesSection(treeState));
+        // THE SEARCH HAS ITS OWN ROW; THE TWO CHECKS AND "Manage record types" SHARE ONE TILE UNDER IT, AND THE SECTION OPENS UNDER THE TILE (#490)
+        const filterTileElement = createElement('div', 'treecipeFilterTile');
+        filterTileElement.setAttribute('role', 'group');
+        filterTileElement.setAttribute('aria-label', TREECIPE_FILTER_TILE_LABEL);
+        appendRecordTypeFieldsToggle(treeState, filterTileElement);
+        appendTodosToggle(treeState, filterTileElement);
+        structureElement.appendChild(filterTileElement);
+
+        if (listRecordTypeObjects(treeState).length > 0) {
+            structureElement.appendChild(buildRecordTypesSection(treeState, filterTileElement));
+        } else {
+            appendUnavailableRecordTypesButton(treeState, filterTileElement);
+        }
 
         treeState.objectStates.forEach(function (treeObjectState) {
             drawObjectNickname(treeObjectState);
@@ -25194,8 +25213,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         return treeState.isRecordTypeFieldsOnly === true && hasRecordTypeObjects(treeState);
     }
 
-    function appendRecordTypeFieldsToggle(treeState, searchElement) {
+    function appendRecordTypeFieldsToggle(treeState, tileElement) {
 
+        const rowElement = createElement('div', 'treecipeFilterRow');
+        tileElement.appendChild(rowElement);
         // THE SAME BOX EVERY OTHER CHECKBOX DRAWS (#343), WITH ITS LABEL BESIDE IT AS "Remember this selection" HAS
         const checkElement = createElement('span', 'treeRecordTypeFieldsCheck');
         const toggleElement = createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle');
@@ -25224,10 +25245,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeState.recordTypeFieldsToggleElement = toggleElement;
         checkElement.appendChild(toggleElement);
         checkElement.appendChild(labelElement);
-        searchElement.appendChild(checkElement);
+        rowElement.appendChild(checkElement);
 
         if (!hasRecordTypeObjects(treeState)) {
-            searchElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
+            rowElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
         }
 
         drawRecordTypeFieldsToggle(treeState);
@@ -25250,8 +25271,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
     }
 
-    function appendTodosToggle(treeState, searchElement) {
+    function appendTodosToggle(treeState, tileElement) {
 
+        const rowElement = createElement('div', 'treecipeFilterRow');
+        tileElement.appendChild(rowElement);
         const todoCount = todoCountOf(treeState);
         const checkElement = createElement('span', 'treeTodosCheck');
         const toggleElement = createButton('check', 'treeFieldInclude treeTodosToggle');
@@ -25280,10 +25303,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeState.todosToggleElement = toggleElement;
         checkElement.appendChild(toggleElement);
         checkElement.appendChild(labelElement);
-        searchElement.appendChild(checkElement);
+        rowElement.appendChild(checkElement);
 
         if (todoCount === 0) {
-            searchElement.appendChild(createElement('span', 'treeTodosNote muted', NO_TODOS_NOTE));
+            rowElement.appendChild(createElement('span', 'treeTodosNote muted', NO_TODOS_NOTE));
         }
 
         drawTodosToggle(treeState);
@@ -25405,78 +25428,70 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The Record types section of the Treecipe tab (#321, the #195 tab before it): one header line
-        under the search box, collapsed until the reader opens it, saying how many objects it lists
-        and whether the choice still matches the run. Like a tree card, the HEADER is the toggle and
-        the ▸ carries no listener of its own. Its rows are built on first expand.
+        The Record types section of the Treecipe tab (#321, the #195 tab before it), opened by the
+        "Manage record types" button in the filter tile under the search (#490, replacing the header
+        line and its ▸). The button carries aria-expanded and names the body it opens and the summary
+        beside it, which says how many objects the section lists and whether the choice still matches
+        the run. The body sits under the tile, collapsed until the reader opens it, and its rows are
+        built on first expand.
     */
-    // EACH SECTION'S TOGGLE NAMES ITS BODY AND ITS SUMMARY BY ID, SO A SCREEN READER ANNOUNCES "changed" ON THE TOGGLE (#321)
+    // EACH SECTION'S BUTTON NAMES ITS BODY AND ITS SUMMARY BY ID, SO A SCREEN READER ANNOUNCES "changed" ON THE BUTTON (#321)
     let recordTypesSectionCount = 0;
 
-    function buildRecordTypesSection(treeState) {
+    function buildRecordTypesSection(treeState, tileElement) {
 
-        const sectionElement = createElement('div', 'recordTypesSection');
-        const headerElement = createElement('div', 'recordTypesSectionHeader');
-        const toggleElement = buildToggleElement('treeObjectToggle recordTypesSectionToggle');
+        const rowElement = createElement('div', 'treecipeFilterRow recordTypesManageRow');
+        const toggleElement = createButton('secondary', 'recordTypesSectionToggle recordTypesManageButton', MANAGE_RECORD_TYPES_LABEL);
         const bodyElement = createElement('div', 'recordTypesSectionBody hidden');
         const summaryElement = createElement('span', 'recordTypesSectionSummary muted');
 
         recordTypesSectionCount++;
         bodyElement.setAttribute('id', 'recordTypesSectionBody' + recordTypesSectionCount);
+        bodyElement.setAttribute('role', 'region');
+        bodyElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
         summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        toggleElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
+        toggleElement.setAttribute('aria-label', MANAGE_RECORD_TYPES_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
         toggleElement.setAttribute('aria-controls', 'recordTypesSectionBody' + recordTypesSectionCount);
         toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        drawToggle(toggleElement, false, false);
-        headerElement.appendChild(toggleElement);
-        headerElement.appendChild(createElement('span', 'recordTypesSectionTitle', RECORD_TYPES_SECTION_TITLE));
-        headerElement.appendChild(summaryElement);
-        headerElement.addEventListener('click', function () {
+        toggleElement.setAttribute('aria-expanded', 'false');
+        toggleElement.addEventListener('click', function () {
             setRecordTypesExpanded(treeState, !treeState.isRecordTypesExpanded, true);
             savePanelPlace();
         });
 
-        sectionElement.appendChild(headerElement);
-        sectionElement.appendChild(bodyElement);
+        rowElement.appendChild(toggleElement);
+        rowElement.appendChild(summaryElement);
+        tileElement.appendChild(rowElement);
 
         treeState.recordTypesSection = { toggleElement: toggleElement, bodyElement: bodyElement, summaryElement: summaryElement, isBuilt: false };
         drawRecordTypesSummary(treeState);
 
-        return sectionElement;
+        return bodyElement;
 
     }
 
     /*
-        A card with no object offering two or more record types still draws the header (#338), so
-        the reader learns the section exists and why this tree has nothing in it. It has no body and
-        no listener, and treeState.recordTypesSection stays unset, so a click, a search, a restored
-        place and a focus all stop at the guards every other path already has.
+        A card with no object offering two or more record types still draws the button (#338, #490),
+        disabled, so the reader learns the section exists and why this tree has nothing in it. There is
+        no body and no listener, and treeState.recordTypesSection stays unset, so a click, a search, a
+        restored place and a focus all stop at the guards every other path already has.
     */
-    function buildUnavailableRecordTypesSection(treeState) {
+    function appendUnavailableRecordTypesButton(treeState, tileElement) {
 
-        const sectionElement = createElement('div', 'recordTypesSection disabled');
-        const headerElement = createElement('div', 'recordTypesSectionHeader');
-        const toggleElement = buildToggleElement('treeObjectToggle recordTypesSectionToggle');
-
-        toggleElement.disabled = true;
-        toggleElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
-        toggleElement.classList.add('noMotion');
+        const rowElement = createElement('div', 'treecipeFilterRow recordTypesManageRow disabled');
+        const toggleElement = createButton('secondary', 'recordTypesSectionToggle recordTypesManageButton', MANAGE_RECORD_TYPES_LABEL);
         const summaryElement = createElement('span', 'recordTypesSectionSummary muted', RECORD_TYPES_UNAVAILABLE_SUMMARY);
 
         recordTypesSectionCount++;
         summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
+        toggleElement.disabled = true;
+        toggleElement.setAttribute('aria-label', MANAGE_RECORD_TYPES_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
         toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        // A GROUP, SO aria-disabled IS READ FROM THE SECTION RATHER THAN IGNORED ON A ROLELESS div
-        sectionElement.setAttribute('role', 'group');
-        sectionElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE);
-        sectionElement.setAttribute('aria-disabled', 'true');
-        headerElement.setAttribute('aria-disabled', 'true');
-        headerElement.appendChild(toggleElement);
-        headerElement.appendChild(createElement('span', 'recordTypesSectionTitle', RECORD_TYPES_SECTION_TITLE));
-        headerElement.appendChild(summaryElement);
-        sectionElement.appendChild(headerElement);
+        toggleElement.setAttribute('title', RECORD_TYPES_UNAVAILABLE_SUMMARY);
 
-        return sectionElement;
+        rowElement.appendChild(toggleElement);
+        rowElement.appendChild(summaryElement);
+        tileElement.appendChild(rowElement);
 
     }
 
@@ -25491,7 +25506,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         }
 
         setShownWithMotion(section.bodyElement, isExpanded, isAnimated);
-        drawToggle(section.toggleElement, isExpanded, isAnimated);
+        section.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
         treeState.isRecordTypesExpanded = isExpanded;
 
     }

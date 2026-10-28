@@ -326,14 +326,17 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
 
     describe('the check', () => {
 
-        it('sits in the Treecipe tab\'s search row, off by default, labelled with the card\'s TODO count', () => {
+        it('sits in the filter tile under the Treecipe tab\'s search box, off by default, labelled with the card\'s TODO count (#490)', () => {
 
             const panel = drawRecipe();
             const accountCard = panel.treeCards()[0];
             const checkElement = checkOf(panel, accountCard);
 
             expect(checkElement.parentNode.classList.contains('treeTodosCheck')).toBe(true);
-            expect(checkElement.parentNode.parentNode.classList.contains('tabSearch')).toBe(true);
+            expect(checkElement.parentNode.parentNode.classList.contains('treecipeFilterRow')).toBe(true);
+            expect(checkElement.parentNode.parentNode.parentNode.classList.contains('treecipeFilterTile')).toBe(true);
+            expect(panel.findAll(panel.findAll(accountCard, 'tabSearch')[0], 'treeTodosToggle')).toHaveLength(0);
+            expect(RECIPE_COCKPIT_TODOS_ONLY_LABEL).toBe('Click to show fields with open TODOs');
             expect(checkElement.attributes.role).toBe('checkbox');
             expect(checkElement.attributes['aria-checked']).toBe('false');
             expect(checkElement.disabled).toBe(false);
