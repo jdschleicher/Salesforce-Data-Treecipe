@@ -417,6 +417,25 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
 
         });
 
+        it('redacts a token or auth URL the CLI echoed into a step\'s detail before the summary is written', () => {
+
+            const location = RecipeCockpitService.resolveTreeRunArtifactsLocation(workspaceRoot, panelState.recipeDataMessage!.recipe, { folderName: ACCOUNT_TREE_KEY })!;
+
+            (RecipeCockpitService as any).recordTroubleshootingStep(location, {
+                step: 'field-deploy', outcome: 'failed', orgUsername: QA_USERNAME,
+                startedAt: new Date(2026, 9, 28, 10, 0, 0), finishedAt: new Date(2026, 9, 28, 10, 0, 1),
+                detail: 'auth failed for force://PlatformCLI::secret@example.my.salesforce.com with 00D000000000077!AQ.abc_def (exit code 1)',
+                filePaths: []
+            });
+
+            const summaryFolderPath = path.join(accountRunArtifactsFolder(), 'OrgOperations', QA_USERNAME);
+            const summaryText = fs.readFileSync(path.join(summaryFolderPath, fs.readdirSync(summaryFolderPath)[0]), 'utf-8');
+            expect(summaryText).not.toContain('force://');
+            expect(summaryText).not.toContain('00D000000000077!');
+            expect(JSON.parse(summaryText).detail).toContain('(exit code 1)');
+
+        });
+
         it('lists another run\'s steps of the same tree too, and posts nothing for a card with no folder or a model gone', () => {
 
             fs.mkdirSync(path.join(accountRunArtifactsFolder('recipe-2026-09-01T00-00-00'), 'OrgOperations', QA_USERNAME), { recursive: true });

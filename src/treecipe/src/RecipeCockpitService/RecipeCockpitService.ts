@@ -14409,11 +14409,15 @@ export class RecipeCockpitService {
 
     }
 
-    // A STEP THE HISTORY LISTS (#485): ITS SUMMARY, BESIDE ITS FILES IN THE TREE'S RunArtifacts; A CARD WITH NO FOLDER RECORDS NOTHING
+    /*
+        A step the History lists (#485): its summary, beside its files in the tree's RunArtifacts; a
+        card with no folder records nothing. A detail can be the CLI's own stderr, which can echo an
+        auth URL or a token, so it is redacted as the step's result file is.
+    */
     private static recordTroubleshootingStep(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation | undefined, record: IRunHistoryStepRecord) {
 
         if ( runArtifactsLocation ) {
-            RecipeCockpitRunHistory.writeSummary(runArtifactsLocation, record);
+            RecipeCockpitRunHistory.writeSummary(runArtifactsLocation, record.detail === undefined ? record : { ...record, detail: ScratchOrgService.redactSecretText(record.detail) });
         }
 
     }
