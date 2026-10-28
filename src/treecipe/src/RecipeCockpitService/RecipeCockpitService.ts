@@ -13700,7 +13700,7 @@ export class RecipeCockpitService {
                 : '';
         };
 
-        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST CLI THAT RAN -- THE LISTING, FOR A LISTED KIND
+        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST STEP THAT RAN -- THE LISTING, FOR A LISTED KIND
         let stepStartedAt = new Date();
         let retrievePackageXmlFilePath: string | undefined;
         let retrieveOutputFilePath: string | undefined;

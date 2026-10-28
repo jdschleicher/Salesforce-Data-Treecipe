@@ -14,11 +14,10 @@ import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './Recipe
 
     Every kind is named one by one in a package.xml (--manifest): a tree can hold hundreds, and one
     --metadata each would pass the 8,191 characters cmd.exe allows on Windows. Validation rules and
-    record types are LISTED in the org first (the Metadata API's listMetadata on a jsforce connection,
-    #401, #498), since the point is to
-    bring what the project does not hold yet and so cannot name: a "<Type>:<Object>.*" wildcard is no
-    answer, because the Metadata API expands "*" only as a whole member name and these are child
-    types of CustomObject. Every name comes from the HOST's model of the tree, the project or the
+    record types are LISTED in the org first (the Metadata API's listMetadata on a jsforce
+    connection, #401, #498), since the point is to bring what the project does not hold yet and so
+    cannot name: a "<Type>:<Object>.*" wildcard is no answer, because the Metadata API expands "*"
+    only as a whole member name and these are child types of CustomObject. Every name comes from the HOST's model of the tree, the project or the
     org's listing, never from a panel message, and reaches an argv or a manifest only as an api name.
 */
 
@@ -112,6 +111,7 @@ export interface IMetadataListSource {
 // A vscode CancellationToken'S SHAPE, SO THIS FILE STAYS FREE OF vscode
 export interface IMetadataListCancellation {
     readonly isCancellationRequested: boolean;
+    // A vscode TOKEN ANSWERS A Disposable, WHICH IS DISPOSED WHEN THE LISTING ENDS
     onCancellationRequested(listener: () => void): unknown;
 }
 
@@ -162,6 +162,7 @@ export class RecipeCockpitMetadataRetrieve {
 
         const unknownClause = `which ${RETRIEVE_WORDS[retrieveKind].many} the org holds is unknown`;
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let cancelListener: unknown;
 
         const listing = (async (): Promise<MetadataListOutcome> => {
 
@@ -184,7 +185,7 @@ export class RecipeCockpitMetadataRetrieve {
         })();
 
         const cancelled = new Promise<MetadataListOutcome>(resolve => {
-            cancellation.onCancellationRequested(() => resolve({ kind: 'cancelled' }));
+            cancelListener = cancellation.onCancellationRequested(() => resolve({ kind: 'cancelled' }));
         });
 
         const timedOut = new Promise<MetadataListOutcome>(resolve => {
@@ -197,6 +198,9 @@ export class RecipeCockpitMetadataRetrieve {
             return cancellation.isCancellationRequested ? { kind: 'cancelled' } : outcome;
         } finally {
             clearTimeout(timer);
+            if ( cancelListener !== null && typeof cancelListener === 'object' && typeof (cancelListener as { dispose?: unknown }).dispose === 'function' ) {
+                (cancelListener as { dispose(): unknown }).dispose();
+            }
         }
 
     }

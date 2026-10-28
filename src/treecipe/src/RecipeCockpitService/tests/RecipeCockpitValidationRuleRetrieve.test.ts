@@ -244,6 +244,18 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             });
 
+            it('disposes its Cancel listener when the listing ends, answered or timed out', async () => {
+
+                const dispose = jest.fn();
+                const cancellation = { isCancellationRequested: false, onCancellationRequested: jest.fn().mockReturnValue({ dispose: dispose }) };
+
+                await listWith(async () => [], cancellation);
+                await listWith(() => new Promise(() => undefined), cancellation, 5);
+
+                expect(dispose).toHaveBeenCalledTimes(2);
+
+            });
+
             it('abandons the listing on a cancel, before the answer or when it comes with the answer, and opens nothing when already cancelled', async () => {
 
                 let cancel: () => void = () => undefined;
