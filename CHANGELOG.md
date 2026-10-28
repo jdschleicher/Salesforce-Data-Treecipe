@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.167.0] - Picklist Dependency Check: the deployed-check asks the org through a connection, not the sf CLI
+## [3.168.0] - Picklist Dependency Check: the deployed-check asks the org through a connection, not the sf CLI
 
 [#497](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/497), the first slice of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496) (replace Salesforce CLI calls with `@salesforce/core` where it makes sense). Before deploying, **Run Picklist Dependency Check** asks whether the generated test suite and its class are in the org. That question started an `sf data query --use-tooling-api` process, which took seconds and needed `sf` on PATH.
 
@@ -9,6 +9,15 @@
 - **A guard on every remaining sf call.** `SalesforceCliCallSites.test.ts` lists each place that still starts an `sf` process, by file and method (13 after this change, plus the Recipe Cockpit's cancellable wrapper), and fails on a new one, a removed one left listed, a new file importing `child_process`, or a direct `jsforce` import (`jsforce` is a devDependency; the connection `@salesforce/core` returns is the API that ships). Each #496 slice deletes its entry.
 - **Docs.** `docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md` no longer says every org interaction goes through the CLI: its architecture diagram, trust boundaries, credential posture (the access token is now read into the extension host, where `@salesforce/core` may keep it in memory, and is never written, logged or posted), sinks and §9.1 permissions row (which still named the older `ApexClass` query) say what the check does. `PICKLIST-DEPENDENCY-FLOW.md`'s run diagram names the current method and the connection. CLAUDE.md adds the rule that org work goes through a `@salesforce/core` connection.
 - **Tests.** `PicklistDependencyCheckService.test.ts`: true for a record, false for none, for a rejected query, for a connection that does not open and for four malformed answers; the query goes through `tooling.query` on the named org with the suite and class names; no `execFile`; an unusable identifier opens no connection.
+
+## [3.167.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
+
+[#495](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/495). **Edit values** stayed on screen, unchanged, above its own open tiles, and a second click on it closed them and dropped any unsaved ticks without saying so, so it looked like a second way to finish the edit.
+
+- **Hidden while editing.** Opening the tiles hides **Edit values** (`hidden`, so it is out of the Tab order too) and moves focus to the editor's **×**. **Save** the host accepts, **Reset to generated** the host accepts, and **Cancel** close the tiles and show **Edit values** again with focus on it. A Save the host refuses keeps the tiles open and the button hidden, and a restored place that had the tiles open opens them with the button hidden.
+- **× and Escape stay.** They still close the tiles without saving, and are the way out while "Loading values…" is drawn, before Save and Cancel exist.
+- **Help and guide.** The ? help's Edit values note and `docs/RECIPE-COCKPIT-GUIDE.md` say the button is hidden while editing and that Save or Cancel ends the edit.
+- **Tests.** `RecipeCockpitPicklistValueChoice.test.ts`: the button hidden while open and back with focus after Cancel and an accepted Save, kept hidden by a refusal and an unanswered Save, × and Escape while the values load, and a locked picklist's Cancel; `RecipeCockpitPlaceRestore.test.ts`: a restored open editor keeps the button hidden.
 
 ## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
 

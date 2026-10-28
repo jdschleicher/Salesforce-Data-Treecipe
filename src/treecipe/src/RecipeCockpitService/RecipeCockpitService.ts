@@ -630,7 +630,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
-            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
+            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
@@ -24106,6 +24106,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 setShownWithMotion(editorElement, isExpanding, isAnimated);
                 fieldState.isPicklistExpanded = isExpanding;
                 picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                // WHILE THE TILES ARE OPEN THE ONLY WAYS OUT ARE SAVE OR CANCEL (#495); × AND ESCAPE STAY FOR THE LOAD
+                if (isExpanding) { picklistToggleElement.classList.add('hidden'); } else { picklistToggleElement.classList.remove('hidden'); }
+                if (isExpanding && isAnimated && typeof closeButtonElement.focus === 'function') { closeButtonElement.focus(); }
                 if (!isExpanding && wasExpanded && typeof picklistToggleElement.focus === 'function') { picklistToggleElement.focus(); }
             };
             fieldState.setPicklistExpanded = setPicklistExpanded;
@@ -24113,9 +24116,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
             picklistToggleElement.setAttribute('aria-label', PICKLIST_EDIT_VALUES_LABEL + ' of ' + field.fieldApiName);
             picklistToggleElement.setAttribute('aria-expanded', 'false');
-            // THE EDITOR ON SCREEN DECIDES, NOT THE PLACE: A SAVE MARKS THE PLACE CLOSED WHILE THE TILES ARE STILL DRAWN
+            // IT IS HIDDEN WHILE THE TILES ARE OPEN (#495), SO A CLICK ONLY EVER OPENS THEM
             picklistToggleElement.addEventListener('click', function () {
-                setPicklistExpanded(editorElement.classList.contains('hidden'), true);
+                if (!editorElement.classList.contains('hidden')) { return; }
+                setPicklistExpanded(true, true);
                 savePanelPlace();
             });
             closeButtonElement.addEventListener('click', function (event) {
