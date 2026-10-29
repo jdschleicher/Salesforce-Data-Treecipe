@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.178.0] - Recipe Cockpit: one drawn pencil on every edit button, and a tree card's ☆ and ✎ before its name
+## [3.179.0] - Recipe Cockpit: one drawn pencil on every edit button, and a tree card's ☆ and ✎ before its name
 
 [#540](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/540). The cockpit drew its edit pencil two ways: the field edit, record count and Treecipe Adapter edit buttons used the drawn pencil, while a tree card's rename and a data set row's rename were a `✎` character. A tree card's ☆ and ✎ also sat at the far end of its header, away from the name they act on.
 
@@ -10,6 +10,18 @@
 - **☆ and ✎ come first.** A tree card's header reads ☆, ✎, name, folder, count, so Tab reaches them first; `.treeHeaderActions` no longer pushes them to the end, and the group is drawn only on a card with a folder, so the ungrouped card's header starts with its name. A data set row's ✎ moved right after its ☆, before the name. The action group still stops a click from reaching the header.
 - **Nothing else changes.** Rename and favorite post what they did, the host asks in its own input box, and what is stored is unchanged.
 - **Help and guide.** The ? help, the Adapter's intro and `docs/RECIPE-COCKPIT-GUIDE.md` call it the pencil, and say the rename sits before the name beside the star; two screenshots were re-taken.
+
+## [3.178.0] - Recipe Cockpit: the Generate Treecipe run list moves into the Treecipes section, labelled "Select Generate Treecipe runs by date"
+
+[#533](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/533). The run list sat alone in the top toolbar with no visible label, away from the trees it changes, with the pinned Target Org Manager in between.
+
+- **First in the Treecipes section.** `buildRunPicker` draws a `runPicker` row (a `<label for="runSelect">` reading **Select Generate Treecipe runs by date**, `RECIPE_COCKPIT_RUN_PICKER_LABEL`, then the `runSelect` dropdown) as the first child of `treecipesControls`, above the section search, its results, the Treecipe dropdown and the insert order line. The label names the dropdown, so it no longer carries its own `aria-label`.
+- **Not in the toolbar.** `renderToolbar` draws only Favorites only now.
+- **Still there when there is no card.** A run with objects and no trees, or a run that could not be read, draws the row right under the toolbar, above its notice or empty state, so another run can still be chosen. With no run at all there is no row, as before.
+- **Narrow panels.** The row wraps: the label, then the dropdown taking what is left (`flex: 1 1 12rem; min-width: 0`). Its colours are the search box's, so the contrast pair list did not change.
+- **Unchanged.** A change still posts `selectRun {runFolderName}` and nothing else; the run-switch confirmation (#399), its Cancel putting the dropdown back, the saved place and the restore are as they were. No faker backend changed.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the run list where it now is, and the screenshots were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts`: the row's place in the section and its absence from the toolbar, the label's text and `for`, the wrapping CSS, the row above a no-trees notice and above an unreadable run's empty state. `RecipeCockpitTreecipePicker.test.ts`: the section's control order.
 
 ## [3.177.0] - Recipe Cockpit: retrieves can run without the Salesforce CLI, and listing validation rules and record types never uses it
 
