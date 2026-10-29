@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.177.0] - Recipe Cockpit: the Generate Treecipe run list moves into the Treecipes section, labelled "Select Generate Treecipe runs by date"
+
+[#533](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/533). The run list sat alone in the top toolbar with no visible label, away from the trees it changes, with the pinned Target Org Manager in between.
+
+- **First in the Treecipes section.** `buildRunPicker` draws a `runPicker` row (a `<label for="runSelect">` reading **Select Generate Treecipe runs by date**, `RECIPE_COCKPIT_RUN_PICKER_LABEL`, then the `runSelect` dropdown) as the first child of `treecipesControls`, above the section search, its results, the Treecipe dropdown and the insert order line. The label names the dropdown, so it no longer carries its own `aria-label`.
+- **Not in the toolbar.** `renderToolbar` draws only Favorites only now.
+- **Still there when there is no card.** A run with objects and no trees, or a run that could not be read, draws the row right under the toolbar, above its notice or empty state, so another run can still be chosen. With no run at all there is no row, as before.
+- **Narrow panels.** The row wraps: the label, then the dropdown taking what is left (`flex: 1 1 12rem; min-width: 0`). Its colours are the search box's, so the contrast pair list did not change.
+- **Unchanged.** A change still posts `selectRun {runFolderName}` and nothing else; the run-switch confirmation (#399), its Cancel putting the dropdown back, the saved place and the restore are as they were. No faker backend changed.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the run list where it now is, and the screenshots were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts`: the row's place in the section and its absence from the toolbar, the label's text and `for`, the wrapping CSS, the row above a no-trees notice and above an unreadable run's empty state. `RecipeCockpitTreecipePicker.test.ts`: the section's control order.
+
 ## [3.176.0] - Recipe Cockpit: "+ New scratch org" can create the org with @salesforce/core instead of the Salesforce CLI
 
 [#507](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/507), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). Adopted as a CHOICE rather than a replacement, a decision on the issue: `@salesforce/core`'s `scratchOrgCreate` reads `sfdx-project.json` and the project's `.sf` config from the extension host's working directory, which is not the workspace, so it does not always make the org the CLI makes.
