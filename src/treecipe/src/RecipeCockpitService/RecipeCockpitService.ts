@@ -19841,10 +19841,18 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; }
-    .treeTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
-    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; }
+    /*
+        An unselected tab rests in the mint, rounded-top look hover used to add (#493), and hover
+        makes its label bold and underlined. Going bold must not widen the tab and shift the strip,
+        so each tab carries its label in data-label, drawn bold, hidden and zero-height above the
+        text: the tab is always as wide as its bold label. The disabled kind's (0,2,0) rule still
+        outranks the resting fill, and the selected (0,4,0) rule below outranks it on a selected tab.
+        The sub-tabs copy these rules below rather than share them (#363's one-class state rule).
+    */
+    .treeTab { color: var(--sdt-muted); background-color: var(--sdt-row-hover); border-color: transparent; border-radius: 6px 6px 0 0; }
+    .treeTab::before { content: attr(data-label) / ''; display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
+    .treeTab:hover:not(:disabled):not(.selected) { border-color: transparent; font-weight: 600; text-decoration: underline; }
     .treeTab.selected { color: var(--sdt-text); font-weight: 600; }
-    .treeTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     /*
         The selected tab and its panel are ONE outline (#373): the tab's sides and top, then the
         panel's sides and bottom. The tab sits 1px over the panel's top edge with its own bottom edge
@@ -19895,10 +19903,10 @@ ${this.buildPaletteCustomProperties()}
     .treeTabs.noMotion .treeTab::after { transition: none; }
     /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
     .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; }
-    .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
-    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; }
+    .troubleshootingSubTab { color: var(--sdt-muted); background-color: var(--sdt-row-hover); border-color: transparent; border-radius: 6px 6px 0 0; }
+    .troubleshootingSubTab::before { content: attr(data-label) / ''; display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
+    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { border-color: transparent; font-weight: 600; text-decoration: underline; }
     .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
-    .troubleshootingSubTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     .troubleshootingSubTab { position: relative; }
     .troubleshootingSubTab::after {
         content: '';
@@ -25150,6 +25158,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const isSelected = tabName === treeState.selectedTab;
         const tabElement = createButton('secondary', isSelected ? 'treeTab selected' : 'treeTab', tabLabel);
+        tabElement.setAttribute('data-label', tabLabel);
 
         tabElement.setAttribute('role', 'tab');
         tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
@@ -26642,6 +26651,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const label = TROUBLESHOOTING_SUB_TAB_LABELS[subTab];
         const tabElement = createButton('secondary', 'troubleshootingSubTab troubleshootingSubTab-' + subTab, label);
+        tabElement.setAttribute('data-label', label);
         const subPanelElement = createElement('div', 'troubleshootingSubPanel troubleshootingSubPanel-' + subTab + ' hidden');
         const searchKey = troubleshootingSearchKey(subTab);
 
@@ -26783,6 +26793,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const todoCount = subTabState.todoGroups.reduce(function (count, groupState) { return count + groupState.entries.length; }, 0);
         subTabState.tabElement.textContent = todoCount > 0 ? TROUBLESHOOTING_SUB_TAB_LABELS.todos + ' (' + todoCount + ')' : TROUBLESHOOTING_SUB_TAB_LABELS.todos;
+        subTabState.tabElement.setAttribute('data-label', subTabState.tabElement.textContent);
 
         if (todoCount === 0) {
             subTabState.listElement.appendChild(createElement('div', 'treeEmpty muted', NO_TREE_TODOS_NOTE));
