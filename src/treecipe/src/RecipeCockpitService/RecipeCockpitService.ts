@@ -647,7 +647,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
-            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter\'s read straight from the org instead of through the Salesforce CLI (listing an org\'s validation rules and record types still uses it), and Cancel stops a retrieve before anything is written.',
+            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter\'s read straight from the org instead of through the Salesforce CLI (listing an org\'s validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
@@ -13724,7 +13724,7 @@ export class RecipeCockpitService {
         and made the selection only when there is none (#480); then a confirmation names what is retrieved, the
         org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start --manifest" runs in project mode, cancellable. Validation rules and
-        record types are first LISTED in the org ("sf org list metadata", #401), after the prompt
+        record types are first LISTED in the org (listMetadata on a jsforce connection, #401, #498), after the prompt
         and before the confirmation, so the confirmation and the package.xml name each one. Nothing is deployed, and the
         recipe is not regenerated: the notification offers Generate Treecipe. One retrieve per window,
         whatever its kind.
@@ -13840,7 +13840,7 @@ export class RecipeCockpitService {
                 : '';
         };
 
-        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST CLI THAT RAN -- THE LISTING, FOR A LISTED KIND
+        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST STEP THAT RAN -- THE LISTING, FOR A LISTED KIND
         let stepStartedAt = new Date();
         let retrievePackageXmlFilePath: string | undefined;
         let retrieveOutputFilePath: string | undefined;
@@ -13858,33 +13858,24 @@ export class RecipeCockpitService {
 
         if ( isListed ) {
 
-            let listArguments: string[];
-            try {
-                listArguments = RecipeCockpitMetadataRetrieve.buildListMetadataArguments(retrieveKind, orgDetail.username);
-            } catch (argumentError) {
-                return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
-            }
-
             stepStartedAt = new Date();
-            const listRun = await this.runCancellableCli(
-                RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${orgDetail.username}`),
-                listArguments,
+            const listingUsername = orgDetail.username;
+            const listOutcome = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${listingUsername}`),
+                cancellable: true
+            }, async (_progress, cancellationToken) => await RecipeCockpitMetadataRetrieve.listOrgMetadata(
+                async () => ( await SalesforceOrgService.getConnection(listingUsername) ).metadata,
+                retrieveKind,
+                objectApiNames,
                 METADATA_LIST_TIMEOUT_MILLISECONDS,
-                workspaceRoot,
-                SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
-            );
+                cancellationToken
+            ));
 
             // A LISTING WRITES NOTHING, SO A CANCEL OR A FAILURE HERE OFFERS NO GENERATE TREECIPE
-            if ( listRun.isCancelled ) {
+            if ( listOutcome.kind === 'cancelled' ) {
                 recordStep('cancelled', { detail: 'The listing was cancelled, so nothing was retrieved.' });
                 return refuse(`The listing of ${manyNoun} in ${orgLabel} was cancelled, so nothing was retrieved.`);
-            }
-
-            const listOutcome = RecipeCockpitMetadataRetrieve.parseListMetadataOutput(retrieveKind, listRun.invocation, objectApiNames);
-
-            if ( listOutcome.kind === 'cliNotInstalled' ) {
-                recordStep('failed', { detail: listOutcome.failureMessage });
-                return refuse(listOutcome.failureMessage);
             }
 
             if ( listOutcome.kind !== 'listed' ) {

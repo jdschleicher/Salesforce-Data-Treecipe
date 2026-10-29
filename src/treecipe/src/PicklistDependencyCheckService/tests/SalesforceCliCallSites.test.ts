@@ -16,8 +16,6 @@ const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deploySourcePaths',
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#runPicklistDependencyTests',
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataDeploy',
-    // THE LISTING OF VALIDATION RULES AND RECORD TYPES (#498); THE RETRIEVE ITSELF IS runCancellableRetrieve'S
-    'RecipeCockpitService/RecipeCockpitService.ts#performMetadataRetrieve',
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
     // EVERY RETRIEVE, THE ADAPTER'S INCLUDED, WITH metadataRetrieveMethod AT cli (#506)
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableRetrieve',

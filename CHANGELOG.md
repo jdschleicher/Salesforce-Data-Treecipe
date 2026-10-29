@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.177.0] - Recipe Cockpit: retrieves can run without the Salesforce CLI
+## [3.177.0] - Recipe Cockpit: retrieves can run without the Salesforce CLI, and listing validation rules and record types never uses it
 
 [#506](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/506), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The four Troubleshooting retrieves and the Treecipe Adapter's two retrieves always ran `sf project retrieve start --manifest`. The spike on `@salesforce/source-deploy-retrieve` ([#504](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/504)) is still open, so, as for deploys (#505), this release offers both ways and adds no runtime dependency.
 
@@ -11,14 +11,26 @@
 - **Files land where the CLI puts them.** A file the project already holds is written over where it is, in whichever package directory holds it, matched case-insensitively. A new one goes under the default package directory's `main/default`. The Adapter's retrieves write into their staging folder's `main/default` and nowhere else. Every folder on the way is checked to be a real folder (a missing one is made one segment at a time), a link is never written through, each file goes to a temporary file renamed over the target, and a destination `.forceignore` covers is left out, as the CLI leaves it. A file that cannot be written is a failed file; the rest are still written.
 - **Same outcome, notification, result file and History.** The answer is put in the CLI's `--json` shape (`toCliShapedPayload`). The org's `Entity of type … cannot be found` messages become failed files named by type and member. So `parseRetrieveOutput`, the Adapter's success check, the notification, the `<ts>-<kind>-retrieve.json` result file (now also carrying `retrieveId` and `retrievedWith: 'jsforce'`) and the History summary are the CLI retrieve's own.
 - **Cancel writes nothing.** The Metadata API cannot cancel a retrieve, so Cancel stops the wait and the org's zip is never read. Files are written only after the zip has been read and converted, and a cancel up to then writes nothing: *The retrieve of … was cancelled before anything was written*, with no Generate Treecipe offered, and the History records it cancelled.
-- **Still the CLI.** Listing an org's validation rules and record types (`sf org list metadata`, #498) is unchanged.
+- **The listing needs no CLI either** ([#498](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/498), from #513, whatever the setting). See below.
 - **One difference.** The files are written through `xml2js`, so their formatting (entity escaping, empty elements) can differ from the CLI's even where the values are the same. [#522](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/522) will put back the committed formatting.
 - **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the setting.
-- **Tests.**
-  - `RecipeCockpitMetadataRetrievePackage.test.ts`: the setting, the request, the zip reader (refused names, CRC, caps, methods), the conversion per kind, the Adapter's whole object, names that are not api names, where files land (held, new, case-insensitive), `.forceignore`, a linked folder and a linked file refused, the staging folder, the CLI-shaped answer read by `parseRetrieveOutput`, and `runRetrieve`'s polling, cancel, timeout, failures and token redaction.
-  - `RecipeCockpitMetadataRetrieve.test.ts`: a jsforce field retrieve end to end (no CLI, the package.xml's members, files written, the same notification, result file and History), a cancel that writes nothing, and a failed connection and an unreadable zip.
-  - `RecipeCockpitAdapterRetrieve.test.ts`: Retrieve latest metadata through jsforce into the staging folder only, with the same marks, and a cancel.
-  - `SalesforceCliCallSites.test.ts`: the CLI retrieve now starts in `runCancellableRetrieve` alone.
+
+### Listing validation rules and record types without the CLI (#498)
+
+Before **Retrieve validation rules…** and **Retrieve record types…**, the cockpit started a separate `sf org list metadata` process, which took seconds and needed the CLI on PATH, only to ask the org which rules or record types it holds.
+
+- **One API call.** The listing is now the Metadata API's `listMetadata`, through `connection.metadata.list({ type: 'ValidationRule' | 'RecordType' })` on the connection `SalesforceOrgService.getConnection` opens by username (`RecipeCockpitMetadataRetrieve.listOrgMetadata`). `buildListMetadataArguments` and `parseListMetadataOutput` are gone; the retrieve itself follows the setting above.
+- **The same checks.** `readListedEntries` keeps what `parseListMetadataOutput` kept: an `<Object>.<Name>` of api names in the type's shape for a tree object (case-insensitive), a tree object's bad entry left out and counted in the Skipped note, another object's ignored, one entry answered unwrapped still read as one. An answer that is not a listing, a listing that throws (its error code and message, any token taken out), a connection that will not open (one fixed message, quoting nothing of its error) and a timeout are each one warning and never read as none; an empty listing is still one information notice with no retrieve, and more than 10,000 components is still refused before the confirmation. Never a `<Type>:<Object>.*` wildcard.
+- **Cancel.** The connection and the call are raced against the progress notification's Cancel and the 5-minute timeout, and the listing is abandoned; a Cancel that arrives with the answer is still a cancel. The History (#485) records the step as before, from the listing's start. The listing's listener on Cancel is disposed when it ends.
+- **A missing CLI is reported later.** The listing no longer needs `sf`, so for validation rules and record types a CLI that is not installed is reported by the retrieve itself, after the confirmation, rather than before it.
+- **Tests.** `RecipeCockpitValidationRuleRetrieve.test.ts` and `RecipeCockpitMetadataRetrieve.test.ts` fake the connection instead of the CLI: the entry checks, an unwrapped entry, a thrown, unusable or null answer, a connection that fails, a timeout, a cancel before and with the answer, the query each kind sends and the username it is opened by, and no CLI listing argv.
+
+### Tests for the retrieve (#506)
+
+- `RecipeCockpitMetadataRetrievePackage.test.ts`: the setting, the request, the zip reader (refused names, CRC, caps, methods), the conversion per kind, the Adapter's whole object, names that are not api names, where files land (held, new, case-insensitive), `.forceignore`, a linked folder and a linked file refused, the staging folder, the CLI-shaped answer read by `parseRetrieveOutput`, and `runRetrieve`'s polling, cancel, timeout, failures and token redaction.
+- `RecipeCockpitMetadataRetrieve.test.ts`: a jsforce field retrieve end to end (no CLI, the package.xml's members, files written, the same notification, result file and History), a cancel that writes nothing, and a failed connection and an unreadable zip.
+- `RecipeCockpitAdapterRetrieve.test.ts`: Retrieve latest metadata through jsforce into the staging folder only, with the same marks, and a cancel.
+- `SalesforceCliCallSites.test.ts`: `performMetadataRetrieve`, `performAdapterMetadataRetrieve` and `performAdapterChildPrepare` no longer start the CLI; the CLI retrieve starts in `runCancellableRetrieve` alone.
 
 ## [3.176.0] - Recipe Cockpit: "+ New scratch org" can create the org with @salesforce/core instead of the Salesforce CLI
 

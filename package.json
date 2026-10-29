@@ -145,7 +145,7 @@
             "enum": ["cli", "jsforce"],
             "enumDescriptions": [
               "Retrieve through the Salesforce CLI: sf project retrieve start --manifest",
-              "Retrieve on the org's connection through the Metadata API, without the Salesforce CLI, and write the files in source format where the CLI writes them. Listing an org's validation rules and record types still uses the CLI"
+              "Retrieve on the org's connection through the Metadata API, without the Salesforce CLI, and write the files in source format where the CLI writes them"
             ],
             "default": "cli",
             "description": "How the Recipe Cockpit retrieves metadata: the Troubleshooting tab's field, validation rule, record type and global value set retrieves, and the Treecipe Adapter's Retrieve latest metadata and new child objects"
