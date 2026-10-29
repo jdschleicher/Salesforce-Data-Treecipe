@@ -67,7 +67,11 @@ import {
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
     RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
-    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
+    RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
+    RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER,
+    RECIPE_COCKPIT_INSERT_DATASET_COMMAND
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
@@ -78,6 +82,7 @@ import { ConfigurationService } from '../../ConfigurationService/ConfigurationSe
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
+import { DATASET_COLLECTIONS_API_FOLDER_NAME } from '../../DatasetSourceService/DatasetSourceService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
@@ -1573,7 +1578,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
             const insertedDatasetFolderName = `dataset-fakerjs-${TIMESTAMP}`;
             const openMessage = { command: 'openDataset', datasetFolderName: insertedDatasetFolderName };
-            const insertMessage = { command: 'insertDataset', datasetFolderName: insertedDatasetFolderName };
+            const insertMessage = { command: 'insertDataset', datasetFolderName: insertedDatasetFolderName, orgIndex: 0 };
 
             it('keeps the org selection, so nothing is listed, selected or checked again', async () => {
 
@@ -1612,7 +1617,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
                 const datasetFolderPath = path.join(fakeDataSetsFolderPath(), insertedDatasetFolderName);
                 expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toEqual({ kind: 'openDataset', datasetFolderName: insertedDatasetFolderName, datasetFolderPath: datasetFolderPath });
-                expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState())).toEqual({ kind: 'insertDataset', datasetFolderName: insertedDatasetFolderName, datasetFolderPath: datasetFolderPath });
+                expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState())).toEqual({ kind: 'insertDataset', datasetFolderName: insertedDatasetFolderName, datasetFolderPath: datasetFolderPath, isOrgToPrompt: false });
 
             });
 
@@ -1692,6 +1697,336 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 expect(postedNamed('datasetAdded')).toEqual([]);
                 expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore + 1);
                 expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' });
+
+            });
+
+        });
+
+        /*
+            A data set row's Insert… (#541): the Target Org Manager selection, confirmed in the panel,
+            never Insert Data Set by Directory's own picker. The data set is the one the tree insert
+            just wrote, so a second insert needs a timestamp of its own for its InsertAttempts folder.
+        */
+        describe('a data set\'s Insert… into the Target Org Manager selection (#541)', () => {
+
+            const SECOND_TIMESTAMP = '2026-10-07T13-00-00';
+            const insertedDatasetFolderName = `dataset-fakerjs-${TIMESTAMP}`;
+            const insertedDatasetFolderPath = () => path.join(fakeDataSetsFolderPath(), insertedDatasetFolderName);
+            const insertAttemptFolderNames = () => fs.readdirSync(path.join(insertedDatasetFolderPath(), 'InsertAttempts'));
+            const inPanelConfirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(warningCall => warningCall[1]?.inPanel);
+
+            let insertSpy: jest.SpyInstance;
+            let promptSpy: jest.SpyInstance;
+            let datasetConfirmAnswer: (() => string | undefined);
+
+            // THE TREE INSERT WRITES THE DATA SET; THE ACK OF ITS ROW OFFERS ITS Insert…
+            const openCockpitWithInsertedDataset = async () => {
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+                const { renderSequence, updateSequence } = postedNamed('datasetAdded')[0];
+                await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence });
+
+                (vscode.window.showWarningMessage as jest.Mock).mockClear();
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { inPanel?: boolean }) => options?.inPanel ? datasetConfirmAnswer() : undefined);
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+                showWarningMessageSpy.mockClear();
+                allOrNoneSpy.mockClear();
+                jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue(SECOND_TIMESTAMP);
+                insertSpy = jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg');
+                postedPanelMessages.length = 0;
+
+            };
+
+            const insertDatasetRow = (orgPart: Record<string, unknown> = { orgIndex: 0 }) =>
+                receivedMessageHandler({ command: 'insertDataset', datasetFolderName: insertedDatasetFolderName, treeKey: ACCOUNT_TREE_KEY, tab: 'datasets', ...orgPart });
+
+            beforeEach(() => {
+                datasetConfirmAnswer = () => RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL;
+                promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed')
+                    .mockImplementation(async (orgListing: Promise<any>) => ( await orgListing ).orgDetails[0]);
+            });
+
+            it('inserts into the selected org after a confirmation in the panel, asking for no org and running no palette command', async () => {
+
+                const connection = buildFakeConnection();
+                useConnection(connection);
+                await openCockpitWithInsertedDataset();
+                const insertCallsBefore = connection.insertCalls.length;
+
+                await insertDatasetRow();
+
+                expect(promptSpy).not.toHaveBeenCalled();
+                expect(executeCommand.mock.calls.filter(commandCall => commandCall[0] === RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([]);
+
+                expect(inPanelConfirmations()).toHaveLength(1);
+                const [confirmMessage, confirmOptions, ...confirmLabels] = inPanelConfirmations()[0];
+                expect(confirmMessage).toBe(`Insert ${insertedDatasetFolderName} into qa (qa@example.com.qa)?`);
+                expect(confirmLabels).toEqual([RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL]);
+                expect(confirmOptions.detail).toContain('Insert 14 records from this data set into qa (qa@example.com.qa), parents first.');
+                expect(confirmOptions.detail).toContain('  Contact: 6');
+                expect(confirmOptions.detail).toContain('Org: qa · qa@example.com.qa');
+                expect(confirmOptions.detail).toContain('  Account: 2');
+                expect(confirmOptions.detail).toContain(`Data set: ${insertedDatasetFolderName}`);
+                expect(confirmOptions.modal).not.toBe(true);
+
+                expect(allOrNoneSpy).toHaveBeenCalledTimes(1);
+                expect(insertSpy).toHaveBeenCalledTimes(1);
+                const [datasetFolderPath, insertConnection, allOrNone, insertOptions] = insertSpy.mock.calls[0];
+                expect(datasetFolderPath).toBe(insertedDatasetFolderPath());
+                expect(insertConnection).toBe(connection);
+                expect(allOrNone).toBe(false);
+                expect(insertOptions).toEqual({ isFailureReportedByCaller: true, orgUsername: SANDBOX_ORG.username, orgAlias: SANDBOX_ORG.alias });
+                expect(connection.insertCalls.length).toBeGreaterThan(insertCallsBefore);
+                expect(insertAttemptFolderNames().sort()).toEqual([`insertAttempt-${TIMESTAMP}`, `insertAttempt-${SECOND_TIMESTAMP}`]);
+
+                expect(postedNamed('insertState')).toEqual([
+                    { command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: insertedDatasetFolderName },
+                    { command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: insertedDatasetFolderName }
+                ]);
+                expect(postedNamed('datasetLastInsert')).toHaveLength(1);
+                expect(postedNamed('datasetLastInsert')[0]).toMatchObject({ datasetFolderName: insertedDatasetFolderName, lastInsert: { status: 'succeeded' } });
+                expect(resultNotificationCalls(vscode.window.showInformationMessage)[0][0]).toContain(`inserted into qa (qa@example.com.qa) from ${insertedDatasetFolderName}.`);
+
+            });
+
+            it('writes nothing, not even InsertAttempts, when the confirmation is cancelled', async () => {
+
+                await openCockpitWithInsertedDataset();
+                datasetConfirmAnswer = () => undefined;
+
+                await insertDatasetRow();
+
+                expect(inPanelConfirmations()).toHaveLength(1);
+                expect(allOrNoneSpy).not.toHaveBeenCalled();
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(insertAttemptFolderNames()).toEqual([`insertAttempt-${TIMESTAMP}`]);
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: insertedDatasetFolderName });
+
+            });
+
+            it('writes nothing when all-or-none is dismissed', async () => {
+
+                await openCockpitWithInsertedDataset();
+                allOrNoneSpy.mockResolvedValue(undefined);
+
+                await insertDatasetRow();
+
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(insertAttemptFolderNames()).toEqual([`insertAttempt-${TIMESTAMP}`]);
+
+            });
+
+            it('says a data set deleted while the confirmation was open no longer exists, inserts nothing and reloads the run', async () => {
+
+                await openCockpitWithInsertedDataset();
+                datasetConfirmAnswer = () => {
+                    fs.rmSync(insertedDatasetFolderPath(), { recursive: true });
+                    return RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL;
+                };
+
+                await insertDatasetRow();
+
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(allOrNoneSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy).toHaveBeenCalledWith(`The data set "${insertedDatasetFolderName}" no longer exists in this workspace. The Recipe Cockpit has reloaded its data sets.`);
+                expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'datasets' });
+
+            });
+
+            it('refuses a data set whose Collections API folder is a link out of the workspace, before any confirmation', async () => {
+
+                await openCockpitWithInsertedDataset();
+                const outsideFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-outside-collections-'));
+                const collectionsApiFolderPath = path.join(insertedDatasetFolderPath(), DATASET_COLLECTIONS_API_FOLDER_NAME);
+                fs.rmSync(collectionsApiFolderPath, { recursive: true });
+                fs.symlinkSync(outsideFolderPath, collectionsApiFolderPath, 'dir');
+
+                try {
+                    await insertDatasetRow();
+                } finally {
+                    fs.rmSync(outsideFolderPath, { recursive: true, force: true });
+                }
+
+                expect(inPanelConfirmations()).toEqual([]);
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toBe(`Nothing was inserted: the ${DATASET_COLLECTIONS_API_FOLDER_NAME} folder of "${insertedDatasetFolderName}" is not inside this workspace.`);
+
+            });
+
+            it('warns, and asks nothing, when a run holds the org selection at the click', async () => {
+
+                await openCockpitWithInsertedDataset();
+                panelState().metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' };
+
+                await insertDatasetRow();
+
+                expect(showWarningMessageSpy).toHaveBeenLastCalledWith(RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL);
+                expect(inPanelConfirmations()).toEqual([]);
+                expect(insertSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('names the org by its username alone when it has no alias, and the data set by the name it was given', async () => {
+
+                await openCockpitWithInsertedDataset();
+                const datasetRow = panelState().recipeDataMessage.recipe.trees.flatMap(tree => tree.history?.datasets ?? [])
+                    .find(dataset => dataset.datasetFolderName === insertedDatasetFolderName);
+                datasetRow.customName = 'Smoke run';
+                // A DATA SET WHOSE RUN IS GONE ("version unknown") HAS NO TREE FOLDER TO OPEN TROUBLESHOOTING ON
+                datasetRow.runFolderName = null;
+                panelState().dataOrgSelection.orgDetail = { ...panelState().dataOrgSelection.orgDetail, alias: undefined };
+                const notificationSpy = jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+
+                await insertDatasetRow();
+
+                expect(inPanelConfirmations()[0][0]).toBe('Insert Smoke run into qa@example.com.qa?');
+                expect(notificationSpy).toHaveBeenCalledTimes(1);
+                expect(notificationSpy.mock.calls[0].slice(1, 3)).toEqual(['Smoke run', 'qa@example.com.qa']);
+                expect(notificationSpy.mock.calls[0][4]).toBeUndefined();
+
+            });
+
+            it('names the org and the data set as they are in the dialog, and escaped only in a notification', async () => {
+
+                await openCockpitWithInsertedDataset();
+                const datasetRow = panelState().recipeDataMessage.recipe.trees.flatMap(tree => tree.history?.datasets ?? [])
+                    .find(dataset => dataset.datasetFolderName === insertedDatasetFolderName);
+                datasetRow.customName = 'Smoke [run]';
+                panelState().dataOrgSelection.orgDetail = { ...panelState().dataOrgSelection.orgDetail, alias: 'qa (team)' };
+                const notificationSpy = jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+
+                await insertDatasetRow();
+
+                expect(inPanelConfirmations()[0][0]).toBe('Insert Smoke [run] into qa (team) (qa@example.com.qa)?');
+                expect(inPanelConfirmations()[0][1].detail).toContain('Insert 14 records from this data set into qa (team) (qa@example.com.qa), parents first.');
+                expect(inPanelConfirmations()[0][1].detail).toContain('Data set: Smoke [run] (' + insertedDatasetFolderName + ')');
+                expect(notificationSpy.mock.calls[0].slice(1, 3)).toEqual([
+                    RecipeYamlScalar.escapeForNotification('Smoke [run]'),
+                    `${RecipeYamlScalar.escapeForNotification('qa (team)')} (qa@example.com.qa)`
+                ]);
+
+            });
+
+            it('gives the button back, and reports the error, when the insert connection cannot be opened', async () => {
+
+                await openCockpitWithInsertedDataset();
+                getConnectionSpy.mockRejectedValue(new Error('INVALID_SESSION_ID'));
+                expectsCapturedError = true;
+
+                await insertDatasetRow();
+
+                expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(panelState().insertStateMessage).toBeUndefined();
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: insertedDatasetFolderName });
+
+            });
+
+            it('replays the running data set insert to a document reloaded while it runs', async () => {
+
+                await openCockpitWithInsertedDataset();
+                let replayedInsertStates: unknown[] = [];
+                datasetConfirmAnswer = () => {
+                    postedPanelMessages.length = 0;
+                    replayedInsertStates = (RecipeCockpitService as any).buildReplayMessages(panelState()).filter((hostMessage: any) => hostMessage.command === 'insertState');
+                    return undefined;
+                };
+
+                await insertDatasetRow();
+
+                expect(replayedInsertStates).toEqual([{ command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: insertedDatasetFolderName }]);
+
+            });
+
+            it('refuses when the org selection changed after the confirmation', async () => {
+
+                await openCockpitWithInsertedDataset();
+                allOrNoneSpy.mockImplementation(async () => {
+                    panelState().dataOrgSelection = { ...panelState().dataOrgSelection };
+                    return false;
+                });
+
+                await insertDatasetRow();
+
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toStartWith('The org selection changed after qa (qa@example.com.qa) was confirmed');
+
+            });
+
+            it('asks the Organization row again on the insert connection, and refuses an org that is not a sandbox before anything is written', async () => {
+
+                await openCockpitWithInsertedDataset();
+                const insertConnection = buildFakeConnection({ isSandbox: false });
+                useConnection(insertConnection);
+
+                await insertDatasetRow();
+
+                expect(insertConnection.sentQueries.filter(soql => soql.includes('FROM Organization'))).toHaveLength(1);
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(insertConnection.insertCalls).toEqual([]);
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toBe('Nothing was inserted into qa (qa@example.com.qa) (Production · Enterprise Edition): the Recipe Cockpit inserts a data set only into a sandbox or scratch org.');
+
+            });
+
+            it('offers Change org…, which restarts this insert against the newly selected org', async () => {
+
+                await openCockpitWithInsertedDataset();
+
+                await insertDatasetRow();
+
+                expect(inPanelConfirmations()[0][1]).toMatchObject({ isDestructive: true });
+                expect((RecipeCockpitService.confirmInPanel as jest.Mock).mock.calls.at(-1)[1].org).toEqual({ alias: 'qa', username: SANDBOX_ORG.username });
+                expect((RecipeCockpitService.confirmInPanel as jest.Mock).mock.calls.at(-1)[1].changeOrg).toEqual({
+                    restartMessage: { command: 'insertDataset', datasetFolderName: insertedDatasetFolderName, orgIndex: null, treeKey: ACCOUNT_TREE_KEY, tab: 'datasets' },
+                    isSandboxOnly: true
+                });
+
+            });
+
+            it('with no org selected, asks once over the Target Org Manager listing, selects the pick, then confirms and inserts', async () => {
+
+                await openCockpitWithInsertedDataset();
+                panelState().dataOrgSelection = undefined;
+
+                await insertDatasetRow({});
+
+                expect(promptSpy).toHaveBeenCalledTimes(1);
+                expect(promptSpy.mock.calls[0][1]).toBe(RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER);
+                expect(panelState().dataOrgSelection?.orgDetail.username).toBe(SANDBOX_ORG.username);
+                expect(postedNamed('dataOrgList').at(-1)).toMatchObject({ selectedOrgIndex: 0 });
+                expect(inPanelConfirmations()).toHaveLength(1);
+                expect(insertSpy).toHaveBeenCalledTimes(1);
+
+            });
+
+            it('with no org selected, a dismissed pick inserts nothing and gives the button back', async () => {
+
+                await openCockpitWithInsertedDataset();
+                panelState().dataOrgSelection = undefined;
+                promptSpy.mockResolvedValue(undefined);
+
+                await insertDatasetRow({});
+
+                expect(inPanelConfirmations()).toEqual([]);
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: insertedDatasetFolderName });
+
+            });
+
+            it('holds every other insert while it runs, and answers a click on a tree with the running data set insert', async () => {
+
+                await openCockpitWithInsertedDataset();
+                let treeClickAnswer: unknown;
+                datasetConfirmAnswer = () => {
+                    treeClickAnswer = RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }, panelState());
+                    return undefined;
+                };
+
+                await insertDatasetRow();
+
+                expect(treeClickAnswer).toEqual({ kind: 'postInsertState', hostMessage: { command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: insertedDatasetFolderName } });
+                expect(panelState().insertStateMessage).toBeUndefined();
 
             });
 

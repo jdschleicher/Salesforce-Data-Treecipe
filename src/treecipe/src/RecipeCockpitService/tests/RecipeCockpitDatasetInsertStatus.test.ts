@@ -20,13 +20,15 @@ import {
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
-    RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY
+    RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY,
+    RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL
 } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { DatasetInsertAttemptService, IInsertAttemptSummary, INSERT_ATTEMPT_SUMMARY_SCHEMA_VERSION } from '../../DatasetInsertAttemptService/DatasetInsertAttemptService';
-import { INSERT_RESULTS_FILE_MISSING_TEXT } from '../../CollectionsApiService/CollectionsApiService';
+import { CollectionsApiService, INSERT_RESULTS_FILE_MISSING_TEXT } from '../../CollectionsApiService/CollectionsApiService';
+import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 
 /*
     #469: a data set row says how its newest insert ended -- succeeded, partly, failed, cancelled or
@@ -321,15 +323,50 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
 
         });
 
+        it('after a row\'s Insert… that recorded no attempt, posts the data set with no last insert and offers no results file', async () => {
+
+            jest.spyOn(RecipeCockpitService, 'confirmInPanel').mockResolvedValue(RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL);
+            jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision').mockResolvedValue(false);
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({} as any);
+            jest.spyOn(SalesforceOrgService, 'queryOrganizationType').mockResolvedValue({ isSandbox: true, organizationType: 'Developer Edition' });
+            jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+            jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg').mockResolvedValue({ outcome: 'cancelled', savedRecordCount: 0, failedRecordCount: 0, isRolledBack: false } as any);
+            const workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
+
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState as any);
+            await receivedMessageHandler({ command: 'ready' });
+            const renderSequence = lastPosted('recipeData').renderSequence;
+            await receivedMessageHandler({ command: 'rendered', renderSequence });
+            const selectedOrg = { targetOrgIdentifier: 'qaSandbox', alias: 'qaSandbox', username: 'qa@example.com.sandbox' };
+            const selectedPanelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            selectedPanelState.dataOrgDetails = [selectedOrg];
+            selectedPanelState.dataOrgSelection = { orgIndex: 0, orgDetail: selectedOrg, requestSequence: 1, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
+            selectedPanelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.set(LEAD_DATASETS[0], path.join(workspaceRoot, 'stale.json'));
+            leadDatasetsOf(selectedPanelState.recipeDataMessage.recipe)[0].lastInsert = { status: 'succeeded', attemptedAtLabel: 'earlier' };
+
+            await receivedMessageHandler({ command: 'insertDataset', datasetFolderName: LEAD_DATASETS[0], orgIndex: 0 });
+
+            expect(lastPosted('datasetLastInsert')).toEqual({ command: 'datasetLastInsert', renderSequence, updateSequence: expect.any(Number), datasetFolderName: LEAD_DATASETS[0] });
+            expect(leadDatasetsOf(selectedPanelState.recipeDataMessage.recipe)[0]).not.toHaveProperty('lastInsert');
+            expect(selectedPanelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.has(LEAD_DATASETS[0])).toBe(false);
+            expect(selectedPanelState.pendingTreeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.has(LEAD_DATASETS[0])).toBe(false);
+
+        });
+
         it('after a row\'s Insert…, posts that data set\'s newest insert in place and offers its new results file only once the row is redrawn', async () => {
 
             const oldResultsFilePath = writeAttempt(LEAD_DATASETS[0], '2026-10-25T09-00-00', summaryOf());
             const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openWorkspaceResultFile').mockResolvedValue(undefined);
             let newResultsFilePath = '';
-            (vscode.commands.executeCommand as jest.Mock).mockImplementation(async (commandId: string) => {
-                if ( commandId === 'treecipe.insertDataSetBySelectedDirectory' ) {
-                    newResultsFilePath = writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', summaryOf({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 3 }));
-                }
+            // THE ROW INSERTS INTO THE TARGET ORG MANAGER'S SELECTION ITSELF (#541): ITS CONFIRMATION, CONNECTION AND INSERT ARE ANSWERED HERE
+            jest.spyOn(RecipeCockpitService, 'confirmInPanel').mockResolvedValue(RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL);
+            jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision').mockResolvedValue(false);
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({} as any);
+            jest.spyOn(SalesforceOrgService, 'queryOrganizationType').mockResolvedValue({ isSandbox: true, organizationType: 'Developer Edition' });
+            jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+            const insertSpy = jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg').mockImplementation(async () => {
+                newResultsFilePath = writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', summaryOf({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 3 }));
+                return { outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 3, isRolledBack: false } as any;
             });
             const workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
 
@@ -338,8 +375,14 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             const renderSequence = lastPosted('recipeData').renderSequence;
             await receivedMessageHandler({ command: 'rendered', renderSequence });
             const recipeDataPostsBefore = postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').length;
+            const selectedOrg = { targetOrgIdentifier: 'qaSandbox', alias: 'qaSandbox', username: 'qa@example.com.sandbox' };
+            const selectedPanelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            selectedPanelState.dataOrgDetails = [selectedOrg];
+            selectedPanelState.dataOrgSelection = { orgIndex: 0, orgDetail: selectedOrg, requestSequence: 1, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
 
-            await receivedMessageHandler({ command: 'insertDataset', datasetFolderName: LEAD_DATASETS[0] });
+            await receivedMessageHandler({ command: 'insertDataset', datasetFolderName: LEAD_DATASETS[0], orgIndex: 0 });
+
+            expect(insertSpy).toHaveBeenCalledTimes(1);
 
             // NO RELOAD: ONE MESSAGE NAMING THE DATA SET, ITS NEW STATUS, AND NO PATH
             expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData')).toHaveLength(recipeDataPostsBefore);
