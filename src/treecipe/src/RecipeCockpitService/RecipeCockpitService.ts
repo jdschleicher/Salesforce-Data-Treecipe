@@ -396,6 +396,8 @@ export const RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI = '🌳';
 */
 export const RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT = 'Click to go to a child reference';
 export const RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT = 'Click to go to the parent reference';
+// A PARENT ROW'S 👥 N LIST (#492) LEADS TO THE FRIEND ROWS NESTED UNDER OR POINTING TO IT
+export const RECIPE_COCKPIT_FRIENDS_MENU_HINT = 'Click to go to a friend';
 export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
 /*
     A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
@@ -609,7 +611,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
-            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
+            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'History lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, Assign permission sets or Generate permission set), the org, how it ended and what it counted, the run, and its files, each a link that opens it. Click a column\'s header to sort by it, and again to turn the order; it starts newest first. A step from before this was recorded shows Not recorded, since only its time and files are known.',
@@ -20088,7 +20090,8 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
-    .treeNicknameSlot { display: inline-flex; align-items: center; }
+    .treeNicknameSlot { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .treeFriendsButton { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeNickname { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeNicknameMenu {
         flex-basis: 100%;
@@ -20771,6 +20774,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const CHILD_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT)};
     const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
+    const FRIENDS_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_FRIENDS_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
     const CONFIRM_CHANGE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL)};
@@ -21954,6 +21958,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 ? 'No field of this treecipe points to ' + nickname
                 : nickname + ' does not name exactly one object of this recipe, so no field can point to it');
             slotElement.appendChild(nicknameTextElement);
+            drawFriendsButton(treeObjectState);
             return;
         }
 
@@ -21974,6 +21979,53 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         treeObjectState.nicknameChipElement = chipElement;
         slotElement.appendChild(chipElement);
+        drawFriendsButton(treeObjectState);
+
+    }
+
+    // A PARENT ROW'S 👥 N (#492), RIGHT AFTER ITS NICKNAME: ONLY WHERE #411'S INDEX LISTS A FRIEND OF IT
+    function drawFriendsButton(treeObjectState) {
+
+        treeObjectState.friendsButtonElement = null;
+
+        const friends = listFriendsOf(treeObjectState);
+        if (friends.length === 0) { return; }
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const buttonElement = createButton('secondary', 'treeFriendsButton', '', 'compact');
+        buttonElement.appendChild(buildChipEmoji(FRIEND_EMOJI));
+        buttonElement.appendChild(createElement('span', 'treeFriendsCount', String(friends.length)));
+        buttonElement.setAttribute('aria-haspopup', 'menu');
+        buttonElement.setAttribute('aria-expanded', 'false');
+        buttonElement.setAttribute('aria-label', objectApiName + ': ' + pluralize(friends.length, 'friend', 'friends'));
+        buttonElement.setAttribute('title', 'Show the friends of ' + nicknameOfObject(treeObjectState.object));
+        buttonElement.addEventListener('click', function () {
+            if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState.friendsMenuOwner) {
+                closeNicknameMenu(true);
+                return;
+            }
+            openFriendsMenuOf(treeObjectState);
+        });
+
+        treeObjectState.friendsButtonElement = buttonElement;
+        treeObjectState.nicknameSlotElement.appendChild(buttonElement);
+
+    }
+
+    function openFriendsMenuOf(treeObjectState) {
+
+        const treeState = treeObjectState.treeState;
+
+        openReferenceMenu(treeObjectState.friendsMenuOwner, treeObjectState.headerElement, function () { return treeObjectState.friendsButtonElement; }, FRIENDS_MENU_HINT, listFriendsOf(treeObjectState).map(function (friend) {
+            return {
+                label: friend.label + ': ' + describeMenuObject(friend.friendState) + describeExclusion(friend.friendState),
+                choose: function () {
+                    closeNicknameMenu(false);
+                    const friendState = friend.friendState;
+                    revealTreeObjectRow(treeState, friendState, null, friendState.friendChipElementsByOwnerState.get(treeObjectState) || friendState.toggleElement);
+                }
+            };
+        }));
 
     }
 
@@ -22206,13 +22258,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         // A FLAT CARD (EVERY SNOWFAKERY ONE) HAS NO FRIEND ROW, SO ITS FIELDS ARE NEVER READ FOR NICKNAMES HERE
         if (!treeState.objectStates.some(function (treeObjectState) { return readNestingParent(treeObjectState.object) !== null; })) {
-            treeState.friendIndex = { chipsByObjectState: new Map() };
+            treeState.friendIndex = { chipsByObjectState: new Map(), friendsByOwnerState: new Map() };
             return treeState.friendIndex;
         }
 
         const nicknameIndex = ensureNicknameIndex(treeState);
         const parentsByObjectState = new Map();
         const friendStatesByParentKey = Object.create(null);
+        const ownerStateByParentKey = Object.create(null);
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
@@ -22226,7 +22279,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 if (parentKeys[parent.parentKey] === true) { return; }
                 parentKeys[parent.parentKey] = true;
                 parents.push(parent);
-                if (!hasOwnKey(friendStatesByParentKey, parent.parentKey)) { friendStatesByParentKey[parent.parentKey] = []; }
+                if (!hasOwnKey(friendStatesByParentKey, parent.parentKey)) {
+                    friendStatesByParentKey[parent.parentKey] = [];
+                    ownerStateByParentKey[parent.parentKey] = parent.ownerState;
+                }
                 friendStatesByParentKey[parent.parentKey].push(treeObjectState);
             };
 
@@ -22253,12 +22309,20 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         // ONE POSITION MAP PER PARENT, SO A ROOT WITH THOUSANDS OF FRIENDS IS NUMBERED IN ONE PASS
         const lineNumberOf = function (treeObjectState) { return typeof treeObjectState.object.lineNumber === 'number' ? treeObjectState.object.lineNumber : Number.MAX_SAFE_INTEGER; };
         const friendNumbersByParentKey = Object.create(null);
+        // THE SAME SORTED LISTS, INVERTED (#492): EACH PARENT ROW'S FRIENDS, LABELLED AS THEIR CHIPS READ
+        const friendsByOwnerState = new Map();
         Object.keys(friendStatesByParentKey).forEach(function (parentKey) {
             const friendNumbers = new Map();
+            const ownerState = ownerStateByParentKey[parentKey];
+            const ownerFriends = [];
             friendStatesByParentKey[parentKey]
                 .sort(function (firstState, secondState) { return lineNumberOf(firstState) - lineNumberOf(secondState); })
-                .forEach(function (friendState, friendIndex) { friendNumbers.set(friendState, friendIndex + 1); });
+                .forEach(function (friendState, friendIndex) {
+                    friendNumbers.set(friendState, friendIndex + 1);
+                    if (ownerState) { ownerFriends.push({ friendState: friendState, label: nicknameOfObject(ownerState.object) + '-' + (friendIndex + 1) }); }
+                });
             friendNumbersByParentKey[parentKey] = friendNumbers;
+            if (ownerState) { friendsByOwnerState.set(ownerState, ownerFriends); }
         });
 
         const chipsByObjectState = new Map();
@@ -22269,7 +22333,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             }));
         });
 
-        treeState.friendIndex = { chipsByObjectState: chipsByObjectState };
+        treeState.friendIndex = { chipsByObjectState: chipsByObjectState, friendsByOwnerState: friendsByOwnerState };
         return treeState.friendIndex;
 
     }
@@ -22277,6 +22341,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function listFriendChips(treeObjectState) {
         if (!treeObjectState.treeState) { return []; }
         return ensureFriendIndex(treeObjectState.treeState).chipsByObjectState.get(treeObjectState) || [];
+    }
+
+    function listFriendsOf(treeObjectState) {
+        if (!treeObjectState.treeState) { return []; }
+        return ensureFriendIndex(treeObjectState.treeState).friendsByOwnerState.get(treeObjectState) || [];
     }
 
     /*
@@ -22316,6 +22385,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (!slotElement) { return; }
 
         slotElement.textContent = '';
+        treeObjectState.friendChipElementsByOwnerState = new Map();
         const chips = listFriendChips(treeObjectState);
         treeObjectState.friendSearchText = chips.map(function (chip) { return chip.label; }).join('\\n').toLowerCase();
 
@@ -22338,6 +22408,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                     closeNicknameMenu(false);
                     revealTreeObjectRow(treeObjectState.treeState, ownerState, null, ownerState.nicknameChipElement || ownerState.toggleElement);
                 });
+                treeObjectState.friendChipElementsByOwnerState.set(ownerState, chipElement);
             } else {
                 chipElement.setAttribute('title', description + ', which no one row of this recipe holds by nickname');
             }
@@ -24928,7 +24999,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             nicknameMenuElement: null,
             // THE PARENTS A FRIEND ROW NAMES, DRAWN WITH THE TREECIPE TAB (#411); THEIR TEXT IS SEARCHED WITH THE OBJECT'S NAME
             friendSlotElement: null,
-            friendSearchText: ''
+            friendSearchText: '',
+            // EACH PARENT'S CHIP ON THIS ROW, SO A PARENT'S 👥 N LIST CAN FOCUS THE ONE POINTING BACK (#492)
+            friendChipElementsByOwnerState: new Map(),
+            friendsButtonElement: null,
+            friendsMenuOwner: { nicknameMenuElement: null }
         };
 
         treeObjectState.todoCount = treeObjectState.fieldStates.reduce(function (todoCount, fieldState) { return todoCount + fieldState.todos.length; }, treeObjectState.objectTodos.length);

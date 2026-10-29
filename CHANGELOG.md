@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.173.0] - Recipe Cockpit: the Troubleshooting tab can deploy without the Salesforce CLI
+## [3.174.0] - Recipe Cockpit: the Troubleshooting tab can deploy without the Salesforce CLI
 
 [#505](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/505), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The four Troubleshooting deploys always ran `sf project deploy start --manifest`. The spike that decides whether to add `@salesforce/source-deploy-retrieve` ([#504](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/504)) is still open, so this release offers both ways and adds no runtime dependency.
 
@@ -13,6 +13,19 @@
 - **Not changed.** The picklist dependency deploys (`PicklistDependencyCheckService`) still use the CLI. `ignore` (already in the tree through eslint) is a devDependency bundled by esbuild, so the packaged dependencies are unchanged.
 - **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say how a deploy goes and that Cancel cancels it in the org with `jsforce`.
 - **Tests.** `RecipeCockpitMetadataDeployPackage.test.ts`: the setting, every type's source file and a link refused, each CLI fallback, the zip's entries and their Metadata API XML (an escaped formula round-tripped, a wrong root refused), byte-identical zips with every CRC checked by an independent reader, the result reading, the one listing per object folder, namespaces carried and a conflicting prefix refused, a link planted after resolving and a file past the cap refused unread, yielding and a cancel while building, and `runDeploy`'s options, cancel, a cancel too late, timeout, requests that never answer, failed request (no token quoted) and unreadable status. `RecipeCockpitTroubleshooting.test.ts`: a jsforce deploy end to end (no CLI process, the same connection, the zip against the written package.xml, notification, result file, History), a failed component, a non-sandbox, a cancel, the plan changing while the confirmation is open, and the replacements fallback.
+
+## [3.173.0] - Recipe Cockpit: a parent row's 👥 N lists its friends
+
+[#492](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/492). A friend row's 👥 chip (#411) linked up to its parent, but a parent row had no way down to the rows nested under or pointing to it.
+
+- **👥 N on a parent row.** A row #411's friend index lists as having at least one friend draws a compact `secondary` button right after its 🌳 nickname: an `aria-hidden` 👥 and the count, `aria-haspopup="menu"`, `aria-expanded`, and an `aria-label` of `<Object>: N friends`. A row with no friends, and every row of a flat snowfakery card, draws none.
+- **A list of its friends.** A click opens a list under the header led by *Click to go to a friend* (the #491 hint: muted, never focused, the list's name), then one item per friend in recipe line order, labelled as that friend's chip reads followed by the object (`Account_NickName-2: Case`, ` · <nickname>` for an object written more than once, ` — excluded` when the tree icon excluded it).
+- **Choosing one** opens that friend's row and focuses its 👥 chip pointing back to this parent.
+- **The same list behaviour.** It is drawn by `openReferenceMenu`, so the keys, Escape (focus back), Tab, a second click and a click elsewhere work as on the 🌳 and ↖ lists, only one of the three is open at a time, and it is rebuilt on every open.
+- **One pass.** The lists are the sorted per-parent lists `ensureFriendIndex` already numbers chips from, inverted once per card into `friendsByOwnerState`, never scanned per open.
+- **Nothing posted or saved.** The posted model, messages and saved place are unchanged, and the button's text joins no search.
+- **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the button.
+- **Tests.** `RecipeCockpitFriendsMenu.test.ts`: the count and attributes, no button on rows with no friends or on snowfakery, the hint and item order, choosing by click, Enter and Space, an excluded friend, every way it closes, one list open across all three kinds, and a root with 300 friends.
 
 ## [3.172.0] - Recipe Cockpit: each references list says where a click goes, and a field's ↖ lists its parent
 
