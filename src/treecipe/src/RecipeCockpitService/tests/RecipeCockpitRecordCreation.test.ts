@@ -282,6 +282,54 @@ describe('RecipeCockpitRecordCreation', () => {
 
     });
 
+    describe('buildCreateReadiness, the reason codes the insert\'s link reads (#539)', () => {
+
+        const readinessOf = (overrides: Partial<Parameters<typeof RecipeCockpitRecordCreation.buildCreateReadiness>[0]> = {}) =>
+            RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: CONTACT_DESCRIBE, ...overrides });
+        const codeOf = (readiness: ReturnType<typeof readinessOf>) => [readiness.disabledReasonCode, readiness.disabledReasonFieldApiName];
+
+        it('codes an object the org lacks, one it will not create and an unticked required field, beside the unchanged sentence', () => {
+
+            const notInOrg = readinessOf({ describe: undefined, describeFailureMessage: 'NOT_FOUND' });
+            expect([notInOrg.disabledReason, ...codeOf(notInOrg)]).toEqual(['Contact is not in this org (NOT_FOUND).', 'objectNotInOrg', undefined]);
+
+            const notCreateable = readinessOf({ describe: { ...CONTACT_DESCRIBE, isCreateable: false } });
+            expect([notCreateable.disabledReason, ...codeOf(notCreateable)]).toEqual(['Contact is not createable in this org.', 'objectNotCreateable', undefined]);
+
+            const unticked = readinessOf({ excludedFieldApiNames: ['lastname'] });
+            expect([unticked.disabledReason, ...codeOf(unticked)])
+                .toEqual(['Contact has 1 unticked field this org requires: LastName. Tick it in the Treecipe tab to insert records.', 'requiredFieldUnticked', 'LastName']);
+            expect(unticked.requiredLookups).toHaveLength(2);
+
+        });
+
+        it('names the FIRST unticked required field in the describe\'s order when several are', () => {
+
+            const describe: ICreateObjectDescribe = { ...CONTACT_DESCRIBE, fields: [...CONTACT_DESCRIBE.fields, buildField('Code__c', { isNillable: false })] };
+            expect(codeOf(readinessOf({ describe, excludedFieldApiNames: ['Code__c', 'LastName'] }))).toEqual(['requiredFieldUnticked', 'LastName']);
+
+        });
+
+        it('codes nothing a reader cannot fix here, and nothing when the object is ready', () => {
+
+            [
+                readinessOf(),
+                readinessOf({ orgTypeDetail: undefined }),
+                readinessOf({ orgTypeDetail: { isSandbox: false, organizationType: 'Enterprise Edition' } }),
+                readinessOf({ recipeFieldRefusalReason: 'The recipe file is gone.' }),
+                RecipeCockpitRecordCreation.buildCreateReadiness({
+                    objectApiName: 'Task', orgTypeDetail: SANDBOX,
+                    describe: { objectApiName: 'Task', isCreateable: true, fields: [lookup('WhatId', ['Account', 'Opportunity'], { isNillable: false })] }
+                })
+            ].forEach(readiness => {
+                expect(readiness).not.toHaveProperty('disabledReasonCode');
+                expect(readiness).not.toHaveProperty('disabledReasonFieldApiName');
+            });
+
+        });
+
+    });
+
     describe('prepareTreeInsertRecords, tested pure (#255)', () => {
 
         const contactLookups = RecipeCockpitRecordCreation.findTreeInsertLookups(CONTACT_DESCRIBE);

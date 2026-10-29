@@ -27,6 +27,14 @@ const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 // HOW MANY FIELD NAMES A READINESS REASON SPELLS OUT; THE VIEW MODEL CARRIES THEM ALL
 export const RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT = 10;
 
+/*
+    What a readiness reason is about, beside its sentence (#539), for the reasons a reader can fix
+    in the cockpit: the panel links each to the place that fixes it. The sentence is unchanged, and
+    a reason no code names gets no link.
+*/
+export const RECIPE_COCKPIT_CREATE_REASON_CODES = ['objectNotInOrg', 'objectNotCreateable', 'requiredFieldUnticked'] as const;
+export type RecipeCockpitCreateReasonCode = typeof RECIPE_COCKPIT_CREATE_REASON_CODES[number];
+
 export interface ICreateDescribeField {
     fieldApiName: string;
     fieldType: string;
@@ -71,6 +79,10 @@ export interface IRecipeCockpitCreateReadinessViewModel {
     objectApiName: string;
     treeKey?: string;
     disabledReason: string;
+    // SET ONLY BESIDE A disabledReason, SO A READY OBJECT POSTS WHAT IT ALWAYS DID (#539)
+    disabledReasonCode?: RecipeCockpitCreateReasonCode;
+    // requiredFieldUnticked: THE FIRST UNTICKED FIELD THE ORG REQUIRES, THE ROW THE LINK OPENS
+    disabledReasonFieldApiName?: string;
     requiredLookups: IRecipeCockpitRequiredLookupViewModel[];
 }
 
@@ -190,7 +202,8 @@ export class RecipeCockpitRecordCreation {
     static buildCreateReadiness(readinessInput: ICreateReadinessInput): IRecipeCockpitCreateReadinessViewModel {
 
         const { objectApiName, orgTypeDetail, describe } = readinessInput;
-        const notReady = (disabledReason: string, requiredLookups: IRecipeCockpitRequiredLookupViewModel[] = []) => ({ objectApiName, disabledReason, requiredLookups });
+        const notReady = (disabledReason: string, requiredLookups: IRecipeCockpitRequiredLookupViewModel[] = []): IRecipeCockpitCreateReadinessViewModel => ({ objectApiName, disabledReason, requiredLookups });
+        const notReadyFor = (disabledReasonCode: RecipeCockpitCreateReasonCode, disabledReason: string, requiredLookups: IRecipeCockpitRequiredLookupViewModel[] = []): IRecipeCockpitCreateReadinessViewModel => ({ objectApiName, disabledReason, disabledReasonCode, requiredLookups });
 
         if ( !orgTypeDetail ) {
             return notReady('The org\'s type could not be read, so nothing is inserted into it.');
@@ -201,11 +214,11 @@ export class RecipeCockpitRecordCreation {
         }
 
         if ( !describe ) {
-            return notReady(`${objectApiName} is not in this org${readinessInput.describeFailureMessage ? ` (${readinessInput.describeFailureMessage})` : ''}.`);
+            return notReadyFor('objectNotInOrg', `${objectApiName} is not in this org${readinessInput.describeFailureMessage ? ` (${readinessInput.describeFailureMessage})` : ''}.`);
         }
 
         if ( describe.isCreateable !== true ) {
-            return notReady(`${objectApiName} is not createable in this org.`);
+            return notReadyFor('objectNotCreateable', `${objectApiName} is not createable in this org.`);
         }
 
         if ( readinessInput.recipeFieldRefusalReason ) {
@@ -217,10 +230,12 @@ export class RecipeCockpitRecordCreation {
             parentObjectApiName: requiredLookup.referenceTo.join(', ')
         }));
 
-        const uncheckedRequiredReason = this.buildUntickedRequiredFieldReason(objectApiName, describe, readinessInput.excludedFieldApiNames ?? []);
+        const excludedFieldApiNames = readinessInput.excludedFieldApiNames ?? [];
+        const uncheckedRequiredReason = this.buildUntickedRequiredFieldReason(objectApiName, describe, excludedFieldApiNames);
 
         if ( uncheckedRequiredReason ) {
-            return notReady(uncheckedRequiredReason, requiredLookups);
+            const [firstUntickedFieldApiName] = this.findUntickedRequiredFieldApiNames(describe, excludedFieldApiNames);
+            return { ...notReadyFor('requiredFieldUnticked', uncheckedRequiredReason, requiredLookups), disabledReasonFieldApiName: firstUntickedFieldApiName };
         }
 
         const polymorphicLookup = this.findRequiredLookups(describe).find(requiredLookup => requiredLookup.referenceTo.length !== 1);
@@ -313,11 +328,7 @@ export class RecipeCockpitRecordCreation {
     // AN UNTICKED FIELD IS NOT SENT: ONE THE ORG REQUIRES WOULD FAIL EVERY RECORD, SO IT IS SAID BEFORE ANYTHING IS INSERTED
     static buildUntickedRequiredFieldReason(objectApiName: string, describe: ICreateObjectDescribe, excludedFieldApiNames: readonly string[]): string {
 
-        const excludedLowerNames = new Set(excludedFieldApiNames.map(fieldApiName => fieldApiName.toLowerCase()));
-        // A REQUIRED LOOKUP IS FILLED WITH A PARENT Id WHETHER OR NOT THE CUT CARRIES IT, SO IT IS NEVER THIS REASON
-        const lookupFieldApiNames = new Set(describe.fields.filter(describeField => this.isLookupField(describeField)).map(describeField => describeField.fieldApiName));
-        const untickedRequired = this.findRequiredFieldApiNames(describe)
-            .filter(fieldApiName => excludedLowerNames.has(fieldApiName.toLowerCase()) && !lookupFieldApiNames.has(fieldApiName));
+        const untickedRequired = this.findUntickedRequiredFieldApiNames(describe, excludedFieldApiNames);
 
         if ( untickedRequired.length === 0 ) {
             return '';
@@ -327,6 +338,18 @@ export class RecipeCockpitRecordCreation {
         const hiddenCount = untickedRequired.length - RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT;
 
         return `${objectApiName} has ${untickedRequired.length} unticked ${untickedRequired.length === 1 ? 'field' : 'fields'} this org requires: ${hiddenCount > 0 ? `${shownNames} and ${hiddenCount} more` : shownNames}. Tick ${untickedRequired.length === 1 ? 'it' : 'them'} in the Treecipe tab to insert records.`;
+
+    }
+
+    // THE ORG'S NAMES, IN ITS DESCRIBE ORDER
+    static findUntickedRequiredFieldApiNames(describe: ICreateObjectDescribe, excludedFieldApiNames: readonly string[]): string[] {
+
+        const excludedLowerNames = new Set(excludedFieldApiNames.map(fieldApiName => fieldApiName.toLowerCase()));
+        // A REQUIRED LOOKUP IS FILLED WITH A PARENT Id WHETHER OR NOT THE CUT CARRIES IT, SO IT IS NEVER THIS REASON
+        const lookupFieldApiNames = new Set(describe.fields.filter(describeField => this.isLookupField(describeField)).map(describeField => describeField.fieldApiName));
+
+        return this.findRequiredFieldApiNames(describe)
+            .filter(fieldApiName => excludedLowerNames.has(fieldApiName.toLowerCase()) && !lookupFieldApiNames.has(fieldApiName));
 
     }
 

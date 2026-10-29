@@ -70,6 +70,7 @@ import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelecti
 import {
     ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
+    RecipeCockpitCreateReasonCode,
     RecipeCockpitRecordCreation,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
@@ -610,7 +611,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
-            'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
+            'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field\'s row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
@@ -2700,6 +2701,18 @@ export const RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = 'No org is chosen yet.';
 export const RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = 'You will be asked which org to insert into.';
 
 export const RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = 'Can\'t insert: ';
+
+/*
+    Where a disabled insert's reason links to (#539): the Troubleshooting sub-tab whose card fixes
+    it. An unticked required field links to its own row instead, labelled with this prefix and the
+    field. Any other reason, and a reason code not listed here, draws no link.
+*/
+export const RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS: Readonly<Record<Exclude<RecipeCockpitCreateReasonCode, 'requiredFieldUnticked'>, { subTab: RecipeCockpitTroubleshootingSubTab; label: string }>> = Object.freeze({
+    objectNotInOrg: { subTab: 'fields', label: 'Troubleshooting › Fields' },
+    objectNotCreateable: { subTab: 'permissions', label: 'Troubleshooting › Permissions' }
+});
+
+export const RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = 'Treecipe › ';
 
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
 
@@ -20701,6 +20714,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const NO_DATA_ORG_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON)};
     const CHOOSE_INSERT_ORG_NOTE = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE)};
     const CANNOT_INSERT_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CANNOT_INSERT_PREFIX)};
+    const INSERT_REASON_TROUBLESHOOTING_LINKS = ${JSON.stringify(RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS)};
+    const INSERT_REASON_TREECIPE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
@@ -26655,7 +26670,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const controlsElement = createElement('div', 'treeInsertControls');
         const insert = {
             buttonElement: createButton('primary', 'treeInsert', INSERT_ACTION_LABEL),
-            reasonElement: createElement('span', 'treeInsertReason muted')
+            reasonElement: createElement('span', 'treeInsertReason muted'),
+            reasonLinkElement: createButton('link', 'treeInsertReasonLink hidden', ''),
+            reasonLink: null
         };
 
         /*
@@ -26671,8 +26688,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             vscodeApi.postMessage({ command: 'insertTree', treeKey: treeKey });
         });
 
+        insert.reasonLinkElement.addEventListener('click', function () {
+            if (insert.reasonLink) { followInsertReasonLink(treeState, insert.reasonLink); }
+        });
+
         controlsElement.appendChild(insert.buttonElement);
         controlsElement.appendChild(insert.reasonElement);
+        controlsElement.appendChild(insert.reasonLinkElement);
 
         treeState.insert = insert;
         drawTreeInsert(treeState);
@@ -30360,19 +30382,26 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         one of them again on the click.
     */
     function findTreeInsertReason(treeState) {
+        return findTreeInsertBlock(treeState).reason;
+    }
 
-        if (isDataOrgChecking) { return DATA_ORG_CONNECTION_CHECK_INSERT_REASON; }
-        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
-        if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
-        if (isPermissionSetAssignRunning) { return 'Permission sets are being assigned.'; }
-        if (isMetadataDeployRunning) { return 'Metadata is being deployed.'; }
+    // THE REASON, AND THE OBJECT READINESS IT CAME FROM WHEN ONE DID (#539): ONLY THAT READINESS CAN LINK
+    function findTreeInsertBlock(treeState) {
+
+        const blockedBy = function (reason) { return { reason: reason, readiness: null }; };
+
+        if (isDataOrgChecking) { return blockedBy(DATA_ORG_CONNECTION_CHECK_INSERT_REASON); }
+        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return blockedBy('Another tree is being inserted.'); }
+        if (isScratchOrgRunning) { return blockedBy('A scratch org is being set up.'); }
+        if (isPermissionSetAssignRunning) { return blockedBy('Permission sets are being assigned.'); }
+        if (isMetadataDeployRunning) { return blockedBy('Metadata is being deployed.'); }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
-        if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
+        if (insertObjectApiNames.length === 0) { return blockedBy('Every object of this tree is excluded.'); }
 
         // THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): THE CLICK ASKS FOR THE ORG
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return NO_DATA_ORG_INSERT_REASON; }
-        if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
+        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return blockedBy(NO_DATA_ORG_INSERT_REASON); }
+        if (dataOrgSelectionFailureMessage) { return blockedBy(dataOrgSelectionFailureMessage); }
 
         for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
             const objectApiName = insertObjectApiNames[objectIndex];
@@ -30380,11 +30409,72 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey]
                 : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName]
                 : null;
-            if (!readiness) { return 'checking whether this tree can be inserted…'; }
-            if (readiness.disabledReason) { return readiness.disabledReason; }
+            if (!readiness) { return blockedBy('checking whether this tree can be inserted…'); }
+            if (readiness.disabledReason) { return { reason: readiness.disabledReason, readiness: readiness }; }
         }
 
-        return '';
+        return blockedBy('');
+
+    }
+
+    /*
+        Where a disabled insert's reason links to (#539), or null: an object the org lacks to the
+        Fields sub-tab (Deploy fields… deploys the object too, #402), one it will not create to
+        Permissions, an unticked required field to its own row. Read from the posted readiness's
+        code, never its sentence; an unknown code, or a target this card does not draw, links nowhere.
+    */
+    function findInsertReasonLink(treeState, readiness) {
+
+        if (!readiness || typeof readiness.disabledReasonCode !== 'string') { return null; }
+
+        if (hasOwnKey(INSERT_REASON_TROUBLESHOOTING_LINKS, readiness.disabledReasonCode)) {
+            if (!treeState.tree.folderName) { return null; }
+            const troubleshootingLink = INSERT_REASON_TROUBLESHOOTING_LINKS[readiness.disabledReasonCode];
+            return { kind: 'troubleshooting', subTab: troubleshootingLink.subTab, label: troubleshootingLink.label };
+        }
+
+        if (readiness.disabledReasonCode !== 'requiredFieldUnticked' || typeof readiness.disabledReasonFieldApiName !== 'string') { return null; }
+
+        const objectApiName = readiness.objectApiName;
+        const treeObjectState = treeState.objectStates.find(function (candidateState) { return !candidateState.isIteration && candidateState.object.objectApiName === objectApiName; });
+        if (!treeObjectState) { return null; }
+
+        // THE ORG'S FIELD NAME, AND SALESFORCE READS NAMES CASE-INSENSITIVELY
+        const lowerFieldApiName = readiness.disabledReasonFieldApiName.toLowerCase();
+        const field = treeObjectState.object.fields.find(function (candidateField) { return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName; });
+        if (!field) { return null; }
+
+        return { kind: 'field', objectApiName: objectApiName, fieldApiName: field.fieldApiName, label: INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + '.' + field.fieldApiName };
+
+    }
+
+    function followInsertReasonLink(treeState, reasonLink) {
+
+        if (reasonLink.kind === 'troubleshooting') {
+
+            applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: reasonLink.subTab });
+            savePanelPlace();
+
+            const actionCard = reasonLink.subTab === 'fields' ? (treeState.deployCards || {}).fields : treeState.permissionSetCard;
+            if (!actionCard) { return; }
+            if (typeof actionCard.buttonElement.scrollIntoView === 'function') { actionCard.buttonElement.scrollIntoView({ block: 'nearest' }); }
+
+            // A DISABLED BUTTON TAKES NO FOCUS IN A BROWSER, SO A DISABLED CARD (A ZERO COUNT) LEAVES IT ON ITS SUB-TAB, NEXT TO THE CARD AND ITS REASON
+            const subTabState = (treeState.troubleshootingSubTabStates || []).find(function (candidateState) { return candidateState.subTab === reasonLink.subTab; });
+            const focusElement = actionCard.buttonElement.disabled && subTabState ? subTabState.tabElement : actionCard.buttonElement;
+            focusElement.focus();
+            return;
+
+        }
+
+        const treeObjectState = treeState.objectStates.find(function (candidateState) { return !candidateState.isIteration && candidateState.object.objectApiName === reasonLink.objectApiName; });
+        if (!treeObjectState) { return; }
+        const fieldState = treeObjectState.fieldStates.find(function (candidateState) { return candidateState.field.fieldApiName === reasonLink.fieldApiName; }) || null;
+
+        revealTreeObjectRow(treeState, treeObjectState, fieldState, null);
+
+        const focusElement = fieldState && (fieldState.includeElement || fieldState.rowElement);
+        if (focusElement && typeof focusElement.focus === 'function') { focusElement.focus(); }
 
     }
 
@@ -30394,7 +30484,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (!insert) { return; }
 
         const tree = treeState.tree;
-        const insertReason = findTreeInsertReason(treeState);
+        const insertBlock = findTreeInsertBlock(treeState);
+        const insertReason = insertBlock.reason;
         const isOrgToChoose = insertReason === NO_DATA_ORG_INSERT_REASON;
         const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
         const actionLabel = INSERT_ACTION_LABEL + (insertReason === '' && orgLabel ? ' into ' + orgLabel : '');
@@ -30407,6 +30498,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             ? 'Choose the org to insert into, then generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' and insert it, parents first'
             : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ', then insert it into the chosen org, parents first');
         insert.reasonElement.textContent = insertReason === '' ? '' : isOrgToChoose ? CHOOSE_INSERT_ORG_NOTE : CANNOT_INSERT_PREFIX + insertReason;
+
+        insert.reasonLink = findInsertReasonLink(treeState, insertBlock.readiness);
+        setTextShown(insert.reasonLinkElement, insert.reasonLink ? insert.reasonLink.label : '');
 
     }
 
