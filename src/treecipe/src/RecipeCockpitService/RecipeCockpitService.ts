@@ -21380,17 +21380,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    /*
-        No toolbar row is drawn any more (#548): the org picker is the Target Org Manager's (#255),
-        the run selector the Treecipes section's first row (#533), and Favorites only sits beside
-        the Treecipe dropdown it narrows (buildTreePicker). Only the help section is left here.
-    */
-    function renderToolbar(recipe, hasObjects) {
-
-        renderHelp(recipe, hasObjects);
-
-    }
-
     // THE DATED RUNS, WITH A VISIBLE LABEL THAT NAMES THE DROPDOWN (#533); NOTHING WITHOUT A RUN
     function buildRunPicker(recipe) {
 
@@ -31312,7 +31301,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         treesViewElement = createElement('div', 'treesView');
 
-        renderToolbar(recipe, hasObjects);
+        // NO TOOLBAR ROW (#548): THE ORG PICKER IS THE TARGET ORG MANAGER'S, THE RUN LIST AND FAVORITES ONLY THE TREECIPES SECTION'S
+        renderHelp(recipe, hasObjects);
 
         const runPickerElement = buildRunPicker(recipe);
         const trees = recipe.trees || [];
