@@ -54,6 +54,7 @@ import {
     RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
     RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
     RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
+    RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
     RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
@@ -406,6 +407,90 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(execFile).not.toHaveBeenCalled();
             expect(vscode.window.withProgress).not.toHaveBeenCalled();
             expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
+
+        });
+
+        describe('Salesforce CLI or @salesforce/core (#507)', () => {
+
+            let libraryRunSpy: jest.SpyInstance;
+
+            beforeEach(() => {
+                libraryRunSpy = jest.spyOn(ScratchOrgService, 'runScratchOrgSetupWithLibrary').mockImplementation(async () => {
+                    isNewOrgAuthorized = true;
+                    return { kind: 'created', username: NEW_SCRATCH_USERNAME };
+                });
+            });
+
+            it('offers both buttons, CLI first, and says the library cannot be cancelled', async () => {
+
+                (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'createScratchOrg' });
+
+                const [, modalOptions, ...modalActions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+                expect(modalActions).toEqual([RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL, RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL]);
+                expect(modalOptions.detail).toContain('It cannot be cancelled once it starts.');
+                expect(libraryRunSpy).not.toHaveBeenCalled();
+                expect(execFile).not.toHaveBeenCalled();
+
+            });
+
+            it('offers only the CLI, saying why, when the project sets what the library would not read', async () => {
+
+                fs.writeFileSync(path.join(workspaceRoot, '.sf', 'config.json'), JSON.stringify({ 'target-dev-hub': 'devhub', 'org-api-version': '61.0' }));
+                (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL);
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'createScratchOrg' });
+
+                const [, modalOptions, ...modalActions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+                expect(modalActions).toEqual([RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL]);
+                expect(modalOptions.detail).toContain(`Create with @salesforce/core is not offered: ${path.join('.sf', 'config.json')} sets org-api-version.`);
+                expect(libraryRunSpy).not.toHaveBeenCalled();
+                expect(cliCalls.filter(argumentList => argumentList[1] === 'create')).toEqual([]);
+
+            });
+
+            it('creates with the library in a progress with no Cancel, starts no create process, and lists and selects the org like the CLI\'s', async () => {
+
+                (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL);
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'createScratchOrg' });
+
+                expect(libraryRunSpy).toHaveBeenCalledTimes(1);
+                expect(libraryRunSpy.mock.calls[0][0]).toMatchObject({ alias: CHOSEN_ALIAS, devHub: { username: DEFAULT_DEV_HUB.username } });
+                expect((vscode.window.withProgress as jest.Mock).mock.calls[0][0]).toMatchObject({ cancellable: false });
+                expect(cliCalls.filter(argumentList => argumentList[1] === 'create')).toEqual([]);
+                expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, NEW_SCRATCH_USERNAME);
+                expect(runNotifications(vscode.window.showInformationMessage)).toEqual([[
+                    RecipeYamlScalar.escapeForNotification(`Scratch org ${CHOSEN_ALIAS} · ${NEW_SCRATCH_USERNAME} is ready. Nothing was deployed to it. It is selected in the Treecipe tab.`),
+                    RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL
+                ]]);
+                expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
+
+            });
+
+            it('keeps and selects an org the library created whose setup stopped, as a warning', async () => {
+
+                libraryRunSpy.mockImplementation(async () => {
+                    isNewOrgAuthorized = true;
+                    return { kind: 'created', username: NEW_SCRATCH_USERNAME, incompleteMessage: 'ProblemDeployingSettings: settings deploy failed' };
+                });
+                (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL);
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'createScratchOrg' });
+
+                expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, NEW_SCRATCH_USERNAME);
+                expect(runNotifications(vscode.window.showInformationMessage)).toEqual([]);
+                expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)).toEqual([
+                    RecipeYamlScalar.escapeForNotification(`Scratch org ${CHOSEN_ALIAS} · ${NEW_SCRATCH_USERNAME} was created, but setting it up stopped: ProblemDeployingSettings: settings deploy failed. It is kept. Nothing was deployed to it. It is selected in the Treecipe tab.`),
+                    RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL
+                ]);
+
+            });
 
         });
 

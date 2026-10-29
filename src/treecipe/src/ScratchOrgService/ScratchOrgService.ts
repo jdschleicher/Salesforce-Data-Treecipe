@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { Lifecycle, Org, ScratchOrgCreateOptions, ScratchOrgCreateResult, ScratchOrgLifecycleEvent, scratchOrgCreate, scratchOrgLifecycleEventName } from '@salesforce/core';
+
 import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
@@ -24,6 +26,14 @@ export type OrgOperationName = 'scratch-create' | 'permission-set-assign'
     | 'adapter-retrieve';
 
 export type ScratchOrgSetupPhase = 'creating';
+
+// ONE LISTENER FOR THE EXTENSION HOST'S LIFE: Lifecycle HAS NO WAY TO REMOVE ONE LISTENER, AND THIS ID KEEPS IT FROM BEING ADDED TWICE
+export const SCRATCH_ORG_LIBRARY_LIFECYCLE_LISTENER_ID = 'salesforce-data-treecipe-scratch-org-create';
+
+// WHAT THE CLI READS FROM THE PROJECT'S OWN CONFIG AND THE LIBRARY, RUN FROM THE EXTENSION HOST'S WORKING DIRECTORY, DOES NOT
+export const SCRATCH_ORG_LIBRARY_UNREAD_PROJECT_CONFIG_KEYS: readonly string[] = ['org-api-version', 'apiVersion', 'org-capitalize-record-types', 'capitalizeRecordTypes'];
+
+export const SCRATCH_ORG_PROJECT_CONFIG_FILE_RELATIVE_PATHS: readonly string[] = [path.join('.sf', 'config.json'), path.join('.sfdx', 'sfdx-config.json')];
 
 // A DEPLOY'S --json LISTS EVERY FILE AND COMPONENT, SO A LARGE PROJECT'S ANSWER OUTGROWS THE 8 MB OTHER COMMANDS USE (THE TROUBLESHOOTING TAB'S DEPLOYS, #346)
 export const SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES = 1024 * 1024 * 256;
@@ -94,7 +104,7 @@ export interface IDeployComponentCounts {
 export type ScratchOrgSetupOutcome =
     { kind: 'createFailed'; failureMessage: string; outputFilePath?: string }
     | { kind: 'createCancelled' }
-    | { kind: 'created'; username: string; outputFilePath?: string };
+    | { kind: 'created'; username: string; outputFilePath?: string; incompleteMessage?: string };
 
 export interface IScratchOrgSetupHooks {
     onPhase: (phase: ScratchOrgSetupPhase) => void;
@@ -110,7 +120,8 @@ export interface IScratchOrgSetupHooks {
     service owns the argv, the reading of the CLI's --json answer and the result files.
 
     Every process goes through PicklistDependencyCheckService.runSalesforceCli -- execFile with an
-    argv, no shell except the quoted one Windows' sf.cmd shim needs. Nothing here ever runs
+    argv, no shell except the quoted one Windows' sf.cmd shim needs -- or, when the reader chooses
+    it (#507), no process at all: @salesforce/core's scratchOrgCreate runs in the extension host. Nothing here ever runs
     "sf org delete": an org this creates is the reader's to keep or delete.
 */
 export class ScratchOrgService {
@@ -560,6 +571,248 @@ export class ScratchOrgService {
             username: createResult.username,
             outputFilePath: this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, createResult.username, 'scratch-create', createInvocation, now(), createPayload)
         };
+
+    }
+
+    /*
+        Why @salesforce/core's scratchOrgCreate would create a DIFFERENT org than the CLI here
+        (#507), or undefined when it would not. The library reads sfdx-project.json and the
+        project's .sf config from the extension host's working directory, which is not the
+        workspace: so a workspace that sets what only the project can set is refused, and so is a
+        working directory inside some OTHER project, whose settings the library would pick up.
+        The project's namespace is the one thing handed over (buildLibraryOrgConfig).
+    */
+    static findLibraryCreateRefusal(workspaceRoot: string, workingDirectoryPath: string = process.cwd()): string | undefined {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const projectJson = this.readJsonObject(path.join(resolvedWorkspaceRoot, 'sfdx-project.json'));
+
+        if ( !projectJson ) {
+            return 'sfdx-project.json could not be read.';
+        }
+
+        if ( typeof projectJson.signupTargetLoginUrl === 'string' && projectJson.signupTargetLoginUrl.trim() !== '' ) {
+            return 'sfdx-project.json sets signupTargetLoginUrl.';
+        }
+
+        const packageDirectories = Array.isArray(projectJson.packageDirectories) ? projectJson.packageDirectories : [];
+        const hasAncestors = packageDirectories.some(packageDirectory => packageDirectory !== null && typeof packageDirectory === 'object'
+            && ( 'ancestorId' in packageDirectory || 'ancestorVersion' in packageDirectory ));
+
+        if ( hasAncestors ) {
+            return 'sfdx-project.json names package ancestors.';
+        }
+
+        for ( const configFileRelativePath of SCRATCH_ORG_PROJECT_CONFIG_FILE_RELATIVE_PATHS ) {
+
+            const configFilePath = path.join(resolvedWorkspaceRoot, configFileRelativePath);
+
+            if ( !fs.existsSync(configFilePath) ) {
+                continue;
+            }
+
+            const projectConfig = this.readJsonObject(configFilePath);
+
+            if ( !projectConfig ) {
+                return `${configFileRelativePath} could not be read.`;
+            }
+
+            const unreadKey = SCRATCH_ORG_LIBRARY_UNREAD_PROJECT_CONFIG_KEYS.find(configKey => Object.prototype.hasOwnProperty.call(projectConfig, configKey));
+
+            if ( unreadKey ) {
+                return `${configFileRelativePath} sets ${unreadKey}.`;
+            }
+
+        }
+
+        const workingDirectoryProjectRoot = this.findEnclosingProjectRoot(workingDirectoryPath);
+
+        if ( workingDirectoryProjectRoot && path.resolve(workingDirectoryProjectRoot) !== resolvedWorkspaceRoot ) {
+            return 'VS Code is running from inside another Salesforce DX project, whose settings the library would read.';
+        }
+
+        return undefined;
+
+    }
+
+    // THE NEAREST FOLDER AT OR ABOVE THIS ONE HOLDING sfdx-project.json, AS SfProject.resolve FINDS IT
+    static findEnclosingProjectRoot(startPath: string): string | undefined {
+
+        let currentPath = path.resolve(startPath);
+
+        for ( ;; ) {
+
+            if ( fs.existsSync(path.join(currentPath, 'sfdx-project.json')) ) {
+                return currentPath;
+            }
+
+            const parentPath = path.dirname(currentPath);
+
+            if ( parentPath === currentPath ) {
+                return undefined;
+            }
+
+            currentPath = parentPath;
+
+        }
+
+    }
+
+    static readJsonObject(filePath: string): Record<string, unknown> | undefined {
+
+        try {
+            const parsedJson: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            return parsedJson !== null && typeof parsedJson === 'object' && !Array.isArray(parsedJson) ? parsedJson as Record<string, unknown> : undefined;
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        The definition file as the CLI reads it ($schema dropped), plus the project's namespace when
+        the definition names none -- the CLI would take it from sfdx-project.json, which the library
+        cannot find from the extension host. Undefined for a definition that is not a JSON object.
+    */
+    static buildLibraryOrgConfig(scratchOrgPlan: IScratchOrgPlan): Record<string, unknown> | undefined {
+
+        const definition = this.readJsonObject(scratchOrgPlan.definitionFilePath);
+
+        if ( !definition ) {
+            return undefined;
+        }
+
+        const { $schema: _schema, ...orgConfig } = definition;
+        const projectNamespace = this.readJsonObject(path.join(scratchOrgPlan.workspaceRoot, 'sfdx-project.json'))?.namespace;
+
+        if ( orgConfig.namespace === undefined && typeof projectNamespace === 'string' && projectNamespace.trim() !== '' ) {
+            orgConfig.namespace = projectNamespace;
+        }
+
+        return orgConfig;
+
+    }
+
+    // THE USERNAME OF THE ORG BEING CREATED, ONCE THE DEV HUB HAS ONE: SET BY THE ONE LIFECYCLE LISTENER WHILE A LIBRARY CREATE RUNS
+    private static libraryCreateUsernameSink: ((username: string) => void) | undefined;
+
+    static registerLibraryLifecycleListener() {
+
+        Lifecycle.getInstance().on<ScratchOrgLifecycleEvent>(scratchOrgLifecycleEventName, async (lifecycleEvent: ScratchOrgLifecycleEvent) => {
+
+            const scratchOrgInfo = lifecycleEvent?.scratchOrgInfo;
+            const username = scratchOrgInfo?.Username ?? scratchOrgInfo?.SignupUsername;
+
+            if ( lifecycleEvent?.stage === 'authenticate' && typeof username === 'string' ) {
+                this.libraryCreateUsernameSink?.(username);
+            }
+
+        }, SCRATCH_ORG_LIBRARY_LIFECYCLE_LISTENER_ID);
+
+    }
+
+    /*
+        The same create through @salesforce/core (#507): the Dev Hub opened by USERNAME, the alias
+        set and the authorization saved by the library exactly where the CLI keeps them, so every
+        org picker lists it. It cannot be cancelled -- nothing in scratchOrgCreate stops a poll --
+        so it takes no hooks for one. Once the Dev Hub has named a username the org is KEPT: a
+        failure after that (the alias, the settings deploy) is 'created' with an incompleteMessage,
+        never a failure that would forget it. The result file goes through redactSecrets like the
+        CLI's.
+    */
+    static async runScratchOrgSetupWithLibrary(scratchOrgPlan: IScratchOrgPlan,
+                                                setupHooks: Pick<IScratchOrgSetupHooks, 'onPhase' | 'now'>,
+                                                createScratchOrg: (createOptions: ScratchOrgCreateOptions) => Promise<ScratchOrgCreateResult> = scratchOrgCreate): Promise<ScratchOrgSetupOutcome> {
+
+        const now = setupHooks.now ?? (() => new Date());
+
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.username);
+
+        setupHooks.onPhase('creating');
+
+        const orgConfig = this.buildLibraryOrgConfig(scratchOrgPlan);
+
+        if ( !orgConfig ) {
+            return { kind: 'createFailed', failureMessage: `The scratch org definition file "${scratchOrgPlan.definitionFileRelativePath}" is not a JSON object.` };
+        }
+
+        let createdUsername: string | undefined;
+
+        this.registerLibraryLifecycleListener();
+        this.libraryCreateUsernameSink = (username: string) => { createdUsername = username; };
+
+        try {
+
+            const hubOrg = await Org.create({ aliasOrUsername: scratchOrgPlan.devHub.username });
+            await hubOrg.determineIfDevHubOrg(true);
+
+            const createResult = await createScratchOrg({
+                hubOrg: hubOrg,
+                orgConfig: orgConfig,
+                durationDays: scratchOrgPlan.durationDays,
+                alias: scratchOrgPlan.alias,
+                setDefault: false
+            });
+
+            const username = createResult?.username ?? createdUsername;
+
+            if ( typeof username !== 'string' || !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
+                return { kind: 'createFailed', failureMessage: '@salesforce/core reported the scratch org created but named no usable username for it.' };
+            }
+
+            return {
+                kind: 'created',
+                username: username,
+                outputFilePath: this.writeOrgOperationPayload(scratchOrgPlan.workspaceRoot, username, 'scratch-create', {
+                    status: 0,
+                    createdWith: '@salesforce/core',
+                    result: {
+                        username: username,
+                        orgId: createResult.authFields?.orgId,
+                        scratchOrgInfo: createResult.scratchOrgInfo,
+                        authFields: createResult.authFields,
+                        warnings: createResult.warnings
+                    }
+                }, now())
+            };
+
+        } catch (createError) {
+
+            const failureMessage = this.redactSecretText([createError?.name, createError?.message]
+                .filter((detailPart): detailPart is string => typeof detailPart === 'string' && detailPart.trim() !== '')
+                .join(': ') || String(createError));
+            const keptUsername = typeof createdUsername === 'string' && PicklistDependencyCheckService.isValidTargetOrgIdentifier(createdUsername)
+                ? createdUsername
+                : undefined;
+            const failurePayload = {
+                status: 1,
+                createdWith: '@salesforce/core',
+                name: createError?.name,
+                message: failureMessage,
+                ...( keptUsername ? { result: { username: keptUsername } } : {} )
+            };
+
+            if ( keptUsername ) {
+                return {
+                    kind: 'created',
+                    username: keptUsername,
+                    incompleteMessage: failureMessage,
+                    outputFilePath: this.writeOrgOperationPayload(scratchOrgPlan.workspaceRoot, keptUsername, 'scratch-create', failurePayload, now())
+                };
+            }
+
+            return {
+                kind: 'createFailed',
+                failureMessage: failureMessage,
+                outputFilePath: this.writeOrgOperationPayload(scratchOrgPlan.workspaceRoot, scratchOrgPlan.alias, 'scratch-create', failurePayload, now())
+            };
+
+        } finally {
+
+            this.libraryCreateUsernameSink = undefined;
+
+        }
 
     }
 
