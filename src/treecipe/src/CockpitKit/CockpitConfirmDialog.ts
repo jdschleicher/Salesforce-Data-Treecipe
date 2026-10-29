@@ -16,13 +16,26 @@ export interface ICockpitConfirmAnswer {
 }
 
 /*
-    The names the dialog's panel script uses and does not declare. A cockpit that includes the
-    script declares each of these in the same scope; a test holds every cockpit's panel to the list.
+    The names the dialog's panel script uses and does not declare (the kit's state and labels
+    scripts declare confirmDialog and the two labels). A cockpit that includes the script declares
+    each of these in the same scope: a name it misses throws while a request is drawn, before any
+    answer is posted, and the host's confirmInPanel would wait on it. A test derives the list from
+    every free identifier in the script, so a new one cannot be left off.
 */
 export const COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES: readonly string[] = Object.freeze([
     'vscodeApi', 'renderedSequence', 'createElement', 'createButton', 'focusElement', 'isMotionReduced',
-    'drawToggle', 'setShownWithMotion', 'SVG_NAMESPACE',
+    'drawToggle', 'setShownWithMotion', 'SVG_NAMESPACE', 'TREE_GLYPH_VIEW_BOX', 'TOGGLE_COLLAPSED_GLYPH_PATH',
     'cockpitDialogHostElement', 'cockpitBodyElement', 'cockpitMetaElement', 'loadStatusElement'
+]);
+
+/*
+    The classes the dialog draws with that COCKPIT_KIT_CONFIRM_DIALOG_STYLES does not style: the
+    section chevron and the reveal it names itself, and those its required helpers set (a folded
+    section is hidden by setShownWithMotion, its chevron held still by drawToggle). A cockpit that
+    includes the dialog styles these too, or a folded section draws open.
+*/
+export const COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES: readonly string[] = Object.freeze([
+    'toggleGlyph', 'motionReveal', 'hidden', 'motionConceal', 'noMotion'
 ]);
 
 export const COCKPIT_KIT_CONFIRM_DIALOG_STYLES = `    .confirmOverlay {

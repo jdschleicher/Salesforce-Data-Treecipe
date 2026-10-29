@@ -93,7 +93,7 @@ jestSetup/                                   # Jest harness only — outside tsc
 src/
 ├── extension.ts                             # Extension entry point, command registration
 └── treecipe/src/
-    ├── CockpitKit/                          # What every cockpit shares (#524, epic #523): the --sdt-* palette, button kinds (createButton and its CSS, kept as the pieces the Recipe Cockpit's stylesheet interpolates where they were), org picker and pinned section CSS, the in-panel confirmation (CSS, markup, panel script and the names it needs declared beside it, buildConfirmationId/readAnswer); imports only crypto
+    ├── CockpitKit/                          # What every cockpit shares (#524, epic #523): the --sdt-* palette, button kinds (createButton and its CSS, kept as the pieces the Recipe Cockpit's stylesheet interpolates where they were), org picker and pinned section CSS, the in-panel confirmation (CSS, markup, panel script, and the names and classes it needs from the cockpit beside it, each list derived and held by a test; buildConfirmationId/readAnswer); imports only crypto
     │   └── tests/                           # Every kit piece appears verbatim and once in the Recipe Cockpit's document, so its suites cover the kit
     ├── CollectionsApiService/
     │   ├── CollectionsApiService.ts         # Formats fake data for Salesforce Collections API

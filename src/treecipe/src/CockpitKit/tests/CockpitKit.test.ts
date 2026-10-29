@@ -18,7 +18,15 @@ import * as CockpitConfirmDialogModule from '../CockpitConfirmDialog';
 import { COCKPIT_PALETTE, CockpitPalette, CockpitPaletteToken } from '../CockpitPalette';
 import { COCKPIT_BUTTON_KINDS, CockpitButtonKinds } from '../CockpitButtonKinds';
 import { CockpitOrgPicker } from '../CockpitOrgPicker';
-import { COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT, COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES, CockpitConfirmDialog } from '../CockpitConfirmDialog';
+import {
+    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT,
+    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES,
+    COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT,
+    COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES,
+    COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
+    COCKPIT_KIT_CONFIRM_LABELS_SCRIPT,
+    CockpitConfirmDialog
+} from '../CockpitConfirmDialog';
 import {
     RecipeCockpitService,
     RECIPE_COCKPIT_BUTTON_KINDS,
@@ -41,7 +49,44 @@ const kitPieces = (): [string, string][] =>
 
 const recipeShell = () => RecipeCockpitService.buildWebviewShellHtml('kitNonce');
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="kitNonce">'), html.lastIndexOf('</script>'));
+const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="kitNonce">'), html.indexOf('</style>'));
 const countOccurrences = (text: string, piece: string) => text.split(piece).length - 1;
+
+// STRINGS, COMMENTS AND REGEX LITERALS OUT FIRST, SO A WORD INSIDE ONE IS NEVER READ AS A NAME
+const codeOf = (script: string) => script.replace(
+    /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|(?<=[(,=:!&|?{;]\s*)\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\n[])+\/[gimsuy]*/g,
+    ' '
+);
+
+const declaredNamesOf = (script: string): Set<string> => {
+    const code = codeOf(script);
+    const declaredNames = new Set<string>();
+    Array.from(code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)).forEach(match => declaredNames.add(match[1]));
+    Array.from(code.matchAll(/\bfunction\s*([A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/g)).forEach(match => {
+        if (match[1]) { declaredNames.add(match[1]); }
+        match[2].split(',').map(parameterName => parameterName.trim()).filter(Boolean).forEach(parameterName => declaredNames.add(parameterName));
+    });
+    return declaredNames;
+};
+
+const JAVASCRIPT_NAMES = new Set([
+    'if', 'else', 'for', 'while', 'return', 'function', 'const', 'let', 'var', 'new', 'typeof', 'instanceof', 'in', 'of',
+    'true', 'false', 'null', 'undefined', 'this', 'break', 'continue', 'throw', 'try', 'catch', 'switch', 'case', 'default',
+    'Array', 'Number', 'String', 'Object', 'JSON', 'Math', 'Error', 'Infinity', 'NaN', 'document', 'window'
+]);
+
+// EVERY NAME THE SCRIPT READS THAT IT DOES NOT DECLARE: NOT A PROPERTY (.name), NOT AN OBJECT KEY ({ name: / , name:), NOT THE LANGUAGE'S
+const freeIdentifiersOf = (script: string): Set<string> => {
+    const code = codeOf(script);
+    const declaredNames = declaredNamesOf(script);
+    return new Set(Array.from(code.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)(?![\w$])/g))
+        .filter(match => !/[{,]\s*$/.test(code.slice(0, match.index)) || !/^\s*:/.test(code.slice((match.index ?? 0) + match[1].length)))
+        .map(match => match[1])
+        .filter(name => !declaredNames.has(name) && !JAVASCRIPT_NAMES.has(name)));
+};
+
+const classSelectorsOf = (styleSheet: string): Set<string> =>
+    new Set(Array.from(styleSheet.replace(/\{[^{}]*\}/g, '{}').matchAll(/\.([A-Za-z][\w-]*)/g), match => match[1]));
 
 describe('CockpitKit (#524)', () => {
 
@@ -177,22 +222,32 @@ describe('CockpitKit (#524)', () => {
 
     describe('confirmation dialog', () => {
 
-        it('names every function and element the dialog script uses but does not declare, and the Recipe Cockpit declares each', () => {
+        it('lists exactly the free identifiers of the dialog script, and the Recipe Cockpit declares each', () => {
 
-            const declaredInPiece = new Set(Array.from(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT.matchAll(/function ([A-Za-z]\w*)\(|(?:const|let) ([A-Za-z]\w*)\b/g), match => match[1] ?? match[2]));
-            const languageNames = new Set(['if', 'for', 'while', 'switch', 'function', 'return', 'typeof', 'catch', 'Array', 'Number', 'String', 'Object', 'Error']);
-            const calledFunctions = Array.from(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT.matchAll(/(?<![.\w])([A-Za-z_]\w*)\(/g), match => match[1])
-                .filter(functionName => !declaredInPiece.has(functionName) && !languageNames.has(functionName));
-            const readElements = Array.from(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT.matchAll(/\b(\w+Element)\b(?!\s*=)/g), match => match[1])
-                .filter(elementName => !declaredInPiece.has(elementName) && /^(cockpit|loadStatus)/.test(elementName));
+            const kitDeclared = declaredNamesOf(COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT + '\n' + COCKPIT_KIT_CONFIRM_LABELS_SCRIPT);
 
-            expect(new Set([...calledFunctions, ...readElements, 'vscodeApi', 'renderedSequence', 'SVG_NAMESPACE']))
+            expect(kitDeclared).toEqual(new Set(['confirmDialog', 'CONFIRM_WARNINGS_LABEL', 'CONFIRM_CHANGE_ORG_LABEL']));
+            expect(new Set(Array.from(freeIdentifiersOf(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT)).filter(name => !kitDeclared.has(name))))
                 .toEqual(new Set(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES));
 
             const recipePanelScript = panelScriptOf(recipeShell()).replace(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT, '');
             COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES.forEach(requiredName =>
                 expect({ requiredName, isDeclared: new RegExp(`(?:function ${requiredName}\\(|(?:const|let) ${requiredName}\\b)`).test(recipePanelScript) })
                     .toEqual({ requiredName, isDeclared: true }));
+
+        });
+
+        it('names every class it draws with that its own styles do not, and the Recipe Cockpit styles each outside them', () => {
+
+            const styledByKit = classSelectorsOf(COCKPIT_KIT_CONFIRM_DIALOG_STYLES);
+            const namedByScript = Array.from(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT.matchAll(/(?:classList\.add\(|setAttribute\('class', )'([A-Za-z][\w-]*)'/g), match => match[1]);
+            const recipeStyleSheet = styleSheetOf(recipeShell()).replace(COCKPIT_KIT_CONFIRM_DIALOG_STYLES, '');
+
+            expect(namedByScript.length).toBeGreaterThan(0);
+            namedByScript.filter(className => !styledByKit.has(className)).forEach(className =>
+                expect(COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES).toContain(className));
+            COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES.forEach(className =>
+                expect({ className, isStyled: classSelectorsOf(recipeStyleSheet).has(className) }).toEqual({ className, isStyled: true }));
 
         });
 
