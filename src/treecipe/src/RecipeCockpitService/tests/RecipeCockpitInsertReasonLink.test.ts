@@ -33,9 +33,11 @@ const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loa
     RUN_FOLDER_NAME
 ).recipeViewModel;
 
-const renderPanel = (): Panel => {
+const renderPanel = (recipeChanges: (recipe: IRecipeCockpitRecipeViewModel) => void = () => undefined): Panel => {
     const panel = runPanelScript();
-    panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 1 });
+    const recipe = loadRecipe();
+    recipeChanges(recipe);
+    panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
     panel.postToPanel({ command: 'rendered' });
     panel.expandAllTrees();
     return panel;
@@ -151,6 +153,34 @@ describe('RecipeCockpitService, a disabled insert links its reason to the fix (#
         expect(fieldRow).toBeDefined();
         expect(partOf(panel, fieldRow, 'treeFieldName').textContent).toBe('LastName');
         expect(panel.isHidden(fieldRow)).toBe(false);
+
+    });
+
+    it('shows the field even when its object\'s own Hide unselected or TODOs only hides it, and turns that filter off', () => {
+
+        const panel = renderPanel(recipe => RecipeCockpitService.applyObjectSelections(
+            recipe, new Map(), new Map([[ACCOUNT_TREE_KEY, new Map([['Contact', new Set(['LastName'])]])]])
+        ));
+        selectOrg(panel);
+        const contact = panel.objectElements().find((objectElement: any) => panel.objectNameOf(objectElement) === 'Contact');
+        panel.expandObject(contact);
+        const hideElement = panel.findAll(panel.objectBodyOf(contact), 'treeHideUnselectedToggle')[0];
+        hideElement.dispatch('click');
+        expect(panel.visibleFieldNamesOf(contact)).not.toContain('LastName');
+
+        postReadiness(panel, {
+            objectApiName: 'Contact',
+            disabledReason: 'Contact has 1 unticked field this org requires: LastName. Tick it in the Treecipe tab to insert records.',
+            disabledReasonCode: 'requiredFieldUnticked',
+            disabledReasonFieldApiName: 'LastName'
+        });
+        reasonLinkOf(panel).dispatch('click');
+
+        expect(panel.visibleFieldNamesOf(contact)).toContain('LastName');
+        expect(hideElement.attributes['aria-checked']).toBe('false');
+        const fieldRow = panel.findAll(contact, 'treeField').find((rowElement: any) => partOf(panel, rowElement, 'treeFieldName').textContent === 'LastName');
+        expect(panel.isHidden(fieldRow)).toBe(false);
+        expect([fieldRow, ...panel.findAll(fieldRow, 'treeFieldInclude')]).toContain(panel.activeElement());
 
     });
 

@@ -21812,14 +21812,22 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    // OPENS ONE OBJECT OR OCCURRENCE, AND CLEARS THE TREECIPE TAB'S SEARCH AND CHECKS WHEN THEY HIDE THE FIELD ASKED FOR; ANSWERS THE ROW TO SCROLL TO
+    // OPENS ONE OBJECT OR OCCURRENCE, AND CLEARS THE TREECIPE TAB'S SEARCH AND CHECKS -- THE OBJECT'S OWN TOO (#539) -- WHEN THEY HIDE THE FIELD ASKED FOR; ANSWERS THE ROW TO SCROLL TO
     function openTreeObjectRow(treeState, treeObjectState, fieldState) {
 
         treeObjectState.isExpandedByReader = true;
         setTreeObjectExpanded(treeObjectState, true, false);
 
         if (fieldState && fieldState.rowElement && fieldState.rowElement.classList.contains('hidden')) {
+            // HIDE UNSELECTED (#483) HIDES EXACTLY THE UNTICKED FIELD A DISABLED INSERT'S LINK OPENS
+            const hadObjectFilter = isObjectHidingUnselectedIn(treeObjectState) || treeObjectState.isTodosOnly === true;
+            treeObjectState.isHidingUnselected = false;
+            treeObjectState.isTodosOnly = false;
             clearStructureFilters(treeState);
+            if (hadObjectFilter) {
+                drawHideUnselectedToggle(treeObjectState);
+                drawObjectTodosToggle(treeObjectState);
+            }
             setTreeObjectExpanded(treeObjectState, true, false);
         }
 
@@ -30313,15 +30321,23 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (readiness.disabledReasonCode !== 'requiredFieldUnticked' || typeof readiness.disabledReasonFieldApiName !== 'string') { return null; }
 
         const objectApiName = readiness.objectApiName;
-        const treeObjectState = treeState.objectStates.find(function (candidateState) { return !candidateState.isIteration && candidateState.object.objectApiName === objectApiName; });
-        if (!treeObjectState) { return null; }
-
         // THE ORG'S FIELD NAME, AND SALESFORCE READS NAMES CASE-INSENSITIVELY
         const lowerFieldApiName = readiness.disabledReasonFieldApiName.toLowerCase();
-        const field = treeObjectState.object.fields.find(function (candidateField) { return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName; });
-        if (!field) { return null; }
+        const findField = function (treeObjectState) {
+            return treeObjectState.object.fields.find(function (candidateField) { return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName; });
+        };
 
-        return { kind: 'field', objectApiName: objectApiName, fieldApiName: field.fieldApiName, label: INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + '.' + field.fieldApiName };
+        // EVERY OCCURRENCE KEEPS ITS OWN UNTICKS (#467): THE ROW OPENED IS ONE THAT UNTICKS IT, ELSE THE FIRST
+        const occurrenceStates = treeState.objectStates.filter(function (candidateState) { return candidateState.object.objectApiName === objectApiName && !!findField(candidateState); });
+        const untickingState = occurrenceStates.find(function (candidateState) {
+            const objectFieldSelection = findObjectFieldSelection(candidateState.tree, objectApiName, occurrenceNicknameOf(candidateState.object));
+            return !!objectFieldSelection && isTreeFieldUnticked(objectFieldSelection, findField(candidateState).fieldApiName);
+        });
+        const treeObjectState = untickingState || occurrenceStates.find(function (candidateState) { return !candidateState.isIteration; }) || occurrenceStates[0];
+        if (!treeObjectState) { return null; }
+
+        const fieldApiName = findField(treeObjectState).fieldApiName;
+        return { kind: 'field', objectState: treeObjectState, fieldApiName: fieldApiName, label: INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + '.' + fieldApiName };
 
     }
 
@@ -30344,8 +30360,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         }
 
-        const treeObjectState = treeState.objectStates.find(function (candidateState) { return !candidateState.isIteration && candidateState.object.objectApiName === reasonLink.objectApiName; });
-        if (!treeObjectState) { return; }
+        const treeObjectState = reasonLink.objectState;
         const fieldState = treeObjectState.fieldStates.find(function (candidateState) { return candidateState.field.fieldApiName === reasonLink.fieldApiName; }) || null;
 
         revealTreeObjectRow(treeState, treeObjectState, fieldState, null);
