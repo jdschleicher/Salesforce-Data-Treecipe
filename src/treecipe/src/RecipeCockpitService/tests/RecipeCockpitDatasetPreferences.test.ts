@@ -472,7 +472,9 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const rename = panel.findAll(header, 'treeDatasetRename')[0];
             const glyph = rename.children[0];
 
-            expect(classNames.slice(0, 3)).toEqual(['treeDatasetFavorite', 'treeDatasetRename', 'treeDatasetName']);
+            // THE INSERT JOURNEY'S ▸ (#471) LEADS THE ROW, AS ON EVERY EXPANDABLE ROW; ☆, ✎ AND THE NAME FOLLOW IT
+            expect(header.children[0].className.split(' ')).toContain('treeDatasetJourneyToggle');
+            expect(classNames.slice(1, 4)).toEqual(['treeDatasetFavorite', 'treeDatasetRename', 'treeDatasetName']);
             expect(rename.children).toHaveLength(1);
             expect(glyph.attributes.class).toBe('fixedValueGlyph');
             expect(glyph.children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);

@@ -99,6 +99,7 @@ import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelecti
 import {
     ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
+    RecipeCockpitCreateReasonCode,
     RecipeCockpitRecordCreation,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
@@ -126,7 +127,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
-import { IScratchOrgAliasChoice, IScratchOrgPlan, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
+import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { INotificationCommandAction, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
     RECIPE_COCKPIT_QUERY_EXPORT_FORMATS,
@@ -139,6 +140,7 @@ import {
 } from './RecipeCockpitQuery';
 import { IRecipeCockpitRunArtifactsLocation, RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 import { IRunHistoryStepRecord, RUN_HISTORY_STEP_LABELS, RunHistoryOutcome, RunHistoryRowStatus, RunHistoryStep, RecipeCockpitRunHistory } from './RecipeCockpitRunHistory';
+import { DATASET_JOURNEY_ENTRY_LIMIT, DatasetJourneyEntryKind, RecipeCockpitDatasetJourney } from './RecipeCockpitDatasetJourney';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, IOrgStagedFieldDetail, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
@@ -286,7 +288,7 @@ export const RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = 'Hide unselected';
 export const RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = 'Every field of this object is ticked, so there is nothing to hide.';
 // THE INSERT CONFIRMATION'S SECTION OF WHAT THE CARD LEAVES OUT, ONE OBJECT AT A TIME (#483)
 export const RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE = 'Left out, per object';
-export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset selection';
+export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset Selections';
 
 /*
     Why a field's fixed-value pin is disabled (#262). The panel draws the same rule from what the
@@ -585,7 +587,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.',
-            'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
+            'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field\'s row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
@@ -634,9 +636,9 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
-            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org….',
+            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of a row opens its insert journey: every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, oldest first, for the orgs it was inserted into. Each entry shows its time, org, outcome in words, the first error of a failure, and where its files are, with View file. A data set never inserted opens to No inserts yet.',
             'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
-            'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
+            'Reset Selections, right of a card\'s Generate fake data and insert button, clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
     }
@@ -1286,6 +1288,8 @@ export interface IRecipeCockpitPanelMessage {
     // THE TROUBLESHOOTING HISTORY (#485): THE ROWS THE PANEL DREW, AND ONE OF THEIR FILES BY ITS INDEX
     historySequence?: unknown;
     fileIndex?: unknown;
+    // A DATA SET'S INSERT JOURNEY (#471): THE ENTRIES THE PANEL DREW, AND ONE OF THEIR FILES BY ITS INDEX
+    journeySequence?: unknown;
     // A ROW OF THE TODO'S SUB-TAB'S REMOVED LIST (#391)
     removalKey?: unknown;
     filePath?: unknown;
@@ -1370,6 +1374,8 @@ export interface IRecipeCockpitPanelTreePlace {
     openPicklistKeys: string[];
     // THE DATA SETS TAB'S FAVORITES ONLY; A PLACE SAVED BEFORE IT HAS NONE AND READS AS THE FILTER OFF
     isDatasetFavoritesOnly?: true;
+    // THE DATA SET ROWS WHOSE INSERT JOURNEY IS OPEN (#471), BY DATA SET FOLDER NAME; A PLACE SAVED BEFORE IT HAS NONE
+    expandedJourneyDatasetFolderNames?: string[];
     // THE TREECIPE TAB'S RECORD TYPES SECTION (#321); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
     isRecordTypesExpanded?: true;
     // THE TREECIPE TAB'S "Record type fields only" CHECK (#320); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
@@ -2012,6 +2018,39 @@ export interface IRecipeCockpitTroubleshootingHistoryMessage {
     hiddenRowCount: number;
 }
 
+/*
+    One entry of a data set's insert journey (#471): an insert attempt or a Troubleshooting step of
+    its tree. relativePath is the file's place in the workspace, shown as text beside "View file";
+    a file is opened by its index in the host-only list kept for this message, never by a path.
+*/
+export interface IRecipeCockpitDatasetJourneyEntryViewModel {
+    kind: DatasetJourneyEntryKind;
+    kindLabel: string;
+    status: RunHistoryRowStatus;
+    timeLabel: string;
+    orgLabel?: string;
+    summaryText: string;
+    errorExcerpt?: string;
+    files: Array<{ fileIndex: number; relativePath: string }>;
+}
+
+/*
+    A data set's journey, read when its row is first expanded. renderSequence names the model it was
+    read for, and the panel drops it for any other; journeySequence is echoed by the panel's
+    "datasetJourneyRendered", and only that ack opens these entries' files.
+*/
+export interface IRecipeCockpitDatasetJourneyMessage {
+    command: 'datasetJourney';
+    renderSequence: number;
+    datasetFolderName: string;
+    journeySequence: number;
+    attemptCount: number;
+    entries: IRecipeCockpitDatasetJourneyEntryViewModel[];
+    hiddenEntryCount: number;
+    otherOrgStepCount: number;
+    untrackedStepCount: number;
+}
+
 export interface IRecipeCockpitUpdaterValuesMessage {
     command: 'updaterValues';
     renderSequence: number;
@@ -2326,6 +2365,26 @@ export const RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY: Readonly<Record<RunHistoryRo
     unreadable: { emoji: '❗', label: 'Summary unreadable' },
     unrecorded: { emoji: '➖', label: 'Not recorded' }
 };
+/*
+    A data set's insert journey (#471): ✅ for what succeeded, ❌ for what failed and ⚠️ for everything
+    between or not known, each always with its label in words.
+*/
+export const RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY: Readonly<Record<RunHistoryRowStatus, { emoji: string; label: string }>> = {
+    succeeded: { emoji: '✅', label: 'Succeeded' },
+    partial: { emoji: '⚠️', label: 'Partly succeeded' },
+    failed: { emoji: '❌', label: 'Failed' },
+    cancelled: { emoji: '⚠️', label: 'Cancelled' },
+    unknown: { emoji: '⚠️', label: 'Outcome unknown' },
+    unreadable: { emoji: '⚠️', label: 'Unreadable' },
+    unrecorded: { emoji: '⚠️', label: 'Not recorded' }
+};
+export const RECIPE_COCKPIT_DATASET_JOURNEY_INSERT_LABEL = 'Insert';
+export const RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL = 'Insert journey';
+export const RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE = 'Reading this data set\'s inserts…';
+export const RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE = 'No inserts yet.';
+export const RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = 'Inserted first time, with nothing else needed.';
+export const RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = 'View file';
+export const RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT = 'That file no longer exists in this workspace.';
 export const RECIPE_COCKPIT_HISTORY_LOADING_NOTE = 'Reading this tree\'s history…';
 export const RECIPE_COCKPIT_HISTORY_EMPTY_NOTE = 'No Troubleshooting step has been run for this tree yet. Each deploy, retrieve, permission set assignment and Generate permission set is listed here once it has run.';
 export const RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE = 'This step ran before Treecipe recorded how a step ended, so only its time and files are known.';
@@ -2539,6 +2598,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitUpdaterValuesMessage
                                         | IRecipeCockpitUpdaterSnapshotsMessage
                                         | IRecipeCockpitTroubleshootingHistoryMessage
+                                        | IRecipeCockpitDatasetJourneyMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitRunSwitchCancelledMessage
@@ -2691,6 +2751,18 @@ export const RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = 'No org is chosen yet.';
 export const RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = 'You will be asked which org to insert into.';
 
 export const RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = 'Can\'t insert: ';
+
+/*
+    Where a disabled insert's reason links to (#539): the Troubleshooting sub-tab whose card fixes
+    it. An unticked required field links to its own row instead, labelled with this prefix and the
+    field. Any other reason, and a reason code not listed here, draws no link.
+*/
+export const RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS: Readonly<Record<Exclude<RecipeCockpitCreateReasonCode, 'requiredFieldUnticked'>, { subTab: RecipeCockpitTroubleshootingSubTab; label: string }>> = Object.freeze({
+    objectNotInOrg: { subTab: 'fields', label: 'Troubleshooting › Fields' },
+    objectNotCreateable: { subTab: 'permissions', label: 'Troubleshooting › Permissions' }
+});
+
+export const RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = 'Treecipe › ';
 
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
 
@@ -2851,6 +2923,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadTroubleshootingHistory'; treeKey: string }
     | { kind: 'activateTroubleshootingHistory'; treeKey: string }
     | { kind: 'openTroubleshootingHistoryFile'; filePath: string }
+    | { kind: 'loadDatasetJourney'; datasetFolderName: string }
+    | { kind: 'activateDatasetJourney'; datasetFolderName: string }
+    | { kind: 'openDatasetJourneyFile'; filePath: string }
     | { kind: 'saveTreeQueryEdit'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'runTreeQuery'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
@@ -3006,6 +3081,9 @@ export interface IRecipeCockpitPanelState {
     */
     pendingHistoryFiles: Map<string, { historySequence: number; filePaths: string[] }>;
     historyFiles: Map<string, { historySequence: number; filePaths: string[] }>;
+    // A DATA SET'S INSERT JOURNEY (#471): THE SAME PAIR, PER DATA SET FOLDER NAME, ACTIVATED BY "datasetJourneyRendered"
+    pendingJourneyFiles: Map<string, { journeySequence: number; filePaths: string[] }>;
+    journeyFiles: Map<string, { journeySequence: number; filePaths: string[] }>;
     // HOST-ONLY, REPLACED WITH THE MODEL: THE WRAPPER THE QUERY TAB'S QUERIES ARE READ FROM (#367)
     objectsWrapperFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
@@ -3171,6 +3249,8 @@ export class RecipeCockpitService {
             const hideUnselectedObjectKeys = this.normalizePlaceNames(candidateTree.hideUnselectedObjectKeys);
             const updaterChosenFieldKeys = this.normalizePlaceNames(candidateTree.updaterChosenFieldKeys);
             const updaterExpandedObjectKeys = this.normalizePlaceNames(candidateTree.updaterExpandedObjectKeys);
+            const expandedJourneyDatasetFolderNames = this.normalizePlaceNames(candidateTree.expandedJourneyDatasetFolderNames)
+                .filter(datasetFolderName => DatasetSourceService.isSafeFolderOrFileName(datasetFolderName));
             const updaterParentObjectApiName = SalesforceApiName.isApiName(candidateTree.updaterParentObjectApiName) ? candidateTree.updaterParentObjectApiName as string : undefined;
             const updaterParentWhereText = typeof candidateTree.updaterParentWhereText === 'string'
                 && candidateTree.updaterParentWhereText !== ''
@@ -3190,6 +3270,7 @@ export class RecipeCockpitService {
                 expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
                 openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
                 ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} ),
+                ...( expandedJourneyDatasetFolderNames.length > 0 ? { expandedJourneyDatasetFolderNames: expandedJourneyDatasetFolderNames } : {} ),
                 // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
                 ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
                 ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
@@ -6568,6 +6649,8 @@ export class RecipeCockpitService {
             restorableSnapshots: new Map(),
             pendingHistoryFiles: new Map(),
             historyFiles: new Map(),
+            pendingJourneyFiles: new Map(),
+            journeyFiles: new Map(),
             isGenerateTreecipeInFlight: false,
             pendingIsGenerateTreecipeOffered: false,
             isGenerateTreecipeOffered: false,
@@ -7075,6 +7158,8 @@ export class RecipeCockpitService {
         panelState.restorableSnapshots = new Map();
         panelState.pendingHistoryFiles = new Map();
         panelState.historyFiles = new Map();
+        panelState.pendingJourneyFiles = new Map();
+        panelState.journeyFiles = new Map();
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -7314,6 +7399,8 @@ export class RecipeCockpitService {
                 panelState.restorableSnapshots = new Map();
                 panelState.pendingHistoryFiles = new Map();
                 panelState.historyFiles = new Map();
+                panelState.pendingJourneyFiles = new Map();
+                panelState.journeyFiles = new Map();
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
@@ -7373,6 +7460,8 @@ export class RecipeCockpitService {
                     panelState.restorableSnapshots = new Map();
                     panelState.pendingHistoryFiles = new Map();
                     panelState.historyFiles = new Map();
+                    panelState.pendingJourneyFiles = new Map();
+                    panelState.journeyFiles = new Map();
                     // A REVEAL OF A PANEL THAT FAILED TO DRAW MUST NOT KEEP RE-OPENING THE TAB AN OPEN ASKED FOR
                     panelState.openFocusTree = undefined;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
@@ -7727,6 +7816,26 @@ export class RecipeCockpitService {
             case 'openTroubleshootingHistoryFile':
 
                 await VSCodeWorkspaceService.openWorkspaceResultFile(panelAction.filePath, panelState.workspaceRoot, RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT);
+                return;
+
+            case 'loadDatasetJourney':
+
+                this.postDatasetJourney(cockpitPanel, panelState, panelAction.datasetFolderName);
+                return;
+
+            case 'activateDatasetJourney': {
+
+                const pendingFiles = panelState.pendingJourneyFiles.get(panelAction.datasetFolderName);
+                if ( pendingFiles ) {
+                    panelState.journeyFiles.set(panelAction.datasetFolderName, pendingFiles);
+                }
+                return;
+
+            }
+
+            case 'openDatasetJourneyFile':
+
+                await VSCodeWorkspaceService.openWorkspaceResultFile(panelAction.filePath, panelState.workspaceRoot, RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT);
                 return;
 
             case 'saveTreeQueryEdit':
@@ -12494,6 +12603,96 @@ export class RecipeCockpitService {
 
         panelState.pendingHistoryFiles.set(treeKey, { historySequence: historyMessage.historySequence, filePaths: filePaths });
         this.postToPanel(cockpitPanel, historyMessage);
+
+    }
+
+    private static datasetJourneySequence = 0;
+
+    /*
+        A data set's insert journey (#471), read when its row is first expanded: its attempts and its
+        tree's Troubleshooting steps from every run's RunArtifacts (the run on screen first), oldest
+        first and capped. The data set folder is resolved from the host-only map built with the model
+        and held to the workspace again; the file paths stay on the host as a PENDING list that only
+        the panel's ack of these entries opens. A data set on no card with a folder lists no steps.
+    */
+    private static postDatasetJourney(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, datasetFolderName: string) {
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const datasetFolderPath = panelState.treeHistoryTargets.datasetFolderPathsByName.get(datasetFolderName);
+
+        if ( !recipeDataMessage ) {
+            return;
+        }
+
+        // A DATA SET GONE SINCE THE MODEL WAS DRAWN STILL GETS AN ANSWER, SO ITS ROW DOES NOT STAY ON THE LOADING NOTE
+        if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
+            const emptyJourneyMessage: IRecipeCockpitDatasetJourneyMessage = {
+                command: 'datasetJourney',
+                renderSequence: recipeDataMessage.renderSequence,
+                datasetFolderName: datasetFolderName,
+                journeySequence: ++this.datasetJourneySequence,
+                attemptCount: 0,
+                entries: [],
+                hiddenEntryCount: 0,
+                otherOrgStepCount: 0,
+                untrackedStepCount: 0
+            };
+            panelState.pendingJourneyFiles.set(datasetFolderName, { journeySequence: emptyJourneyMessage.journeySequence, filePaths: [] });
+            this.postToPanel(cockpitPanel, emptyJourneyMessage);
+            return;
+        }
+
+        const legacyOrgOperationsFolderPath = path.join(panelState.workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME);
+        const tree = recipeDataMessage.recipe.trees.find(recipeTree => !!recipeTree.folderName
+            && !!recipeTree.history?.datasets.some(dataset => dataset.datasetFolderName === datasetFolderName));
+        const treeLocations = tree ? this.resolveTreeSnapshotLocations(panelState.workspaceRoot, recipeDataMessage.recipe, tree) : [];
+        const journey = RecipeCockpitDatasetJourney.buildJourney(
+            datasetFolderPath,
+            treeLocations,
+            this.isUsableWorkspacePath(legacyOrgOperationsFolderPath, panelState.workspaceRoot) ? legacyOrgOperationsFolderPath : undefined,
+            DATASET_JOURNEY_ENTRY_LIMIT
+        );
+        const filePaths: string[] = [];
+        const journeyMessage: IRecipeCockpitDatasetJourneyMessage = {
+            command: 'datasetJourney',
+            renderSequence: recipeDataMessage.renderSequence,
+            datasetFolderName: datasetFolderName,
+            journeySequence: ++this.datasetJourneySequence,
+            attemptCount: journey.attemptCount,
+            entries: journey.entries.map(entry => {
+                const orgLabel = entry.orgAlias !== undefined && entry.orgUsername !== undefined
+                    ? `${entry.orgAlias} · ${entry.orgUsername}`
+                    : entry.orgAlias ?? entry.orgUsername;
+                return {
+                    kind: entry.kind,
+                    kindLabel: entry.kind === 'insert' ? RECIPE_COCKPIT_DATASET_JOURNEY_INSERT_LABEL : RUN_HISTORY_STEP_LABELS[entry.kind],
+                    status: entry.status,
+                    timeLabel: RecipeCockpitRunHistory.formatTimeLabel(entry.timeMs),
+                    ...( orgLabel !== undefined ? { orgLabel: orgLabel } : {} ),
+                    summaryText: entry.summaryText,
+                    ...( entry.errorExcerpt !== undefined ? { errorExcerpt: entry.errorExcerpt } : {} ),
+                    files: entry.filePaths
+                        .filter(filePath => this.isUsableWorkspacePath(filePath, panelState.workspaceRoot))
+                        .map(filePath => ({ fileIndex: filePaths.push(filePath) - 1, relativePath: this.toDisplayedRelativePath(panelState.workspaceRoot, filePath) }))
+                };
+            }),
+            hiddenEntryCount: journey.hiddenEntryCount,
+            otherOrgStepCount: journey.otherOrgStepCount,
+            untrackedStepCount: journey.untrackedStepCount
+        };
+
+        panelState.pendingJourneyFiles.set(datasetFolderName, { journeySequence: journeyMessage.journeySequence, filePaths: filePaths });
+        this.postToPanel(cockpitPanel, journeyMessage);
+
+    }
+
+    // A FOLDER NAME CAN CARRY A BIDI OR CONTROL CHARACTER THAT MAKES A PATH READ AS ANOTHER; THE FILE OPENED IS CHOSEN BY INDEX, SO ONLY THE TEXT IS CLEANED
+    private static toDisplayedRelativePath(workspaceRoot: string, filePath: string): string {
+
+        return path.relative(workspaceRoot, filePath)
+            .split(path.sep)
+            .join('/')
+            .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, '');
 
     }
 
@@ -17692,6 +17891,61 @@ export class RecipeCockpitService {
 
             }
 
+            // A DATA SET'S JOURNEY (#471) READS LOCAL FILES AND NOTHING ELSE, SO IT IS ANSWERED WHATEVER ELSE RUNS
+            case 'loadDatasetJourney': {
+
+                const { datasetFolderName, renderSequence } = panelMessage;
+
+                if ( typeof datasetFolderName !== 'string'
+                        || !panelState.recipeDataMessage
+                        || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                return { kind: 'loadDatasetJourney', datasetFolderName: datasetFolderName };
+
+            }
+
+            case 'datasetJourneyRendered': {
+
+                const { datasetFolderName, journeySequence } = panelMessage;
+                const pendingFiles = typeof datasetFolderName === 'string' ? panelState.pendingJourneyFiles.get(datasetFolderName) : undefined;
+
+                if ( typeof datasetFolderName !== 'string'
+                        || !pendingFiles
+                        || !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
+                        || journeySequence !== pendingFiles.journeySequence ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateDatasetJourney', datasetFolderName: datasetFolderName };
+
+            }
+
+            // A JOURNEY ENTRY'S FILE BY ITS INDEX IN THE ENTRIES THE PANEL ACKNOWLEDGED: NEVER A PATH, AND NOTHING FOR AN OLDER LIST
+            case 'openDatasetJourneyFile': {
+
+                const { datasetFolderName, journeySequence, fileIndex } = panelMessage;
+                const activeFiles = typeof datasetFolderName === 'string' ? panelState.journeyFiles.get(datasetFolderName) : undefined;
+
+                if ( !activeFiles
+                        || !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || journeySequence !== activeFiles.journeySequence
+                        || typeof fileIndex !== 'number'
+                        || !Number.isInteger(fileIndex)
+                        || fileIndex < 0
+                        || fileIndex >= activeFiles.filePaths.length ) {
+                    return undefined;
+                }
+
+                return { kind: 'openDatasetJourneyFile', filePath: activeFiles.filePaths[fileIndex] };
+
+            }
+
             // A HISTORY ROW'S FILE BY ITS INDEX IN THE ROWS THE PANEL ACKNOWLEDGED: NEVER A PATH, AND NOTHING FOR AN OLDER LIST
             case 'openTroubleshootingHistoryFile': {
 
@@ -20536,6 +20790,26 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
         border-radius: 0.6rem;
     }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
+    .treeDatasetJourney { margin: 0.4rem 0 0.2rem 2.1rem; }
+    .treeDatasetJourneyList { list-style: none; margin: 0; padding: 0 0 0 0.8rem; border-left: 2px solid var(--sdt-border); }
+    .treeDatasetJourneyEntry { margin: 0 0 0.5rem 0; }
+    .treeDatasetJourneyEntryHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDatasetJourneyKind { font-weight: 600; }
+    .treeDatasetJourneyStatus {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .treeDatasetJourneySummary, .treeDatasetJourneyError { margin: 0.1rem 0 0 0; word-break: break-word; }
+    .treeDatasetJourneyError { color: var(--sdt-removed); }
+    .treeDatasetJourneyFile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.1rem 0 0 0; }
+    .treeDatasetJourneyPath { font-family: var(--vscode-editor-font-family, monospace); font-size: 0.85em; word-break: break-all; }
+    .treeDatasetJourneyNote { margin: 0.2rem 0; }
 ${COCKPIT_KIT_ORG_PICKER_STYLES}
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
 ${COCKPIT_KIT_PINNED_SECTION_STYLES}
@@ -20873,6 +21147,8 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
     const NO_DATA_ORG_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON)};
     const CHOOSE_INSERT_ORG_NOTE = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE)};
     const CANNOT_INSERT_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CANNOT_INSERT_PREFIX)};
+    const INSERT_REASON_TROUBLESHOOTING_LINKS = ${JSON.stringify(RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS)};
+    const INSERT_REASON_TREECIPE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
@@ -21032,6 +21308,12 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const DATASET_ADAPTED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_ADAPTED_LABEL)};
     const DATASET_INSERT_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY)};
     const DATASET_INSERT_RESULTS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL)};
+    const DATASET_JOURNEY_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY)};
+    const DATASET_JOURNEY_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL)};
+    const DATASET_JOURNEY_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE)};
+    const DATASET_JOURNEY_NO_INSERTS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE)};
+    const DATASET_JOURNEY_FIRST_TIME_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE)};
+    const DATASET_JOURNEY_VIEW_FILE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL)};
     const DATASET_INSERT_UNRECORDED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE)};
     const DATASET_INSERT_INTERRUPTED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
@@ -22088,14 +22370,22 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    // OPENS ONE OBJECT OR OCCURRENCE, AND CLEARS THE TREECIPE TAB'S SEARCH AND CHECKS WHEN THEY HIDE THE FIELD ASKED FOR; ANSWERS THE ROW TO SCROLL TO
+    // OPENS ONE OBJECT OR OCCURRENCE, AND CLEARS THE TREECIPE TAB'S SEARCH AND CHECKS -- THE OBJECT'S OWN TOO (#539) -- WHEN THEY HIDE THE FIELD ASKED FOR; ANSWERS THE ROW TO SCROLL TO
     function openTreeObjectRow(treeState, treeObjectState, fieldState) {
 
         treeObjectState.isExpandedByReader = true;
         setTreeObjectExpanded(treeObjectState, true, false);
 
         if (fieldState && fieldState.rowElement && fieldState.rowElement.classList.contains('hidden')) {
+            // HIDE UNSELECTED (#483) HIDES EXACTLY THE UNTICKED FIELD A DISABLED INSERT'S LINK OPENS
+            const hadObjectFilter = isObjectHidingUnselectedIn(treeObjectState) || treeObjectState.isTodosOnly === true;
+            treeObjectState.isHidingUnselected = false;
+            treeObjectState.isTodosOnly = false;
             clearStructureFilters(treeState);
+            if (hadObjectFilter) {
+                drawHideUnselectedToggle(treeObjectState);
+                drawObjectTodosToggle(treeObjectState);
+            }
             setTreeObjectExpanded(treeObjectState, true, false);
         }
 
@@ -25608,6 +25898,9 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: 'datasets' };
         const rowState = { element: datasetElement, dataset: dataset, searchText: '', nameElement: null, favoriteElement: null, renameElement: null };
 
+        rowState.journeyToggleElement = buildDatasetJourneyToggle(treeState, rowState);
+        datasetHeaderElement.appendChild(rowState.journeyToggleElement);
+
         rowState.favoriteElement = createButton('secondary', 'historyAction treeDatasetFavorite');
         rowState.favoriteElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'toggleFavoriteDataset', datasetFolderName: dataset.datasetFolderName });
@@ -25655,6 +25948,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         datasetElement.appendChild(datasetHeaderElement);
         datasetElement.appendChild(countsElement);
+        datasetElement.appendChild(rowState.journeyElement);
 
         // A LEGACY DATA SET'S COUNTS ARE READ FROM ITS COLLECTIONS API FILES, WHICH HOLD EVERY RECORD, SO ONLY WHEN THE ROW'S OWN BUTTON ASKS
         if (dataset.recordCounts) {
@@ -25670,7 +25964,185 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         drawDatasetName(rowState);
         drawDatasetInsert(rowState);
 
+        if (treeState.expandedJourneyDatasetFolderNames[dataset.datasetFolderName] === true) {
+            setDatasetJourneyExpanded(treeState, rowState, true, false);
+        }
+
         return rowState;
+
+    }
+
+    /*
+        A data set's insert journey (#471): a ▸ on every row. A row never inserted opens to "No
+        inserts yet" without asking the host; any other asks for its timeline the first time it opens
+        for a model (loadDatasetJourney), which is never posted with the model. Every value is written
+        with textContent, and a file opens by its index in the entries the host posted.
+    */
+    let datasetJourneyCount = 0;
+
+    function buildDatasetJourneyToggle(treeState, rowState) {
+
+        const toggleElement = buildToggleElement('treeDatasetJourneyToggle');
+        const journeyId = 'treeDatasetJourney' + (++datasetJourneyCount);
+        rowState.journeyElement = createElement('div', 'treeDatasetJourney hidden');
+        rowState.journeyElement.setAttribute('id', journeyId);
+        toggleElement.setAttribute('aria-controls', journeyId);
+        toggleElement.setAttribute('aria-label', DATASET_JOURNEY_TOGGLE_LABEL + ': ' + rowState.dataset.datasetFolderName);
+        toggleElement.setAttribute('title', 'Show every insert of this data set and the Troubleshooting steps between them');
+        drawToggle(toggleElement, false, false);
+        toggleElement.addEventListener('click', function () {
+            setDatasetJourneyExpanded(treeState, rowState, rowState.isJourneyExpanded !== true, true);
+            savePanelPlace();
+        });
+
+        return toggleElement;
+
+    }
+
+    function setDatasetJourneyExpanded(treeState, rowState, isExpanded, isAnimated) {
+
+        const datasetFolderName = rowState.dataset.datasetFolderName;
+        rowState.isJourneyExpanded = isExpanded;
+        if (isExpanded) { treeState.expandedJourneyDatasetFolderNames[datasetFolderName] = true; } else { delete treeState.expandedJourneyDatasetFolderNames[datasetFolderName]; }
+        drawToggle(rowState.journeyToggleElement, isExpanded, isAnimated);
+        setShownWithMotion(rowState.journeyElement, isExpanded, isAnimated);
+
+        if (!isExpanded) { return; }
+
+        if (!rowState.dataset.lastInsert) {
+            rowState.journeyElement.textContent = '';
+            rowState.journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_NO_INSERTS_NOTE));
+            return;
+        }
+
+        // AN ANSWER THAT ARRIVED WHILE THE ROW WAS CLOSED IS DRAWN NOW, NOT ASKED FOR AGAIN
+        if (rowState.journeyMessage) {
+            drawDatasetJourney(rowState);
+            return;
+        }
+
+        requestDatasetJourney(rowState);
+
+    }
+
+    // ASKED ONCE PER MODEL PER ROW; ONE OPENED BEFORE THE MODEL WAS ACKNOWLEDGED (A RESTORE) ASKS ONCE IT IS
+    function requestDatasetJourney(rowState) {
+
+        if (rowState.isJourneyRequested) { return; }
+
+        if (!rowState.journeyMessage) {
+            rowState.journeyElement.textContent = '';
+            rowState.journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_LOADING_NOTE));
+        }
+
+        if (renderedSequence === null) {
+            rowState.isJourneyWanted = true;
+            return;
+        }
+
+        rowState.isJourneyWanted = false;
+        rowState.isJourneyRequested = true;
+        vscodeApi.postMessage({ command: 'loadDatasetJourney', datasetFolderName: rowState.dataset.datasetFolderName, renderSequence: renderedSequence });
+
+    }
+
+    function renderDatasetJourney(journeyMessage) {
+
+        if (renderedSequence === null || journeyMessage.renderSequence !== renderedSequence || typeof journeyMessage.datasetFolderName !== 'string') { return; }
+
+        let isDrawn = false;
+        treeStates.forEach(function (treeState) {
+            (treeState.datasetRowStates || [])
+                .filter(function (rowState) { return rowState.dataset.datasetFolderName === journeyMessage.datasetFolderName; })
+                .forEach(function (rowState) {
+                    rowState.journeyMessage = journeyMessage;
+                    if (rowState.isJourneyExpanded && rowState.dataset.lastInsert) {
+                        drawDatasetJourney(rowState);
+                    }
+                    isDrawn = true;
+                });
+        });
+
+        if (isDrawn) {
+            vscodeApi.postMessage({ command: 'datasetJourneyRendered', renderSequence: renderedSequence, datasetFolderName: journeyMessage.datasetFolderName, journeySequence: journeyMessage.journeySequence });
+        }
+
+    }
+
+    function drawDatasetJourney(rowState) {
+
+        const journeyMessage = rowState.journeyMessage;
+        const journeyElement = rowState.journeyElement;
+        const entries = Array.isArray(journeyMessage.entries) ? journeyMessage.entries : [];
+        journeyElement.textContent = '';
+
+        if (entries.length === 0) {
+            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_NO_INSERTS_NOTE));
+            return;
+        }
+
+        if (journeyMessage.hiddenEntryCount > 0) {
+            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
+                pluralize(journeyMessage.hiddenEntryCount, 'earlier entry is', 'earlier entries are') + ' not shown.'));
+        }
+
+        const listElement = createElement('ol', 'treeDatasetJourneyList');
+        entries.forEach(function (entry) { listElement.appendChild(buildDatasetJourneyEntry(rowState, journeyMessage, entry)); });
+        journeyElement.appendChild(listElement);
+
+        if (entries.length === 1 && entries[0].kind === 'insert' && entries[0].status === 'succeeded' && !(journeyMessage.hiddenEntryCount > 0)) {
+            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_FIRST_TIME_NOTE));
+        }
+        if (journeyMessage.otherOrgStepCount > 0) {
+            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
+                pluralize(journeyMessage.otherOrgStepCount, 'Troubleshooting step', 'Troubleshooting steps') + ' of this tree in this time ran against another org, so ' + (journeyMessage.otherOrgStepCount === 1 ? 'it is' : 'they are') + ' not shown.'));
+        }
+        if (journeyMessage.untrackedStepCount > 0) {
+            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
+                pluralize(journeyMessage.untrackedStepCount, 'step', 'steps') + ' in treecipe/OrgOperations, which records no tree, ran in this time and ' + (journeyMessage.untrackedStepCount === 1 ? 'is' : 'are') + ' not placed on this timeline.'));
+        }
+
+    }
+
+    function buildDatasetJourneyEntry(rowState, journeyMessage, entry) {
+
+        const entryElement = createElement('li', 'treeDatasetJourneyEntry');
+        const headerElement = createElement('div', 'treeDatasetJourneyEntryHeader');
+        const statusDisplay = hasOwnKey(DATASET_JOURNEY_STATUS_DISPLAY, entry.status) ? DATASET_JOURNEY_STATUS_DISPLAY[entry.status] : { emoji: '', label: String(entry.status) };
+
+        headerElement.appendChild(createElement('span', 'treeDatasetJourneyTime', String(entry.timeLabel)));
+        headerElement.appendChild(createElement('span', 'treeDatasetJourneyKind', String(entry.kindLabel)));
+        if (typeof entry.orgLabel === 'string') {
+            headerElement.appendChild(createElement('span', 'treeDatasetJourneyOrg muted', entry.orgLabel));
+        }
+        const statusElement = createElement('span', 'treeDatasetJourneyStatus treeDatasetJourneyStatus-' + entry.status);
+        const emojiElement = createElement('span', 'treeDatasetJourneyStatusEmoji', statusDisplay.emoji);
+        emojiElement.setAttribute('aria-hidden', 'true');
+        statusElement.appendChild(emojiElement);
+        statusElement.appendChild(createElement('span', 'treeDatasetJourneyStatusLabel', statusDisplay.label));
+        headerElement.appendChild(statusElement);
+        entryElement.appendChild(headerElement);
+
+        if (typeof entry.summaryText === 'string' && entry.summaryText) {
+            entryElement.appendChild(createElement('div', 'treeDatasetJourneySummary muted', entry.summaryText));
+        }
+        if (typeof entry.errorExcerpt === 'string' && entry.errorExcerpt) {
+            entryElement.appendChild(createElement('div', 'treeDatasetJourneyError', entry.errorExcerpt));
+        }
+
+        (Array.isArray(entry.files) ? entry.files : []).forEach(function (file) {
+            const fileElement = createElement('div', 'treeDatasetJourneyFile');
+            fileElement.appendChild(createElement('span', 'treeDatasetJourneyPath', String(file.relativePath)));
+            const viewElement = createButton('secondary', 'historyAction treeDatasetJourneyView', DATASET_JOURNEY_VIEW_FILE_LABEL);
+            viewElement.setAttribute('title', 'Open ' + String(file.relativePath));
+            viewElement.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'openDatasetJourneyFile', renderSequence: renderedSequence, datasetFolderName: rowState.dataset.datasetFolderName, journeySequence: journeyMessage.journeySequence, fileIndex: file.fileIndex });
+            });
+            fileElement.appendChild(viewElement);
+            entryElement.appendChild(fileElement);
+        });
+
+        return entryElement;
 
     }
 
@@ -26499,6 +26971,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
                 applyLastInsert(rowState.dataset);
                 drawDatasetLastInsert(rowState);
                 drawDatasetName(rowState);
+                // A NEW INSERT ADDS TO THE JOURNEY (#471): AN OPEN ONE IS READ AGAIN, A CLOSED ONE WHEN IT NEXT OPENS
+                rowState.isJourneyRequested = false;
+                rowState.journeyMessage = null;
+                if (rowState.isJourneyExpanded) { setDatasetJourneyExpanded(treeState, rowState, true, false); }
             });
             applyDatasetsFilter(treeState);
 
@@ -26689,6 +27165,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             updaterEditedValues: Object.create(null),
             updaterValuesMessage: null,
             isDatasetFavoritesOnly: false,
+            expandedJourneyDatasetFolderNames: Object.create(null),
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
             recordTypeFieldsToggleElement: null,
@@ -26820,8 +27297,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     /*
-        The top of a card's Treecipe tab: Reset selection, then "Generate fake data and insert into
-        <org>". The org picker is the panel's Target Org Manager section since #348, not a view per card. Each posts
+        The top of a card's Treecipe tab: "Generate fake data and insert into <org>" with Reset
+        Selections to its right (#539). The org picker is the panel's Target Org Manager section since #348, not a view per card. Each posts
         the tree's KEY alone; which org, which recipe file, which counts and which objects are the
         host's.
     */
@@ -26837,7 +27314,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             treeState.resetSelectionElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'resetTreeSelection', treeKey: tree.treeKey });
             });
-            actionsElement.appendChild(treeState.resetSelectionElement);
+            // BESIDE THE INSERT ON A CARD THAT HAS ONE (#539)
+            if (!tree.runFakerRecipeFileName) { actionsElement.appendChild(treeState.resetSelectionElement); }
             drawResetSelection(treeState);
         }
 
@@ -26863,7 +27341,9 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const controlsElement = createElement('div', 'treeInsertControls');
         const insert = {
             buttonElement: createButton('primary', 'treeInsert', INSERT_ACTION_LABEL),
-            reasonElement: createElement('span', 'treeInsertReason muted')
+            reasonElement: createElement('span', 'treeInsertReason muted'),
+            reasonLinkElement: createButton('link', 'treeInsertReasonLink hidden', ''),
+            reasonLink: null
         };
 
         /*
@@ -26879,8 +27359,14 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             vscodeApi.postMessage({ command: 'insertTree', treeKey: treeKey });
         });
 
+        insert.reasonLinkElement.addEventListener('click', function () {
+            if (insert.reasonLink) { followInsertReasonLink(treeState, insert.reasonLink); }
+        });
+
         controlsElement.appendChild(insert.buttonElement);
+        if (treeState.resetSelectionElement) { controlsElement.appendChild(treeState.resetSelectionElement); }
         controlsElement.appendChild(insert.reasonElement);
+        controlsElement.appendChild(insert.reasonLinkElement);
 
         treeState.insert = insert;
         drawTreeInsert(treeState);
@@ -30559,20 +31045,27 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         one of them again on the click.
     */
     function findTreeInsertReason(treeState) {
+        return findTreeInsertBlock(treeState).reason;
+    }
 
-        if (isDataOrgChecking) { return DATA_ORG_CONNECTION_CHECK_INSERT_REASON; }
-        if (insertRunningDatasetFolderName !== null) { return DATASET_INSERT_RUNNING_REASON; }
-        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
-        if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
-        if (isPermissionSetAssignRunning) { return 'Permission sets are being assigned.'; }
-        if (isMetadataDeployRunning) { return 'Metadata is being deployed.'; }
+    // THE REASON, AND THE OBJECT READINESS IT CAME FROM WHEN ONE DID (#539): ONLY THAT READINESS CAN LINK
+    function findTreeInsertBlock(treeState) {
+
+        const blockedBy = function (reason) { return { reason: reason, readiness: null }; };
+
+        if (isDataOrgChecking) { return blockedBy(DATA_ORG_CONNECTION_CHECK_INSERT_REASON); }
+        if (insertRunningDatasetFolderName !== null) { return blockedBy(DATASET_INSERT_RUNNING_REASON); }
+        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return blockedBy('Another tree is being inserted.'); }
+        if (isScratchOrgRunning) { return blockedBy('A scratch org is being set up.'); }
+        if (isPermissionSetAssignRunning) { return blockedBy('Permission sets are being assigned.'); }
+        if (isMetadataDeployRunning) { return blockedBy('Metadata is being deployed.'); }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
-        if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
+        if (insertObjectApiNames.length === 0) { return blockedBy('Every object of this tree is excluded.'); }
 
         // THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): THE CLICK ASKS FOR THE ORG
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return NO_DATA_ORG_INSERT_REASON; }
-        if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
+        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return blockedBy(NO_DATA_ORG_INSERT_REASON); }
+        if (dataOrgSelectionFailureMessage) { return blockedBy(dataOrgSelectionFailureMessage); }
 
         for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
             const objectApiName = insertObjectApiNames[objectIndex];
@@ -30580,11 +31073,79 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey]
                 : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName]
                 : null;
-            if (!readiness) { return 'checking whether this tree can be inserted…'; }
-            if (readiness.disabledReason) { return readiness.disabledReason; }
+            if (!readiness) { return blockedBy('checking whether this tree can be inserted…'); }
+            if (readiness.disabledReason) { return { reason: readiness.disabledReason, readiness: readiness }; }
         }
 
-        return '';
+        return blockedBy('');
+
+    }
+
+    /*
+        Where a disabled insert's reason links to (#539), or null: an object the org lacks to the
+        Fields sub-tab (Deploy fields… deploys the object too, #402), one it will not create to
+        Permissions, an unticked required field to its own row. Read from the posted readiness's
+        code, never its sentence; an unknown code, or a target this card does not draw, links nowhere.
+    */
+    function findInsertReasonLink(treeState, readiness) {
+
+        if (!readiness || typeof readiness.disabledReasonCode !== 'string') { return null; }
+
+        if (hasOwnKey(INSERT_REASON_TROUBLESHOOTING_LINKS, readiness.disabledReasonCode)) {
+            if (!treeState.tree.folderName) { return null; }
+            const troubleshootingLink = INSERT_REASON_TROUBLESHOOTING_LINKS[readiness.disabledReasonCode];
+            return { kind: 'troubleshooting', subTab: troubleshootingLink.subTab, label: troubleshootingLink.label };
+        }
+
+        if (readiness.disabledReasonCode !== 'requiredFieldUnticked' || typeof readiness.disabledReasonFieldApiName !== 'string') { return null; }
+
+        const objectApiName = readiness.objectApiName;
+        // THE ORG'S FIELD NAME, AND SALESFORCE READS NAMES CASE-INSENSITIVELY
+        const lowerFieldApiName = readiness.disabledReasonFieldApiName.toLowerCase();
+        const findField = function (treeObjectState) {
+            return treeObjectState.object.fields.find(function (candidateField) { return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName; });
+        };
+
+        // EVERY OCCURRENCE KEEPS ITS OWN UNTICKS (#467): THE ROW OPENED IS ONE THAT UNTICKS IT, ELSE THE FIRST
+        const occurrenceStates = treeState.objectStates.filter(function (candidateState) { return candidateState.object.objectApiName === objectApiName && !!findField(candidateState); });
+        const untickingState = occurrenceStates.find(function (candidateState) {
+            const objectFieldSelection = findObjectFieldSelection(candidateState.tree, objectApiName, occurrenceNicknameOf(candidateState.object));
+            return !!objectFieldSelection && isTreeFieldUnticked(objectFieldSelection, findField(candidateState).fieldApiName);
+        });
+        const treeObjectState = untickingState || occurrenceStates.find(function (candidateState) { return !candidateState.isIteration; }) || occurrenceStates[0];
+        if (!treeObjectState) { return null; }
+
+        const fieldApiName = findField(treeObjectState).fieldApiName;
+        return { kind: 'field', objectState: treeObjectState, fieldApiName: fieldApiName, label: INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + '.' + fieldApiName };
+
+    }
+
+    function followInsertReasonLink(treeState, reasonLink) {
+
+        if (reasonLink.kind === 'troubleshooting') {
+
+            applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: reasonLink.subTab });
+            savePanelPlace();
+
+            const actionCard = reasonLink.subTab === 'fields' ? (treeState.deployCards || {}).fields : treeState.permissionSetCard;
+            if (!actionCard) { return; }
+            if (typeof actionCard.buttonElement.scrollIntoView === 'function') { actionCard.buttonElement.scrollIntoView({ block: 'nearest' }); }
+
+            // A DISABLED BUTTON TAKES NO FOCUS IN A BROWSER, SO A DISABLED CARD (A ZERO COUNT) LEAVES IT ON ITS SUB-TAB, NEXT TO THE CARD AND ITS REASON
+            const subTabState = (treeState.troubleshootingSubTabStates || []).find(function (candidateState) { return candidateState.subTab === reasonLink.subTab; });
+            const focusElement = actionCard.buttonElement.disabled && subTabState ? subTabState.tabElement : actionCard.buttonElement;
+            focusElement.focus();
+            return;
+
+        }
+
+        const treeObjectState = reasonLink.objectState;
+        const fieldState = treeObjectState.fieldStates.find(function (candidateState) { return candidateState.field.fieldApiName === reasonLink.fieldApiName; }) || null;
+
+        revealTreeObjectRow(treeState, treeObjectState, fieldState, null);
+
+        const focusElement = fieldState && (fieldState.includeElement || fieldState.rowElement);
+        if (focusElement && typeof focusElement.focus === 'function') { focusElement.focus(); }
 
     }
 
@@ -30594,7 +31155,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (!insert) { return; }
 
         const tree = treeState.tree;
-        const insertReason = findTreeInsertReason(treeState);
+        const insertBlock = findTreeInsertBlock(treeState);
+        const insertReason = insertBlock.reason;
         const isOrgToChoose = insertReason === NO_DATA_ORG_INSERT_REASON;
         const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
         const actionLabel = INSERT_ACTION_LABEL + (insertReason === '' && orgLabel ? ' into ' + orgLabel : '');
@@ -30607,6 +31169,9 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             ? 'Choose the org to insert into, then generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' and insert it, parents first'
             : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ', then insert it into the chosen org, parents first');
         insert.reasonElement.textContent = insertReason === '' ? '' : isOrgToChoose ? CHOOSE_INSERT_ORG_NOTE : CANNOT_INSERT_PREFIX + insertReason;
+
+        insert.reasonLink = findInsertReasonLink(treeState, insertBlock.readiness);
+        setTextShown(insert.reasonLinkElement, insert.reasonLink ? insert.reasonLink.label : '');
 
     }
 
@@ -30976,6 +31541,9 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
+        const expandedJourneyDatasetFolderNames = Object.keys(treeState.expandedJourneyDatasetFolderNames || {});
+        if (expandedJourneyDatasetFolderNames.length > 0) { hasSearch = true; }
+
         if (selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
                 && !isRecordTypeFieldsOnlyIn(treeState) && !isTodosOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
                 && todosOnlyObjectKeys.length === 0 && hideUnselectedObjectKeys.length === 0) {
@@ -30992,6 +31560,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         };
 
         if (treeState.isDatasetFavoritesOnly) { treePlace.isDatasetFavoritesOnly = true; }
+        if (expandedJourneyDatasetFolderNames.length > 0) { treePlace.expandedJourneyDatasetFolderNames = expandedJourneyDatasetFolderNames; }
         if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
         if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
         if (isTodosOnlyIn(treeState)) { treePlace.isTodosOnly = true; }
@@ -31229,6 +31798,17 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             // BEFORE THE DATA SETS TAB IS BUILT, WHICH APPLIES IT; A TAB ALREADY BUILT APPLIES IT NOW
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
             if (treeState.datasetRowStates) { applyDatasetsFilter(treeState); }
+
+            // EACH DATA SET ROW WHOSE JOURNEY WAS OPEN (#471), OPENED WHEN ITS ROW IS BUILT
+            treeState.expandedJourneyDatasetFolderNames = Object.create(null);
+            (Array.isArray(savedTree.expandedJourneyDatasetFolderNames) ? savedTree.expandedJourneyDatasetFolderNames : []).forEach(function (datasetFolderName) {
+                if (typeof datasetFolderName === 'string') { treeState.expandedJourneyDatasetFolderNames[datasetFolderName] = true; }
+            });
+            (treeState.datasetRowStates || []).forEach(function (rowState) {
+                if (treeState.expandedJourneyDatasetFolderNames[rowState.dataset.datasetFolderName] === true && !rowState.isJourneyExpanded) {
+                    setDatasetJourneyExpanded(treeState, rowState, true, false);
+                }
+            });
 
             // APPLIED BY THE applyStructureFilter BELOW, OR BY THE TREECIPE TAB WHEN IT IS BUILT
             treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
@@ -31507,6 +32087,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             treeStates.forEach(function (treeState) { if (treeState.isTreeQueriesWanted) { requestTreeQueries(treeState); } });
             // AND AN UPDATER TAB'S SNAPSHOTS (#419)
             treeStates.forEach(function (treeState) { if (treeState.isUpdaterSnapshotsWanted) { requestUpdaterSnapshots(treeState); } });
+            // AND A DATA SET ROW'S JOURNEY (#471)
+            treeStates.forEach(function (treeState) {
+                (treeState.datasetRowStates || []).forEach(function (rowState) { if (rowState.isJourneyWanted) { requestDatasetJourney(rowState); } });
+            });
         } catch (focusError) {
             postRenderFailure('runtime', focusError);
         }
@@ -31775,6 +32359,11 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'troubleshootingHistory') {
             renderTroubleshootingHistory(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'datasetJourney') {
+            renderDatasetJourney(hostMessage);
             return;
         }
 

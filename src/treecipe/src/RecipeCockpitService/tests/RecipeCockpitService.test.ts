@@ -3990,7 +3990,8 @@ describe('RecipeCockpitService', () => {
 
                 // #217 TOOK 🔍 OUT: EACH TAB HAS ITS OWN SEARCH, SO THERE IS NO PANEL-WIDE ONE TO SCOPE
                 // #255 MOVED RESET SELECTION INTO THE TREECIPE TAB; #263 TOOK REGENERATE OUT OF IT; #293 TOOK ▶ RUN FAKER OUT
-                it('keeps only ☆ and ✎ in the row\'s action group, and puts Reset selection and the generate button at the top of the Treecipe tab', () => {
+                // #539 MOVED RESET SELECTIONS RIGHT OF THE GENERATE BUTTON
+                it('keeps only ☆ and ✎ in the row\'s action group, and puts the generate button with Reset Selections to its right at the top of the Treecipe tab', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = treeCardFolded(panel, 'Lead-ONLY');
@@ -4006,8 +4007,12 @@ describe('RecipeCockpitService', () => {
                     expect(panel.findAll(actionGroup, 'treeResetSelection')).toEqual([]);
                     const treecipeHeader = panel.findAll(panel.tabPanelOf(leadCard, 'treeStructure'), 'treecipeHeader')[0];
                     const treecipeActions = panel.findAll(treecipeHeader, 'treecipeActions')[0];
-                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['sdtButton sdtButton-secondary treeResetSelection hidden']);
+                    expect(panel.findAll(treecipeActions, 'treeResetSelection')).toEqual([]);
                     expect(panel.findAll(treecipeHeader, 'treeInsert')).toHaveLength(1);
+                    const insertControls = panel.findAll(treecipeHeader, 'treeInsertControls')[0];
+                    expect(insertControls.children.map((controlElement: any) => controlElement.className).slice(0, 2))
+                        .toEqual(['sdtButton sdtButton-primary treeInsert', 'sdtButton sdtButton-secondary treeResetSelection hidden']);
+                    expect(panel.findAll(insertControls, 'treeResetSelection')[0].textContent).toBe('Reset Selections');
 
                 });
 
