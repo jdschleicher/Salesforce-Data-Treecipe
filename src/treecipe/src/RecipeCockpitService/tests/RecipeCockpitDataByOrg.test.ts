@@ -190,14 +190,14 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         // #537: THE PANEL CLEARED ITS PICKER ON THE CLICK, SO AN UNANSWERED REFUSAL LEFT IT SPINNING UNTIL VS CODE RESTARTED
         it.each([
-            ['A new scratch org run', (panelState: IRecipeCockpitPanelState) => { panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true }; }],
-            ['An insert', (panelState: IRecipeCockpitPanelState) => { panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: 'Lead-ONLY' }; }],
-            ['A permission set assignment', (panelState: IRecipeCockpitPanelState) => { panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: 'Lead-ONLY' }; }],
-            ['A metadata deploy', (panelState: IRecipeCockpitPanelState) => { panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: 'Lead-ONLY', deployKind: 'fields' }; }],
-            ['A prompt asking for an org', (panelState: IRecipeCockpitPanelState) => { panelState.isOrgPromptOpen = true; }],
-            ['A prompt asking for an org', (panelState: IRecipeCockpitPanelState) => { panelState.isUpdaterOrgPromptOpen = true; }],
-            ['A Treecipe Adapter update', (panelState: IRecipeCockpitPanelState) => { panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY', runKind: 'update' }; }],
-            ['A Treecipe Adapter restore', (panelState: IRecipeCockpitPanelState) => { panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY', runKind: 'restore' }; }]
+            ['A new scratch org run is using the selected org', (panelState: IRecipeCockpitPanelState) => { panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true }; }],
+            ['An insert is using the selected org', (panelState: IRecipeCockpitPanelState) => { panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: 'Lead-ONLY' }; }],
+            ['A permission set assignment is using the selected org', (panelState: IRecipeCockpitPanelState) => { panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: 'Lead-ONLY' }; }],
+            ['A metadata deploy is using the selected org', (panelState: IRecipeCockpitPanelState) => { panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: 'Lead-ONLY', deployKind: 'fields' }; }],
+            ['A prompt asking for an org is open', (panelState: IRecipeCockpitPanelState) => { panelState.isOrgPromptOpen = true; }],
+            ['A prompt asking for an org is open', (panelState: IRecipeCockpitPanelState) => { panelState.isUpdaterOrgPromptOpen = true; }],
+            ['A Treecipe Adapter update is using the selected org', (panelState: IRecipeCockpitPanelState) => { panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY', runKind: 'update' }; }],
+            ['A Treecipe Adapter restore is using the selected org', (panelState: IRecipeCockpitPanelState) => { panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY', runKind: 'restore' }; }]
         ])('answers ⟳ and a listing with a refusal naming %s while it holds the selection (#537)', (runLabel, holdSelection) => {
 
             const panelState = buildRenderedPanelState();
@@ -205,7 +205,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const refusal = {
                 kind: 'refuseDataOrgListing',
-                hostMessage: { command: 'dataOrgListingRefused', renderSequence: 1, message: `${runLabel} ${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}` }
+                hostMessage: { command: 'dataOrgListingRefused', renderSequence: 1, message: `${runLabel}${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}` }
             };
             expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toEqual(refusal);
             expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toEqual(refusal);
@@ -273,25 +273,43 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('drops every cached describe on ⟳, so the remembered org is described again (#537)', async () => {
+        it('on ⟳, forgets what was described in each org the CLI listed, and nothing else (#537)', async () => {
 
+            const clearForOrgSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCacheForOrg');
             const clearDescribeCacheSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
-            expect(clearDescribeCacheSpy).not.toHaveBeenCalled();
+            expect(clearForOrgSpy).not.toHaveBeenCalled();
 
             await receivedMessageHandler({ command: 'refreshDataOrgs' });
 
-            expect(clearDescribeCacheSpy).toHaveBeenCalledWith();
+            expect(clearForOrgSpy.mock.calls).toEqual([[SANDBOX_ORG.username], [SECOND_ORG.username]]);
+            expect(clearDescribeCacheSpy).not.toHaveBeenCalled();
             expect(refreshConnectedOrgsSpy).toHaveBeenCalledTimes(1);
             expect(postedNamed('dataOrgList')).toHaveLength(2);
+
+        });
+
+        it('forgets no describe on a ⟳ whose listing failed, since it listed nothing (#537)', async () => {
+
+            const clearForOrgSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCacheForOrg');
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            (SalesforceOrgService.listDataOrgDetails as jest.Mock).mockRejectedValue(new OrgConnectionStatusUnavailableError('The Salesforce CLI did not answer.'));
+
+            await receivedMessageHandler({ command: 'refreshDataOrgs' });
+
+            expect(clearForOrgSpy).not.toHaveBeenCalled();
+            expect(postedNamed('dataOrgList').slice(-1)[0]).toMatchObject({ orgLabels: [], noOrgsMessage: expect.stringContaining('The Salesforce CLI did not answer.') });
 
         });
 
         it('answers ⟳ while an insert holds the selection with a refusal, and neither lists, refreshes nor forgets a describe (#537)', async () => {
 
             const clearDescribeCacheSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+            const clearForOrgSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCacheForOrg');
             const listSpy = SalesforceOrgService.listDataOrgDetails as jest.Mock;
 
             await openRenderedCockpit();
@@ -304,11 +322,12 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             expect(postedNamed('dataOrgListingRefused')).toEqual([{
                 command: 'dataOrgListingRefused',
                 renderSequence: lastRenderSequence(),
-                message: `An insert ${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`
+                message: `An insert is using the selected org${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`
             }]);
             expect(listSpy.mock.calls.length).toBe(listCallCount);
             expect(refreshConnectedOrgsSpy).not.toHaveBeenCalled();
             expect(clearDescribeCacheSpy).not.toHaveBeenCalled();
+            expect(clearForOrgSpy).not.toHaveBeenCalled();
 
         });
 
@@ -1378,10 +1397,13 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
             expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(false);
 
-            const refusalText = `An insert ${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`;
+            const refusalText = `An insert is using the selected org${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`;
             panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 2, message: refusalText });
             expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(false);
 
+            // ONE REFUSAL PER CLICK: THE PICKER COMES BACK ONLY WITH THE ANSWER TO THE LAST
+            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: refusalText });
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(false);
             panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: refusalText });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(true);
@@ -1399,6 +1421,72 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
+        it('keeps checking when a ⟳ is refused while an earlier one is still being answered, and draws that answer when it comes (#537 review)', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod@example.com'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            postSelectionAndReadiness(panel, 1);
+
+            // THE FIRST ⟳ IS ACCEPTED: THE HOST HAS DROPPED ITS LIST AND SELECTION, AND IS ASKING THE CLI
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            // THE SECOND IS REFUSED, A RUN HAVING TAKEN THE SELECTION MEANWHILE
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: `A prompt asking for an org is open${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}` });
+
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(false);
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER]]);
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT);
+
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['uat'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
+
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(true);
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', 'Choose org…'], ['0', 'uat']]);
+
+            // THE COUNT STARTS AGAIN WITH THE LIST: THE NEXT REFUSED ⟳ PUTS BACK WHAT THAT LIST DREW
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: `An insert is using the selected org${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}` });
+
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(true);
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', 'Choose org…'], ['0', 'uat']]);
+
+        });
+
+        it('keeps a restored selection\'s failure on screen before the refusal (#537 review)', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Production', isSandbox: false, failureMessage: 'qa answered that it is Production.', requestSequence: 1, renderSequence: 1 });
+
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            const refusalText = `An insert is using the selected org${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`;
+            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: refusalText });
+
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('qa answered that it is Production. ' + refusalText);
+            expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(true);
+            expect(insertReasonsOf(panel)).toEqual(["Can't insert: qa answered that it is Production.", "Can't insert: qa answered that it is Production."]);
+
+        });
+
+        it('says a late refusal with no check on screen, and changes nothing else (#537 review)', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            postSelectionAndReadiness(panel, 1);
+            const reasonsBefore = insertReasonsOf(panel);
+
+            const refusalText = `A metadata deploy is using the selected org${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`;
+            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: refusalText });
+
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(refusalText);
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', 'Choose org…'], ['0', 'qa']]);
+            expect(viewOf(panel, 'dataOrgSelect').value).toBe('0');
+            expect(insertReasonsOf(panel)).toEqual(reasonsBefore);
+
+        });
+
         it('asks for the orgs again after a refused first listing, once the run that held the org has ended (#537)', () => {
 
             const { panel } = renderDataOrgPanel();
@@ -1407,7 +1495,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.chooseTreeCard(firstCard);
             expect(postedNamed(panel, 'loadDataOrgs')).toHaveLength(1);
 
-            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: `A metadata deploy ${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}` });
+            panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: `A metadata deploy is using the selected org${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}` });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(true);
             expect(panel.isHidden(viewOf(panel, 'dataOrgLoad'))).toBe(false);

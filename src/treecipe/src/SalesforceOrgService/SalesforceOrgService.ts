@@ -375,6 +375,9 @@ export class SalesforceOrgService {
     */
     private static describeCache = new Map<string, INormalizedOrgObjectDescribe>();
 
+    // BUMPED BY EVERY CLEAR: A DESCRIBE STARTED BEFORE ONE MUST NOT PUT ITS ANSWER BACK AFTER IT (#537)
+    private static describeCacheGeneration = 0;
+
     /*
         Everything, or one org's answer for one object -- after a permission set assignment changed
         what that object's describe answers (#274), so the next readiness check describes it afresh
@@ -382,12 +385,27 @@ export class SalesforceOrgService {
     */
     static clearDescribeCache(orgUsername?: string, objectApiName?: string) {
 
+        this.describeCacheGeneration++;
+
         if ( orgUsername === undefined || objectApiName === undefined ) {
             this.describeCache.clear();
             return;
         }
 
         this.describeCache.delete(this.buildDescribeCacheKey(orgUsername, objectApiName));
+
+    }
+
+    // EVERY OBJECT ONE ORG WAS DESCRIBED FOR -- WHAT ⟳ FORGETS FOR EACH ORG IT LISTED (#537)
+    static clearDescribeCacheForOrg(orgUsername: string) {
+
+        this.describeCacheGeneration++;
+
+        const keyPrefix = `${orgUsername}\n`;
+
+        [...this.describeCache.keys()]
+            .filter(cacheKey => cacheKey.startsWith(keyPrefix))
+            .forEach(cacheKey => this.describeCache.delete(cacheKey));
 
     }
 
@@ -1672,8 +1690,11 @@ export class SalesforceOrgService {
 
                     try {
 
+                        const cacheGeneration = this.describeCacheGeneration;
                         const normalizedDescribe = this.normalizeDescribeResult(objectApiName, await describeSource.describe(objectApiName));
-                        this.describeCache.set(this.buildDescribeCacheKey(orgUsername, objectApiName), normalizedDescribe);
+                        if ( cacheGeneration === this.describeCacheGeneration ) {
+                            this.describeCache.set(this.buildDescribeCacheKey(orgUsername, objectApiName), normalizedDescribe);
+                        }
                         recordOutcome({ objectApiName: objectApiName, describe: normalizedDescribe, wasCached: false });
 
                     } catch (describeError) {

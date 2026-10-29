@@ -2066,7 +2066,7 @@ export interface IRecipeCockpitDataOrgListingRefusedMessage {
     message: string;
 }
 
-export const RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX = 'is using the selected org, so the orgs were not checked again. Use ⟳ once it ends.';
+export const RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX = ', so the orgs were not checked again. Use ⟳ once it ends.';
 
 export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
 
@@ -7505,8 +7505,6 @@ export class RecipeCockpitService {
 
             case 'refreshDataOrgs':
 
-                // A DESCRIBE TAKEN BEFORE A PERMISSION CHANGE, A DEPLOY OUTSIDE THE COCKPIT OR A RE-LOGIN WOULD OTHERWISE OUTLIVE ⟳ (#537)
-                SalesforceOrgService.clearDescribeCache();
                 await this.loadDataOrgs(cockpitPanel, panelState, true);
                 return;
 
@@ -8729,10 +8727,12 @@ export class RecipeCockpitService {
         let hiddenOrgs: IHiddenAuthorizedOrg[] = [];
         let hiddenOrgNote = '';
         let noOrgsMessage = NO_AUTHORIZED_ORGS_MESSAGE;
+        let isListed = false;
 
         try {
 
             const dataOrgListing = await dataOrgListingRequest;
+            isListed = true;
             orgDetails = dataOrgListing.orgDetails;
             hiddenOrgs = dataOrgListing.hiddenOrgs;
             hiddenOrgNote = this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts);
@@ -8748,6 +8748,15 @@ export class RecipeCockpitService {
 
         if ( !isListingCurrent() ) {
             return;
+        }
+
+        /*
+            ⟳ forgets what was described in each org it listed (#537), once the CLI has answered:
+            a describe taken before a permission change, a deploy made elsewhere or a re-login would
+            otherwise outlive it. A listing that failed lists nothing, so it forgets nothing.
+        */
+        if ( isRefresh && isListed ) {
+            orgDetails.forEach(orgDetail => SalesforceOrgService.clearDescribeCacheForOrg(orgDetail.username));
         }
 
         panelState.dataOrgDetails = orgDetails;
@@ -10046,33 +10055,41 @@ export class RecipeCockpitService {
         query (#439), a retrieve or a confirmation's "Change org…" (#480) asking for an org, or an update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
         write to it, refuses while it does.
     */
+    static isSelectionHeldByPromptOrUpdater(panelState: IRecipeCockpitPanelState): boolean {
+        return panelState.isUpdaterOrgPromptOpen === true
+            || panelState.isQueryOrgPromptOpen === true
+            || panelState.isOrgPromptOpen === true
+            || ( panelState.updaterLoadStateMessage?.isRunning === true
+                    && ( panelState.updaterLoadStateMessage.runKind === 'update' || panelState.updaterLoadStateMessage.runKind === 'restore' ) );
+    }
+
     /*
-        The run that holds the selection, named for the reader, or undefined when none does (#537).
+        What holds the selection, said for the reader, or undefined when nothing does (#537).
         Each is a run the listing must not change the selection under: it ends by checking or
         listing the org itself.
     */
     static describeSelectionHoldingRun(panelState: IRecipeCockpitPanelState): string | undefined {
 
         if ( panelState.scratchOrgStateMessage?.isRunning ) {
-            return 'A new scratch org run';
+            return 'A new scratch org run is using the selected org';
         }
         if ( panelState.insertStateMessage ) {
-            return 'An insert';
+            return 'An insert is using the selected org';
         }
         if ( panelState.permissionSetAssignStateMessage?.isRunning ) {
-            return 'A permission set assignment';
+            return 'A permission set assignment is using the selected org';
         }
         if ( panelState.metadataDeployStateMessage?.isRunning ) {
-            return 'A metadata deploy';
+            return 'A metadata deploy is using the selected org';
         }
         if ( panelState.isUpdaterOrgPromptOpen === true || panelState.isQueryOrgPromptOpen === true || panelState.isOrgPromptOpen === true ) {
-            return 'A prompt asking for an org';
+            return 'A prompt asking for an org is open';
         }
         if ( panelState.updaterLoadStateMessage?.isRunning === true && panelState.updaterLoadStateMessage.runKind === 'restore' ) {
-            return 'A Treecipe Adapter restore';
+            return 'A Treecipe Adapter restore is using the selected org';
         }
         if ( this.isSelectionHeldByPromptOrUpdater(panelState) ) {
-            return 'A Treecipe Adapter update';
+            return 'A Treecipe Adapter update is using the selected org';
         }
 
         return undefined;
@@ -10092,18 +10109,10 @@ export class RecipeCockpitService {
             hostMessage: {
                 command: 'dataOrgListingRefused',
                 renderSequence: panelState.recipeDataMessage.renderSequence,
-                message: `${holdingRun} ${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`
+                message: `${holdingRun}${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`
             }
         };
 
-    }
-
-    static isSelectionHeldByPromptOrUpdater(panelState: IRecipeCockpitPanelState): boolean {
-        return panelState.isUpdaterOrgPromptOpen === true
-            || panelState.isQueryOrgPromptOpen === true
-            || panelState.isOrgPromptOpen === true
-            || ( panelState.updaterLoadStateMessage?.isRunning === true
-                    && ( panelState.updaterLoadStateMessage.runKind === 'update' || panelState.updaterLoadStateMessage.runKind === 'restore' ) );
     }
 
     private static isUpdaterLoadInFlight = false;
@@ -21093,6 +21102,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     let dataOrgReadinessByTreeObjectKey = Object.create(null);
     // THE PICKER AS IT WAS BEFORE ⟳ OR A FIRST LISTING CLEARED IT, PUT BACK WHEN THE HOST REFUSES THE LISTING (#537)
     let dataOrgPickerBeforeCheck = null;
+    // LISTINGS ASKED FOR AND NOT YET ANSWERED: A REFUSAL RESTORES THE PICKER ONLY WHEN IT ANSWERS THE LAST ONE, SINCE AN EARLIER ONE MAY HAVE BEEN ACCEPTED
+    let dataOrgUnansweredListingCount = 0;
     // THE TREE WHOSE INSERT IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE INSERT ENDED
     let insertRunningTreeKey = null;
     /*
@@ -22694,6 +22705,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         dataOrgView.refreshElement.setAttribute('aria-label', REFRESH_ORGS_LABEL + ': check the org connections again');
         dataOrgView.refreshElement.addEventListener('click', function () {
             showDataOrgConnectionCheck();
+            dataOrgUnansweredListingCount++;
             vscodeApi.postMessage({ command: 'refreshDataOrgs' });
         });
 
@@ -30577,6 +30589,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         startDataOrgCheck();
         setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
         drawTreeInserts();
+        dataOrgUnansweredListingCount++;
         vscodeApi.postMessage({ command: 'loadDataOrgs' });
 
     }
@@ -30586,6 +30599,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (renderedSequence === null || dataOrgList.renderSequence !== renderedSequence) { return; }
 
         dataOrgPickerBeforeCheck = null;
+        dataOrgUnansweredListingCount = 0;
         isDataOrgLoadShown = false;
         isDataOrgChecking = false;
         // A LIST THE HOST POSTED AFTER ASKING FOR THE ORG (#375) MAKES THE PICKER IN USE, SO A LATER MODEL LISTS AGAIN
@@ -30677,12 +30691,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     /*
         The host refused the listing because a run holds the selection (#537): nothing was cleared
         there, so the picker goes back to what it was and says which run holds it, rather than
-        spinning until VS Code restarts.
+        spinning until VS Code restarts. Only once every listing asked for is answered: an earlier
+        ⟳ the host accepted has already dropped its list and selection, and its own answer is on
+        its way, so the check stays on screen until it comes.
     */
     function renderDataOrgListingRefused(refusal) {
 
         if (renderedSequence === null || refusal.renderSequence !== renderedSequence) { return; }
         if (typeof refusal.message !== 'string' || !refusal.message) { return; }
+
+        dataOrgUnansweredListingCount = Math.max(0, dataOrgUnansweredListingCount - 1);
+        if (dataOrgUnansweredListingCount > 0) { return; }
 
         const pickerBeforeCheck = dataOrgPickerBeforeCheck;
         dataOrgPickerBeforeCheck = null;
@@ -30705,7 +30724,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             dataOrgTypeLabel = pickerBeforeCheck.typeLabel;
         }
 
-        setDataOrgStatus(refusal.message, false);
+        // A SELECTION THAT FAILED STILL SAYS WHY, BEFORE WHAT HELD THE LISTING
+        if (dataOrgSelectionFailureMessage) {
+            setDataOrgStatus(dataOrgSelectionFailureMessage + ' ' + refusal.message, true);
+        } else {
+            setDataOrgStatus(refusal.message, false);
+        }
         drawTreeInserts();
 
     }
@@ -31281,6 +31305,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         dataOrgReadinessByObject = Object.create(null);
         dataOrgReadinessByTreeObjectKey = Object.create(null);
         dataOrgPickerBeforeCheck = null;
+        dataOrgUnansweredListingCount = 0;
         pendingPicklistValueElements = Object.create(null);
         recordTypeChoices = Object.create(null);
         recordTypeObjects = [];

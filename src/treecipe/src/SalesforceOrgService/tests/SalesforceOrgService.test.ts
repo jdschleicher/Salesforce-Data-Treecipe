@@ -272,6 +272,42 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('forgets one org\'s describes on clearDescribeCacheForOrg, and keeps every other org\'s (#537)', async () => {
+
+            const { describeSource, describedObjectApiNames } = buildDescribeSource({ Account: ACCOUNT_DESCRIBE, Contact: { fields: [] } });
+            const otherOrgUsername = 'someone.else@example.com';
+            const prefixedOrgUsername = `${ORG_USERNAME}.uat`;
+
+            await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Account', 'Contact'], async () => describeSource);
+            await SalesforceOrgService.describeObjects(otherOrgUsername, ['Account'], async () => describeSource);
+            await SalesforceOrgService.describeObjects(prefixedOrgUsername, ['Account'], async () => describeSource);
+            describedObjectApiNames.length = 0;
+
+            SalesforceOrgService.clearDescribeCacheForOrg(ORG_USERNAME);
+
+            expect(SalesforceOrgService.getCachedDescribe(ORG_USERNAME, 'Account')).toBeUndefined();
+            expect(SalesforceOrgService.getCachedDescribe(ORG_USERNAME, 'Contact')).toBeUndefined();
+            expect(SalesforceOrgService.getCachedDescribe(otherOrgUsername, 'Account')).toBeDefined();
+            expect(SalesforceOrgService.getCachedDescribe(prefixedOrgUsername, 'Account')).toBeDefined();
+
+        });
+
+        it('never puts back a describe that was asked for before a clear and answered after it (#537 review)', async () => {
+
+            let answerDescribe: (describeResult: unknown) => void = () => undefined;
+            const describeSource = { describe: jest.fn().mockImplementation(() => new Promise(resolve => { answerDescribe = resolve; })) };
+
+            const describeRequest = SalesforceOrgService.describeObjects(ORG_USERNAME, ['Account'], async () => describeSource as any);
+            await new Promise(resolve => setImmediate(resolve));
+            SalesforceOrgService.clearDescribeCacheForOrg(ORG_USERNAME);
+            answerDescribe(ACCOUNT_DESCRIBE);
+            const describeResult = await describeRequest;
+
+            expect(describeResult.outcomes[0].describe).toBeDefined();
+            expect(SalesforceOrgService.getCachedDescribe(ORG_USERNAME, 'Account')).toBeUndefined();
+
+        });
+
         // AN ALIAS CAN BE RE-POINTED BETWEEN TWO REQUESTS, SO THE CACHE ANSWERS PER ORG USERNAME
         it('never answers one org\'s request from another org\'s describe', async () => {
 
