@@ -55,7 +55,7 @@ const journeyMessage = (overrides: Partial<IRecipeCockpitDatasetJourneyMessage> 
             files: [{ fileIndex: 0, relativePath: 'treecipe/FakeDataSets/x/InsertAttempts/insertAttempt-a/insertAttemptResults-a.json' }]
         },
         {
-            kind: 'field-deploy', kindLabel: 'Deploy fields', status: 'succeeded', timeLabel: '2026-10-26 10:05:00', orgLabel: QA_USERNAME,
+            kind: 'field-deploy', kindLabel: 'Deploy fields & dependencies', status: 'succeeded', timeLabel: '2026-10-26 10:05:00', orgLabel: QA_USERNAME,
             summaryText: '3 succeeded', files: [{ fileIndex: 1, relativePath: 'treecipe/GeneratedRecipes/r/Lead-ONLY/RunArtifacts/OrgOperations/q/a.json' }]
         },
         {
@@ -135,7 +135,7 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
             panel.postToPanel(journeyMessage());
 
             const entries = panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyEntry');
-            expect(entries.map((entryElement: any) => panel.findAll(entryElement, 'treeDatasetJourneyKind')[0].textContent)).toEqual(['Insert', 'Deploy fields', 'Insert']);
+            expect(entries.map((entryElement: any) => panel.findAll(entryElement, 'treeDatasetJourneyKind')[0].textContent)).toEqual(['Insert', 'Deploy fields & dependencies', 'Insert']);
             expect(panel.findAll(entries[0], 'treeDatasetJourneyStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY.failed.label);
             expect(panel.findAll(entries[0], 'treeDatasetJourneyStatusEmoji')[0].textContent).toBe('❌');
             expect(panel.findAll(entries[0], 'treeDatasetJourneyStatusEmoji')[0].attributes['aria-hidden']).toBe('true');
@@ -358,7 +358,7 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
             const [message] = journeyMessages();
             expect(message.renderSequence).toBe(3);
             expect(message.attemptCount).toBe(2);
-            expect(message.entries.map((entry: any) => [entry.kindLabel, entry.status])).toEqual([['Insert', 'failed'], ['Deploy fields', 'succeeded'], ['Insert', 'succeeded']]);
+            expect(message.entries.map((entry: any) => [entry.kindLabel, entry.status])).toEqual([['Insert', 'failed'], ['Deploy fields & dependencies', 'succeeded'], ['Insert', 'succeeded']]);
             expect(message.entries[0].orgLabel).toBe(`qa · ${QA_USERNAME}`);
             expect(message.entries[0].errorExcerpt).toBe('Lead: INVALID_FIELD [Rating__c] — bad');
             expect(message.entries[0].files[0]).toEqual({ fileIndex: 0, relativePath: `treecipe/FakeDataSets/${LEAD_DATASETS[0]}/InsertAttempts/insertAttempt-2026-10-26T10-00-00/insertAttemptResults-2026-10-26T10-00-00.json` });

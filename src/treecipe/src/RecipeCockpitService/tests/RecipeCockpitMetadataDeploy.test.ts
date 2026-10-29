@@ -63,6 +63,10 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 missingCustomObjects: [],
                 unreadableCustomObjects: [],
                 validationRules: ['Account.Budget_Not_Negative', 'OtherChildObject__c.Score_In_Range'],
+                flexiPages: [],
+                compactLayouts: [],
+                objectReferenceResets: [],
+                outOfTreeLookups: [],
                 skippedNameCount: 0
             });
 

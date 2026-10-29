@@ -23,6 +23,12 @@ import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
     the CLI applies to what it sends) and a .forceignore that covers a file being deployed (which the
     CLI leaves out). It imports no vscode: the cockpit owns the progress, the cancel and the
     notification.
+
+    A fields deploy also carries the FlexiPages (sent as they are) and compact layouts (into their
+    object's .object) its objects open (#547), and the object's copy in the zip has every other
+    such reference set back by RecipeCockpitMetadataDeploy.resolveObjectReferences. That edited copy
+    is why a deploy needing a reset goes as this zip even with the CLI: `--metadata-dir` sends it
+    (method 'cliMetadataDir'), since `--manifest` can only send the project's own files.
 */
 
 export type MetadataDeployMethod = 'cli' | 'jsforce';
@@ -70,7 +76,7 @@ export const METADATA_DEPLOY_JSFORCE_OPTIONS = Object.freeze({
 
 const SALESFORCE_ID_PATTERN = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/;
 
-type ObjectChildType = 'CustomField' | 'RecordType' | 'ValidationRule';
+type ObjectChildType = 'CompactLayout' | 'CustomField' | 'RecordType' | 'ValidationRule';
 
 interface IObjectChildLayout {
     folderName: string;
@@ -79,6 +85,7 @@ interface IObjectChildLayout {
 }
 
 const OBJECT_CHILD_LAYOUTS: Readonly<Record<ObjectChildType, IObjectChildLayout>> = Object.freeze({
+    CompactLayout: { folderName: 'compactLayouts', fileSuffix: '.compactLayout-meta.xml', elementName: 'compactLayouts' },
     CustomField: { folderName: 'fields', fileSuffix: '.field-meta.xml', elementName: 'fields' },
     RecordType: { folderName: 'recordTypes', fileSuffix: '.recordType-meta.xml', elementName: 'recordTypes' },
     ValidationRule: { folderName: 'validationRules', fileSuffix: '.validationRule-meta.xml', elementName: 'validationRules' }
@@ -87,6 +94,13 @@ const OBJECT_CHILD_LAYOUTS: Readonly<Record<ObjectChildType, IObjectChildLayout>
 const OBJECT_FILE_SUFFIX = '.object-meta.xml';
 const GLOBAL_VALUE_SET_FILE_SUFFIX = '.globalValueSet-meta.xml';
 const PERMISSION_SET_FILE_SUFFIX = '.permissionset-meta.xml';
+
+// A TYPE WHOSE FILE IS SENT AS IT IS, UNDER ITS OWN FOLDER OF THE ZIP; EVERY OTHER TYPE IS A CustomObject OR GOES INTO ONE
+const WHOLE_FILE_TYPES: Readonly<Partial<Record<IMetadataDeployComponent['type'], { zipFolderName: string; zipSuffix: string }>>> = Object.freeze({
+    FlexiPage: { zipFolderName: 'flexipages', zipSuffix: '.flexipage' },
+    GlobalValueSet: { zipFolderName: 'globalValueSets', zipSuffix: '.globalValueSet' },
+    PermissionSet: { zipFolderName: 'permissionsets', zipSuffix: '.permissionset' }
+});
 
 export interface IMetadataDeploySourceFile {
     component: IMetadataDeployComponent;
@@ -100,6 +114,8 @@ export interface IMetadataDeploySourceFiles {
 
 export type MetadataDeployMethodPlan =
     | { method: 'jsforce'; sourceFiles: IMetadataDeploySourceFile[] }
+    // THE CLI SENDS THE SAME ZIP WITH --metadata-dir, BECAUSE AN OBJECT'S COPY IN IT IS EDITED (#547)
+    | { method: 'cliMetadataDir'; sourceFiles: IMetadataDeploySourceFile[] }
     | { method: 'cli'; reason: 'setting' | 'replacements' | 'forceIgnore' | 'missingSource'; ignoredFilePaths?: string[] };
 
 export interface IMetadataZipEntry {
@@ -196,7 +212,7 @@ export class RecipeCockpitMetadataDeployPackage {
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const objectApiNameByLowerName = new Map<string, string>();
         components
-            .filter(component => component.type !== 'GlobalValueSet' && component.type !== 'PermissionSet')
+            .filter(component => !WHOLE_FILE_TYPES[component.type])
             .map(component => component.member.split('.')[0])
             .forEach(objectApiName => {
                 if ( !objectApiNameByLowerName.has(objectApiName.toLowerCase()) ) {
@@ -211,6 +227,9 @@ export class RecipeCockpitMetadataDeployPackage {
         const globalValueSetFolderPaths = components.some(component => component.type === 'GlobalValueSet')
             ? RecipeCockpitMetadataDeploy.findMetadataFolderPaths(resolvedWorkspaceRoot, packageDirectoryPaths, 'globalValueSets')
             : [];
+        const flexiPageFilePathsByLowerName = components.some(component => component.type === 'FlexiPage')
+            ? RecipeCockpitMetadataDeploy.findFlexiPageFilePaths(resolvedWorkspaceRoot, packageDirectoryPaths)
+            : new Map<string, string>();
         const permissionSetFilePaths = components.some(component => component.type === 'PermissionSet')
             ? RecipeCockpitPermissionSetAssign.findPermissionSetFilePaths(resolvedWorkspaceRoot, [...packageDirectoryPaths])
             : [];
@@ -255,6 +274,8 @@ export class RecipeCockpitMetadataDeployPackage {
                 filePath = globalValueSetFileIndex.get(`${component.member}${GLOBAL_VALUE_SET_FILE_SUFFIX}`.toLowerCase());
             } else if ( component.type === 'PermissionSet' ) {
                 filePath = permissionSetFileIndex.get(`${component.member}${PERMISSION_SET_FILE_SUFFIX}`.toLowerCase());
+            } else if ( component.type === 'FlexiPage' ) {
+                filePath = flexiPageFilePathsByLowerName.get(component.member.toLowerCase());
             } else {
                 const [objectApiName, childName] = component.member.split('.');
                 filePath = findChildFile(objectApiName, OBJECT_CHILD_LAYOUTS[component.type], childName);
@@ -272,13 +293,19 @@ export class RecipeCockpitMetadataDeployPackage {
 
     }
 
-    // WHICH WAY A DEPLOY GOES: THE SETTING'S, UNLESS ONLY THE CLI WOULD SEND WHAT IT SENDS TODAY
+    /*
+        Which way a deploy goes: the setting's, unless only the CLI would send what it sends today.
+        hasObjectEdits (#547): an object's copy must be edited, which only this module's zip can
+        carry, so the CLI setting sends that zip ('cliMetadataDir') whenever jsforce could; when it
+        could not, the plan is 'cli' and the edits are not made.
+    */
     static planDeployMethod(requestedMethod: MetadataDeployMethod,
                             workspaceRoot: string,
                             packageDirectoryPaths: readonly string[],
-                            components: readonly IMetadataDeployComponent[]): MetadataDeployMethodPlan {
+                            components: readonly IMetadataDeployComponent[],
+                            hasObjectEdits = false): MetadataDeployMethodPlan {
 
-        if ( requestedMethod === 'cli' ) {
+        if ( requestedMethod === 'cli' && !hasObjectEdits ) {
             return { method: 'cli', reason: 'setting' };
         }
 
@@ -296,14 +323,28 @@ export class RecipeCockpitMetadataDeployPackage {
             return { method: 'cli', reason: 'forceIgnore', ignoredFilePaths: ignoredFilePaths };
         }
 
-        return { method: 'jsforce', sourceFiles: resolved.sourceFiles };
+        return { method: requestedMethod === 'cli' ? 'cliMetadataDir' : 'jsforce', sourceFiles: resolved.sourceFiles };
+
+    }
+
+    // WHY A DEPLOY CANNOT SEND AN EDITED OBJECT COPY (#547); undefined WHEN IT CAN
+    static describeEditsNotApplied(plan: MetadataDeployMethodPlan): string | undefined {
+
+        if ( plan.method !== 'cli' ) {
+            return undefined;
+        }
+
+        return plan.reason === 'replacements' ? 'sfdx-project.json has "replacements", which only the CLI applies to the project\'s own files'
+            : plan.reason === 'forceIgnore' ? '.forceignore covers a file being deployed, which only the CLI leaves out of the project\'s own files'
+            : plan.reason === 'missingSource' ? 'a component\'s source file was not found where the edited copy is built from'
+            : 'the deploy sends the project\'s own files';
 
     }
 
     // WHY A DEPLOY PLANNED FOR jsforce BEFORE THE CONFIRMATION CANNOT GO THAT WAY NOW
     static describeChangedPlan(plan: MetadataDeployMethodPlan): string {
 
-        if ( plan.method === 'jsforce' ) {
+        if ( plan.method !== 'cli' ) {
             return '';
         }
 
@@ -321,7 +362,15 @@ export class RecipeCockpitMetadataDeployPackage {
             return [
                 'These components are deployed, in a Metadata API zip built from a generated package.xml.',
                 'It is sent on the connection checked above, not through the Salesforce CLI.',
-                'A custom object\'s own file goes whole, as the CLI sends it; nothing else in the object folders goes.'
+                'A custom object\'s own file goes whole, as the CLI sends it, apart from what is set back above; nothing else in the object folders goes.'
+            ];
+        }
+
+        if ( plan.method === 'cliMetadataDir' ) {
+            return [
+                'These components are deployed, in a Metadata API zip built from a generated package.xml and saved beside it.',
+                'The Salesforce CLI sends that zip with --metadata-dir, because a custom object\'s copy in it has a reference set back; this project\'s files are not changed.',
+                'Nothing else in the object folders goes.'
             ];
         }
 
@@ -371,10 +420,11 @@ export class RecipeCockpitMetadataDeployPackage {
             const { component } = sourceFile;
             const sourceText = this.readSourceFile(sourceFile.filePath, `${component.type} ${component.member}`);
 
-            if ( component.type === 'GlobalValueSet' || component.type === 'PermissionSet' ) {
+            const wholeFileLayout = WHOLE_FILE_TYPES[component.type];
+            if ( wholeFileLayout ) {
                 await this.readRootElement(sourceText, component.type, component.member);
                 entries.push({
-                    name: component.type === 'GlobalValueSet' ? `globalValueSets/${component.member}.globalValueSet` : `permissionsets/${component.member}.permissionset`,
+                    name: `${wholeFileLayout.zipFolderName}/${component.member}${wholeFileLayout.zipSuffix}`,
                     content: Buffer.from(sourceText, 'utf-8')
                 });
                 continue;
@@ -391,7 +441,7 @@ export class RecipeCockpitMetadataDeployPackage {
             const [objectApiName, childName] = component.member.split('.');
             const childRoot = await this.readRootElement(sourceText, component.type, component.member);
             const { fullName, ...childFields } = childRoot.content;
-            const elementName = OBJECT_CHILD_LAYOUTS[component.type].elementName;
+            const elementName = OBJECT_CHILD_LAYOUTS[component.type as ObjectChildType].elementName;
             const objectEntry = objectEntryOf(objectApiName);
             this.addNamespaceAttributes(objectEntry.namespaceAttributes, childRoot.namespaceAttributes, component.member);
             const childContents = objectEntry.children.get(elementName) ?? [];
@@ -400,8 +450,21 @@ export class RecipeCockpitMetadataDeployPackage {
 
         }
 
+        // AN OBJECT'S OWN XML KEEPS ONLY THE PAGES AND COMPACT LAYOUTS THIS ZIP CARRIES (#547); THE REST ARE SET BACK, BY THE RULE THE CONFIRMATION LISTED THEM BY
+        const shippedMembersByLowerName = (type: IMetadataDeployComponent['type']) => new Map(sourceFiles
+            .filter(sourceFile => sourceFile.component.type === type)
+            .map(sourceFile => [sourceFile.component.member.toLowerCase(), sourceFile.component.member]));
+        const shippedFlexiPages = shippedMembersByLowerName('FlexiPage');
+        const shippedCompactLayouts = shippedMembersByLowerName('CompactLayout');
+
         [...objectEntriesByLowerName.values()].forEach(objectEntry => {
-            entries.push({ name: `objects/${objectEntry.objectApiName}.object`, content: Buffer.from(this.buildObjectXml(objectEntry.objectContent, objectEntry.children, objectEntry.namespaceAttributes), 'utf-8') });
+            const objectContent = objectEntry.objectContent && RecipeCockpitMetadataDeploy.resolveObjectReferences(
+                objectEntry.objectApiName,
+                objectEntry.objectContent,
+                flexiPageName => shippedFlexiPages.get(flexiPageName.toLowerCase()),
+                compactLayoutName => shippedCompactLayouts.get(`${objectEntry.objectApiName}.${compactLayoutName}`.toLowerCase())?.split('.')[1]
+            ).objectContent;
+            entries.push({ name: `objects/${objectEntry.objectApiName}.object`, content: Buffer.from(this.buildObjectXml(objectContent, objectEntry.children, objectEntry.namespaceAttributes), 'utf-8') });
         });
 
         return this.buildZip(entries);

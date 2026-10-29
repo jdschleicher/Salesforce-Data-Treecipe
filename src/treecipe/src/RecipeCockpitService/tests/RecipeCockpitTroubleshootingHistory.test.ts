@@ -40,7 +40,7 @@ const loadRecipe = (workspaceRoot: string = TREE_WORKSPACE_ROOT): IRecipeCockpit
 
 const buildRow = (overrides: Partial<IRecipeCockpitTroubleshootingHistoryRowViewModel>): IRecipeCockpitTroubleshootingHistoryRowViewModel => ({
     step: 'field-deploy',
-    stepLabel: 'Deploy fields',
+    stepLabel: 'Deploy fields & dependencies',
     status: 'succeeded',
     timeMs: new Date(2026, 9, 28, 10, 0, 0).getTime(),
     timeLabel: '2026-10-28 10:00:00',
@@ -139,7 +139,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
             panel.postToPanel(historyMessage());
 
             expect(panel.findAll(historyPanelOf(panel), 'historyHeader').map((headerElement: any) => headerElement.attributes.scope)).toEqual(['col', 'col', 'col', 'col', 'col', 'col']);
-            expect(shownStepsOf(panel)).toEqual(['Assign permission sets', 'Deploy fields', 'Retrieve validation rules']);
+            expect(shownStepsOf(panel)).toEqual(['Assign permission sets', 'Deploy fields & dependencies', 'Retrieve validation rules']);
 
             const [assignRow, , legacyRow] = rowsOf(panel);
             expect(panel.findAll(assignRow, 'historyTime')[0].textContent).toBe('2026-10-28 12:00:00');
@@ -236,7 +236,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
             expect(rowsOf(panel).map((rowElement: any) => panel.findAll(rowElement, 'historyStatusLabel')[0].textContent)).toEqual(['Not recorded', 'Partly succeeded', 'Succeeded']);
 
             sortButtonOf(panel, 'time').dispatch('click');
-            expect(shownStepsOf(panel)).toEqual(['Assign permission sets', 'Deploy fields', 'Retrieve validation rules']);
+            expect(shownStepsOf(panel)).toEqual(['Assign permission sets', 'Deploy fields & dependencies', 'Retrieve validation rules']);
             // THE DEFAULT SORT IS NOT KEPT
             expect(savedTreeOf(panel).troubleshootingHistorySort).toBeUndefined();
 
@@ -252,7 +252,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
             expect(matchCount()).toBe('3 steps');
 
             panel.typeIntoTabSearch(accountCardOf(panel), 'troubleshootingSubPanel-history', 'package.xml');
-            expect(shownStepsOf(panel)).toEqual(['Deploy fields']);
+            expect(shownStepsOf(panel)).toEqual(['Deploy fields & dependencies']);
             expect(matchCount()).toBe('1 of 3 steps');
 
             panel.typeIntoTabSearch(accountCardOf(panel), 'troubleshootingSubPanel-history', QA_USERNAME);
@@ -271,13 +271,13 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
 
             expect(postedNamed(panel, 'loadTroubleshootingHistory')).toEqual([{ command: 'loadTroubleshootingHistory', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3 }]);
             panel.postToPanel(historyMessage());
-            expect(shownStepsOf(panel)).toEqual(['Retrieve validation rules', 'Deploy fields', 'Assign permission sets']);
+            expect(shownStepsOf(panel)).toEqual(['Retrieve validation rules', 'Deploy fields & dependencies', 'Assign permission sets']);
 
             const forgedPanel = runPanelScript({ savedState: savedPlaceWith({ troubleshootingSubTab: 'history', troubleshootingHistorySort: { column: '__proto__', isDescending: 'yes' } }) });
             forgedPanel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3 });
             forgedPanel.postToPanel({ command: 'rendered' });
             forgedPanel.postToPanel(historyMessage());
-            expect(shownStepsOf(forgedPanel)).toEqual(['Assign permission sets', 'Deploy fields', 'Retrieve validation rules']);
+            expect(shownStepsOf(forgedPanel)).toEqual(['Assign permission sets', 'Deploy fields & dependencies', 'Retrieve validation rules']);
 
         });
 
@@ -417,7 +417,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
                 historySequence: expect.any(Number),
                 rows: [{
                     step: 'field-deploy',
-                    stepLabel: 'Deploy fields',
+                    stepLabel: 'Deploy fields & dependencies',
                     status: 'succeeded',
                     timeMs: new Date(2026, 9, 28, 10, 0, 0).getTime(),
                     timeLabel: '2026-10-28 10:00:00',
