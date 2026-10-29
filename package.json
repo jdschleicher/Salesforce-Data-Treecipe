@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.png",
-  "version": "3.176.0",
+  "version": "3.177.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -139,6 +139,16 @@
             ],
             "default": "cli",
             "description": "How the Recipe Cockpit's Troubleshooting tab deploys fields, record types, global value sets and permission sets"
+          },
+          "salesforce-data-treecipe.metadataRetrieveMethod": {
+            "type": "string",
+            "enum": ["cli", "jsforce"],
+            "enumDescriptions": [
+              "Retrieve through the Salesforce CLI: sf project retrieve start --manifest",
+              "Retrieve on the org's connection through the Metadata API, without the Salesforce CLI, and write the files in source format where the CLI writes them. Listing an org's validation rules and record types still uses the CLI"
+            ],
+            "default": "cli",
+            "description": "How the Recipe Cockpit retrieves metadata: the Troubleshooting tab's field, validation rule, record type and global value set retrieves, and the Treecipe Adapter's Retrieve latest metadata and new child objects"
           }
         }
       }

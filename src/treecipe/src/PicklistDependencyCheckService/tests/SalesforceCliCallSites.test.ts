@@ -15,12 +15,12 @@ const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deployPicklistDependencyClasses',
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deploySourcePaths',
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#runPicklistDependencyTests',
-    'RecipeCockpitService/RecipeCockpitService.ts#performAdapterChildPrepare',
-    'RecipeCockpitService/RecipeCockpitService.ts#performAdapterMetadataRetrieve',
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataDeploy',
-    'RecipeCockpitService/RecipeCockpitService.ts#performMetadataRetrieve',
+    // THE LISTING OF VALIDATION RULES AND RECORD TYPES (#498); THE RETRIEVE ITSELF IS runCancellableRetrieve'S
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataRetrieve',
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
+    // EVERY RETRIEVE, THE ADAPTER'S INCLUDED, WITH metadataRetrieveMethod AT cli (#506)
+    'RecipeCockpitService/RecipeCockpitService.ts#runCancellableRetrieve',
     'SalesforceOrgService/SalesforceOrgService.ts#runOrgListCommand',
     'ScratchOrgService/ScratchOrgService.ts#runScratchOrgSetup'
 ];

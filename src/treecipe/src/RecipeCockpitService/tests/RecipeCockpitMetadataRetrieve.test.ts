@@ -43,6 +43,8 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import { AuthInfo } from '@salesforce/core';
 import { execFile } from 'child_process';
+// jszip COMES WITH @salesforce/core AND IS ONLY EVER USED IN TESTS: HERE, TO BUILD THE ZIP A FAKED ORG ANSWERS A RETRIEVE WITH
+import JSZip = require('jszip');
 
 import {
     IRecipeCockpitPanelState,
@@ -57,6 +59,7 @@ import {
     RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
 import { IMetadataDeploySummary } from '../RecipeCockpitMetadataDeploy';
@@ -65,6 +68,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
@@ -855,6 +859,142 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             expect(retrieveCalls()).toEqual([]);
             expect(notifications()).toEqual([{ severity: 'warning', text: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL, actions: [] }]);
+
+        });
+
+        describe('with the metadataRetrieveMethod setting at jsforce (#506)', () => {
+
+            const RETRIEVE_ID = '09S000000000001AAA';
+            const NAMESPACE = 'http://soap.sforce.com/2006/04/metadata';
+            const ACCOUNT_FIELDS_PATH = ['force-app', 'main', 'default', 'objects', 'Account', 'fields'];
+            let retrieveRequests: Array<Record<string, unknown>>;
+            let statusAnswers: unknown[];
+            let connectionFailure: Error | undefined;
+
+            const accountObjectXml = (fieldApiNames: string[]) => [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                `<CustomObject xmlns="${NAMESPACE}">`,
+                ...fieldApiNames.flatMap(fieldApiName => ['    <fields>', `        <fullName>${fieldApiName}</fullName>`, `        <label>${fieldApiName} from the org</label>`, '        <type>Text</type>', '    </fields>']),
+                '</CustomObject>'
+            ].join('\n');
+            const finishedWith = async (files: Record<string, string>, messages: unknown[] = []) => {
+                const zip = new JSZip();
+                Object.entries(files).forEach(([name, content]) => zip.file(name, content));
+                return { id: RETRIEVE_ID, done: true, success: true, status: 'Succeeded', messages: messages, zipFile: ( await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) ).toString('base64') };
+            };
+            const operationsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME);
+            const operationFiles = () => fs.existsSync(operationsFolderPath()) ? fs.readdirSync(operationsFolderPath()) : [];
+
+            beforeEach(async () => {
+
+                retrieveRequests = [];
+                statusAnswers = [await finishedWith({})];
+                connectionFailure = undefined;
+
+                jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockImplementation(((settingKey: string) => settingKey === 'metadataRetrieveMethod' ? 'jsforce' : undefined) as any);
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => {
+                    if ( connectionFailure ) {
+                        throw connectionFailure;
+                    }
+                    return {
+                        getApiVersion: () => '62.0',
+                        metadata: {
+                            retrieve: jest.fn().mockImplementation(async (request: Record<string, unknown>) => { retrieveRequests.push(request); return { id: RETRIEVE_ID, done: false }; }),
+                            checkRetrieveStatus: jest.fn().mockImplementation(async () => statusAnswers.length > 1 ? statusAnswers.shift() : statusAnswers[0])
+                        }
+                    } as any;
+                });
+
+            });
+
+            it('retrieves the package.xml\'s members on a connection, never through the CLI, writes them where the CLI does, and says how it went as the CLI retrieve does', async () => {
+
+                statusAnswers = [{ id: RETRIEVE_ID, done: false }, await finishedWith(
+                    { 'objects/Account.object': accountObjectXml(['Rating__c', 'Regions__c', 'Not_Asked__c']) },
+                    [{ fileName: 'package.xml', problem: "Entity of type 'CustomField' named 'Account.Sub_Rating__c' cannot be found" }]
+                )];
+                await openCockpit();
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                const packageXmlFileName = operationFiles().find(fileName => fileName.endsWith('-field-retrieve-package.xml')) as string;
+                expect(retrieveRequests).toEqual([{
+                    apiVersion: 64,
+                    singlePackage: true,
+                    unpackaged: { version: '64.0', types: [{ name: 'CustomField', members: manifestMembers(fs.readFileSync(path.join(operationsFolderPath(), packageXmlFileName), 'utf-8')) }] }
+                }]);
+                expect(( retrieveRequests[0].unpackaged as any ).types[0].members).toEqual(ACCOUNT_RETRIEVE_FIELDS);
+
+                // THE HELD FILE IS WRITTEN OVER WHERE IT IS, THE NEW ONE UNDER THE DEFAULT PACKAGE DIRECTORY, AND NOTHING NOT ASKED FOR
+                expect(fs.readFileSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Rating__c.field-meta.xml'), 'utf-8')).toContain('<label>Rating__c from the org</label>');
+                expect(fs.readFileSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Regions__c.field-meta.xml'), 'utf-8')).toContain('<fullName>Regions__c</fullName>');
+                expect(fs.existsSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Not_Asked__c.field-meta.xml'))).toBe(false);
+
+                expect(notifications()).toEqual([{
+                    severity: 'warning',
+                    text: `Retrieved 2 of the 8 custom fields of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}. Generate Treecipe writes them into the recipe. 1 could not be retrieved: Account.Sub_Rating__c: Entity of type 'CustomField' named 'Account.Sub_Rating__c' cannot be found.`,
+                    actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL, RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]
+                }]);
+
+                const resultFileName = operationFiles().find(fileName => /^\d{8}-\d{6}-field-retrieve\.json$/.test(fileName)) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), resultFileName), 'utf-8'))).toEqual(expect.objectContaining({ status: 0, retrieveId: RETRIEVE_ID, retrievedWith: 'jsforce' }));
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({
+                    step: 'field-retrieve', outcome: 'partial', succeededCount: 2, failedCount: 1, fileNames: [packageXmlFileName, resultFileName]
+                }));
+
+            });
+
+            it('writes nothing and offers no Generate Treecipe when cancelled before the org\'s zip is read', async () => {
+
+                const ratingFilePath = path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Rating__c.field-meta.xml');
+                const heldRating = fs.readFileSync(ratingFilePath, 'utf-8');
+                statusAnswers = [{ id: RETRIEVE_ID, done: false }];
+                const connectionWithoutCancel = (SalesforceOrgService.getConnection as jest.Mock).getMockImplementation() as () => Promise<any>;
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => {
+                    const orgConnection = await connectionWithoutCancel();
+                    orgConnection.metadata.checkRetrieveStatus = jest.fn().mockImplementation(async () => { cancellationToken.isCancellationRequested = true; return { id: RETRIEVE_ID, done: false }; });
+                    return orgConnection;
+                });
+                await openCockpit();
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(fs.readFileSync(ratingFilePath, 'utf-8')).toBe(heldRating);
+                expect(fs.existsSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Regions__c.field-meta.xml'))).toBe(false);
+                expect(notifications()).toEqual([{ severity: 'warning', text: `The retrieve of custom fields from prod · ${PROD_USERNAME} was cancelled before anything was written.`, actions: [] }]);
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({ step: 'field-retrieve', outcome: 'cancelled', detail: 'Nothing was written.' }));
+
+            });
+
+            it('warns, writing nothing, when no connection opens or the org\'s zip cannot be read', async () => {
+
+                connectionFailure = new Error('No authorization information found for admin@example.com');
+                await openCockpit();
+
+                await retrieve('globalValueSets');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(notifications()).toEqual([{
+                    severity: 'warning',
+                    text: `No global value sets were retrieved from prod · ${PROD_USERNAME}: ConnectionError: could not connect to the org: No authorization information found for admin@example.com`,
+                    actions: [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]
+                }]);
+
+                (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+                connectionFailure = undefined;
+                statusAnswers = [{ id: RETRIEVE_ID, done: true, success: true, zipFile: Buffer.from('not a zip but long enough to be searched for one').toString('base64') }];
+                (vscode.window.showWarningMessage as jest.Mock).mockClear();
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+
+                await retrieve('globalValueSets');
+
+                expect(notifications()).toEqual([expect.objectContaining({ severity: 'warning', text: expect.stringContaining("The org's retrieve zip could not be read: no end of central directory. Nothing was written.") })]);
+
+            });
 
         });
 
