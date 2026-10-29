@@ -312,7 +312,7 @@ export const RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = 'Hide unselected';
 export const RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = 'Every field of this object is ticked, so there is nothing to hide.';
 // THE INSERT CONFIRMATION'S SECTION OF WHAT THE CARD LEAVES OUT, ONE OBJECT AT A TIME (#483)
 export const RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE = 'Left out, per object';
-export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset selection';
+export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset Selections';
 
 /*
     Why a field's fixed-value pin is disabled (#262). The panel draws the same rule from what the
@@ -662,7 +662,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
             'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file.',
             'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
-            'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
+            'Reset Selections, right of a card\'s Generate fake data and insert button, clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
     }
@@ -26627,8 +26627,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The top of a card's Treecipe tab: Reset selection, then "Generate fake data and insert into
-        <org>". The org picker is the panel's Target Org Manager section since #348, not a view per card. Each posts
+        The top of a card's Treecipe tab: "Generate fake data and insert into <org>" with Reset
+        Selections to its right (#539). The org picker is the panel's Target Org Manager section since #348, not a view per card. Each posts
         the tree's KEY alone; which org, which recipe file, which counts and which objects are the
         host's.
     */
@@ -26644,7 +26644,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             treeState.resetSelectionElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'resetTreeSelection', treeKey: tree.treeKey });
             });
-            actionsElement.appendChild(treeState.resetSelectionElement);
+            // BESIDE THE INSERT ON A CARD THAT HAS ONE (#539)
+            if (!tree.runFakerRecipeFileName) { actionsElement.appendChild(treeState.resetSelectionElement); }
             drawResetSelection(treeState);
         }
 
@@ -26693,6 +26694,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
 
         controlsElement.appendChild(insert.buttonElement);
+        if (treeState.resetSelectionElement) { controlsElement.appendChild(treeState.resetSelectionElement); }
         controlsElement.appendChild(insert.reasonElement);
         controlsElement.appendChild(insert.reasonLinkElement);
 
