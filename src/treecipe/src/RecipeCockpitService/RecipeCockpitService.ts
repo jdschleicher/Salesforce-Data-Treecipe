@@ -33,6 +33,7 @@ import {
     MetadataDeployOutcome,
     RecipeCockpitMetadataDeploy
 } from './RecipeCockpitMetadataDeploy';
+import { IMetadataDeployConnection, IMetadataDeploySourceFile, METADATA_DEPLOY_METHOD_SETTING, MetadataDeployRun, RecipeCockpitMetadataDeployPackage } from './RecipeCockpitMetadataDeployPackage';
 import {
     METADATA_LIST_TIMEOUT_MILLISECONDS,
     METADATA_RETRIEVE_MAX_COMPONENTS,
@@ -395,6 +396,8 @@ export const RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI = '🌳';
 */
 export const RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT = 'Click to go to a child reference';
 export const RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT = 'Click to go to the parent reference';
+// A PARENT ROW'S 👥 N LIST (#492) LEADS TO THE FRIEND ROWS NESTED UNDER OR POINTING TO IT
+export const RECIPE_COCKPIT_FRIENDS_MENU_HINT = 'Click to go to a friend';
 export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
 /*
     A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
@@ -608,7 +611,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
-            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
+            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'History lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, Assign permission sets or Generate permission set), the org, how it ended and what it counted, the run, and its files, each a link that opens it. Click a column\'s header to sort by it, and again to turn the order; it starts newest first. A step from before this was recorded shows Not recorded, since only its time and files are known.',
@@ -644,7 +647,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
             'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
@@ -13370,8 +13373,15 @@ export class RecipeCockpitService {
         const packageDirectoryRelativePath = path.relative(workspaceRoot, packageDirectoryPath).split(path.sep).join('/') || '.';
         const describeComponentCount = (componentCount: number) => `${componentCount} ${componentCount === 1 ? 'component' : 'components'}`;
         const confirmTitle = `Deploy ${describeComponentCount(components.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`;
+        // WHICH WAY IT GOES (#505), DECIDED FOR EVERYTHING THE CONFIRMATION CAN SEND SO THE CONFIRMATION SAYS IT
+        const deployMethodPlan = RecipeCockpitMetadataDeployPackage.planDeployMethod(
+            RecipeCockpitMetadataDeployPackage.readDeployMethod(ConfigurationService.getExtensionConfigValue(METADATA_DEPLOY_METHOD_SETTING)),
+            workspaceRoot,
+            packageDirectoryPaths,
+            [...components, ...fullSetComponents]
+        );
         const confirmOptions = {
-            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, this.buildConfirmOrg(orgDetail), packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
+            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, this.buildConfirmOrg(orgDetail), packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents, RecipeCockpitMetadataDeployPackage.describeDeployMethod(deployMethodPlan)),
             isDestructive: true,
             changeOrg: { restartMessage: { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: tree.treeKey, orgIndex: null }, isSandboxOnly: true }
         };
@@ -13408,8 +13418,10 @@ export class RecipeCockpitService {
         }
 
         let orgTypeDetail: IOrgTypeDetail | undefined;
+        let deployConnection: Connection;
         try {
-            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username)));
+            deployConnection = await SalesforceOrgService.getConnection(orgDetail.username);
+            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(deployConnection));
         } catch (connectionError) {
             return refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`);
         }
@@ -13421,16 +13433,32 @@ export class RecipeCockpitService {
         const operationName = METADATA_DEPLOY_OPERATION_BY_KIND[deployKind];
         const operationDate = new Date();
         const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
-        let deployArguments: string[];
+        let deployArguments: string[] = [];
+        let deploySourceFiles: IMetadataDeploySourceFile[] | undefined;
+        let packageXml = '';
         let packageXmlWrittenFilePath: string | undefined;
         try {
-            const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
+            packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
             const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, operationName, operationDate) : undefined;
             packageXmlWrittenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
             if ( !packageXmlWrittenFilePath ) {
                 return refuse(`Nothing was deployed: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
-            deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlWrittenFilePath), orgDetail.username);
+            if ( deployMethodPlan.method === 'jsforce' ) {
+                // PLANNED AGAIN NOW, FOR EXACTLY WHAT WAS CONFIRMED: THE PROJECT CAN HAVE CHANGED WHILE THE CONFIRMATION WAS OPEN
+                const confirmedPlan = RecipeCockpitMetadataDeployPackage.planDeployMethod(
+                    RecipeCockpitMetadataDeployPackage.readDeployMethod(ConfigurationService.getExtensionConfigValue(METADATA_DEPLOY_METHOD_SETTING)),
+                    workspaceRoot,
+                    packageDirectoryPaths,
+                    components
+                );
+                if ( confirmedPlan.method !== 'jsforce' ) {
+                    return refuse(`Nothing was deployed: ${RecipeCockpitMetadataDeployPackage.describeChangedPlan(confirmedPlan)}. Deploy again to see how it goes now.`);
+                }
+                deploySourceFiles = confirmedPlan.sourceFiles;
+            } else {
+                deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlWrittenFilePath), orgDetail.username);
+            }
         } catch (argumentError) {
             return refuse(this.describeThrown(argumentError));
         }
@@ -13449,24 +13477,96 @@ export class RecipeCockpitService {
             filePaths: [packageXmlWrittenFilePath, deployOutputFilePath]
         });
 
-        const deployRun = await this.runCancellableCli(
-            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`),
-            deployArguments,
-            METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
-            workspaceRoot,
-            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
-        );
+        const progressTitle = RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`);
+        let deployOutcome: MetadataDeployOutcome;
 
-        if ( deployRun.isCancelled ) {
-            recordStep('cancelled');
-            return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled, so whether it landed is unknown.`, cliStarted);
+        if ( deploySourceFiles ) {
+
+            const sourceFiles = deploySourceFiles;
+            const metadataConnection: IMetadataDeployConnection = {
+                metadata: {
+                    deploy: (zipInput, options) => deployConnection.metadata.deploy(zipInput, options),
+                    checkDeployStatus: (asyncProcessId, includeDetails) => deployConnection.metadata.checkDeployStatus(asyncProcessId, includeDetails),
+                    cancelDeploy: asyncProcessId => deployConnection.metadata.cancelDeploy(asyncProcessId)
+                }
+            };
+            // THE ZIP IS BUILT UNDER THE SAME CANCELLABLE PROGRESS AS THE DEPLOY: A LARGE TREE'S FILES TAKE SECONDS TO READ
+            const jsforceAttempt: MetadataDeployRun | { kind: 'notBuilt'; refusalText: string } = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: progressTitle,
+                cancellable: true
+            }, async (_progress, cancellationToken) => {
+                const isCancellationRequested = () => cancellationToken.isCancellationRequested;
+                let zipInput: Buffer | undefined;
+                try {
+                    zipInput = await RecipeCockpitMetadataDeployPackage.buildDeployZip(packageXml, sourceFiles, isCancellationRequested);
+                } catch (zipError) {
+                    return { kind: 'notBuilt', refusalText: this.describeThrown(zipError) };
+                }
+                return zipInput
+                    ? await RecipeCockpitMetadataDeployPackage.runDeploy(metadataConnection, zipInput, { isCancellationRequested: isCancellationRequested, timeoutMilliseconds: METADATA_DEPLOY_TIMEOUT_MILLISECONDS })
+                    : { kind: 'unconfirmed', failureMessage: 'The deploy was cancelled before it was sent, so nothing was deployed.', isCancelled: true, isSent: false };
+            });
+
+            if ( jsforceAttempt.kind === 'notBuilt' ) {
+                return refuse(jsforceAttempt.refusalText);
+            }
+            const jsforceRun = jsforceAttempt;
+
+            const savedPayload = jsforceRun.kind === 'unconfirmed'
+                ? { ...( jsforceRun.payload ?? {} ), ...( jsforceRun.deployId ? { deployId: jsforceRun.deployId } : {} ), message: jsforceRun.failureMessage }
+                : { ...jsforceRun.payload, deployId: jsforceRun.deployId };
+            // A CANCEL BEFORE THE REQUEST WAS SENT LEAVES NOTHING TO RECORD; A REQUEST THAT FAILED MAY STILL HAVE REACHED THE ORG
+            const wasSent = jsforceRun.kind !== 'unconfirmed' || jsforceRun.isSent;
+            deployOutputFilePath = wasSent && runArtifactsLocation
+                ? ScratchOrgService.writeOrgOperationPayload(workspaceRoot, orgDetail.username, operationName, savedPayload, operationDate, runArtifactsLocation)
+                : undefined;
+
+            if ( jsforceRun.kind === 'cancelled' ) {
+                recordStep('cancelled');
+                return refuse(jsforceRun.isTimedOut
+                    ? `The deploy of ${componentText} for ${treeLabel} to ${orgLabel} did not finish in time and was cancelled in the org, so nothing was deployed.`
+                    : `The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled in the org, so nothing was deployed.`, cliStarted);
+            }
+
+            if ( jsforceRun.kind === 'unconfirmed' && !jsforceRun.isSent ) {
+                return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled before it was sent, so nothing was deployed.`);
+            }
+
+            if ( jsforceRun.kind === 'unconfirmed' && jsforceRun.isCancelled ) {
+                recordStep('cancelled');
+                return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled, but the org has not said it stopped, so whether it landed is unknown.`, cliStarted);
+            }
+
+            deployOutcome = jsforceRun.kind === 'unconfirmed'
+                ? { kind: 'unconfirmed', failureMessage: jsforceRun.failureMessage }
+                : RecipeCockpitMetadataDeploy.parseMetadataDeployPayload(
+                    jsforceRun.payload,
+                    typeof jsforceRun.payload.message === 'string' ? jsforceRun.payload.message : `The deploy ended with status ${String(( jsforceRun.payload.result as Record<string, unknown> ).status ?? 'unknown')}.`
+                );
+
+        } else {
+
+            const deployRun = await this.runCancellableCli(
+                progressTitle,
+                deployArguments,
+                METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
+                workspaceRoot,
+                SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+            );
+
+            if ( deployRun.isCancelled ) {
+                recordStep('cancelled');
+                return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled, so whether it landed is unknown.`, cliStarted);
+            }
+
+            const deployPayload = ScratchOrgService.readCliJsonPayload(deployRun.invocation);
+            deployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployRun.invocation, deployPayload);
+            deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
+                ? undefined
+                : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, operationName, deployRun.invocation, operationDate, deployPayload, runArtifactsLocation);
+
         }
-
-        const deployPayload = ScratchOrgService.readCliJsonPayload(deployRun.invocation);
-        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployRun.invocation, deployPayload);
-        deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
-            ? undefined
-            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, operationName, deployRun.invocation, operationDate, deployPayload, runArtifactsLocation);
 
         switch ( deployOutcome.kind ) {
 
@@ -19998,7 +20098,8 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
-    .treeNicknameSlot { display: inline-flex; align-items: center; }
+    .treeNicknameSlot { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .treeFriendsButton { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeNickname { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeNicknameMenu {
         flex-basis: 100%;
@@ -20681,6 +20782,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const CHILD_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT)};
     const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
+    const FRIENDS_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_FRIENDS_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
     const CONFIRM_CHANGE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL)};
@@ -21864,6 +21966,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 ? 'No field of this treecipe points to ' + nickname
                 : nickname + ' does not name exactly one object of this recipe, so no field can point to it');
             slotElement.appendChild(nicknameTextElement);
+            drawFriendsButton(treeObjectState);
             return;
         }
 
@@ -21884,6 +21987,53 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         treeObjectState.nicknameChipElement = chipElement;
         slotElement.appendChild(chipElement);
+        drawFriendsButton(treeObjectState);
+
+    }
+
+    // A PARENT ROW'S 👥 N (#492), RIGHT AFTER ITS NICKNAME: ONLY WHERE #411'S INDEX LISTS A FRIEND OF IT
+    function drawFriendsButton(treeObjectState) {
+
+        treeObjectState.friendsButtonElement = null;
+
+        const friends = listFriendsOf(treeObjectState);
+        if (friends.length === 0) { return; }
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const buttonElement = createButton('secondary', 'treeFriendsButton', '', 'compact');
+        buttonElement.appendChild(buildChipEmoji(FRIEND_EMOJI));
+        buttonElement.appendChild(createElement('span', 'treeFriendsCount', String(friends.length)));
+        buttonElement.setAttribute('aria-haspopup', 'menu');
+        buttonElement.setAttribute('aria-expanded', 'false');
+        buttonElement.setAttribute('aria-label', objectApiName + ': ' + pluralize(friends.length, 'friend', 'friends'));
+        buttonElement.setAttribute('title', 'Show the friends of ' + nicknameOfObject(treeObjectState.object));
+        buttonElement.addEventListener('click', function () {
+            if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState.friendsMenuOwner) {
+                closeNicknameMenu(true);
+                return;
+            }
+            openFriendsMenuOf(treeObjectState);
+        });
+
+        treeObjectState.friendsButtonElement = buttonElement;
+        treeObjectState.nicknameSlotElement.appendChild(buttonElement);
+
+    }
+
+    function openFriendsMenuOf(treeObjectState) {
+
+        const treeState = treeObjectState.treeState;
+
+        openReferenceMenu(treeObjectState.friendsMenuOwner, treeObjectState.headerElement, function () { return treeObjectState.friendsButtonElement; }, FRIENDS_MENU_HINT, listFriendsOf(treeObjectState).map(function (friend) {
+            return {
+                label: friend.label + ': ' + describeMenuObject(friend.friendState) + describeExclusion(friend.friendState),
+                choose: function () {
+                    closeNicknameMenu(false);
+                    const friendState = friend.friendState;
+                    revealTreeObjectRow(treeState, friendState, null, friendState.friendChipElementsByOwnerState.get(treeObjectState) || friendState.toggleElement);
+                }
+            };
+        }));
 
     }
 
@@ -22116,13 +22266,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         // A FLAT CARD (EVERY SNOWFAKERY ONE) HAS NO FRIEND ROW, SO ITS FIELDS ARE NEVER READ FOR NICKNAMES HERE
         if (!treeState.objectStates.some(function (treeObjectState) { return readNestingParent(treeObjectState.object) !== null; })) {
-            treeState.friendIndex = { chipsByObjectState: new Map() };
+            treeState.friendIndex = { chipsByObjectState: new Map(), friendsByOwnerState: new Map() };
             return treeState.friendIndex;
         }
 
         const nicknameIndex = ensureNicknameIndex(treeState);
         const parentsByObjectState = new Map();
         const friendStatesByParentKey = Object.create(null);
+        const ownerStateByParentKey = Object.create(null);
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
@@ -22136,7 +22287,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 if (parentKeys[parent.parentKey] === true) { return; }
                 parentKeys[parent.parentKey] = true;
                 parents.push(parent);
-                if (!hasOwnKey(friendStatesByParentKey, parent.parentKey)) { friendStatesByParentKey[parent.parentKey] = []; }
+                if (!hasOwnKey(friendStatesByParentKey, parent.parentKey)) {
+                    friendStatesByParentKey[parent.parentKey] = [];
+                    ownerStateByParentKey[parent.parentKey] = parent.ownerState;
+                }
                 friendStatesByParentKey[parent.parentKey].push(treeObjectState);
             };
 
@@ -22163,12 +22317,20 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         // ONE POSITION MAP PER PARENT, SO A ROOT WITH THOUSANDS OF FRIENDS IS NUMBERED IN ONE PASS
         const lineNumberOf = function (treeObjectState) { return typeof treeObjectState.object.lineNumber === 'number' ? treeObjectState.object.lineNumber : Number.MAX_SAFE_INTEGER; };
         const friendNumbersByParentKey = Object.create(null);
+        // THE SAME SORTED LISTS, INVERTED (#492): EACH PARENT ROW'S FRIENDS, LABELLED AS THEIR CHIPS READ
+        const friendsByOwnerState = new Map();
         Object.keys(friendStatesByParentKey).forEach(function (parentKey) {
             const friendNumbers = new Map();
+            const ownerState = ownerStateByParentKey[parentKey];
+            const ownerFriends = [];
             friendStatesByParentKey[parentKey]
                 .sort(function (firstState, secondState) { return lineNumberOf(firstState) - lineNumberOf(secondState); })
-                .forEach(function (friendState, friendIndex) { friendNumbers.set(friendState, friendIndex + 1); });
+                .forEach(function (friendState, friendIndex) {
+                    friendNumbers.set(friendState, friendIndex + 1);
+                    if (ownerState) { ownerFriends.push({ friendState: friendState, label: nicknameOfObject(ownerState.object) + '-' + (friendIndex + 1) }); }
+                });
             friendNumbersByParentKey[parentKey] = friendNumbers;
+            if (ownerState) { friendsByOwnerState.set(ownerState, ownerFriends); }
         });
 
         const chipsByObjectState = new Map();
@@ -22179,7 +22341,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             }));
         });
 
-        treeState.friendIndex = { chipsByObjectState: chipsByObjectState };
+        treeState.friendIndex = { chipsByObjectState: chipsByObjectState, friendsByOwnerState: friendsByOwnerState };
         return treeState.friendIndex;
 
     }
@@ -22187,6 +22349,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function listFriendChips(treeObjectState) {
         if (!treeObjectState.treeState) { return []; }
         return ensureFriendIndex(treeObjectState.treeState).chipsByObjectState.get(treeObjectState) || [];
+    }
+
+    function listFriendsOf(treeObjectState) {
+        if (!treeObjectState.treeState) { return []; }
+        return ensureFriendIndex(treeObjectState.treeState).friendsByOwnerState.get(treeObjectState) || [];
     }
 
     /*
@@ -22226,6 +22393,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (!slotElement) { return; }
 
         slotElement.textContent = '';
+        treeObjectState.friendChipElementsByOwnerState = new Map();
         const chips = listFriendChips(treeObjectState);
         treeObjectState.friendSearchText = chips.map(function (chip) { return chip.label; }).join('\\n').toLowerCase();
 
@@ -22248,6 +22416,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                     closeNicknameMenu(false);
                     revealTreeObjectRow(treeObjectState.treeState, ownerState, null, ownerState.nicknameChipElement || ownerState.toggleElement);
                 });
+                treeObjectState.friendChipElementsByOwnerState.set(ownerState, chipElement);
             } else {
                 chipElement.setAttribute('title', description + ', which no one row of this recipe holds by nickname');
             }
@@ -24838,7 +25007,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             nicknameMenuElement: null,
             // THE PARENTS A FRIEND ROW NAMES, DRAWN WITH THE TREECIPE TAB (#411); THEIR TEXT IS SEARCHED WITH THE OBJECT'S NAME
             friendSlotElement: null,
-            friendSearchText: ''
+            friendSearchText: '',
+            // EACH PARENT'S CHIP ON THIS ROW, SO A PARENT'S 👥 N LIST CAN FOCUS THE ONE POINTING BACK (#492)
+            friendChipElementsByOwnerState: new Map(),
+            friendsButtonElement: null,
+            friendsMenuOwner: { nicknameMenuElement: null }
         };
 
         treeObjectState.todoCount = treeObjectState.fieldStates.reduce(function (todoCount, fieldState) { return todoCount + fieldState.todos.length; }, treeObjectState.objectTodos.length);

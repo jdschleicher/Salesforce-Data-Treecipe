@@ -673,6 +673,13 @@ export class RecipeCockpitMetadataDeploy {
             return { kind: 'unconfirmed', failureMessage: 'The deploy did not finish in time and was stopped, so whether it landed is unknown.' };
         }
 
+        return this.parseMetadataDeployPayload(payload, ScratchOrgService.buildCliFailureDetail(payload, invocationResult));
+
+    }
+
+    // A DEPLOY'S ANSWER IN THE CLI'S --json SHAPE, FROM THE CLI OR FROM THE ORG ITSELF (#505)
+    static parseMetadataDeployPayload(payload: Record<string, unknown> | undefined, failureMessage: string): MetadataDeployOutcome {
+
         const deployComponentCounts = ScratchOrgService.readDeployComponentCounts(payload);
 
         if ( deployComponentCounts.isSucceeded ) {
@@ -681,7 +688,7 @@ export class RecipeCockpitMetadataDeploy {
 
         return {
             kind: 'failed',
-            failureMessage: ScratchOrgService.buildCliFailureDetail(payload, invocationResult),
+            failureMessage: failureMessage,
             componentFailureCount: deployComponentCounts.componentFailureCount,
             componentFailureMessages: this.readComponentFailureMessages(payload)
         };
@@ -724,7 +731,8 @@ export class RecipeCockpitMetadataDeploy {
                                     components: readonly IMetadataDeployComponent[],
                                     summary?: IMetadataDeploySummary,
                                     hasFileOrEnvironmentReplacements = false,
-                                    fullSetComponents: readonly IMetadataDeployComponent[] = []): IRecipeCockpitConfirmContent {
+                                    fullSetComponents: readonly IMetadataDeployComponent[] = [],
+                                    howItDeploysLines: readonly string[] = ['Only these components are deployed, through a generated package.xml.', 'Nothing else in the object folders is.']): IRecipeCockpitConfirmContent {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
         const warnings: string[] = [];
@@ -774,7 +782,7 @@ export class RecipeCockpitMetadataDeploy {
                 { title: 'Components', count: components.length, lines: this.describeComponentsByType(components) },
                 { title: 'Not deployed', lines: notes },
                 { title: 'Ticking the box below also deploys, in the same package.xml', count: fullSetComponents.length, lines: this.describeComponentsByType(fullSetComponents) },
-                { title: 'How it deploys', lines: ['Only these components are deployed, through a generated package.xml.', 'Nothing else in the object folders is.'] }
+                { title: 'How it deploys', lines: [...howItDeploysLines] }
             ]
         };
 
@@ -797,7 +805,7 @@ export class RecipeCockpitMetadataDeploy {
 
     }
 
-    private static listEntries(folderPath: string): fs.Dirent[] {
+    static listEntries(folderPath: string): fs.Dirent[] {
         try {
             return fs.readdirSync(folderPath, { withFileTypes: true });
         } catch {
