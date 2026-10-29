@@ -140,13 +140,13 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
         });
 
-        it('sits in the Treecipes section under the search box and its results, above the one card drawn', () => {
+        it('sits in the Treecipes section under the run selector (#533), the search box and its results, above the one card drawn', () => {
 
             const { panel } = drawRecipe();
             const controls = treecipesSectionBodyOf(panel).children[0];
 
             expect(controls.classList.contains('treecipesControls')).toBe(true);
-            expect(controls.children.map((element: any) => element.className.split(' ')[0])).toEqual(['treecipesSearch', 'treecipesSearchResults', 'treePicker', 'treePickerObjects']);
+            expect(controls.children.map((element: any) => element.className.split(' ')[0])).toEqual(['runPicker', 'treecipesSearch', 'treecipesSearchResults', 'treePicker', 'treePickerObjects']);
             expect(treecipesSectionBodyOf(panel).children[1].classList.contains('treesView')).toBe(true);
 
         });

@@ -34,6 +34,7 @@ import {
     RecipeCockpitMetadataDeploy
 } from './RecipeCockpitMetadataDeploy';
 import { IMetadataDeployConnection, IMetadataDeploySourceFile, METADATA_DEPLOY_METHOD_SETTING, MetadataDeployRun, RecipeCockpitMetadataDeployPackage } from './RecipeCockpitMetadataDeployPackage';
+import { IMetadataRetrieveConnection, METADATA_RETRIEVE_METHOD_SETTING, MetadataRetrieveDestination, RecipeCockpitMetadataRetrievePackage } from './RecipeCockpitMetadataRetrievePackage';
 import {
     METADATA_LIST_TIMEOUT_MILLISECONDS,
     METADATA_RETRIEVE_MAX_COMPONENTS,
@@ -516,6 +517,7 @@ export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Manager';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
 // THE TREECIPES SECTION DRAWS ONE CARD, CHOSEN IN A DROPDOWN, UNDER ONE SEARCH ACROSS EVERY CARD (#374)
 export const RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = 'Treecipe';
+export const RECIPE_COCKPIT_RUN_PICKER_LABEL = 'Select Generate Treecipe runs by date';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER = 'Search treecipes, objects, fields and record types';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = 'No treecipe, object, field or record type matches this search.';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ' (no match)';
@@ -605,10 +607,10 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         heading: 'Where recipes come from',
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
-            'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs asks the CLI again which orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
+            'The cockpit opens the newest run, or the one you pick in Select Generate Treecipe runs by date, the first line of the Treecipes section (or under the toolbar, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs asks the CLI again which orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
-            'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
+            'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
@@ -646,7 +648,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
-            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
+            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter\'s read straight from the org instead of through the Salesforce CLI (listing an org\'s validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
@@ -10857,12 +10859,11 @@ export class RecipeCockpitService {
             return;
         }
 
-        const retrieveRun = await this.runCancellableCli(
+        const retrieveRun = await this.runCancellableRetrieve(
             RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving the latest metadata of ${treeTitle} from ${orgLabel}`),
             retrieveArguments,
-            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
             workspaceRoot,
-            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+            { orgUsername: orgUsername, components: objectApiNames.map(objectApiName => ({ type: 'CustomObject', member: objectApiName })), destination: { kind: 'staging', stagingFolderPath: stagingFolderPath } }
         );
 
         // THE STAGING FOLDER IS THE ONLY PLACE IT WRITES, SO A CANCEL CHANGED NOTHING IN THE PROJECT
@@ -10871,7 +10872,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
+        const retrievePayload = retrieveRun.payload;
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
             : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload, runArtifactsLocation);
@@ -11028,12 +11029,11 @@ export class RecipeCockpitService {
             return;
         }
 
-        const retrieveRun = await this.runCancellableCli(
+        const retrieveRun = await this.runCancellableRetrieve(
             RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving the metadata of ${childObjectApiName} from ${orgLabel}`),
             retrieveArguments,
-            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
             workspaceRoot,
-            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+            { orgUsername: orgUsername, components: [{ type: 'CustomObject', member: childObjectApiName }], destination: { kind: 'staging', stagingFolderPath: stagingFolderPath } }
         );
 
         if ( retrieveRun.isCancelled ) {
@@ -11041,7 +11041,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
+        const retrievePayload = retrieveRun.payload;
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
             : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload, runArtifactsLocation);
@@ -13799,7 +13799,7 @@ export class RecipeCockpitService {
         and made the selection only when there is none (#480); then a confirmation names what is retrieved, the
         org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start --manifest" runs in project mode, cancellable. Validation rules and
-        record types are first LISTED in the org ("sf org list metadata", #401), after the prompt
+        record types are first LISTED in the org (listMetadata on a jsforce connection, #401, #498), after the prompt
         and before the confirmation, so the confirmation and the package.xml name each one. Nothing is deployed, and the
         recipe is not regenerated: the notification offers Generate Treecipe. One retrieve per window,
         whatever its kind.
@@ -13915,7 +13915,7 @@ export class RecipeCockpitService {
                 : '';
         };
 
-        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST CLI THAT RAN -- THE LISTING, FOR A LISTED KIND
+        // THE HISTORY'S RECORD OF THIS RETRIEVE (#485), FROM THE FIRST STEP THAT RAN -- THE LISTING, FOR A LISTED KIND
         let stepStartedAt = new Date();
         let retrievePackageXmlFilePath: string | undefined;
         let retrieveOutputFilePath: string | undefined;
@@ -13933,33 +13933,24 @@ export class RecipeCockpitService {
 
         if ( isListed ) {
 
-            let listArguments: string[];
-            try {
-                listArguments = RecipeCockpitMetadataRetrieve.buildListMetadataArguments(retrieveKind, orgDetail.username);
-            } catch (argumentError) {
-                return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
-            }
-
             stepStartedAt = new Date();
-            const listRun = await this.runCancellableCli(
-                RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${orgDetail.username}`),
-                listArguments,
+            const listingUsername = orgDetail.username;
+            const listOutcome = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${listingUsername}`),
+                cancellable: true
+            }, async (_progress, cancellationToken) => await RecipeCockpitMetadataRetrieve.listOrgMetadata(
+                async () => ( await SalesforceOrgService.getConnection(listingUsername) ).metadata,
+                retrieveKind,
+                objectApiNames,
                 METADATA_LIST_TIMEOUT_MILLISECONDS,
-                workspaceRoot,
-                SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
-            );
+                cancellationToken
+            ));
 
             // A LISTING WRITES NOTHING, SO A CANCEL OR A FAILURE HERE OFFERS NO GENERATE TREECIPE
-            if ( listRun.isCancelled ) {
+            if ( listOutcome.kind === 'cancelled' ) {
                 recordStep('cancelled', { detail: 'The listing was cancelled, so nothing was retrieved.' });
                 return refuse(`The listing of ${manyNoun} in ${orgLabel} was cancelled, so nothing was retrieved.`);
-            }
-
-            const listOutcome = RecipeCockpitMetadataRetrieve.parseListMetadataOutput(retrieveKind, listRun.invocation, objectApiNames);
-
-            if ( listOutcome.kind === 'cliNotInstalled' ) {
-                recordStep('failed', { detail: listOutcome.failureMessage });
-                return refuse(listOutcome.failureMessage);
             }
 
             if ( listOutcome.kind !== 'listed' ) {
@@ -14034,13 +14025,23 @@ export class RecipeCockpitService {
         if ( !isListed ) {
             stepStartedAt = new Date();
         }
-        const retrieveRun = await this.runCancellableCli(
+        const retrieveRun = await this.runCancellableRetrieve(
             RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving ${manyNoun} from ${orgDetail.username}`),
             retrieveArguments,
-            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
             workspaceRoot,
-            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+            { orgUsername: orgDetail.username, components: manifestComponents, destination: { kind: 'project', packageDirectoryPaths: packageDirectoryPaths, defaultPackageDirectoryPath: defaultPackageDirectoryPath } }
         );
+
+        // THE jsforce RETRIEVE WRITES ONLY ONCE THE ORG'S ZIP IS READ, SO ITS CANCEL WROTE NOTHING (#506)
+        if ( retrieveRun.isCancelled && retrieveRun.isNothingWritten ) {
+            recordStep('cancelled', { detail: 'Nothing was written.' });
+            return refuse(`The retrieve of ${manyNoun} from ${orgLabel} was cancelled before anything was written.`);
+        }
+
+        if ( retrieveRun.invocation.timedOut && retrieveRun.isNothingWritten ) {
+            recordStep('failed', { detail: 'It did not finish in time. Nothing was written.' });
+            return refuse(`The retrieve of ${manyNoun} from ${orgLabel} did not finish in time, so nothing was written.`);
+        }
 
         // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
@@ -14049,7 +14050,7 @@ export class RecipeCockpitService {
             return true;
         }
 
-        const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
+        const retrievePayload = retrieveRun.payload;
         const retrieveOutcome: MetadataRetrieveOutcome = RecipeCockpitMetadataRetrieve.parseRetrieveOutput(retrieveKind, retrieveRun.invocation, askedNames, retrievePayload);
         retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
@@ -14757,6 +14758,90 @@ export class RecipeCockpitService {
         }
 
         await VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+
+    }
+
+    /*
+        A retrieve, the CLI's or jsforce's as the metadataRetrieveMethod setting says (#506), behind a
+        cancellable progress. Both answer in the CLI's --json shape, so what reads a retrieve reads
+        either. jsforce writes nothing until the org's zip is read, so a cancel or a timeout before then
+        writes nothing at all (isNothingWritten); the CLI's cancel kills its process, whatever it wrote.
+    */
+    private static async runCancellableRetrieve(progressTitle: string,
+                                                cliArguments: string[],
+                                                workspaceRoot: string,
+                                                jsforceRetrieve: { orgUsername: string; components: IMetadataDeployComponent[]; destination: MetadataRetrieveDestination }): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean; isNothingWritten?: boolean; payload: Record<string, unknown> | undefined }> {
+
+        if ( RecipeCockpitMetadataRetrievePackage.readRetrieveMethod(ConfigurationService.getExtensionConfigValue(METADATA_RETRIEVE_METHOD_SETTING)) === 'cli' ) {
+            const cliRun = await this.runCancellableCli(progressTitle, cliArguments, METADATA_RETRIEVE_TIMEOUT_MILLISECONDS, workspaceRoot, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES);
+            return { ...cliRun, payload: ScratchOrgService.readCliJsonPayload(cliRun.invocation) };
+        }
+
+        const answered = (payload: Record<string, unknown>) => ({ invocation: { stdout: '', stderr: '', exitCode: payload.status === 0 ? 0 : 1 }, isCancelled: false, payload: payload });
+        const cancelled = { invocation: { stdout: '', stderr: '', exitCode: null }, isCancelled: true, isNothingWritten: true, payload: undefined };
+
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: progressTitle,
+            cancellable: true
+        }, async (_progress, cancellationToken) => {
+
+            const isCancellationRequested = () => cancellationToken.isCancellationRequested;
+
+            let retrieveConnection: Connection;
+            try {
+                retrieveConnection = await SalesforceOrgService.getConnection(jsforceRetrieve.orgUsername);
+            } catch (connectionError) {
+                return answered({ status: 1, name: 'ConnectionError', message: `could not connect to the org: ${RecipeCockpitMetadataDeployPackage.describeError(connectionError)}` });
+            }
+
+            let retrieveRequest: Record<string, unknown>;
+            try {
+                retrieveRequest = RecipeCockpitMetadataRetrievePackage.buildRetrieveRequest(jsforceRetrieve.components, this.readSourceApiVersion(workspaceRoot) ?? retrieveConnection.getApiVersion());
+            } catch (requestError) {
+                return answered({ status: 1, message: this.describeThrown(requestError) });
+            }
+
+            const metadataConnection: IMetadataRetrieveConnection = {
+                metadata: {
+                    retrieve: request => retrieveConnection.metadata.retrieve(request),
+                    checkRetrieveStatus: asyncProcessId => retrieveConnection.metadata.checkRetrieveStatus(asyncProcessId)
+                }
+            };
+            const retrieveRun = await RecipeCockpitMetadataRetrievePackage.runRetrieve(metadataConnection, retrieveRequest, { isCancellationRequested: isCancellationRequested, timeoutMilliseconds: METADATA_RETRIEVE_TIMEOUT_MILLISECONDS });
+
+            if ( retrieveRun.kind === 'cancelled' ) {
+                return cancelled;
+            }
+            if ( retrieveRun.kind === 'timedOut' ) {
+                return { invocation: { stdout: '', stderr: '', exitCode: null, timedOut: true }, isCancelled: false, isNothingWritten: true, payload: undefined };
+            }
+            if ( retrieveRun.kind === 'failed' ) {
+                return answered({ status: 1, message: retrieveRun.failureMessage, ...( retrieveRun.retrieveId ? { retrieveId: retrieveRun.retrieveId } : {} ) });
+            }
+
+            const { retrieveId, result } = retrieveRun;
+            if ( result.success !== true && result.success !== 'true' ) {
+                return answered(RecipeCockpitMetadataRetrievePackage.toCliShapedPayload(retrieveId, result, [], jsforceRetrieve.components));
+            }
+
+            try {
+                const zipBuffer = RecipeCockpitMetadataRetrievePackage.readZipFile(result);
+                if ( !zipBuffer ) {
+                    throw new Error('The org answered the retrieve with no zip, so nothing was written.');
+                }
+                const sourceFiles = await RecipeCockpitMetadataRetrievePackage.convertToSourceFiles(RecipeCockpitMetadataRetrievePackage.readZip(zipBuffer), jsforceRetrieve.components, isCancellationRequested);
+                // THE LAST POINT A CANCEL WRITES NOTHING: ONCE WRITING STARTS, EVERY FILE IS WRITTEN
+                if ( !sourceFiles || isCancellationRequested() ) {
+                    return cancelled;
+                }
+                const fileResponses = await RecipeCockpitMetadataRetrievePackage.writeSourceFiles(workspaceRoot, jsforceRetrieve.destination, sourceFiles);
+                return answered(RecipeCockpitMetadataRetrievePackage.toCliShapedPayload(retrieveId, result, fileResponses, jsforceRetrieve.components));
+            } catch (convertError) {
+                return answered({ status: 1, message: this.describeThrown(convertError), retrieveId: retrieveId });
+            }
+
+        });
 
     }
 
@@ -19710,13 +19795,16 @@ ${this.buildPaletteCustomProperties()}
     }
     .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
-    .toolbar select, .tabSearchInput, .treecipesSearchInput {
+    .runSelect, .tabSearchInput, .treecipesSearchInput {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
     }
-    .toolbar select { padding: 0.3rem; }
+    /* THE DATED RUNS (#533): THE LABEL, THEN THE DROPDOWN TAKING WHAT IS LEFT OF THE ROW, WRAPPING WHEN NARROW */
+    .runPicker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.4rem 0 0.2rem 0; }
+    .runPickerLabel { font-weight: 600; }
+    .runSelect { flex: 1 1 12rem; min-width: 0; max-width: 100%; padding: 0.3rem; }
     .tabSearch, .treecipesSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
     /* THE MAGNIFIER INSIDE EVERY SEARCH BOX (#373), DRAWN LIKE THE CHAIN LINK; THE TEXT STARTS PAST IT */
     .tabSearchField { position: relative; display: flex; align-items: center; flex: 1 1 16rem; min-width: 0; }
@@ -20826,6 +20914,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const ORG_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_ORG_SECTION_TITLE)};
     const TREECIPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SECTION_TITLE)};
     const TREECIPE_PICKER_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREECIPE_PICKER_LABEL)};
+    const RUN_PICKER_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_PICKER_LABEL)};
     const TREECIPES_SEARCH_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER)};
     const TREECIPES_SEARCH_NO_MATCH = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH)};
     const TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX)};
@@ -21202,34 +21291,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The run selector and the favorites filter. The org picker is no longer here (#255): it is
-        drawn at the top of every card's Treecipe tab, and asks the host for its orgs only when it is
-        first used or a Treecipe tab is first opened: listing orgs runs the CLI's connection check,
-        which no panel open should pay for.
+        The favorites filter. The org picker is no longer here (#255): it is drawn once in the
+        Target Org Manager section, and asks the host for its orgs only when it is first used or a
+        Treecipe tab is first opened: listing orgs runs the CLI's connection check, which no panel
+        open should pay for. The run selector is not here either (#533): buildRunPicker draws it
+        first in the Treecipes section, or above the notice of a run with no trees.
     */
     function renderToolbar(recipe, hasObjects) {
 
         const toolbarElement = createElement('div', 'toolbar');
-
-        if (recipe.runs.length > 0) {
-
-            runSelectElement = createElement('select', 'runSelect');
-            runSelectElement.setAttribute('aria-label', 'Generated recipe run');
-
-            recipe.runs.forEach(function (run) {
-                const runOptionElement = createElement('option', '', run.label);
-                runOptionElement.value = run.runFolderName;
-                runOptionElement.selected = run.runFolderName === recipe.selectedRunFolderName;
-                runSelectElement.appendChild(runOptionElement);
-            });
-
-            runSelectElement.value = recipe.selectedRunFolderName;
-            runSelectElement.addEventListener('change', function () {
-                vscodeApi.postMessage({ command: 'selectRun', runFolderName: runSelectElement.value });
-            });
-            toolbarElement.appendChild(runSelectElement);
-
-        }
 
         cockpitBodyElement.appendChild(toolbarElement);
 
@@ -21238,6 +21308,37 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         }
 
         renderHelp(recipe, hasObjects);
+
+    }
+
+    // THE DATED RUNS, WITH A VISIBLE LABEL THAT NAMES THE DROPDOWN (#533); NOTHING WITHOUT A RUN
+    function buildRunPicker(recipe) {
+
+        if (recipe.runs.length === 0) { return null; }
+
+        const pickerElement = createElement('div', 'runPicker');
+        const labelElement = createElement('label', 'runPickerLabel', RUN_PICKER_LABEL);
+
+        runSelectElement = createElement('select', 'runSelect');
+        runSelectElement.setAttribute('id', 'runSelect');
+        labelElement.setAttribute('for', 'runSelect');
+
+        recipe.runs.forEach(function (run) {
+            const runOptionElement = createElement('option', '', run.label);
+            runOptionElement.value = run.runFolderName;
+            runOptionElement.selected = run.runFolderName === recipe.selectedRunFolderName;
+            runSelectElement.appendChild(runOptionElement);
+        });
+
+        runSelectElement.value = recipe.selectedRunFolderName;
+        runSelectElement.addEventListener('change', function () {
+            vscodeApi.postMessage({ command: 'selectRun', runFolderName: runSelectElement.value });
+        });
+
+        pickerElement.appendChild(labelElement);
+        pickerElement.appendChild(runSelectElement);
+
+        return pickerElement;
 
     }
 
@@ -31081,6 +31182,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         renderToolbar(recipe, hasObjects);
 
+        const runPickerElement = buildRunPicker(recipe);
+        const trees = recipe.trees || [];
+
+        // A RUN THE CARDS CANNOT SHOW KEEPS ITS SELECTOR ABOVE EVERYTHING ELSE, SO ANOTHER RUN CAN BE CHOSEN
+        if (runPickerElement && (!hasObjects || trees.length === 0)) {
+            cockpitBodyElement.appendChild(runPickerElement);
+        }
+
         recipe.notices.forEach(function (notice) {
             cockpitBodyElement.appendChild(createElement('div', 'notice', notice));
         });
@@ -31093,8 +31202,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             }
             return;
         }
-
-        const trees = recipe.trees || [];
 
         // A RUN WITH NO TREES SAYS SO, WITH NO SECTION AROUND THE NOTICE AND NO ORG TO PICK FOR NOTHING
         if (trees.length === 0) {
@@ -31112,6 +31219,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const treecipesSection = buildStaticCockpitSection('cockpitTreecipesSection', TREECIPES_SECTION_TITLE);
         treecipesControlsElement = createElement('div', 'treecipesControls');
+        // THE RUN FIRST, THEN THE SEARCH AND THE TREECIPE DROPDOWN renderTrees ADDS UNDER IT (#533)
+        if (runPickerElement) { treecipesControlsElement.appendChild(runPickerElement); }
         treecipesSection.bodyElement.appendChild(treecipesControlsElement);
         treecipesSection.bodyElement.appendChild(treesViewElement);
         cockpitBodyElement.appendChild(treecipesSection.element);
