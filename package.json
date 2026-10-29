@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.png",
-  "version": "3.173.0",
+  "version": "3.174.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -129,6 +129,16 @@
             "type": "boolean",
             "default": true,
             "description": "Show the Treecipe status bar item that opens the Recipe Cockpit. The extension starts at window load in a workspace that contains treecipe/treecipe.config.json; in any other folder the item appears once a Treecipe command has run"
+          },
+          "salesforce-data-treecipe.metadataDeployMethod": {
+            "type": "string",
+            "enum": ["cli", "jsforce"],
+            "enumDescriptions": [
+              "Deploy through the Salesforce CLI: sf project deploy start --manifest",
+              "Deploy on the org's connection through the Metadata API, without the Salesforce CLI. Falls back to the CLI when sfdx-project.json has replacements, .forceignore covers a file being deployed, or a source file is not found"
+            ],
+            "default": "cli",
+            "description": "How the Recipe Cockpit's Troubleshooting tab deploys fields, record types, global value sets and permission sets"
           }
         }
       }
@@ -161,6 +171,7 @@
     "copy-paste": "^2.2.0",
     "esbuild": "^0.25.0",
     "eslint": "^9.11.1",
+    "ignore": "5.3.2",
     "jest": "^29.7.0",
     "jest-extended": "^6.0.0",
     "js-yaml": "^4.1.0",
