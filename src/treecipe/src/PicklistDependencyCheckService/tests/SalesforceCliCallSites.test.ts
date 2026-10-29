@@ -19,7 +19,6 @@ const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
     // EVERY RETRIEVE, THE ADAPTER'S INCLUDED, WITH metadataRetrieveMethod AT cli (#506)
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableRetrieve',
-    'SalesforceOrgService/SalesforceOrgService.ts#runOrgListCommand',
     'ScratchOrgService/ScratchOrgService.ts#runScratchOrgSetup'
 ];
 
