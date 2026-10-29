@@ -249,6 +249,67 @@ describe('DatasetInsertAttemptService', () => {
 
     });
 
+    describe('listAttemptTimestamps and readAttempt', () => {
+
+        test('lists every attempt oldest first and reads each one\'s summary state and files', () => {
+
+            const resultsFilePath = writeAttempt('2026-10-26T10-00-00', JSON.stringify(buildSummary()));
+            writeAttempt('2026-10-25T09-00-00', undefined);
+            writeAttempt('2026-10-27T09-00-00', '{"schemaVersion":1}');
+            makeAttemptFolder('not-an-attempt');
+
+            expect(DatasetInsertAttemptService.listAttemptTimestamps(datasetFolderPath)).toEqual(['2026-10-25T09-00-00', '2026-10-26T10-00-00', '2026-10-27T09-00-00']);
+
+            const readAttempt = DatasetInsertAttemptService.readAttempt(datasetFolderPath, '2026-10-26T10-00-00');
+            expect(readAttempt).toEqual({
+                attemptTimestamp: '2026-10-26T10-00-00',
+                summaryState: 'read',
+                summary: buildSummary(),
+                resultsFilePath: resultsFilePath,
+                summaryFilePath: path.join(path.dirname(resultsFilePath), 'insertAttemptSummary-2026-10-26T10-00-00.json')
+            });
+            expect(DatasetInsertAttemptService.readAttempt(datasetFolderPath, '2026-10-25T09-00-00')).not.toHaveProperty('summaryFilePath');
+            expect(DatasetInsertAttemptService.readAttempt(datasetFolderPath, '2026-10-25T09-00-00').summaryState).toBe('missing');
+            expect(DatasetInsertAttemptService.readAttempt(datasetFolderPath, '2026-10-27T09-00-00').summaryState).toBe('unreadable');
+
+        });
+
+        test('lists nothing for a data set never inserted, or one whose InsertAttempts is a link', () => {
+
+            expect(DatasetInsertAttemptService.listAttemptTimestamps(datasetFolderPath)).toEqual([]);
+
+            const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'insertAttemptElsewhere-'));
+            fs.mkdirSync(path.join(elsewhere, 'insertAttempt-2026-10-26T10-00-00'));
+            fs.symlinkSync(elsewhere, path.join(datasetFolderPath, INSERT_ATTEMPTS_FOLDER_NAME));
+            expect(DatasetInsertAttemptService.listAttemptTimestamps(datasetFolderPath)).toEqual([]);
+            fs.rmSync(elsewhere, { recursive: true, force: true });
+
+        });
+
+        test('reads an attempt folder\'s UTC timestamp, and refuses one that is not a real time', () => {
+
+            expect(DatasetInsertAttemptService.readAttemptTimestamp('2026-10-26T10-00-00')).toBe(Date.parse('2026-10-26T10:00:00Z'));
+            expect(DatasetInsertAttemptService.readAttemptTimestamp('2026-02-30T10-00-00')).toBeUndefined();
+            expect(DatasetInsertAttemptService.readAttemptTimestamp('2026-10-26T25-00-00')).toBeUndefined();
+            expect(DatasetInsertAttemptService.readAttemptTimestamp('2026-10-26 10:00:00')).toBeUndefined();
+
+        });
+
+        test('readSmallFile reads a file up to the limit, and nothing past it or through a link', () => {
+
+            const filePath = path.join(datasetFolderPath, 'small.json');
+            fs.writeFileSync(filePath, '{"a":1}');
+            fs.symlinkSync(filePath, path.join(datasetFolderPath, 'link.json'));
+
+            expect(DatasetInsertAttemptService.readSmallFile(filePath, 7)).toBe('{"a":1}');
+            expect(DatasetInsertAttemptService.readSmallFile(filePath, 6)).toBeUndefined();
+            expect(DatasetInsertAttemptService.readSmallFile(path.join(datasetFolderPath, 'link.json'), 64)).toBeUndefined();
+            expect(DatasetInsertAttemptService.readSmallFile(datasetFolderPath, 64)).toBeUndefined();
+
+        });
+
+    });
+
     describe('writeSummary', () => {
 
         test('writes the summary beside the results file, and readLatestAttempt reads it', () => {

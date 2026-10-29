@@ -152,6 +152,20 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
 
         });
 
+        it('draws an answer that arrived while the row was closed when it is opened again, asking nothing more', () => {
+
+            const panel = drawRecipe();
+            const rows = openLeadDatasets(panel);
+            toggleOf(panel, rows[0]).dispatch('click');
+            toggleOf(panel, rows[0]).dispatch('click');
+            panel.postToPanel(journeyMessage());
+            toggleOf(panel, rows[0]).dispatch('click');
+
+            expect(panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyEntry')).toHaveLength(3);
+            expect(postedNamed(panel, 'loadDatasetJourney')).toHaveLength(1);
+
+        });
+
         it('says a single succeeded insert worked first time, and counts the capped, other-org and untracked entries', () => {
 
             const panel = drawRecipe();
@@ -358,15 +372,27 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
 
         });
 
-        it('posts nothing for a data set the model does not map, one outside the workspace, or no model', async () => {
+        it('lists no entry for a data set the model does not map or one outside the workspace, and posts nothing with no model', async () => {
 
             panelState.treeHistoryTargets.datasetFolderPathsByName.set('outside', os.tmpdir());
             await (RecipeCockpitService as any).executePanelAction(cockpitPanel, { kind: 'loadDatasetJourney', datasetFolderName: 'not-drawn' });
             await (RecipeCockpitService as any).executePanelAction(cockpitPanel, { kind: 'loadDatasetJourney', datasetFolderName: 'outside' });
+            expect(journeyMessages().map(message => [message.datasetFolderName, message.entries])).toEqual([['not-drawn', []], ['outside', []]]);
+
             panelState.recipeDataMessage = undefined;
             await (RecipeCockpitService as any).executePanelAction(cockpitPanel, { kind: 'loadDatasetJourney', datasetFolderName: LEAD_DATASETS[0] });
+            expect(journeyMessages()).toHaveLength(2);
 
-            expect(journeyMessages()).toEqual([]);
+        });
+
+        it('answers a data set gone since the model was drawn with an empty journey, so its row leaves the loading note', async () => {
+
+            fs.rmSync(leadDatasetPath(), { recursive: true, force: true });
+
+            await (RecipeCockpitService as any).executePanelAction(cockpitPanel, { kind: 'loadDatasetJourney', datasetFolderName: LEAD_DATASETS[0] });
+
+            expect(journeyMessages()).toEqual([expect.objectContaining({ datasetFolderName: LEAD_DATASETS[0], attemptCount: 0, entries: [] })]);
+            expect(panelState.pendingJourneyFiles.get(LEAD_DATASETS[0])?.filePaths).toEqual([]);
 
         });
 

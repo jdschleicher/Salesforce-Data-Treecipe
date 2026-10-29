@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { DATASET_JOURNEY_ENTRY_LIMIT, RecipeCockpitDatasetJourney } from '../RecipeCockpitDatasetJourney';
+import { DATASET_JOURNEY_ENTRY_LIMIT, DATASET_JOURNEY_RESULTS_BUDGET_SPENT_NOTE, DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES, DATASET_JOURNEY_RESULTS_READ_BUDGET_BYTES, DATASET_JOURNEY_RESULTS_TOO_LARGE_NOTE, RecipeCockpitDatasetJourney } from '../RecipeCockpitDatasetJourney';
 import { DatasetInsertAttemptService, IInsertAttemptSummary, INSERT_ATTEMPT_SUMMARY_SCHEMA_VERSION } from '../../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { IRecipeCockpitRunArtifactsLocation } from '../RecipeCockpitRunArtifacts';
 import { RecipeCockpitRunHistory, RunHistoryOutcome, RunHistoryStep } from '../RecipeCockpitRunHistory';
@@ -346,6 +346,59 @@ describe('RecipeCockpitDatasetJourney (#471)', () => {
 
         readdirSpy.mockImplementation(() => { throw new Error('EACCES'); });
         expect(buildJourney().attemptCount).toBe(0);
+
+    });
+
+    it('reads results only for the entries the cap keeps, newest first, within one journey\'s budget', () => {
+
+        const failedSummary = (isoStartedAt: string) => summaryOf(`${isoStartedAt.slice(0, 19)}.000Z`, { savedRecordCount: 0, failedRecordCount: 1 });
+        const bigResults = (marker: string) => failedResults('Account', [{ statusCode: marker, message: 'x'.repeat(DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES - 200) }]);
+        const budgetFileCount = Math.floor(DATASET_JOURNEY_RESULTS_READ_BUDGET_BYTES / DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES);
+        const isoStartedAts = Array.from({ length: budgetFileCount + 2 }, (_unused, attemptIndex) => `2026-10-26T10:${String(attemptIndex).padStart(2, '0')}:00Z`);
+        isoStartedAts.forEach((isoStartedAt, attemptIndex) => writeAttempt(isoStartedAt, failedSummary(isoStartedAt), bigResults(`CODE_${attemptIndex}`)));
+        const readSpy = jest.spyOn(DatasetInsertAttemptService, 'readSmallFile');
+
+        const capped = buildJourney(budgetFileCount + 1);
+        expect(capped.entries).toHaveLength(budgetFileCount + 1);
+        // THE ATTEMPT THE CAP DROPS IS NEVER READ, AND THE OLDEST KEPT ONE IS PAST THE BUDGET
+        expect(readSpy.mock.calls.filter(call => String(call[0]).includes('insertAttemptResults-'))).toHaveLength(budgetFileCount);
+        expect(capped.entries[0].errorExcerpt).toBe(DATASET_JOURNEY_RESULTS_BUDGET_SPENT_NOTE);
+        expect(capped.entries.at(-1)?.errorExcerpt).toMatch(new RegExp(`^Account: CODE_${isoStartedAts.length - 1} — x+…$`));
+
+    });
+
+    it('does not read a results file past the per-file size for an excerpt', () => {
+
+        writeAttempt('2026-10-26T10:00:00Z', summaryOf('2026-10-26T10:00:00.000Z', { savedRecordCount: 0, failedRecordCount: 1 }),
+            failedResults('Account', [{ statusCode: 'BIG', message: 'x'.repeat(DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES + 10) }]));
+        const readSpy = jest.spyOn(DatasetInsertAttemptService, 'readSmallFile');
+
+        expect(buildJourney().entries[0].errorExcerpt).toBe(DATASET_JOURNEY_RESULTS_TOO_LARGE_NOTE);
+        expect(readSpy.mock.calls.filter(call => String(call[0]).includes('insertAttemptResults-'))).toEqual([]);
+
+    });
+
+    it('still reads a results file whose size cannot be read, and keeps a step that names no org', () => {
+
+        const attemptFolderPath = writeAttempt('2026-10-26T10:00:00Z', summaryOf('2026-10-26T10:00:00.000Z', { savedRecordCount: 0, failedRecordCount: 1 }),
+            failedResults('Lead', [{ statusCode: 'REQUIRED_FIELD_MISSING', fields: ['LastName'] }]));
+        writeAttempt('2026-10-26T10:20:00Z', summaryOf('2026-10-26T10:20:00.000Z'));
+        const startedAt = new Date('2026-10-26T10:05:00Z');
+        RecipeCockpitRunHistory.writeSummary(location, { step: 'permission-set-generate', outcome: 'succeeded', startedAt, finishedAt: startedAt, filePaths: [] });
+        const resultsFilePath = path.join(attemptFolderPath, 'insertAttemptResults-2026-10-26T10-00-00.json');
+        const lstatSync = fs.lstatSync;
+        jest.spyOn(fs, 'lstatSync').mockImplementation(((candidatePath: fs.PathLike, options?: any) => {
+            if ( String(candidatePath) === resultsFilePath && options === undefined && new Error().stack?.includes('readFileSize') ) {
+                throw new Error('ENOENT');
+            }
+            return lstatSync(candidatePath, options);
+        }) as typeof fs.lstatSync);
+
+        const journey = buildJourney();
+
+        expect(journey.entries[0].errorExcerpt).toBe('Lead: REQUIRED_FIELD_MISSING [LastName]');
+        expect(journey.entries[1]).toEqual(expect.objectContaining({ kind: 'permission-set-generate', status: 'succeeded' }));
+        expect(journey.entries[1]).not.toHaveProperty('orgUsername');
 
     });
 

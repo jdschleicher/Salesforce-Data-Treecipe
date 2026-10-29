@@ -12509,17 +12509,36 @@ export class RecipeCockpitService {
         const recipeDataMessage = panelState.recipeDataMessage;
         const datasetFolderPath = panelState.treeHistoryTargets.datasetFolderPathsByName.get(datasetFolderName);
 
-        if ( !recipeDataMessage || !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
+        if ( !recipeDataMessage ) {
             return;
         }
 
+        // A DATA SET GONE SINCE THE MODEL WAS DRAWN STILL GETS AN ANSWER, SO ITS ROW DOES NOT STAY ON THE LOADING NOTE
+        if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
+            const emptyJourneyMessage: IRecipeCockpitDatasetJourneyMessage = {
+                command: 'datasetJourney',
+                renderSequence: recipeDataMessage.renderSequence,
+                datasetFolderName: datasetFolderName,
+                journeySequence: ++this.datasetJourneySequence,
+                attemptCount: 0,
+                entries: [],
+                hiddenEntryCount: 0,
+                otherOrgStepCount: 0,
+                untrackedStepCount: 0
+            };
+            panelState.pendingJourneyFiles.set(datasetFolderName, { journeySequence: emptyJourneyMessage.journeySequence, filePaths: [] });
+            this.postToPanel(cockpitPanel, emptyJourneyMessage);
+            return;
+        }
+
+        const legacyOrgOperationsFolderPath = path.join(panelState.workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME);
         const tree = recipeDataMessage.recipe.trees.find(recipeTree => !!recipeTree.folderName
             && !!recipeTree.history?.datasets.some(dataset => dataset.datasetFolderName === datasetFolderName));
         const treeLocations = tree ? this.resolveTreeSnapshotLocations(panelState.workspaceRoot, recipeDataMessage.recipe, tree) : [];
         const journey = RecipeCockpitDatasetJourney.buildJourney(
             datasetFolderPath,
             treeLocations,
-            path.join(panelState.workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME),
+            this.isUsableWorkspacePath(legacyOrgOperationsFolderPath, panelState.workspaceRoot) ? legacyOrgOperationsFolderPath : undefined,
             DATASET_JOURNEY_ENTRY_LIMIT
         );
         const filePaths: string[] = [];
@@ -12543,7 +12562,7 @@ export class RecipeCockpitService {
                     ...( entry.errorExcerpt !== undefined ? { errorExcerpt: entry.errorExcerpt } : {} ),
                     files: entry.filePaths
                         .filter(filePath => this.isUsableWorkspacePath(filePath, panelState.workspaceRoot))
-                        .map(filePath => ({ fileIndex: filePaths.push(filePath) - 1, relativePath: path.relative(panelState.workspaceRoot, filePath).split(path.sep).join('/') }))
+                        .map(filePath => ({ fileIndex: filePaths.push(filePath) - 1, relativePath: this.toDisplayedRelativePath(panelState.workspaceRoot, filePath) }))
                 };
             }),
             hiddenEntryCount: journey.hiddenEntryCount,
@@ -12553,6 +12572,16 @@ export class RecipeCockpitService {
 
         panelState.pendingJourneyFiles.set(datasetFolderName, { journeySequence: journeyMessage.journeySequence, filePaths: filePaths });
         this.postToPanel(cockpitPanel, journeyMessage);
+
+    }
+
+    // A FOLDER NAME CAN CARRY A BIDI OR CONTROL CHARACTER THAT MAKES A PATH READ AS ANOTHER; THE FILE OPENED IS CHOSEN BY INDEX, SO ONLY THE TEXT IS CLEANED
+    private static toDisplayedRelativePath(workspaceRoot: string, filePath: string): string {
+
+        return path.relative(workspaceRoot, filePath)
+            .split(path.sep)
+            .join('/')
+            .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, '');
 
     }
 
@@ -25569,6 +25598,12 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (!rowState.dataset.lastInsert) {
             rowState.journeyElement.textContent = '';
             rowState.journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_NO_INSERTS_NOTE));
+            return;
+        }
+
+        // AN ANSWER THAT ARRIVED WHILE THE ROW WAS CLOSED IS DRAWN NOW, NOT ASKED FOR AGAIN
+        if (rowState.journeyMessage) {
+            drawDatasetJourney(rowState);
             return;
         }
 

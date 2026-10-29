@@ -18,8 +18,19 @@ import { IRunHistoryRow, RecipeCockpitRunHistory, RunHistoryRowStatus, RunHistor
 
 export const DATASET_JOURNEY_ENTRY_LIMIT = 200;
 
-// A RESULTS FILE HOLDS EVERY RECORD'S ANSWER; PAST THIS IT IS NOT READ FOR AN EXCERPT
-export const DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES = 32 * 1024 * 1024;
+/*
+    A results file holds every record's answer, and an excerpt parses the whole file on the extension
+    host (a 20 MB file measured ~350 ms): past the per-file size it is not read, and one journey reads
+    at most the budget in all, newest attempt first.
+*/
+export const DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES = 4 * 1024 * 1024;
+export const DATASET_JOURNEY_RESULTS_READ_BUDGET_BYTES = 16 * 1024 * 1024;
+
+// A STEP FILE NAMED IN LOCAL TIME IS LISTED THIS FAR EITHER SIDE OF THE WINDOW, SO A DAYLIGHT-SAVING HOUR CANNOT HIDE ONE; THE WINDOW ITSELF DECIDES
+const STEP_LISTING_MARGIN_MILLISECONDS = 2 * 60 * 60 * 1000;
+
+export const DATASET_JOURNEY_RESULTS_TOO_LARGE_NOTE = 'Its results file is too large to read for an error here; open it with View file.';
+export const DATASET_JOURNEY_RESULTS_BUDGET_SPENT_NOTE = 'Its results file was not read for an error here, as later inserts used up what one journey reads; open it with View file.';
 
 export type DatasetJourneyEntryKind = 'insert' | RunHistoryStep;
 
@@ -67,7 +78,15 @@ export class RecipeCockpitDatasetJourney {
             return { attemptCount: 0, entries: [], hiddenEntryCount: 0, otherOrgStepCount: 0, untrackedStepCount: 0 };
         }
 
-        const insertEntries = attempts.map(attempt => this.buildInsertEntry(attempt.read, attempt.timeMs));
+        // AN EXCERPT IS READ ONLY FOR AN ENTRY THE CAP KEEPS, SO THE RESULTS FILE IS REMEMBERED BESIDE IT
+        const excerptResultsFilePaths = new Map<IDatasetJourneyEntry, string>();
+        const insertEntries = attempts.map(attempt => {
+            const insertEntry = this.buildInsertEntry(attempt.read, attempt.timeMs);
+            if ( insertEntry.status !== 'succeeded' && attempt.read.resultsFilePath !== undefined ) {
+                excerptResultsFilePaths.set(insertEntry, attempt.read.resultsFilePath);
+            }
+            return insertEntry;
+        });
         const lastAttempt = attempts[attempts.length - 1];
         const lastAttemptFinishedAt = lastAttempt.read.summary ? Date.parse(lastAttempt.read.summary.finishedAt) : lastAttempt.timeMs;
         const windowEndMs = Math.max(lastAttempt.timeMs, lastAttemptFinishedAt);
@@ -81,7 +100,10 @@ export class RecipeCockpitDatasetJourney {
         // A STEP WITH NO ORG ON RECORD IS KEPT; WITH NO ATTEMPT NAMING AN ORG, NO STEP CAN BE TOLD APART
         const isAttemptOrg = (orgUsername: string | undefined) => attemptUsernames.size === 0 || orgUsername === undefined || attemptUsernames.has(orgUsername.toLowerCase());
 
-        const stepRows = RecipeCockpitRunHistory.listTreeHistory(treeLocations, Number.MAX_SAFE_INTEGER).rows.filter(row => isInWindow(row.timeMs));
+        const stepRows = RecipeCockpitRunHistory.listTreeHistory(treeLocations, Number.MAX_SAFE_INTEGER, {
+            startMs: windowStartMs - STEP_LISTING_MARGIN_MILLISECONDS,
+            endMs: windowEndMs + STEP_LISTING_MARGIN_MILLISECONDS
+        }).rows.filter(row => isInWindow(row.timeMs));
         const stepEntries = stepRows.filter(row => isAttemptOrg(row.orgUsername)).map(row => this.buildStepEntry(row));
         const otherOrgStepCount = stepRows.length - stepEntries.length;
         const untrackedStepCount = this.countUntrackedSteps(legacyOrgOperationsFolderPath, isInWindow, isAttemptOrg);
@@ -94,10 +116,13 @@ export class RecipeCockpitDatasetJourney {
                 || first.entryIndex - second.entryIndex)
             .map(sortedEntry => sortedEntry.entry);
         const keptCount = Math.max(0, Math.min(entries.length, entryLimit));
+        const keptEntries = entries.slice(entries.length - keptCount);
+
+        this.attachResultsExcerpts([...keptEntries].reverse(), excerptResultsFilePaths);
 
         return {
             attemptCount: attempts.length,
-            entries: entries.slice(entries.length - keptCount),
+            entries: keptEntries,
             hiddenEntryCount: entries.length - keptCount,
             otherOrgStepCount: otherOrgStepCount,
             untrackedStepCount: untrackedStepCount
@@ -119,8 +144,6 @@ export class RecipeCockpitDatasetJourney {
         const summary = attempt.summary;
 
         if ( !summary ) {
-            const results = this.readResultsExcerpt(attempt.resultsFilePath);
-
             return {
                 kind: 'insert',
                 status: attempt.summaryState === 'missing' ? 'unrecorded' : 'unreadable',
@@ -128,7 +151,6 @@ export class RecipeCockpitDatasetJourney {
                 summaryText: attempt.summaryState === 'missing'
                     ? 'No outcome was saved for this insert.'
                     : 'Its summary file could not be read, so how it ended is not shown.',
-                ...results,
                 filePaths: filePaths
             };
         }
@@ -150,7 +172,6 @@ export class RecipeCockpitDatasetJourney {
             ...( summary.orgUsername !== null ? { orgUsername: summary.orgUsername } : {} ),
             ...( summary.orgAlias !== undefined ? { orgAlias: summary.orgAlias } : {} ),
             summaryText: summaryParts.join(' · '),
-            ...( status === 'succeeded' ? {} : this.readResultsExcerpt(attempt.resultsFilePath) ),
             filePaths: filePaths
         };
 
@@ -190,18 +211,18 @@ export class RecipeCockpitDatasetJourney {
         an all-or-none rollback answer; else the first error. Every part is type-checked: a file out
         of shape says it is unreadable, and one with no failed record has no excerpt.
     */
-    static readResultsExcerpt(resultsFilePath: string | undefined): { errorExcerpt?: string } {
-
-        if ( resultsFilePath === undefined ) {
-            return {};
-        }
+    static readResultsExcerpt(resultsFilePath: string): { errorExcerpt?: string } {
 
         const unreadable = { errorExcerpt: `The results file ${path.basename(resultsFilePath)} is unreadable, so no error is shown.` };
         const resultsText = DatasetInsertAttemptService.readSmallFile(resultsFilePath, DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES);
         let parsedResults: unknown;
 
+        if ( resultsText === undefined ) {
+            return unreadable;
+        }
+
         try {
-            parsedResults = JSON.parse(resultsText as string);
+            parsedResults = JSON.parse(resultsText);
         } catch {
             return unreadable;
         }
@@ -226,6 +247,52 @@ export class RecipeCockpitDatasetJourney {
         const messageText = firstError.message ? ` — ${firstError.message}` : '';
 
         return { errorExcerpt: RecipeCockpitRunHistory.toDetail(`${firstError.objectApiName}: ${firstError.statusCode}${fieldsText}${messageText}`) };
+
+    }
+
+    /*
+        Each kept insert entry that did not succeed gets its results file's excerpt, newest first,
+        while the journey's read budget lasts; a file past the per-file size, or past what is left of
+        the budget, is not read and says so.
+    */
+    private static attachResultsExcerpts(entriesNewestFirst: readonly IDatasetJourneyEntry[], excerptResultsFilePaths: ReadonlyMap<IDatasetJourneyEntry, string>) {
+
+        let remainingBytes = DATASET_JOURNEY_RESULTS_READ_BUDGET_BYTES;
+
+        entriesNewestFirst.forEach(entry => {
+
+            const resultsFilePath = excerptResultsFilePaths.get(entry);
+            if ( resultsFilePath === undefined ) {
+                return;
+            }
+
+            const fileSize = this.readFileSize(resultsFilePath);
+            if ( fileSize !== undefined && fileSize > DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES ) {
+                entry.errorExcerpt = DATASET_JOURNEY_RESULTS_TOO_LARGE_NOTE;
+                return;
+            }
+            if ( fileSize !== undefined && fileSize > remainingBytes ) {
+                entry.errorExcerpt = DATASET_JOURNEY_RESULTS_BUDGET_SPENT_NOTE;
+                return;
+            }
+
+            remainingBytes -= fileSize ?? 0;
+            const results = this.readResultsExcerpt(resultsFilePath);
+            if ( results.errorExcerpt !== undefined ) {
+                entry.errorExcerpt = results.errorExcerpt;
+            }
+
+        });
+
+    }
+
+    private static readFileSize(filePath: string): number | undefined {
+
+        try {
+            return fs.lstatSync(filePath).size;
+        } catch {
+            return undefined;
+        }
 
     }
 

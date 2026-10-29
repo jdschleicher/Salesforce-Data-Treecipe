@@ -126,6 +126,15 @@ export interface IRunHistoryRow {
     filePaths: string[];
 }
 
+/*
+    A time window a listing keeps steps from, in epoch milliseconds. A file named outside it is
+    never read, so a long history costs only its directory listings.
+*/
+export interface IRunHistoryTimeWindow {
+    startMs: number;
+    endMs: number;
+}
+
 export interface IRunHistoryListing {
     rows: IRunHistoryRow[];
     hiddenRowCount: number;
@@ -297,7 +306,9 @@ export class RecipeCockpitRunHistory {
         run on screen first), at most rowLimit with the rest counted. Rows are placed by their file
         names; every summary is read once, for the files it claims, and kept for its row.
     */
-    static listTreeHistory(locations: readonly IRecipeCockpitRunArtifactsLocation[], rowLimit: number = RUN_HISTORY_ROW_LIMIT): IRunHistoryListing {
+    static listTreeHistory(locations: readonly IRecipeCockpitRunArtifactsLocation[],
+                            rowLimit: number = RUN_HISTORY_ROW_LIMIT,
+                            timeWindow?: IRunHistoryTimeWindow): IRunHistoryListing {
 
         const candidates: IRowCandidate[] = [];
         const seenFolderPaths = new Set<string>();
@@ -314,9 +325,9 @@ export class RecipeCockpitRunHistory {
 
             this.listRealEntries(orgOperationsFolderPath)
                 .filter(entry => entry.isDirectory())
-                .forEach(entry => candidates.push(...this.collectFolderCandidates(path.join(orgOperationsFolderPath, entry.name), runFolderName, entry.name)));
+                .forEach(entry => candidates.push(...this.collectFolderCandidates(path.join(orgOperationsFolderPath, entry.name), runFolderName, entry.name, timeWindow)));
 
-            candidates.push(...this.collectFolderCandidates(RecipeCockpitRunArtifacts.buildKindFolderPath(location, 'PermissionSets'), runFolderName, undefined));
+            candidates.push(...this.collectFolderCandidates(RecipeCockpitRunArtifacts.buildKindFolderPath(location, 'PermissionSets'), runFolderName, undefined, timeWindow));
 
         });
 
@@ -371,12 +382,19 @@ export class RecipeCockpitRunHistory {
         row "not recorded", and a manifest joins the first unclaimed result of its step at or after
         it (a deploy writes its package.xml just before the CLI runs), else is a row of its own.
     */
-    private static collectFolderCandidates(folderPath: string, runFolderName: string, folderOrgUsername: string | undefined): IRowCandidate[] {
+    private static collectFolderCandidates(folderPath: string,
+                                            runFolderName: string,
+                                            folderOrgUsername: string | undefined,
+                                            timeWindow: IRunHistoryTimeWindow | undefined): IRowCandidate[] {
 
+        const isInWindow = (timestamp: string) => {
+            const timeMs = this.readCompactTimestamp(timestamp) as number;
+            return !timeWindow || ( timeMs >= timeWindow.startMs && timeMs <= timeWindow.endMs );
+        };
         const parsedFiles = this.listRealEntries(folderPath)
             .filter(entry => entry.isFile())
             .map(entry => ({ fileName: entry.name, parsed: this.parseRunFileName(entry.name) }))
-            .filter((file): file is { fileName: string; parsed: IRunFileName } => file.parsed !== undefined)
+            .filter((file): file is { fileName: string; parsed: IRunFileName } => file.parsed !== undefined && isInWindow(file.parsed.timestamp))
             .sort((first, second) => first.fileName < second.fileName ? -1 : first.fileName > second.fileName ? 1 : 0);
 
         const candidates: IRowCandidate[] = [];
