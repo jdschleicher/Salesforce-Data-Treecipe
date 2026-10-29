@@ -65,6 +65,18 @@ export interface IDatasetLastInsertRead {
     resultsFilePath?: string;
 }
 
+/*
+    One attempt as its folder holds it. summaryState says whether its summary was read, is missing
+    (an insert from before summaries) or is there and out of shape.
+*/
+export interface IInsertAttemptRead {
+    attemptTimestamp: string;
+    summaryState: 'read' | 'missing' | 'unreadable';
+    summary?: IInsertAttemptSummary;
+    resultsFilePath?: string;
+    summaryFilePath?: string;
+}
+
 export class DatasetInsertAttemptService {
 
     static buildSummaryFileName(attemptTimestamp: string): string {
@@ -214,37 +226,16 @@ export class DatasetInsertAttemptService {
     */
     static readLatestAttempt(datasetFolderPath: string): IDatasetLastInsertRead | undefined {
 
-        const insertAttemptsFolderPath = path.join(datasetFolderPath, INSERT_ATTEMPTS_FOLDER_NAME);
-
-        if ( !this.isRealDirectory(insertAttemptsFolderPath) ) {
-            return undefined;
-        }
-
-        let attemptEntries: fs.Dirent[];
-
-        try {
-            attemptEntries = fs.readdirSync(insertAttemptsFolderPath, { withFileTypes: true });
-        } catch {
-            return undefined;
-        }
-
-        const attemptTimestamps = attemptEntries
-            .filter(attemptEntry => attemptEntry.isDirectory())
-            .map(attemptEntry => INSERT_ATTEMPT_FOLDER_NAME_PATTERN.exec(attemptEntry.name)?.[1])
-            .filter((attemptTimestamp): attemptTimestamp is string => attemptTimestamp !== undefined)
-            .sort();
+        const attemptTimestamps = this.listAttemptTimestamps(datasetFolderPath);
 
         if ( attemptTimestamps.length === 0 ) {
             return undefined;
         }
 
         const attemptTimestamp = attemptTimestamps[attemptTimestamps.length - 1];
-        const attemptFolderPath = path.join(insertAttemptsFolderPath, `insertAttempt-${attemptTimestamp}`);
-        const resultsFilePath = path.join(attemptFolderPath, this.buildResultsFileName(attemptTimestamp));
-        const summaryFilePath = path.join(attemptFolderPath, this.buildSummaryFileName(attemptTimestamp));
-        const summaryText = this.readSmallFile(summaryFilePath, MAXIMUM_SUMMARY_FILE_BYTES);
-        const summary = summaryText === undefined ? undefined : this.parseSummary(summaryText);
-        const resultsTarget = this.isRealFile(resultsFilePath) ? { resultsFilePath } : {};
+        const attempt = this.readAttempt(datasetFolderPath, attemptTimestamp);
+        const summary = attempt.summary;
+        const resultsTarget = attempt.resultsFilePath !== undefined ? { resultsFilePath: attempt.resultsFilePath } : {};
 
         if ( summary ) {
             const orgLabel = summary.orgAlias ?? summary.orgUsername ?? undefined;
@@ -262,16 +253,76 @@ export class DatasetInsertAttemptService {
         }
 
         // NO SUMMARY AT ALL IS SAID SO; ONE THAT IS THERE AND UNREADABLE IS ONLY UNKNOWN
-        const isOutcomeUnrecorded = summaryText === undefined && !this.pathExists(summaryFilePath);
-
         return {
             lastInsert: {
                 status: 'unknown',
                 attemptTimestamp: attemptTimestamp,
-                ...( isOutcomeUnrecorded ? { isOutcomeUnrecorded: true as const } : {} )
+                ...( attempt.summaryState === 'missing' ? { isOutcomeUnrecorded: true as const } : {} )
             },
             ...resultsTarget
         };
+
+    }
+
+    /*
+        Every insert attempt of a data set folder, oldest first by the timestamp of its folder,
+        which sorts as text. No link is followed: a linked InsertAttempts or attempt folder is absent.
+    */
+    static listAttemptTimestamps(datasetFolderPath: string): string[] {
+
+        const insertAttemptsFolderPath = path.join(datasetFolderPath, INSERT_ATTEMPTS_FOLDER_NAME);
+
+        if ( !this.isRealDirectory(insertAttemptsFolderPath) ) {
+            return [];
+        }
+
+        let attemptEntries: fs.Dirent[];
+
+        try {
+            attemptEntries = fs.readdirSync(insertAttemptsFolderPath, { withFileTypes: true });
+        } catch {
+            return [];
+        }
+
+        return attemptEntries
+            .filter(attemptEntry => attemptEntry.isDirectory())
+            .map(attemptEntry => INSERT_ATTEMPT_FOLDER_NAME_PATTERN.exec(attemptEntry.name)?.[1])
+            .filter((attemptTimestamp): attemptTimestamp is string => attemptTimestamp !== undefined)
+            .sort();
+
+    }
+
+    // ONE ATTEMPT'S SUMMARY AS READ, AND ITS FILES WHEN THEY ARE FILES (NEVER LINKS); THE PATHS ARE HOST-ONLY
+    static readAttempt(datasetFolderPath: string, attemptTimestamp: string): IInsertAttemptRead {
+
+        const attemptFolderPath = path.join(datasetFolderPath, INSERT_ATTEMPTS_FOLDER_NAME, `insertAttempt-${attemptTimestamp}`);
+        const resultsFilePath = path.join(attemptFolderPath, this.buildResultsFileName(attemptTimestamp));
+        const summaryFilePath = path.join(attemptFolderPath, this.buildSummaryFileName(attemptTimestamp));
+        const summaryText = this.readSmallFile(summaryFilePath, MAXIMUM_SUMMARY_FILE_BYTES);
+        const summary = summaryText === undefined ? undefined : this.parseSummary(summaryText);
+        const summaryState: IInsertAttemptRead['summaryState'] = summary
+            ? 'read'
+            : summaryText === undefined && !this.pathExists(summaryFilePath) ? 'missing' : 'unreadable';
+
+        return {
+            attemptTimestamp: attemptTimestamp,
+            summaryState: summaryState,
+            ...( summary ? { summary: summary } : {} ),
+            ...( this.isRealFile(resultsFilePath) ? { resultsFilePath: resultsFilePath } : {} ),
+            ...( this.isRealFile(summaryFilePath) ? { summaryFilePath: summaryFilePath } : {} )
+        };
+
+    }
+
+    // "2026-09-02T10-00-00", THE UTC TIME AN ATTEMPT FOLDER IS NAMED BY, AS MILLISECONDS; undefined FOR ONE THAT IS NOT A REAL TIME
+    static readAttemptTimestamp(attemptTimestamp: string): number | undefined {
+
+        const timestampMatch = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/.exec(attemptTimestamp);
+        const isoInstant = timestampMatch ? `${timestampMatch[1]}T${timestampMatch[2]}:${timestampMatch[3]}:${timestampMatch[4]}Z` : undefined;
+
+        return isoInstant !== undefined && this.isIsoInstant(isoInstant) && new Date(isoInstant).toISOString().startsWith(isoInstant.slice(0, 19))
+            ? Date.parse(isoInstant)
+            : undefined;
 
     }
 
@@ -339,9 +390,10 @@ export class DatasetInsertAttemptService {
             if ( !fileStats.isFile() || fileStats.size > maximumBytes ) {
                 return undefined;
             }
-            const fileBuffer = Buffer.alloc(maximumBytes + 1);
-            const bytesRead = fs.readSync(fileDescriptor, fileBuffer, 0, maximumBytes + 1, 0);
-            return bytesRead > maximumBytes ? undefined : fileBuffer.toString('utf8', 0, bytesRead);
+            // SIZED BY THE FILE, NOT THE LIMIT; A FILE THAT GREW SINCE ITS fstat IS BEING WRITTEN, AND IS NOT READ
+            const fileBuffer = Buffer.alloc(fileStats.size + 1);
+            const bytesRead = fs.readSync(fileDescriptor, fileBuffer, 0, fileStats.size + 1, 0);
+            return bytesRead > fileStats.size ? undefined : fileBuffer.toString('utf8', 0, bytesRead);
         } catch {
             return undefined;
         } finally {

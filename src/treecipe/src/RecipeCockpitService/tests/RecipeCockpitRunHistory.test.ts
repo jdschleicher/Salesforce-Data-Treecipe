@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { DatasetInsertAttemptService } from '../../DatasetInsertAttemptService/DatasetInsertAttemptService';
+
 jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
@@ -272,6 +274,23 @@ describe('RecipeCockpitRunHistory (#485)', () => {
                 }],
                 hiddenRowCount: 0
             });
+
+        });
+
+        it('reads no file named outside a time window it is given, a summary included', () => {
+
+            const insideFilePath = writeRunFile(orgOperationsFolder(), '20261028-101540-field-deploy.json');
+            writeRunFile(orgOperationsFolder(), '20261020-090000-record-type-deploy.json');
+            writeRunFile(orgOperationsFolder(), '20261020-090000-record-type-deploy-summary.json', '{"broken":true}');
+            const readSpy = jest.spyOn(DatasetInsertAttemptService, 'readSmallFile');
+
+            const { rows } = RecipeCockpitRunHistory.listTreeHistory([location], 500, {
+                startMs: new Date(2026, 9, 28, 10, 0, 0).getTime(),
+                endMs: new Date(2026, 9, 28, 11, 0, 0).getTime()
+            });
+
+            expect(rows.map(row => [row.step, row.status, row.filePaths])).toEqual([['field-deploy', 'unrecorded', [insideFilePath]]]);
+            expect(readSpy).not.toHaveBeenCalled();
 
         });
 
