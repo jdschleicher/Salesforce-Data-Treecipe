@@ -2737,11 +2737,12 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given the recipe, draws the toolbar first, the one card the dropdown chose, and acknowledges the draw', () => {
+        it('given the recipe, draws the help section first and no toolbar row (#548), the one card the dropdown chose, and acknowledges the draw', () => {
 
             const panel = renderFixtureRecipe();
 
-            expect(panel.cockpitBodyElement.children[0].classList.contains('toolbar')).toBe(true);
+            expect(panel.cockpitBodyElement.children[0].classList.contains('helpSection')).toBe(true);
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')).toEqual([]);
 
             expect(panel.treeCards()).toHaveLength(1);
@@ -2960,17 +2961,16 @@ describe('RecipeCockpitService', () => {
         });
 
         // #533: THE RUN, THE SEARCH AND THE TREECIPE DROPDOWN READ TOP TO BOTTOM AS ONE SET OF CHOICES
-        it('draws the run selector first in the Treecipes section, above the search and the Treecipe dropdown, and none in the toolbar', () => {
+        it('draws the run selector first in the Treecipes section, above the search and the Treecipe dropdown, and no toolbar row (#548)', () => {
 
             const panel = renderFixtureRecipe();
             const [treecipesControlsElement] = panel.findAll(panel.cockpitBodyElement, 'treecipesControls');
-            const [toolbarElement] = panel.findAll(panel.cockpitBodyElement, 'toolbar');
 
             expect(treecipesControlsElement.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual([
                 'runPicker', 'treecipesSearch', 'treecipesSearchResults', 'treePicker', 'treePickerObjects'
             ]);
             expect(panel.findAll(panel.cockpitBodyElement, 'runSelect')).toHaveLength(1);
-            expect(panel.findAll(toolbarElement, 'runSelect')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
 
         });
 
@@ -2982,7 +2982,7 @@ describe('RecipeCockpitService', () => {
 
             expect(labelElement.tagName).toBe('label');
             expect(labelElement.textContent).toBe(RECIPE_COCKPIT_RUN_PICKER_LABEL);
-            expect(RECIPE_COCKPIT_RUN_PICKER_LABEL).toBe('Select Generate Treecipe runs by date');
+            expect(RECIPE_COCKPIT_RUN_PICKER_LABEL).toBe('Select Generated Treecipe runs by date:');
             expect(runSelectElement.className).toBe('runSelect');
             expect(labelElement.attributes.for).toBe(runSelectElement.attributes.id);
             expect(runSelectElement.attributes.id).toBe('runSelect');

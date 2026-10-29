@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.186.0] - Recipe Cockpit: a card's and a data set row's ✎ renames them in place, not in a VS Code input box
+## [3.187.0] - Recipe Cockpit: a card's and a data set row's ✎ renames them in place, not in a VS Code input box
 
 [#551](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/551). The ✎ on a Treecipe card header and on a Previously Used Data Sets row opened VS Code's input box at the top of the window, far from the name being changed.
 
@@ -9,6 +9,16 @@
 - **Unchanged.** Names and favorites are stored where and as they were, the naming rules are the same, ☆ posts what it did, ✎ and ☆ keep their place before the name (#540), and no folder is renamed. The box's colours are pairs the contrast test already holds.
 - **Docs.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say how the box saves and cancels.
 - **Tests.** `RecipeCockpitTreePreferences.test.ts` and `RecipeCockpitDatasetPreferences.test.ts`: the router's new shape and refusals, the executor's save, clear, refusal, a name another window stored since, a failed write and a stale model, a scan for `showInputBox`, and the panel's box (built on first open, Enter, blur, Escape, ✎ as a cancel, the refusal line, a close once the name is redrawn, an answer for another model or card ignored).
+## [3.186.0] - Recipe Cockpit: Favorites only sits beside the Treecipe dropdown, and the run list reads "Select Generated Treecipe runs by date:"
+
+[#548](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/548). **Favorites only** was the last thing in the toolbar row just above the pinned Target Org Manager, so it read as an org control, though it narrows the Treecipes section's dropdown.
+
+- **Beside the dropdown it narrows.** **Favorites only** and its *N of M trees* count are drawn on the Treecipe dropdown's row, to its right, and wrap under it in a narrow panel. They are drawn only when a card has a folder to star, as before. What the filter does, its place in the saved position (`isFavoritesOnly`) and a focus turning it off are unchanged, and so is the data sets tab's own Favorites only.
+- **No toolbar row.** Nothing else was in it, so the row and its `.toolbar` rule are gone. The ? help section is now the first thing in the panel body, and a run with no cards draws its run list at the top of the panel.
+- **The run list's label** reads **Select Generated Treecipe runs by date:**.
+- **Help.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and its pictures say where Favorites only is and use the new label; the screenshot script waits for the help section rather than the toolbar.
+- **Tests.** The toggle and its count on the dropdown's row and nowhere before the Target Org Manager, the filter still narrowing from there, no toggle on a run with no card to star, no toolbar row anywhere, the help section first in the body, and the new label text.
+
 ## [3.185.0] - Recipe Cockpit: "Deploy fields & dependencies…" brings the record pages and compact layouts its objects open, and sets back the ones it cannot
 
 [#547](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/547). Since #402 the fields deploy sends each custom tree object's `.object-meta.xml` as it is. That file can name metadata the org lacks: an `<actionOverrides>` opening a FlexiPage (`<type>Flexipage</type>`, `<content>Order_Record_Page</content>`), a Lightning component or a Visualforce page, or a custom `<compactLayoutAssignment>`. The org then refused the whole object, and every field on it with it.

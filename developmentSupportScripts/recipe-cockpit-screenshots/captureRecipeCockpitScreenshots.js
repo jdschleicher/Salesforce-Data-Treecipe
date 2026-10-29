@@ -136,7 +136,7 @@ class RecipeCockpitScreenshots {
             hostMessages.forEach((hostMessage) => window.postMessage(hostMessage, '*'));
         // THE VERSION SITS INSIDE THE CHANGELOG BUTTON AT THE TOP RIGHT (#487), SO THE PICTURES SHOW IT AS THE HOST SENDS IT
         }, [{ command: 'extensionInfo', version: EXTENSION_VERSION }, { command: 'recipeData', recipe: recipe, renderSequence: 1 }, { command: 'loadPhase', message: '' }]);
-        await page.waitForSelector('.toolbar');
+        await page.waitForSelector('#cockpitHelp', { state: 'attached' });
 
         return page;
 
