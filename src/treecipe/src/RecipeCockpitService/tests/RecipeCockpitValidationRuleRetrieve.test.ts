@@ -60,6 +60,7 @@ import { METADATA_RETRIEVE_MAX_COMPONENTS, RecipeCockpitMetadataRetrieve } from 
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { answerOrgConnectionPings } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { ORG_OPERATION_REDACTED_VALUE, ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
@@ -70,7 +71,6 @@ const PERMISSION_SET_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionS
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
 
 const readJson = (filePath: string) => JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-const SF_ORG_LIST = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'sfOrgListVerbose.json'));
 const ORG_AUTHORIZATIONS = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'orgAuthorizations.json'));
 
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
@@ -573,13 +573,13 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             (execFile as unknown as jest.Mock).mockReset();
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], _options: unknown, callback: any) => {
                 cliCalls.push(argumentList);
-                const cliAnswer = argumentList[0] === 'org' && argumentList[1] === 'list' ? { stdout: JSON.stringify(SF_ORG_LIST) }
-                    : retrieveHandler(argumentList);
+                const cliAnswer = retrieveHandler(argumentList);
                 setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
                 return { kill: jest.fn() };
             });
 
             (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => ORG_AUTHORIZATIONS);
+            answerOrgConnectionPings(Org.create as jest.Mock);
 
             // #498: THE LISTING IS listMetadata ON A CONNECTION OPENED BY USERNAME, NOT A CLI
             listedQueries = [];

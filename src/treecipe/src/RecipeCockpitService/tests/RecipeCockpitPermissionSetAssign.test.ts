@@ -41,7 +41,7 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo } from '@salesforce/core';
+import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
@@ -57,6 +57,7 @@ import {
 import { PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, PERMISSION_SET_MAX_PICKS, RecipeCockpitPermissionSetAssign } from '../RecipeCockpitPermissionSetAssign';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { answerOrgConnectionPings } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
@@ -68,7 +69,6 @@ const PERMISSION_SET_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionS
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
 
 const readJson = (filePath: string) => JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-const SF_ORG_LIST = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'sfOrgListVerbose.json'));
 const ORG_AUTHORIZATIONS = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'orgAuthorizations.json'));
 
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
@@ -512,7 +512,6 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
         const deployCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'project');
         // THE PERMISSION SET NAMES EACH INSERT ASSIGNED, READ BACK FROM THE IDS IT SENT
         const assignCalls = () => insertCalls.map(insertCall => insertCall.records.map(assignmentRecord => Object.keys(PS_IDS_BY_NAME).find(permissionSetName => PS_IDS_BY_NAME[permissionSetName] === assignmentRecord.PermissionSetId)));
-        const nonListingCliCalls = () => cliCalls.filter(argumentList => !( argumentList[0] === 'org' && argumentList[1] === 'list' ));
         const lastAssignState = () => postedNamed('permissionSetAssignState').at(-1);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
@@ -579,15 +578,12 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], _options: unknown, callback: any) => {
                 cliCalls.push(argumentList);
                 const answerWith = (cliAnswer: { stdout: string; error?: unknown }) => setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
-                if ( argumentList[0] === 'org' && argumentList[1] === 'list' ) {
-                    answerWith({ stdout: JSON.stringify(SF_ORG_LIST) });
-                } else {
-                    answerWith({ stdout: '', error: new Error(`A CLI process was started that should not have been: ${argumentList.join(' ')}`) });
-                }
+                answerWith({ stdout: '', error: new Error(`A CLI process was started that should not have been: ${argumentList.join(' ')}`) });
                 return { kill: childKill };
             });
 
             (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => ORG_AUTHORIZATIONS);
+            answerOrgConnectionPings(Org.create as jest.Mock);
 
             (vscode.window.withProgress as jest.Mock).mockReset();
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() }));
@@ -699,7 +695,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
                 records: [{ AssigneeId: USER_ID, PermissionSetId: PS_ACCOUNT_ID }, { AssigneeId: USER_ID, PermissionSetId: PS_CONTACT_ID }],
                 options: { allowRecursive: false, allOrNone: false }
             }]);
-            expect(nonListingCliCalls()).toEqual([]);
+            expect(cliCalls).toEqual([]);
             const [progressOptions] = (vscode.window.withProgress as jest.Mock).mock.calls.at(-1);
             expect(progressOptions.cancellable).toBe(false);
 
@@ -982,7 +978,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             expect(assignCalls()).toEqual([['Account_Tree_Access', 'Contact_Reader']]);
             expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringMatching(/^Assigned 2 permission sets /));
-            expect(nonListingCliCalls()).toEqual([]);
+            expect(cliCalls).toEqual([]);
 
         });
 
@@ -1069,11 +1065,11 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             await openCockpit();
             jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed')
-                .mockRejectedValueOnce(new Error('The Salesforce CLI could not report which authorized orgs are connected.'))
+                .mockRejectedValueOnce(new Error('The authorized Salesforce orgs could not be read, so no org is listed.'))
                 .mockResolvedValueOnce(undefined);
 
             await assignPermissionSets(ACCOUNT_TREE_KEY, null);
-            expect(lastWarning().text).toContain('Nothing was assigned: The Salesforce CLI could not report');
+            expect(lastWarning().text).toContain('Nothing was assigned: The authorized Salesforce orgs could not be read');
 
             const warningsBefore = notificationWarnings().length;
             await assignPermissionSets(ACCOUNT_TREE_KEY, null);
