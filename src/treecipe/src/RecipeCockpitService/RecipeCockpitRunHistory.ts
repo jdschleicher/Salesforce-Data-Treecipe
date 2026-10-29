@@ -533,7 +533,8 @@ export class RecipeCockpitRunHistory {
 
     }
 
-    private static toDetail(text: string): string {
+    // ONE LINE, NO CONTROL OR BIDI CHARACTER, CUT TO RUN_HISTORY_DETAIL_MAX_LENGTH
+    static toDetail(text: string): string {
 
         const singleLine = String(text)
             .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ')
