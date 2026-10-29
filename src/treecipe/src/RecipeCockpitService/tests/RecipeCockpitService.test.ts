@@ -671,6 +671,14 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // AN UNSELECTED TAB RESTS IN muted ON rowHover (#493), SO THAT PAIR IS A RESTING ONE, NOT ONLY A HOVER
+        it('holds an unselected tab\'s resting text, muted on rowHover, to the minimum', () => {
+
+            expect(TEXT_ON_BACKGROUND_PAIRS).toContainEqual(['muted', 'rowHover']);
+            expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.muted, RECIPE_COCKPIT_PALETTE.rowHover)).toBeGreaterThanOrEqual(MINIMUM_TEXT_CONTRAST_RATIO);
+
+        });
+
         it('names the pair that drops below the minimum when a palette value is changed', () => {
 
             const paletteWithTheOldMuted = { ...RECIPE_COCKPIT_PALETTE, muted: '#6B7280' };

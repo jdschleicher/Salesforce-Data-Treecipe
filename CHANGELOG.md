@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.171.0] - Recipe Cockpit: unselected tabs rest in the mint, rounded-top look, and hover makes their label bold and underlined
+
+[#493](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/493). An unselected card tab or Troubleshooting sub-tab used to be bare muted text until the pointer was over it, so the strip didn't read as tabs, and hover only added the fill.
+
+- **The mint fill at rest.** An unselected `.treeTab` and `.troubleshootingSubTab` now rest in `--sdt-row-hover` with `border-radius: 6px 6px 0 0` and no visible border, which is exactly what hover drew before.
+- **Hover makes the label bold and underlined.** An enabled tab that is not selected draws its label at `font-weight: 600` with `text-decoration: underline`, and the fill stays. The old `:active` fill rules are gone, since the fill is now always there.
+- **The strip doesn't shift.** Each tab carries its label in `data-label` (set when it is drawn, and again when the TODO's sub-tab adds its count). A hidden, zero-height `::before` draws that label in bold above the text, so the tab is always as wide as its bold label. Measured in Chromium, hovering a tab changes no tab's width, height or position.
+- **Unchanged.** A selected tab (the teal-edge outline joined to its panel, the surface fill, the top bar, bold, and no underline on hover), a disabled tab (the `--sdt-disabled-*` pair, which outranks the resting fill), the moving bar (#227), `prefers-reduced-motion` and the focus ring (`accent` on `rowHover`, already held to 3:1). The sub-tabs copy the card tabs' rules rather than share a selector list with them (#363, #365).
+- **Tests.** `RecipeCockpitTabOutline.test.ts` covers: the resting rule; the hover rule (bold, underline, the fill kept, not on a selected or disabled tab); the bold-width reserve; every tab's `data-label` matching its label, the counted TODO's sub-tab included; and the sub-tabs' rules as copies of the card tabs'. The palette test now names `muted` on `rowHover` as the resting pair and holds it to 4.5:1.
+
 ## [3.170.0] - Recipe Cockpit: "Assign permission sets to me…" inserts the assignments itself, with no Salesforce CLI
 
 [#500](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/500), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The assignment used to start a separate `sf org assign permset` process, which took seconds, needed `sf` on PATH and was capped at 50 picks only because of `cmd.exe`'s 8,191-character line.

@@ -47,6 +47,17 @@ const styleSheet = (() => {
     return shellHtml.substring(shellHtml.indexOf('<style'), shellHtml.indexOf('</style>'));
 })();
 
+const TAB_SELECTORS = ['.treeTab', '.troubleshootingSubTab'];
+
+// EACH TAB'S OWN RULE WITH THE SUFFIX GIVEN: THE SUB-TABS COPY THE CARD TABS' RULES, NEVER LIST BESIDE THEM (#363, #365)
+const rulesFor = (suffix: string): string[] => TAB_SELECTORS.map(selector => {
+    const ruleStart = styleSheet.indexOf('\n    ' + selector + suffix + ' {');
+    expect(ruleStart).not.toBe(-1);
+    return styleSheet.substring(ruleStart, styleSheet.indexOf('}', ruleStart) + 1);
+});
+
+const tabHoverRules = () => rulesFor(':hover:not(:disabled):not(.selected)');
+
 const tabPanelsOf = (panel: Panel, treeCard: any) => panel.findAll(treeCard, 'treeTabPanel');
 
 // EVERY SEARCH BOX THE CARDS DRAW ONCE EVERY TAB AND SUB-TAB IS OPEN
@@ -118,8 +129,7 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
             expect(hoverSpecificity).toBe(3);
             ['.treeTabs .treeTab.selected.sdtButton', '.troubleshootingSubTabs .troubleshootingSubTab.selected.sdtButton']
                 .forEach(selector => expect(classAndPseudoClassCount(selector)).toBeGreaterThan(hoverSpecificity));
-            [/\.treeTab:hover:not\(:disabled\):not\(\.selected\) \{[^}]*\}/, /\.troubleshootingSubTab:hover:not\(:disabled\):not\(\.selected\) \{[^}]*\}/]
-                .forEach(rulePattern => expect(styleSheet.match(rulePattern)![0]).not.toContain('border-bottom'));
+            tabHoverRules().forEach(hoverRule => expect(hoverRule).not.toContain('border-bottom'));
 
         });
 
@@ -150,6 +160,85 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
             panel.findAll(troubleshootingPanel, 'troubleshootingSubPanel').forEach((subPanelElement: any) => {
                 expect(panel.findAll(subPanelElement, 'tabSearch')).not.toHaveLength(0);
             });
+
+        });
+
+    });
+
+    describe('an unselected tab at rest and on hover (#493)', () => {
+
+        it('draws the mint fill and rounded top at rest, with no border line, on card tabs and sub-tabs alike', () => {
+
+            const [cardTabRule, subTabRule] = rulesFor('');
+            expect(cardTabRule).toContain('color: var(--sdt-muted);');
+            expect(cardTabRule).toContain('background-color: var(--sdt-row-hover);');
+            expect(cardTabRule).toContain('border-color: transparent;');
+            expect(cardTabRule).toContain('border-radius: 6px 6px 0 0;');
+            expect(subTabRule.replace('.troubleshootingSubTab', '.treeTab')).toBe(cardTabRule);
+
+        });
+
+        it('makes the label bold and underlined on hover, keeping the fill, for an enabled tab that is not selected', () => {
+
+            const [cardTabRule, subTabRule] = tabHoverRules();
+            expect(cardTabRule).toContain('font-weight: 600;');
+            expect(cardTabRule).toContain('text-decoration: underline;');
+            expect(cardTabRule).toContain('border-color: transparent;');
+            expect(cardTabRule).not.toContain('background-color');
+            expect(subTabRule.replace('.troubleshootingSubTab', '.treeTab')).toBe(cardTabRule);
+            expect(styleSheet).not.toMatch(/\.(treeTab|troubleshootingSubTab):active/);
+
+        });
+
+        it('reserves the bold label\'s width, so going bold neither widens the tab nor moves the tabs beside it', () => {
+
+            const [reserveRule, subTabReserveRule] = rulesFor('::before');
+            expect(subTabReserveRule.replace('.troubleshootingSubTab', '.treeTab')).toBe(reserveRule);
+            expect(reserveRule).toContain("content: attr(data-label) / '';");
+            expect(reserveRule).toContain('display: block;');
+            expect(reserveRule).toContain('height: 0;');
+            expect(reserveRule).toContain('overflow: hidden;');
+            expect(reserveRule).toContain('visibility: hidden;');
+            expect(reserveRule).toContain('font-weight: 600;');
+
+        });
+
+        it('carries every tab\'s label in data-label, kept in step when the TODO\'s sub-tab adds its count', () => {
+
+            const panel = drawRecipe(loadHistoryRecipe());
+            openEverySearch(panel);
+
+            let subTabCount = 0;
+            panel.treeCards().forEach((treeCard: any) => {
+                panel.findAll(treeCard, 'treeTab').forEach((tabElement: any) => expect(tabElement.attributes['data-label']).toBe(tabElement.textContent));
+                panel.findAll(treeCard, 'troubleshootingSubTab').forEach((tabElement: any) => {
+                    subTabCount++;
+                    expect(tabElement.attributes['data-label']).toBe(tabElement.textContent);
+                });
+            });
+            expect(subTabCount).toBeGreaterThanOrEqual(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.length);
+            const countedTodosTabs = panel.treeCards().flatMap((treeCard: any) => panel.findAll(treeCard, 'troubleshootingSubTab-todos'))
+                .filter((tabElement: any) => /\(\d+\)$/.test(tabElement.textContent));
+            expect(countedTodosTabs).not.toHaveLength(0);
+
+        });
+
+        it('leaves a selected tab as it was: the hover rule never applies to it, and the outline outranks the resting fill', () => {
+
+            tabHoverRules().forEach(hoverRule => expect(hoverRule).toContain(':not(.selected)'));
+            expect(styleSheet).toContain('.treeTab.selected { color: var(--sdt-text); font-weight: 600; }');
+            expect(styleSheet).toContain('.troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }');
+            // (0,4,0) AGAINST THE RESTING RULE'S (0,1,0), WHEREVER EITHER SITS
+            expect(styleSheet).toContain('.treeTabs .treeTab.selected.sdtButton, .troubleshootingSubTabs .troubleshootingSubTab.selected.sdtButton {');
+
+        });
+
+        it('draws a disabled tab in the disabled pair, which outranks the resting fill, with no bold or underline on hover', () => {
+
+            expect(styleSheet).toMatch(/\.sdtButton-primary:disabled, \.sdtButton-secondary:disabled \{[^}]*color: var\(--sdt-disabled-text\);[^}]*background-color: var\(--sdt-disabled-bg\);/);
+            // (0,2,0) AGAINST THE RESTING RULE'S (0,1,0)
+            tabHoverRules().forEach(hoverRule => expect(hoverRule).toContain(':not(:disabled)'));
+            TAB_SELECTORS.forEach(selector => expect(styleSheet).not.toContain(selector + ':hover {'));
 
         });
 
