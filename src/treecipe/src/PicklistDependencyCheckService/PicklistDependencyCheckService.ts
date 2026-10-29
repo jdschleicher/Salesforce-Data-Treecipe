@@ -443,13 +443,7 @@ export class PicklistDependencyCheckService {
 
     }
 
-    /*
-        labelAliasesByUsername is a LABEL and nothing else (#286): an alias read fresh from the CLI
-        for an authorization that carries none of its own. It never becomes targetOrgIdentifier, so
-        what reaches "--target-org" is decided by the authorization alone, as it always was.
-    */
-    static buildAuthenticatedOrgDetails(authorizations: OrgAuthorization[],
-                                        labelAliasesByUsername?: ReadonlyMap<string, string>): IAuthenticatedOrgDetail[] {
+    static buildAuthenticatedOrgDetails(authorizations: OrgAuthorization[]): IAuthenticatedOrgDetail[] {
 
         if ( !Array.isArray(authorizations) ) {
             return [];
@@ -470,7 +464,7 @@ export class PicklistDependencyCheckService {
                 return orgDetails;
             }
 
-            const alias = authorizationAlias || labelAliasesByUsername?.get(username);
+            const alias = authorizationAlias;
 
             orgDetails.push({ targetOrgIdentifier, username, alias });
 

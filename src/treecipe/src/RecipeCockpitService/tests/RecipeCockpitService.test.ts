@@ -27,6 +27,7 @@ import {
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
+    RECIPE_COCKPIT_RUN_PICKER_LABEL,
     RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL,
     RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL,
     RECIPE_COCKPIT_LOAD_PHASES,
@@ -2956,6 +2957,59 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // #533: THE RUN, THE SEARCH AND THE TREECIPE DROPDOWN READ TOP TO BOTTOM AS ONE SET OF CHOICES
+        it('draws the run selector first in the Treecipes section, above the search and the Treecipe dropdown, and none in the toolbar', () => {
+
+            const panel = renderFixtureRecipe();
+            const [treecipesControlsElement] = panel.findAll(panel.cockpitBodyElement, 'treecipesControls');
+            const [toolbarElement] = panel.findAll(panel.cockpitBodyElement, 'toolbar');
+
+            expect(treecipesControlsElement.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual([
+                'runPicker', 'treecipesSearch', 'treecipesSearchResults', 'treePicker', 'treePickerObjects'
+            ]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'runSelect')).toHaveLength(1);
+            expect(panel.findAll(toolbarElement, 'runSelect')).toEqual([]);
+
+        });
+
+        it('names the run selector with a visible label tied to it, to its left', () => {
+
+            const panel = renderFixtureRecipe();
+            const [runPickerElement] = panel.findAll(panel.cockpitBodyElement, 'runPicker');
+            const [labelElement, runSelectElement] = runPickerElement.children;
+
+            expect(labelElement.tagName).toBe('label');
+            expect(labelElement.textContent).toBe(RECIPE_COCKPIT_RUN_PICKER_LABEL);
+            expect(RECIPE_COCKPIT_RUN_PICKER_LABEL).toBe('Select Generate Treecipe runs by date');
+            expect(runSelectElement.className).toBe('runSelect');
+            expect(labelElement.attributes.for).toBe(runSelectElement.attributes.id);
+            expect(runSelectElement.attributes.id).toBe('runSelect');
+
+        });
+
+        it('lets the run selector take the rest of its row and wrap under its label in a narrow panel', () => {
+
+            const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+
+            expect(styleSheet).toMatch(/\.runPicker \{[^}]*flex-wrap: wrap/);
+            expect(styleSheet).toMatch(/\.runSelect \{[^}]*flex: 1 1 12rem; min-width: 0; max-width: 100%/);
+
+        });
+
+        it('given a run with objects and no trees, keeps the run selector above the notice, with no Treecipes section', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
+                objects: [{ objectApiName: 'Lead', recipeFilePath: '', fields: [] }]
+            }) });
+
+            const bodyClassNames = panel.cockpitBodyElement.children.map((childElement: any) => childElement.className.split(' ')[0]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treecipesControls')).toEqual([]);
+            expect(bodyClassNames.indexOf('runPicker')).toBeGreaterThan(-1);
+            expect(bodyClassNames.indexOf('runPicker')).toBeLessThan(bodyClassNames.indexOf('treesView'));
+
+        });
+
         it('given no generated run, shows the empty state naming Generate Treecipe, no search box and no org picker', () => {
 
             const panel = runPanelScript();
@@ -3012,6 +3066,9 @@ describe('RecipeCockpitService', () => {
 
             expect(panel.findAll(panel.cockpitBodyElement, 'runSelect')).toHaveLength(1);
             expect(panel.findAll(panel.cockpitBodyElement, 'emptyState')[0].textContent).toBe('could not be read');
+
+            const bodyClassNames = panel.cockpitBodyElement.children.map((childElement: any) => childElement.className.split(' ')[0]);
+            expect(bodyClassNames.indexOf('runPicker')).toBeLessThan(bodyClassNames.indexOf('emptyState'));
 
         });
 
