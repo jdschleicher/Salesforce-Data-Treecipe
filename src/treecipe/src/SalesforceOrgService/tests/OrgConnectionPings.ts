@@ -18,6 +18,7 @@ export function answerOrgConnectionPings(orgCreate: jest.Mock,
     const refreshAuth = jest.fn();
 
     orgCreate.mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+        getUsername: () => aliasOrUsername,
         refreshAuth: () => {
             refreshAuth(aliasOrUsername);
             return isConnected(aliasOrUsername)

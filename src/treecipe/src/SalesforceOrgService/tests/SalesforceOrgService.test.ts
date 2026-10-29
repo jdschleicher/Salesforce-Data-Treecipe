@@ -736,10 +736,20 @@ describe('SalesforceOrgService', () => {
             ['no username, with no request', { username: 7 }, undefined, 'notConnected']
         ])('reads %s', async (_description, authorization, refreshAuth, expectedState) => {
 
-            (Org.create as jest.Mock).mockReset().mockResolvedValue({ refreshAuth: jest.fn(refreshAuth) });
+            (Org.create as jest.Mock).mockReset().mockResolvedValue({ getUsername: () => 'x@example.com', refreshAuth: jest.fn(refreshAuth) });
 
             expect(await SalesforceOrgService.checkOrgConnection(authorization as any)).toBe(expectedState);
             expect(Org.create).toHaveBeenCalledTimes(refreshAuth ? 1 : 0);
+
+        });
+
+        it('pings nothing, and reads not connected, when the username opens an org under another username, as an alias spelled like it would', async () => {
+
+            const refreshAuth = jest.fn().mockResolvedValue(undefined);
+            (Org.create as jest.Mock).mockResolvedValue({ getUsername: () => 'other@example.com', refreshAuth: refreshAuth });
+
+            expect(await SalesforceOrgService.checkOrgConnection({ username: 'x@example.com' } as any)).toBe('notConnected');
+            expect(refreshAuth).not.toHaveBeenCalled();
 
         });
 
@@ -753,7 +763,7 @@ describe('SalesforceOrgService', () => {
 
         it('reads an org that does not answer within its own time as not connected', async () => {
 
-            (Org.create as jest.Mock).mockResolvedValue({ refreshAuth: () => new Promise(() => undefined) });
+            (Org.create as jest.Mock).mockResolvedValue({ getUsername: () => 'x@example.com', refreshAuth: () => new Promise(() => undefined) });
 
             expect(await SalesforceOrgService.checkOrgConnection({ username: 'x@example.com' } as any, 5)).toBe('notConnected');
 
@@ -763,7 +773,8 @@ describe('SalesforceOrgService', () => {
 
             let inFlightCount = 0;
             let mostInFlight = 0;
-            (Org.create as jest.Mock).mockImplementation(async () => ({
+            (Org.create as jest.Mock).mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+                getUsername: () => aliasOrUsername,
                 refreshAuth: async () => {
                     inFlightCount++;
                     mostInFlight = Math.max(mostInFlight, inFlightCount);
@@ -773,24 +784,57 @@ describe('SalesforceOrgService', () => {
             }));
             const authorizations = Array.from({ length: ORG_CONNECTION_CHECK_CONCURRENCY * 3 }, (_unused, index) => ({ username: `org${index}@example.com` }));
 
-            const connectionStates = await SalesforceOrgService.checkOrgConnections(authorizations as any);
+            const orgConnectionCheck = await SalesforceOrgService.checkOrgConnections(authorizations as any);
 
             expect(mostInFlight).toBe(ORG_CONNECTION_CHECK_CONCURRENCY);
-            expect([...connectionStates.values()]).toSatisfyAll((connectionState: string) => connectionState === 'connected');
+            expect(orgConnectionCheck.isComplete).toBe(true);
+            expect([...orgConnectionCheck.connectionStatesByUsername.values()]).toSatisfyAll((connectionState: string) => connectionState === 'connected');
 
         });
 
-        it('leaves out only the org still unanswered when the listing\'s own time runs out, never the whole list', async () => {
+        it('leaves out only the org still unanswered when the listing\'s own time runs out, never the whole list, and says the check is not complete', async () => {
 
             (Org.create as jest.Mock).mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+                getUsername: () => aliasOrUsername,
                 refreshAuth: () => aliasOrUsername === 'hung@example.com' ? new Promise(() => undefined) : Promise.resolve()
             }));
 
-            const connectionStates = await SalesforceOrgService.checkOrgConnections([
+            const orgConnectionCheck = await SalesforceOrgService.checkOrgConnections([
                 { username: 'hung@example.com' }, { username: 'quick@example.com' }, { username: 'quick2@example.com' }
             ] as any, 20, 1000);
 
-            expect(connectionStates).toEqual(new Map([['hung@example.com', 'notConnected'], ['quick@example.com', 'connected'], ['quick2@example.com', 'connected']]));
+            expect(orgConnectionCheck.connectionStatesByUsername).toEqual(new Map([['hung@example.com', 'notConnected'], ['quick@example.com', 'connected'], ['quick2@example.com', 'connected']]));
+            expect(orgConnectionCheck.isComplete).toBe(false);
+
+        });
+
+        it('keeps an org that answers after the listing\'s own time ran out as not connected', async () => {
+
+            let answerLatePing: () => void = () => undefined;
+            (Org.create as jest.Mock).mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+                getUsername: () => aliasOrUsername,
+                refreshAuth: () => new Promise<void>(resolve => { answerLatePing = resolve; })
+            }));
+
+            const orgConnectionCheck = await SalesforceOrgService.checkOrgConnections([{ username: 'late@example.com' }] as any, 10, 1000);
+            answerLatePing();
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(orgConnectionCheck.connectionStatesByUsername.get('late@example.com')).toBe('notConnected');
+
+        });
+
+        it('does not cache a listing whose own time ran out, so the next picker checks again', async () => {
+
+            answerOrgPings();
+            checkSpy.mockResolvedValueOnce({ connectionStatesByUsername: new Map([['qa@example.com.qa', 'connected']]), isComplete: false });
+
+            expect((await SalesforceOrgService.listConnectedOrgAuthorizations()).isComplete).toBe(false);
+            expect(SalesforceOrgService.isConnectedOrgStatusCached()).toBe(false);
+
+            expect((await SalesforceOrgService.listConnectedOrgAuthorizations()).isComplete).toBe(true);
+            expect(SalesforceOrgService.isConnectedOrgStatusCached()).toBe(true);
+            expect(checkSpy).toHaveBeenCalledTimes(2);
 
         });
 
@@ -901,7 +945,7 @@ describe('SalesforceOrgService', () => {
             await expect(SalesforceOrgService.listConnectedOrgAuthorizations()).rejects.toThrow('could not be read, so no org is listed. alias.json is locked');
 
             answerOrgPings(() => true);
-            expect(await SalesforceOrgService.checkOrgConnections([null, { username: 'x@example.com' }] as any)).toEqual(new Map([['x@example.com', 'connected']]));
+            expect((await SalesforceOrgService.checkOrgConnections([null, { username: 'x@example.com' }] as any)).connectionStatesByUsername).toEqual(new Map([['x@example.com', 'connected']]));
 
         });
 
@@ -1012,6 +1056,9 @@ describe('SalesforceOrgService', () => {
             (Org.create as jest.Mock).mockImplementation(async () => new Proxy({}, {
                 get: (_target, methodName: string) => {
                     orgMethodsCalled.push(methodName);
+                    if ( methodName === 'getUsername' ) {
+                        return () => 'qa@example.com.qa';
+                    }
                     return methodName === 'refreshAuth' ? () => Promise.resolve() : undefined;
                 }
             }));
@@ -1019,7 +1066,7 @@ describe('SalesforceOrgService', () => {
             await SalesforceOrgService.refreshConnectedOrgAuthorizations();
             await SalesforceOrgService.listDataOrgDetails();
 
-            expect(new Set(orgMethodsCalled.filter(methodName => methodName !== 'then'))).toEqual(new Set(['refreshAuth']));
+            expect(new Set(orgMethodsCalled.filter(methodName => methodName !== 'then'))).toEqual(new Set(['getUsername', 'refreshAuth']));
 
         });
 

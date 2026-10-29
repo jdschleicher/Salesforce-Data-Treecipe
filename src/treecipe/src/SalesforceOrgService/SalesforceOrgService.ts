@@ -227,6 +227,13 @@ export interface IHiddenAuthorizedOrg {
 export interface IConnectedOrgStatusListing {
     connectionStatesByUsername: Map<string, OrgConnectionState>;
     checkedAuthorizationUsernames?: Set<string>;
+    // false when the listing's own time ran out first: answered, but never cached
+    isComplete?: boolean;
+}
+
+export interface IOrgConnectionCheck {
+    connectionStatesByUsername: Map<string, OrgConnectionState>;
+    isComplete: boolean;
 }
 
 /*
@@ -895,7 +902,10 @@ export class SalesforceOrgService {
             this.connectedOrgStatusRequest = this.runOrgConnectionCheck().then(
                 connectedOrgStatusListing => {
                     if ( isRequestCurrent() ) {
-                        this.connectedOrgStatusCache = connectedOrgStatusListing;
+                        // A LISTING CUT OFF BY ITS OWN TIME LEFT ORGS UNPINGED, SO THE NEXT PICKER CHECKS AGAIN
+                        if ( connectedOrgStatusListing.isComplete !== false ) {
+                            this.connectedOrgStatusCache = connectedOrgStatusListing;
+                        }
                         this.connectedOrgStatusRequest = undefined;
                     }
                     return connectedOrgStatusListing;
@@ -962,9 +972,12 @@ export class SalesforceOrgService {
             }
         });
 
+        const orgConnectionCheck = await this.checkOrgConnections(authorizations);
+
         return {
-            connectionStatesByUsername: await this.checkOrgConnections(authorizations),
-            checkedAuthorizationUsernames: checkedAuthorizationUsernames
+            connectionStatesByUsername: orgConnectionCheck.connectionStatesByUsername,
+            checkedAuthorizationUsernames: checkedAuthorizationUsernames,
+            isComplete: orgConnectionCheck.isComplete
         };
 
     }
@@ -972,11 +985,12 @@ export class SalesforceOrgService {
     /*
         Every authorization checked in process (#502, replacing "sf org list --json --verbose"),
         at most ORG_CONNECTION_CHECK_CONCURRENCY at a time. An org with no answer when the listing's
-        own time runs out is "notConnected": one unreachable org is left out, never the whole list.
+        own time runs out is "notConnected": one unreachable org is left out, never the whole list,
+        and the check says it is not complete.
     */
     static async checkOrgConnections(authorizations: OrgAuthorization[],
                                         listingTimeoutMilliseconds: number = ORG_CONNECTION_LISTING_TIMEOUT_MILLISECONDS,
-                                        checkTimeoutMilliseconds: number = ORG_CONNECTION_CHECK_TIMEOUT_MILLISECONDS): Promise<Map<string, OrgConnectionState>> {
+                                        checkTimeoutMilliseconds: number = ORG_CONNECTION_CHECK_TIMEOUT_MILLISECONDS): Promise<IOrgConnectionCheck> {
 
         const connectionStatesByUsername = new Map<string, OrgConnectionState>();
         const pendingAuthorizations = this.readAuthorizations(authorizations).filter(authorization => (
@@ -986,6 +1000,7 @@ export class SalesforceOrgService {
         pendingAuthorizations.forEach(authorization => connectionStatesByUsername.set(authorization.username, 'notConnected'));
 
         let isListingOver = false;
+        let isComplete = false;
         let nextAuthorizationIndex = 0;
 
         const checkNext = async (): Promise<void> => {
@@ -1005,7 +1020,8 @@ export class SalesforceOrgService {
 
         try {
             await Promise.race([
-                Promise.all(Array.from({ length: Math.min(ORG_CONNECTION_CHECK_CONCURRENCY, pendingAuthorizations.length) }, () => checkNext())),
+                Promise.all(Array.from({ length: Math.min(ORG_CONNECTION_CHECK_CONCURRENCY, pendingAuthorizations.length) }, () => checkNext()))
+                    .then(() => { isComplete = !isListingOver; }),
                 listingTimedOut
             ]);
         } finally {
@@ -1013,7 +1029,7 @@ export class SalesforceOrgService {
             clearTimeout(listingTimeoutHandle);
         }
 
-        return connectionStatesByUsername;
+        return { connectionStatesByUsername: connectionStatesByUsername, isComplete: isComplete };
 
     }
 
@@ -1021,7 +1037,9 @@ export class SalesforceOrgService {
         One org: a scratch org past its expiration date is "expired" with no request, and an
         authorization @salesforce/core could not read is not pinged. Anything else is opened by
         USERNAME and asked Org.refreshAuth() -- the HEAD request "sf org list" pings with -- whose
-        connection refreshes an expired access token and saves it where the CLI reads it. NEVER
+        connection refreshes an expired access token and saves it where the CLI reads it. Org.create
+        resolves its argument as an alias first, so an org that opens under another username (an
+        alias spelled like this username) is not pinged and reads "notConnected". NEVER
         THROWS: a failure, a throw or no answer in time is "notConnected", and the error is not kept.
     */
     static async checkOrgConnection(authorization: OrgAuthorization,
@@ -1046,6 +1064,9 @@ export class SalesforceOrgService {
 
         const ping = (async (): Promise<OrgConnectionState> => {
             const authorizedOrg = await Org.create({ aliasOrUsername: username });
+            if ( authorizedOrg.getUsername() !== username ) {
+                return 'notConnected';
+            }
             await authorizedOrg.refreshAuth();
             return 'connected';
         })().catch((): OrgConnectionState => 'notConnected');

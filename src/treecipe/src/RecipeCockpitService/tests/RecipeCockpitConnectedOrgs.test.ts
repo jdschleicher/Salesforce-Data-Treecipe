@@ -212,6 +212,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs that answer
     it('lists the orgs that answered when one org never answers, rather than nothing (#502)', async () => {
 
         (Org.create as jest.Mock).mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+            getUsername: () => aliasOrUsername,
             refreshAuth: () => aliasOrUsername === 'stale@example.com.dev' ? new Promise(() => undefined) : Promise.resolve()
         }));
         // THE REAL CHECK, WITH TIMES SHORT ENOUGH FOR A TEST
