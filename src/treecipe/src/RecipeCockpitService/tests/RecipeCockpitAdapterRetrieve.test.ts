@@ -728,7 +728,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
                 await send(retrieveRequest(lastRenderSequence()));
 
                 expect(cliCalls).toEqual([]);
-                expect(retrieveRequests).toEqual([{ apiVersion: 62, singlePackage: true, unpackaged: { version: '62.0', types: [{ name: 'CustomObject', members: ['Account', 'Contact', 'OtherChildObject__c'] }] } }]);
+                expect(retrieveRequests).toEqual([{ apiVersion: 62, singlePackage: true, unpackaged: { types: [{ members: ['Account', 'Contact', 'OtherChildObject__c'], name: 'CustomObject' }], version: '62.0' } }]);
 
                 const stagingFolderPath = panelState().adapterRetrieveStagingFolderPath as string;
                 expect(path.relative(workspaceRoot, stagingFolderPath).split(path.sep).join('/')).toMatch(new RegExp(`^treecipe/GeneratedRecipes/${TREE_RUN_FOLDER_NAME}/${ACCOUNT_TREE_KEY.replace(/[.]/g, '\\.')}/RunArtifacts/OrgOperations/qa@example\\.com\\.qa/\\d{8}-\\d{6}-adapter-retrieve$`));

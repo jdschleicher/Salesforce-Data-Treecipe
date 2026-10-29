@@ -69,6 +69,7 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeCockpitMetadataRetrievePackage } from '../RecipeCockpitMetadataRetrievePackage';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
@@ -934,7 +935,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 expect(retrieveRequests).toEqual([{
                     apiVersion: 64,
                     singlePackage: true,
-                    unpackaged: { version: '64.0', types: [{ name: 'CustomField', members: manifestMembers(fs.readFileSync(path.join(operationsFolderPath(), packageXmlFileName), 'utf-8')) }] }
+                    unpackaged: { types: [{ members: manifestMembers(fs.readFileSync(path.join(operationsFolderPath(), packageXmlFileName), 'utf-8')), name: 'CustomField' }], version: '64.0' }
                 }]);
                 expect(( retrieveRequests[0].unpackaged as any ).types[0].members).toEqual(ACCOUNT_RETRIEVE_FIELDS);
 
@@ -979,6 +980,20 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 expect(notifications()).toEqual([{ severity: 'warning', text: `The retrieve of custom fields from prod · ${PROD_USERNAME} was cancelled before anything was written.`, actions: [] }]);
                 const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
                 expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({ step: 'field-retrieve', outcome: 'cancelled', detail: 'Nothing was written.' }));
+
+            });
+
+            it('says nothing was written when the org does not finish in time, and offers no Generate Treecipe', async () => {
+
+                jest.spyOn(RecipeCockpitMetadataRetrievePackage, 'runRetrieve').mockResolvedValue({ kind: 'timedOut', retrieveId: RETRIEVE_ID });
+                await openCockpit();
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(notifications()).toEqual([{ severity: 'warning', text: `The retrieve of custom fields from prod · ${PROD_USERNAME} did not finish in time, so nothing was written.`, actions: [] }]);
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({ step: 'field-retrieve', outcome: 'failed', detail: 'It did not finish in time. Nothing was written.' }));
 
             });
 

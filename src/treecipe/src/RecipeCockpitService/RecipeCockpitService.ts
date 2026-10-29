@@ -13963,6 +13963,11 @@ export class RecipeCockpitService {
             return refuse(`The retrieve of ${manyNoun} from ${orgLabel} was cancelled before anything was written.`);
         }
 
+        if ( retrieveRun.invocation.timedOut && retrieveRun.isNothingWritten ) {
+            recordStep('failed', { detail: 'It did not finish in time. Nothing was written.' });
+            return refuse(`The retrieve of ${manyNoun} from ${orgLabel} did not finish in time, so nothing was written.`);
+        }
+
         // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
             recordStep('cancelled', { detail: 'Which files were written is unknown.' });
@@ -14684,8 +14689,8 @@ export class RecipeCockpitService {
     /*
         A retrieve, the CLI's or jsforce's as the metadataRetrieveMethod setting says (#506), behind a
         cancellable progress. Both answer in the CLI's --json shape, so what reads a retrieve reads
-        either. jsforce writes nothing until the org's zip is read, and a cancel before then writes
-        nothing at all (isNothingWritten); the CLI's cancel kills its process, whatever it wrote.
+        either. jsforce writes nothing until the org's zip is read, so a cancel or a timeout before then
+        writes nothing at all (isNothingWritten); the CLI's cancel kills its process, whatever it wrote.
     */
     private static async runCancellableRetrieve(progressTitle: string,
                                                 cliArguments: string[],
@@ -14734,7 +14739,7 @@ export class RecipeCockpitService {
                 return cancelled;
             }
             if ( retrieveRun.kind === 'timedOut' ) {
-                return { invocation: { stdout: '', stderr: '', exitCode: null, timedOut: true }, isCancelled: false, payload: undefined };
+                return { invocation: { stdout: '', stderr: '', exitCode: null, timedOut: true }, isCancelled: false, isNothingWritten: true, payload: undefined };
             }
             if ( retrieveRun.kind === 'failed' ) {
                 return answered({ status: 1, message: retrieveRun.failureMessage, ...( retrieveRun.retrieveId ? { retrieveId: retrieveRun.retrieveId } : {} ) });

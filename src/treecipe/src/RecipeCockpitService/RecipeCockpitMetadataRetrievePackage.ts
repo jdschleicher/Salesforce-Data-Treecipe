@@ -170,10 +170,11 @@ export class RecipeCockpitMetadataRetrievePackage {
         return {
             apiVersion: Number(apiVersion),
             singlePackage: true,
+            // jsforce WRITES SOAP ELEMENTS IN KEY ORDER, AND THE SCHEMA'S SEQUENCE IS types BEFORE version, members BEFORE name
             unpackaged: {
-                version: apiVersion,
                 // sort() WITH NO COMPARATOR ORDERS BY UTF-16 CODE UNIT, AS "<" DOES -- NEVER localeCompare
-                types: [...membersByType.keys()].sort().map(type => ({ name: type, members: [...( membersByType.get(type) as Set<string> )].sort() }))
+                types: [...membersByType.keys()].sort().map(type => ({ members: [...( membersByType.get(type) as Set<string> )].sort(), name: type })),
+                version: apiVersion
             }
         };
 
@@ -407,12 +408,19 @@ export class RecipeCockpitMetadataRetrievePackage {
         const isAsked = (type: string, member: string) => askedMembers.has(`${type}\n${member.toLowerCase()}`);
         const askedObjectTypes = new Set(components.filter(component => component.type === 'CustomObject').map(component => component.member.toLowerCase()));
         const sourceFiles: IRetrievedSourceFile[] = [];
-
-        for ( const [entryIndex, entry] of entries.entries() ) {
-
-            if ( entryIndex > 0 && entryIndex % METADATA_RETRIEVE_YIELD_EVERY_FILES === 0 ) {
+        // A RETRIEVE ZIP HOLDS ONE .object PER OBJECT, SO THE HOST GETS ITS EVENT LOOP BACK PER FILE BUILT, NOT PER ENTRY
+        let builtSinceYield = 0;
+        const yieldEveryFiles = async () => {
+            builtSinceYield++;
+            if ( builtSinceYield >= METADATA_RETRIEVE_YIELD_EVERY_FILES ) {
+                builtSinceYield = 0;
                 await new Promise<void>(resolve => setImmediate(resolve));
             }
+        };
+
+        for ( const entry of entries ) {
+
+            await yieldEveryFiles();
             if ( isCancellationRequested() ) {
                 return undefined;
             }
@@ -447,19 +455,19 @@ export class RecipeCockpitMetadataRetrievePackage {
             const objectRoot = await this.readObjectRoot(entry.content.toString('utf-8'), objectApiName);
             const remaining: Record<string, unknown> = {};
 
-            Object.entries(objectRoot.content).forEach(([elementName, value]) => {
+            for ( const [elementName, value] of Object.entries(objectRoot.content) ) {
 
                 const layout = Object.prototype.hasOwnProperty.call(OBJECT_CHILD_LAYOUTS, elementName) ? OBJECT_CHILD_LAYOUTS[elementName] : undefined;
                 if ( !layout ) {
                     remaining[elementName] = value;
-                    return;
+                    continue;
                 }
 
-                ( Array.isArray(value) ? value : [value] ).forEach(childContent => {
+                for ( const childContent of Array.isArray(value) ? value : [value] ) {
                     const childName = this.readChildFullName(childContent);
                     const member = `${objectApiName}.${childName}`;
                     if ( !childName || !SalesforceApiName.isApiName(childName) || !( isObjectAsked || isAsked(layout.metadataType, member) ) ) {
-                        return;
+                        continue;
                     }
                     sourceFiles.push({
                         type: layout.metadataType,
@@ -467,9 +475,13 @@ export class RecipeCockpitMetadataRetrievePackage {
                         relativeSegments: ['objects', objectApiName, layout.folderName, `${childName}${layout.fileSuffix}`],
                         content: this.buildSourceXml(layout.metadataType, childContent as Record<string, unknown>, objectRoot.rootAttributes)
                     });
-                });
+                    await yieldEveryFiles();
+                    if ( isCancellationRequested() ) {
+                        return undefined;
+                    }
+                }
 
-            });
+            }
 
             if ( isObjectAsked ) {
                 sourceFiles.push({
@@ -528,12 +540,16 @@ export class RecipeCockpitMetadataRetrievePackage {
         return typeof fullName === 'string' ? fullName.trim() : undefined;
     }
 
+    private static sourceXmlBuilder: xml2js.Builder | undefined;
+
     static buildSourceXml(rootElementName: string, content: Record<string, unknown>, rootAttributes: Record<string, string>): string {
 
-        return new xml2js.Builder({
+        this.sourceXmlBuilder ??= new xml2js.Builder({
             xmldec: { version: '1.0', encoding: 'UTF-8' },
             renderOpts: { pretty: true, indent: '    ', newline: '\n' }
-        }).buildObject({ [rootElementName]: { $: rootAttributes, ...content } }) + '\n';
+        });
+
+        return this.sourceXmlBuilder.buildObject({ [rootElementName]: { $: rootAttributes, ...content } }) + '\n';
 
     }
 
@@ -599,8 +615,10 @@ export class RecipeCockpitMetadataRetrievePackage {
     private static indexExistingFiles(workspaceRoot: string, packageDirectoryPaths: readonly string[], sourceFiles: readonly IRetrievedSourceFile[]): Map<string, string> {
 
         const existingFiles = new Map<string, string>();
+        // ONLY A FILE THE RETRIEVE WRITES IS CHECKED FOR CONTAINMENT: AN OBJECT'S fields FOLDER CAN HOLD THOUSANDS IT DOES NOT TOUCH
+        const wantedKeys = new Set(sourceFiles.map(sourceFile => this.buildFileKey(sourceFile)));
         const addFile = (key: string, filePath: string) => {
-            if ( !existingFiles.has(key) && SfdxProjectService.isPathContainedInWorkspace(filePath, workspaceRoot) ) {
+            if ( wantedKeys.has(key) && !existingFiles.has(key) && SfdxProjectService.isPathContainedInWorkspace(filePath, workspaceRoot) ) {
                 existingFiles.set(key, filePath);
             }
         };

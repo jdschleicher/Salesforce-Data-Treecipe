@@ -20,6 +20,7 @@ import {
 } from '../RecipeCockpitMetadataRetrievePackage';
 import { IMetadataDeployComponent } from '../RecipeCockpitMetadataDeploy';
 import { RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
+import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 
 const NAMESPACE = 'http://soap.sforce.com/2006/04/metadata';
 const RETRIEVE_ID = '09S000000000001AAA';
@@ -137,13 +138,21 @@ describe('RecipeCockpitMetadataRetrievePackage (#506)', () => {
                 apiVersion: 62,
                 singlePackage: true,
                 unpackaged: {
-                    version: '62.0',
                     types: [
-                        { name: 'CustomField', members: ['Account.Annual_Budget__c', 'Account.Rating__c'] },
-                        { name: 'GlobalValueSet', members: ['Account_Ratings'] }
-                    ]
+                        { members: ['Account.Annual_Budget__c', 'Account.Rating__c'], name: 'CustomField' },
+                        { members: ['Account_Ratings'], name: 'GlobalValueSet' }
+                    ],
+                    version: '62.0'
                 }
             });
+        });
+
+        it('orders every key as the Metadata API schema sequences its elements, since jsforce writes SOAP elements in key order', () => {
+            const request = RecipeCockpitMetadataRetrievePackage.buildRetrieveRequest([field('Account.Rating__c')], '62.0');
+            const unpackaged = request.unpackaged as { types: Array<Record<string, unknown>> };
+            expect(Object.keys(request)).toEqual(['apiVersion', 'singlePackage', 'unpackaged']);
+            expect(Object.keys(unpackaged)).toEqual(['types', 'version']);
+            expect(Object.keys(unpackaged.types[0])).toEqual(['members', 'name']);
         });
 
         it('names a standard object for the Adapter, which a deploy never does', () => {
@@ -294,6 +303,15 @@ describe('RecipeCockpitMetadataRetrievePackage (#506)', () => {
             expect(sourceFiles.every(sourceFile => sourceFile.relativeSegments[1] === 'Account')).toBe(true);
         });
 
+        it('gives the extension host its event loop back inside one large .object, not only between zip entries', async () => {
+            const fieldElements = Array.from({ length: 450 }, (_, index) => `    <fields>\n        <fullName>Field_${index}__c</fullName>\n        <type>Text</type>\n    </fields>`);
+            const entries = await readEntries({ 'objects/Account.object': `<?xml version="1.0" encoding="UTF-8"?>\n<CustomObject xmlns="${NAMESPACE}">\n${fieldElements.join('\n')}\n</CustomObject>` });
+            const setImmediateSpy = jest.spyOn(global, 'setImmediate');
+            const sourceFiles = await RecipeCockpitMetadataRetrievePackage.convertToSourceFiles(entries, [{ type: 'CustomObject', member: 'Account' }]) ?? [];
+            expect(sourceFiles).toHaveLength(451);
+            expect(setImmediateSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+        });
+
         it('refuses an .object that is not a <CustomObject> or not XML, and stops on a cancel', async () => {
             await expect(RecipeCockpitMetadataRetrievePackage.convertToSourceFiles(await readEntries({ 'objects/Account.object': '<Other/>' }), [field('Account.Rating__c')])).rejects.toThrow(/not a <CustomObject>/);
             await expect(RecipeCockpitMetadataRetrievePackage.convertToSourceFiles(await readEntries({ 'objects/Account.object': '<CustomObject>' }), [field('Account.Rating__c')])).rejects.toThrow(/could not be read as XML/);
@@ -334,6 +352,20 @@ describe('RecipeCockpitMetadataRetrievePackage (#506)', () => {
             expect(fs.readFileSync(heldValueSetPath, 'utf-8')).toBe(GLOBAL_VALUE_SET_XML);
             // NO TEMPORARY FILE IS LEFT BEHIND
             expect(fs.readdirSync(path.dirname(heldFieldPath))).toEqual(['rating__c.field-meta.xml']);
+
+        });
+
+        it('checks containment only for the held files it writes over, never for every file in the object\'s folders', async () => {
+
+            const heldFieldPath = writeWorkspaceFile('force-app/main/default/objects/Account/fields/Rating__c.field-meta.xml', '<old/>');
+            Array.from({ length: 30 }, (_, index) => writeWorkspaceFile(`force-app/main/default/objects/Account/fields/Untouched_${index}__c.field-meta.xml`, '<untouched/>'));
+            const containmentSpy = jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace');
+
+            await RecipeCockpitMetadataRetrievePackage.writeSourceFiles(workspaceRoot, { kind: 'project', packageDirectoryPaths: PACKAGE_DIRECTORIES, defaultPackageDirectoryPath: 'force-app' }, await convert([field('Account.Rating__c')]));
+
+            expect(containmentSpy.mock.calls.map(([checkedPath]) => checkedPath).filter(checkedPath => /Untouched_/.test(String(checkedPath)))).toEqual([]);
+            expect(containmentSpy.mock.calls.map(([checkedPath]) => checkedPath)).toContain(heldFieldPath);
+            expect(fs.readFileSync(heldFieldPath, 'utf-8')).toContain('<fullName>Rating__c</fullName>');
 
         });
 
