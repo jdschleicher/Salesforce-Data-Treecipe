@@ -105,7 +105,7 @@ export class CollectionsApiService {
     }
 
     /*
-        Picked from the orgs the Salesforce CLI reports as connected rather than typed in, so a dead
+        Picked from the authorized orgs that answer their ping rather than typed in, so a dead
         scratch org or a disconnected sandbox is never offered. Production is still listed: the CLI's
         local data cannot tell a Developer Edition org from production, so the insert asks the org
         itself once connected and refuses there. Connect by the USERNAME: an alias is a local nickname

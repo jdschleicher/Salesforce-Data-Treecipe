@@ -1,0 +1,11 @@
+{
+  "connectedUsernames": [
+    "qa@example.com.qa",
+    "test-active@example.com"
+  ],
+  "failedPings": {
+    "uat@example.com.uat": "Error authenticating with the refresh token due to: expired access/refresh token",
+    "stale@example.com.dev": "getaddrinfo ENOTFOUND acme--dev.sandbox.my.salesforce.com",
+    "test-deleted@example.com": "Error authenticating with the refresh token due to: inactive user"
+  }
+}
