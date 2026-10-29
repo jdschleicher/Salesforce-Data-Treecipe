@@ -110,7 +110,7 @@ import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipePro
 import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
-import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
+import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService, ILegacyRecordCountResult } from '../DatasetSourceService/DatasetSourceService';
 import { IAdaptedObjectRecords, RecipeCockpitAdaptedDataset, RecipeCockpitAdaptedRunWrite } from './RecipeCockpitAdaptedDataset';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
@@ -635,7 +635,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
-            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. The ▸ at the start of a row opens its insert journey: every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, oldest first, for the orgs it was inserted into. Each entry shows its time, org, outcome in words, the first error of a failure, and where its files are, with View file. A data set never inserted opens to No inserts yet.',
+            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of a row opens its insert journey: every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, oldest first, for the orgs it was inserted into. Each entry shows its time, org, outcome in words, the first error of a failure, and where its files are, with View file. A data set never inserted opens to No inserts yet.',
             'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
@@ -1611,6 +1611,8 @@ export interface IRecipeCockpitInsertStateMessage {
     command: 'insertState';
     isRunning: boolean;
     treeKey: string;
+    // A DATA SET ROW'S Insert… (#541): THE DATA SET BEING INSERTED, WITH AN EMPTY treeKey; ABSENT FOR A TREE'S INSERT
+    datasetFolderName?: string;
 }
 
 /*
@@ -2664,7 +2666,7 @@ export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = COCKPIT_CONFIRM_WARNINGS_LA
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
 
 // THE ACTIONS WHOSE CONFIRMATION OFFERS "Change org…" (#480): THE RETRIEVES, THE DEPLOYS, THE ASSIGNMENT AND THE TREE INSERT
-const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set(['retrieveTreeMetadata', 'deployTreeMetadataComponents', 'assignTreePermissionSets', 'insertTree', 'promptInsertOrg']);
+const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set(['retrieveTreeMetadata', 'deployTreeMetadataComponents', 'assignTreePermissionSets', 'insertTree', 'promptInsertOrg', 'insertDataset']);
 
 // THE BUTTON BESIDE A CONFIRMATION'S ORG (#480), AND WHAT IT SAYS WHEN THE ACTION IS NOT STARTED AGAIN
 export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = COCKPIT_CONFIRM_CHANGE_ORG_LABEL;
@@ -2752,6 +2754,17 @@ export const RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = 'Can\'t insert: ';
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
 
 export const RECIPE_COCKPIT_INSERT_RUNNING_LABEL = 'Inserting…';
+
+// A DATA SET ROW'S Insert… (#541): THE TARGET ORG MANAGER'S SELECTION, CONFIRMED IN THE PANEL
+export const RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL = 'Insert';
+export const RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to insert this data set into';
+export const RECIPE_COCKPIT_DATASET_INSERT_REFUSAL_PREFIX = 'Nothing was inserted';
+export const RECIPE_COCKPIT_DATASET_INSERT_SANDBOX_ONLY_REASON = 'the Recipe Cockpit inserts a data set only into a sandbox or scratch org';
+export const RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL = 'Nothing was inserted: a scratch org run, a permission set assignment, a metadata deploy, an org prompt or a Treecipe Adapter update holds the org selection. Try again when it has finished.';
+export const RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL = 'Nothing was inserted: choose a sandbox or scratch org in the Target Org Manager first.';
+export const RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL = 'Nothing was inserted: the org selected in the Target Org Manager changed. Choose Insert… again.';
+export const RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL = 'Nothing was inserted: the org selected in the Target Org Manager has not answered that it is a sandbox or scratch org. Choose a sandbox or scratch org there.';
+export const RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON = 'A data set is being inserted.';
 
 // THE TREE INSERT'S NOTIFICATION BUTTONS (#301): BOTH OPEN THE INSERT'S RESULTS FILE
 export const RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL = 'View errors';
@@ -2852,7 +2865,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'viewDatasetInsertResults'; resultsFilePath: string }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
-    | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
+    | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; isOrgToPrompt: boolean; focusTree?: IRecipeCockpitTreeFocus }
+    | { kind: 'refuseDatasetInsert'; refusalText: string }
     | { kind: 'promptInsertOrg'; treeKey: string; recipeFilePath: string }
     | { kind: 'loadDataOrgs' }
     | { kind: 'selectDataOrg'; orgIndex: number }
@@ -7518,25 +7532,27 @@ export class RecipeCockpitService {
                 await VSCodeWorkspaceService.openWorkspaceResultFile(panelAction.resultsFilePath, panelState.workspaceRoot, INSERT_RESULTS_FILE_MISSING_TEXT);
                 return;
 
-            case 'openDataset':
-            case 'insertDataset': {
+            case 'openDataset': {
 
                 if ( !this.isUsableWorkspacePath(panelAction.datasetFolderPath, panelState.workspaceRoot) ) {
                     await this.refreshAfterMissingDataset(cockpitPanel, panelState, panelAction.datasetFolderName, panelAction.focusTree);
                     return;
                 }
 
-                if ( panelAction.kind === 'openDataset' ) {
-                    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(panelAction.datasetFolderPath));
-                    return;
-                }
-
-                const recipeDataMessageAtClick = panelState.recipeDataMessage;
-                await vscode.commands.executeCommand(RECIPE_COCKPIT_INSERT_DATASET_COMMAND, panelAction.datasetFolderPath);
-                this.postDatasetLastInsert(cockpitPanel, panelState, recipeDataMessageAtClick, panelAction.datasetFolderName, panelAction.datasetFolderPath);
+                await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(panelAction.datasetFolderPath));
                 return;
 
             }
+
+            case 'insertDataset':
+
+                await this.insertDatasetIntoOrg(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'refuseDatasetInsert':
+
+                VSCodeWorkspaceService.showWarningMessage(panelAction.refusalText);
+                return;
 
             case 'loadDataOrgs':
 
@@ -15761,6 +15777,230 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        A data set row's Insert… (#541). The insert's state holds the window from the click to the
+        end, as a tree insert's does, so nothing that changes the selection starts meanwhile and a
+        reveal replays it; it is given back on every way out, and the row's last insert is read
+        again whenever anything may have been written.
+    */
+    private static async insertDatasetIntoOrg(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertDataset' }>) {
+
+        const { datasetFolderName, datasetFolderPath } = insertAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+
+        panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: datasetFolderName };
+        this.postToPanel(cockpitPanel, panelState.insertStateMessage);
+
+        let insertOutcome: 'sent' | 'missing' | 'notSent';
+
+        try {
+            insertOutcome = await this.runDatasetInsertSteps(cockpitPanel, panelState, insertAction, clickedRecipeDataMessage, isClickStillCurrent);
+        } finally {
+
+            panelState.insertStateMessage = undefined;
+
+            if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
+                this.postToPanel(cockpitPanel, { command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: datasetFolderName });
+            }
+
+        }
+
+        if ( insertOutcome === 'missing' && isClickStillCurrent() ) {
+            await this.refreshAfterMissingDataset(cockpitPanel, panelState, datasetFolderName, insertAction.focusTree);
+        } else if ( insertOutcome === 'sent' ) {
+            this.postDatasetLastInsert(cockpitPanel, panelState, clickedRecipeDataMessage, datasetFolderName, datasetFolderPath);
+        }
+
+    }
+
+    // A DATA SET GONE SINCE THE DRAW ASKS FOR NO ORG; WITH NO SELECTION THE ORG IS ASKED FOR ONCE, AND ONLY A SANDBOX GOES ON
+    private static async runDatasetInsertSteps(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertDataset' }>,
+                                                clickedRecipeDataMessage: IRecipeCockpitRecipeDataMessage | undefined,
+                                                isClickStillCurrent: () => boolean): Promise<'sent' | 'missing' | 'notSent'> {
+
+        if ( !this.isUsableWorkspacePath(insertAction.datasetFolderPath, panelState.workspaceRoot) ) {
+            return 'missing';
+        }
+
+        // THE SUBFOLDER IS READ AND SENT TOO, AND A LINK THERE WOULD REACH FILES OUTSIDE THE WORKSPACE THE FOLDER'S OWN CHECK APPROVED
+        const collectionsApiFolderPath = path.join(insertAction.datasetFolderPath, DATASET_COLLECTIONS_API_FOLDER_NAME);
+        if ( fs.existsSync(collectionsApiFolderPath) && !this.isUsableWorkspacePath(collectionsApiFolderPath, panelState.workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`Nothing was inserted: the ${DATASET_COLLECTIONS_API_FOLDER_NAME} folder of "${RecipeYamlScalar.escapeForNotification(insertAction.datasetFolderName)}" is not inside this workspace.`);
+            return 'notSent';
+        }
+
+        if ( insertAction.isOrgToPrompt ) {
+            const isSandboxSelected = !!clickedRecipeDataMessage
+                && await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                    RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER, RECIPE_COCKPIT_DATASET_INSERT_REFUSAL_PREFIX, RECIPE_COCKPIT_DATASET_INSERT_SANDBOX_ONLY_REASON);
+            if ( !isSandboxSelected ) {
+                return 'notSent';
+            }
+        }
+
+        let isDatasetMissing = false;
+        const isInsertSent = await this.performDatasetInsert(cockpitPanel, panelState, insertAction, isClickStillCurrent, () => { isDatasetMissing = true; });
+
+        return isDatasetMissing ? 'missing' : isInsertSent ? 'sent' : 'notSent';
+
+    }
+
+    /*
+        Confirmed in the panel against the Target Org Manager selection, then checked again: the same
+        selection, the folder still there, all-or-none chosen, and the Organization row asked again
+        on the connection the insert uses. Nothing is written -- not even InsertAttempts/ -- before
+        every check has passed. True once the insert was sent.
+    */
+    private static async performDatasetInsert(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertDataset' }>,
+                                                isClickStillCurrent: () => boolean,
+                                                onDatasetMissing: () => void): Promise<boolean> {
+
+        const { datasetFolderName, datasetFolderPath } = insertAction;
+        const dataOrgSelection = panelState.dataOrgSelection;
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const refuse = (refusalMessage: string) => { VSCodeWorkspaceService.showWarningMessage(refusalMessage); return false; };
+
+        if ( !dataOrgSelection || !recipeDataMessage ) {
+            return refuse(RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL);
+        }
+
+        if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
+            return refuse(RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL);
+        }
+
+        const orgDetail = dataOrgSelection.orgDetail;
+        const orgLabel = orgDetail.alias
+            ? `${RecipeYamlScalar.escapeForNotification(orgDetail.alias)} (${RecipeYamlScalar.escapeForNotification(orgDetail.username)})`
+            : RecipeYamlScalar.escapeForNotification(orgDetail.username);
+        const datasetEntry = this.findDatasetEntry(recipeDataMessage.recipe, datasetFolderName);
+        const datasetLabel = RecipeYamlScalar.escapeForNotification(datasetEntry?.dataset.customName ?? datasetFolderName);
+        // THE DIALOG IS WRITTEN WITH textContent, SO IT TAKES THE NAMES AS THEY ARE; ONLY A NOTIFICATION NEEDS THEM ESCAPED
+        const dialogOrgLabel = orgDetail.alias ? `${orgDetail.alias} (${orgDetail.username})` : orgDetail.username;
+
+        const confirmation = await this.confirmInPanel(
+            `Insert ${datasetEntry?.dataset.customName ?? datasetFolderName} into ${dialogOrgLabel}?`,
+            {
+                ...this.buildDatasetInsertConfirmationContent(datasetFolderName, datasetEntry?.dataset.customName, dialogOrgLabel, dataOrgSelection.orgTypeDetail,
+                    DatasetSourceService.countLegacyRecordsByObject(datasetFolderPath), dataOrgSelection.scratchOrgDetail),
+                org: this.buildConfirmOrg(orgDetail),
+                isDestructive: true,
+                changeOrg: {
+                    restartMessage: {
+                        command: 'insertDataset',
+                        datasetFolderName: datasetFolderName,
+                        orgIndex: null,
+                        ...( insertAction.focusTree ?? {} )
+                    },
+                    isSandboxOnly: true
+                }
+            },
+            RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        if ( !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
+            onDatasetMissing();
+            return false;
+        }
+
+        // THE SAME QUESTION EVERY INSERT ASKS
+        const allOrNoneSelection = await CollectionsApiService.promptForAllOrNoneInsertDecision();
+        if ( allOrNoneSelection === undefined ) {
+            return false;
+        }
+
+        // THE SAME SELECTION, NOT MERELY THE SAME ORG: ANOTHER ORG CHOSEN, ⟳, OR A RELOAD OF THE RUN EACH START A NEW ONE
+        if ( !isClickStillCurrent() || panelState.dataOrgSelection !== dataOrgSelection ) {
+            return refuse(`The org selection changed after ${orgLabel} was confirmed (another org was chosen, the orgs were checked again, or the run was reloaded), so nothing was inserted. Choose Insert… again.`);
+        }
+
+        const connection = await SalesforceOrgService.getConnection(orgDetail.username);
+
+        // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON, ON THE CONNECTION IT INSERTS WITH
+        const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(connection));
+        if ( orgTypeDetail?.isSandbox !== true ) {
+            return refuse(`Nothing was inserted into ${orgLabel} (${RecipeYamlScalar.escapeForNotification(SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail))}): the Recipe Cockpit inserts a data set only into a sandbox or scratch org.`);
+        }
+
+        const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, {
+            isFailureReportedByCaller: true,
+            orgUsername: orgDetail.username,
+            orgAlias: orgDetail.alias
+        });
+
+        const runFolderName = datasetEntry?.dataset.runFolderName;
+        this.showTreeInsertNotification(insertResult, datasetLabel, orgLabel, panelState.workspaceRoot,
+            runFolderName && datasetEntry?.tree.folderName ? { runFolderName: runFolderName, treeFolderName: datasetEntry.tree.folderName } : undefined);
+
+        return true;
+
+    }
+
+    // THE FIRST CARD THAT LISTS THE DATA SET, AND ITS ROW
+    private static findDatasetEntry(recipeViewModel: IRecipeCockpitRecipeViewModel, datasetFolderName: string):
+        { tree: IRecipeCockpitTreeViewModel; dataset: IRecipeCockpitTreeDatasetViewModel } | undefined {
+
+        for ( const tree of recipeViewModel.trees ) {
+            const dataset = tree.history?.datasets.find(candidateDataset => candidateDataset.datasetFolderName === datasetFolderName);
+            if ( dataset ) {
+                return { tree: tree, dataset: dataset };
+            }
+        }
+
+        return undefined;
+
+    }
+
+    // WHAT A DATA SET'S INSERT CONFIRMATION SAYS (#541): THE RECORDS PER OBJECT ITS COLLECTIONS API FILES HOLD, AND A FILE THAT COULD NOT BE COUNTED
+    static buildDatasetInsertConfirmationContent(datasetFolderName: string,
+                                                    customName: string | undefined,
+                                                    orgLabel: string,
+                                                    orgTypeDetail: IOrgTypeDetail | undefined,
+                                                    recordCounts: ILegacyRecordCountResult,
+                                                    scratchOrgDetail?: IScratchOrgDetail): IRecipeCockpitConfirmContent {
+
+        const recordEntries = Object.keys(recordCounts.recordCountsByObject).sort()
+            .map(objectApiName => [objectApiName, recordCounts.recordCountsByObject[objectApiName]] as const);
+        const totalRecordCount = recordEntries.reduce((recordCount, [, objectCount]) => recordCount + objectCount, 0);
+        const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, scratchOrgDetail);
+
+        return {
+            summary: [`Insert ${totalRecordCount} ${totalRecordCount === 1 ? 'record' : 'records'} from this data set into ${orgLabel}, parents first.`],
+            badge: orgTypeLabel,
+            warnings: [
+                'Cancel on the progress notification deletes every record this insert saved.',
+                ...( recordCounts.unreadableFileNames.length > 0
+                    ? [`These files could not be counted and are inserted as they are: ${recordCounts.unreadableFileNames.join(', ')}`]
+                    : [] )
+            ],
+            sections: [
+                { title: 'Records per object', count: recordEntries.length, lines: recordEntries.map(([objectApiName, objectCount]) => `  ${objectApiName}: ${objectCount}`) },
+                {
+                    title: 'Data set and org',
+                    lines: [
+                        `Data set: ${customName !== undefined ? `${customName} (${datasetFolderName})` : datasetFolderName}`,
+                        `Org: ${orgLabel}`,
+                        `Type: ${orgTypeLabel}`
+                    ]
+                },
+                { title: 'What happens next', lines: ['You choose all-or-none next.', 'The data set is inserted the way Insert Data Set by Directory inserts, and the results are written to its InsertAttempts folder.'] }
+            ]
+        };
+
+    }
+
     // TRUE WHEN A DATA SET FOLDER WAS MADE; onDatasetFolderMade SAYS SO EVEN WHEN A LATER STEP THROWS
     private static async performTreeInsert(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -16627,15 +16867,11 @@ export class RecipeCockpitService {
 
             }
 
-            case 'openDataset':
-            case 'insertDataset': {
+            case 'openDataset': {
 
                 const { datasetFolderName } = panelMessage;
-                const allowedDatasetFolderNames = panelMessage.command === 'openDataset'
-                    ? panelState.treeHistoryAllowLists.openableDatasetFolderNames
-                    : panelState.treeHistoryAllowLists.insertableDatasetFolderNames;
 
-                if ( typeof datasetFolderName !== 'string' || !allowedDatasetFolderNames.has(datasetFolderName) ) {
+                if ( typeof datasetFolderName !== 'string' || !panelState.treeHistoryAllowLists.openableDatasetFolderNames.has(datasetFolderName) ) {
                     return undefined;
                 }
 
@@ -16648,11 +16884,80 @@ export class RecipeCockpitService {
                 const focusTree = this.readTreeFocus(panelMessage, panelState);
 
                 return {
-                    kind: panelMessage.command,
+                    kind: 'openDataset',
                     datasetFolderName: datasetFolderName,
                     datasetFolderPath: datasetFolderPath,
                     ...( focusTree ? { focusTree: focusTree } : {} )
                 };
+
+            }
+
+            /*
+                A data set row's Insert… (#541) inserts into the Target Org Manager selection, never
+                through Insert Data Set by Directory's own picker. The panel posts the selection's
+                INDEX, which must still be the selection, name the same username and have answered it
+                is a sandbox; with no selection and no index the org is asked for once. Inserts are
+                one per window, like the tree insert, and nothing is inserted while another run holds
+                the selection.
+            */
+            case 'insertDataset': {
+
+                const { datasetFolderName, orgIndex } = panelMessage;
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                if ( typeof datasetFolderName !== 'string' || !panelState.treeHistoryAllowLists.insertableDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                const datasetFolderPath = panelState.treeHistoryTargets.datasetFolderPathsByName.get(datasetFolderName);
+
+                if ( !datasetFolderPath || !panelState.recipeDataMessage ) {
+                    return undefined;
+                }
+
+                // A RELOADED DOCUMENT MAY NOT KNOW AN INSERT IS RUNNING: IT IS TOLD, AND THE INSERT'S OWN END GIVES THE BUTTONS BACK
+                if ( panelState.insertStateMessage ) {
+                    return { kind: 'postInsertState', hostMessage: panelState.insertStateMessage };
+                }
+
+                if ( panelState.scratchOrgStateMessage?.isRunning
+                        || this.isSelectionHeldByPromptOrUpdater(panelState)
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning ) {
+                    return { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL };
+                }
+
+                const focusTree = this.readTreeFocus(panelMessage, panelState);
+                const datasetInsert = {
+                    kind: 'insertDataset' as const,
+                    datasetFolderName: datasetFolderName,
+                    datasetFolderPath: datasetFolderPath,
+                    ...( focusTree ? { focusTree: focusTree } : {} )
+                };
+
+                if ( orgIndex === undefined || orgIndex === null ) {
+                    // THE OBJECTS A SELECTION CHECKS ARE THE CONFIRMED-DRAWN MODEL'S, AS FOR A PICK IN THE DROPDOWN
+                    if ( dataOrgSelection ) {
+                        return { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL };
+                    }
+                    return panelState.dataOrgObjectApiNames.size > 0
+                        ? { ...datasetInsert, isOrgToPrompt: true }
+                        : { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL };
+                }
+
+                if ( typeof orgIndex !== 'number'
+                        || !Number.isInteger(orgIndex)
+                        || !dataOrgSelection
+                        || dataOrgSelection.orgIndex !== orgIndex
+                        || panelState.dataOrgDetails[orgIndex]?.username !== dataOrgSelection.orgDetail.username ) {
+                    return { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL };
+                }
+
+                if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
+                    return { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL };
+                }
+
+                return { ...datasetInsert, isOrgToPrompt: false };
 
             }
 
@@ -20843,6 +21148,7 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const NEW_SCRATCH_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
+    const DATASET_INSERT_RUNNING_REASON = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
@@ -21152,6 +21458,8 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     let dataOrgUnansweredListingCount = 0;
     // THE TREE WHOSE INSERT IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE INSERT ENDED
     let insertRunningTreeKey = null;
+    // A DATA SET ROW'S Insert… (#541): THE DATA SET BEING INSERTED, WHILE insertRunningTreeKey HOLDS ''
+    let insertRunningDatasetFolderName = null;
     /*
         Where the reader was when this document was last on screen (#222). A hidden tab's document
         is thrown away, so the place is read ONCE, here, and spent on the first model drawn -- and
@@ -25623,8 +25931,14 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             Object.assign({ command: 'openDataset' }, actionMessage)));
         rowState.lastInsertResultsSlotElement = createElement('span', 'treeDatasetInsertSlot');
         datasetHeaderElement.appendChild(rowState.lastInsertResultsSlotElement);
-        datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetInsert', 'Insert…', 'Insert this data set into an org with Insert Data Set by Directory',
-            Object.assign({ command: 'insertDataset' }, actionMessage)));
+        // THE TARGET ORG MANAGER'S SELECTION IS POSTED BY INDEX AT THE CLICK (#541); WITH NONE THE HOST ASKS FOR THE ORG
+        rowState.insertElement = createButton('secondary', 'historyAction treeDatasetInsert', 'Insert…');
+        rowState.insertElement.addEventListener('click', function () {
+            const insertMessage = Object.assign({ command: 'insertDataset' }, actionMessage);
+            if (dataOrgSelectedIndex !== null) { insertMessage.orgIndex = dataOrgSelectedIndex; }
+            vscodeApi.postMessage(insertMessage);
+        });
+        datasetHeaderElement.appendChild(rowState.insertElement);
 
         datasetElement.appendChild(datasetHeaderElement);
         datasetElement.appendChild(countsElement);
@@ -25642,6 +25956,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         drawDatasetLastInsert(rowState);
         drawDatasetName(rowState);
+        drawDatasetInsert(rowState);
 
         if (treeState.expandedJourneyDatasetFolderNames[dataset.datasetFolderName] === true) {
             setDatasetJourneyExpanded(treeState, rowState, true, false);
@@ -25823,6 +26138,32 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         return entryElement;
 
+    }
+
+    // ONE INSERT AT A TIME, AND NONE WHILE A RUN HOLDS THE ORG SELECTION; THE TOOLTIP NAMES THE TARGET ORG MANAGER'S ORG (#541)
+    function drawDatasetInsert(rowState) {
+
+        const insertElement = rowState.insertElement;
+        if (!insertElement) { return; }
+
+        const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
+        // WHILE THE ORGS ARE CHECKED THE SELECTION IS CLEARED, SO A CLICK WOULD ASK FOR AN ORG BESIDE THE LISTING IN FLIGHT
+        insertElement.disabled = insertRunningTreeKey !== null || isDataOrgChecking || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+        insertElement.textContent = insertRunningDatasetFolderName === rowState.dataset.datasetFolderName ? INSERT_RUNNING_LABEL : 'Insert…';
+        insertElement.setAttribute('title', isDataOrgChecking ? DATA_ORG_CONNECTION_CHECK_INSERT_REASON
+            : orgLabel ? 'Insert this data set into ' + orgLabel + ', the org selected in the Target Org Manager'
+            : 'Choose the org to insert this data set into');
+
+    }
+
+    function describeRunningInsert() {
+        return insertRunningDatasetFolderName !== null ? DATASET_INSERT_RUNNING_REASON : 'A tree is being inserted.';
+    }
+
+    function drawDatasetInserts() {
+        treeStates.forEach(function (treeState) {
+            (treeState.datasetRowStates || []).forEach(drawDatasetInsert);
+        });
     }
 
     // THE ROW'S NAME AND STAR, DRAWN AT FIRST AND AGAIN WHEN THE HOST SAYS EITHER CHANGED; THE SEARCH MATCHES THE NAME TOO
@@ -30419,7 +30760,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (permissionSetCard) {
             const assignReason = isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : insertRunningTreeKey !== null ? describeRunningInsert()
                 : isScratchOrgRunning ? 'A scratch org is being set up.'
                 : '';
             drawActionCardState(permissionSetCard, assignReason, ASSIGN_PERMISSION_SETS_TITLE);
@@ -30440,7 +30781,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const retrieveCard = retrieveCards[retrieveKind];
             const described = describeRetrieveSummary(treeState, retrieveKind);
             const busyReason = isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
-                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : insertRunningTreeKey !== null ? describeRunningInsert()
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : '';
@@ -30460,7 +30801,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const deployCard = deployCards[deployKind];
             const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
             const busyReason = isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : insertRunningTreeKey !== null ? describeRunningInsert()
                 : isScratchOrgRunning ? 'A scratch org is being set up.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
@@ -30691,6 +31032,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     function findTreeInsertReason(treeState) {
 
         if (isDataOrgChecking) { return DATA_ORG_CONNECTION_CHECK_INSERT_REASON; }
+        if (insertRunningDatasetFolderName !== null) { return DATASET_INSERT_RUNNING_REASON; }
         if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
         if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
         if (isPermissionSetAssignRunning) { return 'Permission sets are being assigned.'; }
@@ -30741,14 +31083,16 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     function drawTreeInserts() {
         treeStates.forEach(drawTreeInsert);
+        drawDatasetInserts();
         treeStates.forEach(drawTreePermissionSet);
         drawTreeQueryButtons();
     }
 
     // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER IS DISABLED; ITS insertState GIVES THEM BACK
-    function setInsertRunning(runningTreeKey) {
+    function setInsertRunning(runningTreeKey, runningDatasetFolderName) {
 
         insertRunningTreeKey = runningTreeKey;
+        insertRunningDatasetFolderName = runningTreeKey !== null && typeof runningDatasetFolderName === 'string' ? runningDatasetFolderName : null;
         drawTreeInserts();
         drawDataOrgViews();
         drawRecordTypeChoices();
@@ -31840,7 +32184,7 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
         }
 
         if (hostMessage.command === 'insertState') {
-            setInsertRunning(hostMessage.isRunning ? hostMessage.treeKey : null);
+            setInsertRunning(hostMessage.isRunning ? hostMessage.treeKey : null, hostMessage.datasetFolderName);
             return;
         }
 
