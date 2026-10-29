@@ -1025,14 +1025,13 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
         const insertReasonsOf = (panel: any) => textOf(panel, 'treeInsertReason');
         const insertButtonsOf = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'treeInsert');
 
-        it('puts no org picker in the toolbar or in a card and no view switch, asks for no orgs when the panel opens, and draws ONE picker view in the Target Org Manager section (#348, #355)', () => {
+        it('draws no toolbar row (#548) and no org picker in a card and no view switch, asks for no orgs when the panel opens, and draws ONE picker view in the Target Org Manager section (#348, #355)', () => {
 
             const { panel } = renderDataOrgPanel();
-            const toolbarElement = panel.cockpitBodyElement.children[0];
 
             expect(panel.findAll(panel.cockpitBodyElement, 'viewButton')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'dataTreeCard')).toEqual([]);
-            expect(panel.findAll(toolbarElement, 'dataOrgControls')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
             panel.expandAllTrees();
@@ -1048,7 +1047,6 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 expect(panel.findAll(treecipeHeaderElement, 'dataOrgView')).toEqual([]);
                 expect(panel.findAll(treecipeHeaderElement, 'treeInsert')).toHaveLength(1);
             });
-            expect(panel.findAll(toolbarElement, 'dataOrgControls')).toEqual([]);
 
         });
 

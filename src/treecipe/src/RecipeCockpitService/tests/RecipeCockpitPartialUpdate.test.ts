@@ -163,12 +163,12 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             const panel = renderEverythingOpen();
             const accountCardNodesBefore = descendantsOf(cardNamed(panel, ACCOUNT_TREE_KEY));
             const leadCardNodesBefore = descendantsOf(cardNamed(panel, LEAD_TREE_KEY));
-            const toolbarAndCardsBefore = panel.cockpitBodyElement.children.slice();
+            const bodyChildrenBefore = panel.cockpitBodyElement.children.slice();
 
             postDatasetAdded(panel);
 
-            expect(panel.cockpitBodyElement.children).toEqual(toolbarAndCardsBefore);
-            panel.cockpitBodyElement.children.forEach((childElement: any, childIndex: number) => expect(childElement).toBe(toolbarAndCardsBefore[childIndex]));
+            expect(panel.cockpitBodyElement.children).toEqual(bodyChildrenBefore);
+            panel.cockpitBodyElement.children.forEach((childElement: any, childIndex: number) => expect(childElement).toBe(bodyChildrenBefore[childIndex]));
 
             const accountCardNodesAfter = descendantsOf(cardNamed(panel, ACCOUNT_TREE_KEY));
             expect(accountCardNodesAfter).toHaveLength(accountCardNodesBefore.length);
@@ -188,7 +188,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
         const isInside = (element: any, ancestorElements: any[]) => ancestorElements.some(ancestorElement => descendantsOf(ancestorElement).includes(element));
 
         /*
-            #226's criteria name what a partial update must leave alone: the toolbar's org picker, a
+            #226's criteria name what a partial update must leave alone: the org picker, a
             scratch org run in flight, and a card's Structure exclusions (#219) -- the card the data set
             joins included. Each is drawn here before the message arrives. (Every card's comparison was
             on that list too, until #266 removed the Compare tab.)
