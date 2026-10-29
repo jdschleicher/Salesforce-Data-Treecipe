@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.180.0] - Recipe Cockpit: one drawn pencil on every edit button, and a tree card's ☆ and ✎ before its name
+## [3.181.0] - Recipe Cockpit: one drawn pencil on every edit button, and a tree card's ☆ and ✎ before its name
 
 [#540](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/540). The cockpit drew its edit pencil two ways: the field edit, record count and Treecipe Adapter edit buttons used the drawn pencil, while a tree card's rename and a data set row's rename were a `✎` character. A tree card's ☆ and ✎ also sat at the far end of its header, away from the name they act on.
 
@@ -11,6 +11,17 @@
 - **Nothing else changes.** Rename and favorite post what they did, the host asks in its own input box, and what is stored is unchanged.
 - **Help and guide.** The ? help, the Adapter's intro and `docs/RECIPE-COCKPIT-GUIDE.md` call it the pencil, and say the rename sits before the name beside the star; two screenshots were re-taken.
 
+
+## [3.180.0] - Recipe Cockpit: Target Org Manager's ⟳ recovers a stale or held picker without restarting VS Code
+
+[#537](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/537). A click on **⟳ Refresh orgs**, or a first listing, cleared the panel's picker and started its spinner before the host answered. While an insert, an org prompt (the insert's, a query's, a retrieve's or the Treecipe Adapter's) or a Treecipe Adapter update or restore held the selection, the router ignored the message and answered nothing, so the picker spun with no list and no message until VS Code restarted. And ⟳ checked the connections again but kept every cached describe, so readiness could keep a describe from before a permission change, a deploy made elsewhere or a re-login.
+
+- **A refusal is answered.** `refreshDataOrgs` and `loadDataOrgs` route `refuseDataOrgListing` while a run holds the selection, and the host posts `dataOrgListingRefused {renderSequence, message}` saying what holds it (`describeSelectionHoldingRun`: a new scratch org run, an insert, a permission set assignment, a metadata deploy, an open prompt asking for an org, a Treecipe Adapter update or restore; the message ends with `RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX`). Nothing is listed, refreshed or forgotten. With no model or no tree objects they still route nothing, as before.
+- **The panel puts its picker back.** The panel script keeps the picker as it was before a check (`holdDataOrgPickerBeforeCheck`: the list, selection, readiness, type label, hidden-orgs note and the sequences that decide which answers it draws) and, on a refusal for the model on screen, restores it, stops the spinner and shows the message under the dropdown. It restores only once every listing it asked for is answered (`dataOrgUnansweredListingCount`): a ⟳ refused while an earlier, accepted one is still being answered keeps the check on screen, since the host has already dropped its list and selection. A restored selection that had failed keeps its failure text before the refusal. A refused first listing brings back **Choose org…**, so the picker asks again once the run ends. A list that arrives drops the snapshot, as does a new model.
+- **⟳ forgets what it described in each org it lists.** Once the listing has answered, `SalesforceOrgService.clearDescribeCacheForOrg` drops the describes of every listed org (not every org's, and nothing when the listing failed), so re-selecting the remembered org re-runs the Organization row and the describes. Every clear bumps `describeCacheGeneration`, so a describe asked for before a clear never puts its answer back after it.
+- **No lock is force-released.** Every window run lock is released in a `finally`, and a lock outlives its run only if the run hangs; releasing one from the panel could release a live run, so the panel names the run instead. A failed or timed-out connection check was, and stays, never cached, so a reopen checks again.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say what ⟳ resets and what it says while a run holds the org.
+- **Tests.** `RecipeCockpitDataByOrg.test.ts`: a refusal naming each holding run for both messages, ⟳ routed again with nothing holding it, ⟳ clearing the describe cache, a refused ⟳ listing nothing, and, through the real panel script, the picker restored with its selection, readiness and note (a refusal for another model ignored, a later answer for the selection still drawn) and a refused first listing asking again; a ⟳ refused while an accepted one is still answered, a kept failure text and a late refusal with no check on screen (review). `SalesforceOrgService.test.ts`: a per-org clear and a describe answered after a clear. The scratch org, Troubleshooting, Query and Treecipe Adapter suites expect the refusal where they expected silence.
 
 ## [3.179.0] - Every org picker checks the org connections itself, without "sf org list"
 

@@ -165,8 +165,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A new scratch org run') } });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A new scratch org run') } });
             expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: LEAD_TREE_KEY }, panelState))
                 .toEqual({ kind: 'postInsertState', hostMessage: { command: 'insertState', isRunning: false, treeKey: LEAD_TREE_KEY } });
 
