@@ -599,8 +599,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState())).toBe(true);
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState())).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState())).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState())).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState())).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A Treecipe Adapter update') } });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState())).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A Treecipe Adapter update') } });
             expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({ kind: 'postInsertState' });
             expect(RecipeCockpitService.routePanelMessage({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({ kind: 'refusePermissionSetAssign' });
             expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({ kind: 'refuseMetadataDeploy' });

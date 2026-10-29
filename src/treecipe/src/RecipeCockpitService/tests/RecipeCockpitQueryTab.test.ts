@@ -168,7 +168,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             panelState.isQueryOrgPromptOpen = true;
             expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState)).toBe(true);
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A prompt asking for an org') } });
 
         });
 
