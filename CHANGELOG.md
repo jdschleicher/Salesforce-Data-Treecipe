@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.181.0] - Recipe Cockpit: a data set's Insert… uses the Target Org Manager selection and confirms in the panel
+## [3.182.0] - Recipe Cockpit: a data set's Insert… uses the Target Org Manager selection and confirms in the panel
 
 [#541](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/541). A row's **Insert…** under **Previously Used Data Sets** ran **Insert Data Set by Directory**, which ignored the org chosen in Target Org Manager, opened its own org picker, and inserted after only the all-or-none question.
 
@@ -15,6 +15,18 @@
 - **The palette's Insert Data Set by Directory is unchanged.**
 - **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say where the row inserts.
 - **Tests.** The router (a matching index, a forged or stale one, no index with a selection, a non-sandbox or unanswered selection, every hold, the prompt route), the executor end to end on a fake connection (no picker, the confirmation's content and Change org…, Cancel and a dismissed all-or-none writing no attempt, a folder deleted during the confirmation, a selection changed after it, a non-sandbox Organization row, the prompt route and a dismissed pick, the insert lock), and the panel script (the index posted, the tooltip, Inserting… and the disabled buttons).
+
+## [3.181.0] - Recipe Cockpit: one drawn pencil on every edit button, and a tree card's ☆ and ✎ before its name
+
+[#540](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/540). The cockpit drew its edit pencil two ways: the field edit, record count and Treecipe Adapter edit buttons used the drawn pencil, while a tree card's rename and a data set row's rename were a `✎` character. A tree card's ☆ and ✎ also sat at the far end of its header, away from the name they act on.
+
+- **One pencil.** `buildPencilGlyph(size)` in the panel script is the one place the pencil (`RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH`) is built, with `createElementNS` as before. The field edit, record count and Adapter edit buttons call it in place of their three copies.
+- **Sized by use.** `'default'` is the 1.1em `.fixedValueGlyph` every row button drew; `'large'` adds `fixedValueGlyph-large` (1.4em) and is the tree card's rename.
+- **The renames draw it.** A tree card's rename draws the large pencil and a data set row's rename the default one, each with no text and the same `aria-label` and title as before. Both stay outlined `secondary` buttons: the tree header is navy and the pencil is stroked in the navy accent, so it sits on the button's light surface, a pair the contrast test already holds. `RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL` is gone. A disabled `secondary` button's pencil is stroked in `--sdt-disabled-text`, which was the count button's rule alone.
+- **☆ and ✎ come first.** A tree card's header reads ☆, ✎, name, folder, count, so Tab reaches them first; `.treeHeaderActions` no longer pushes them to the end, and the group is drawn only on a card with a folder, so the ungrouped card's header starts with its name. A data set row's ✎ moved right after its ☆, before the name. The row aligns by baseline and the pencil has none, so `.treeDatasetRename` is `align-self: center` to sit level with the ☆. The action group still stops a click from reaching the header.
+- **Nothing else changes.** Rename and favorite post what they did, the host asks in its own input box, and what is stored is unchanged.
+- **Help and guide.** The ? help, the Adapter's intro and `docs/RECIPE-COCKPIT-GUIDE.md` call it the pencil, and say the rename sits before the name beside the star; two screenshots were re-taken.
+
 
 ## [3.180.0] - Recipe Cockpit: Target Org Manager's ⟳ recovers a stale or held picker without restarting VS Code
 

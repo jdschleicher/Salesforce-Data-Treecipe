@@ -23,7 +23,8 @@ import {
     RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_NO_FAVORITES_MESSAGE
+    RECIPE_COCKPIT_NO_FAVORITES_MESSAGE,
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -541,6 +542,50 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             expect(panel.findAll(cardOf(panel, ''), 'treeFavorite')).toEqual([]);
             expect(panel.findAll(cardOf(panel, ''), 'treeRename')).toEqual([]);
+
+        });
+
+        // #540: ☆ AND ✎ COME FIRST, BEFORE THE NAME THEY ACT ON, AND ✎ IS THE ONE DRAWN PENCIL, LARGE
+        it('draws ☆ then ✎ before the name, ✎ as the large drawn pencil with no text', () => {
+
+            const panel = drawRecipe(recipe => { recipe.trees.find(tree => tree.treeKey === LEAD_TREE_KEY)!.customName = 'Leads'; });
+            const header = cardOf(panel, LEAD_TREE_KEY).children[0];
+            const actionGroup = header.children[0];
+            const rename = panel.findAll(actionGroup, 'treeRename')[0];
+            const glyph = rename.children[0];
+
+            expect(actionGroup.className).toBe('treeHeaderActions');
+            expect(actionGroup.children.map((actionElement: any) => actionElement.className.split(' ').pop())).toEqual(['treeFavorite', 'treeRename']);
+            expect(header.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual(['treeHeaderActions', 'treeTitle', 'treeFolder', 'treeCount']);
+            expect(rename.children).toHaveLength(1);
+            expect(glyph.tagName.toLowerCase()).toBe('svg');
+            expect(glyph.attributes.class).toBe('fixedValueGlyph fixedValueGlyph-large');
+            expect(glyph.attributes['aria-hidden']).toBe('true');
+            expect(glyph.children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
+            expect(rename.textContent).not.toContain('✎');
+            expect(rename.attributes['aria-label']).toBe('Rename Leads');
+            expect(rename.attributes.title).toBe('Rename this tree');
+
+        });
+
+        it('builds the pencil in ONE place, and no button is labelled with a ✎ character', () => {
+
+            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+
+            expect(shellHtml.match(/setAttribute\('d', FIXED_VALUE_GLYPH_PATH\)/g)).toHaveLength(1);
+            expect(shellHtml.match(/buildPencilGlyph\('large'\)/g)).toHaveLength(1);
+            expect(shellHtml).not.toMatch(/createButton\([^)]*'✎'/);
+            expect(shellHtml).toMatch(/\.fixedValueGlyph-large \{ width: 1\.4em; height: 1\.4em; \}/);
+
+        });
+
+        it('starts the ungrouped card\'s header with its name, since it has no ☆ or ✎', () => {
+
+            const panel = drawRecipe();
+            const header = cardOf(panel, '').children[0];
+
+            expect(header.children[0].className).toBe('treeTitle');
+            expect(panel.findAll(header, 'treeHeaderActions')).toEqual([]);
 
         });
 
