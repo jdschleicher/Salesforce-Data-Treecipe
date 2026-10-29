@@ -388,6 +388,13 @@ export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 */
 export const RECIPE_COCKPIT_FRIEND_EMOJI = '👥';
 export const RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI = '🌳';
+/*
+    The first line of a references list (#491): a 🌳 nickname's list leads to the child fields that
+    point to it, a field's ↖ back-link list to the parent it points to. Text only, never focused, and
+    the list's accessible name.
+*/
+export const RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT = 'Click to go to a child reference';
+export const RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT = 'Click to go to the parent reference';
 export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
 /*
     A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
@@ -600,7 +607,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
-            'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
+            'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
@@ -20007,6 +20014,8 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
         position: relative;
         z-index: 2;
     }
+    .treeNicknameMenuHint { color: var(--sdt-muted); }
+    .treeNicknameMenuItems { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
     .treeNicknameBackLink { font-size: 0.85em; }
     .treeFriendSlot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
     .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
@@ -20670,6 +20679,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
     const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
+    const CHILD_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT)};
+    const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
     const CONFIRM_CHANGE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL)};
@@ -20705,8 +20716,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const GEOLOCATION_COMPONENT_RANGES = ${JSON.stringify(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES)};
 
     let treeStates = [];
-    // THE ONE NICKNAME LIST OPEN (#380): { treeObjectState, menuElement, itemElements, usages }
+    // THE ONE REFERENCES LIST OPEN (#380, #491): { menuOwner, menuElement, itemElements, entries, openerOf }
     let openNicknameMenu = null;
+    let nicknameMenuHintSequence = 0;
     let treesViewElement = null;
     let runSelectElement = null;
     let renderedRunFolderName = '';
@@ -21863,7 +21875,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         chipElement.setAttribute('aria-label', nickname + ': ' + pluralize(usages.length, 'field points', 'fields point') + ' to it');
         chipElement.setAttribute('title', 'Show the fields that point to ' + nickname);
         chipElement.addEventListener('click', function () {
-            if (openNicknameMenu && openNicknameMenu.treeObjectState === treeObjectState) {
+            if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState) {
                 closeNicknameMenu(true);
                 return;
             }
@@ -21875,52 +21887,76 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    // AN OBJECT WRITTEN MORE THAN ONCE IS TOLD APART BY ITS NICKNAME, AS ITS ROW IS
+    function describeMenuObject(objectState) {
+        const object = objectState.object;
+        return object.objectApiName + (object.nickname ? ' · ' + object.nickname : '');
+    }
+
+    function describeExclusion(objectState) {
+        return objectState.element.classList.contains('excluded') ? ' — excluded' : '';
+    }
+
     function describeNicknameUsage(usage) {
+        return describeMenuObject(usage.objectState) + '.' + usage.fieldState.field.fieldApiName + describeExclusion(usage.objectState);
+    }
 
-        const usageObject = usage.objectState.object;
-        // AN OBJECT WRITTEN MORE THAN ONCE IS TOLD APART BY ITS NICKNAME, AS ITS ROW IS
-        const objectLabel = usageObject.objectApiName + (usageObject.nickname ? ' · ' + usageObject.nickname : '');
+    function openNicknameMenuOf(treeObjectState) {
 
-        return objectLabel + '.' + usage.fieldState.field.fieldApiName
-            + (usage.objectState.element.classList.contains('excluded') ? ' — excluded' : '');
+        const usages = listNicknameUsages(treeObjectState) || [];
+
+        openReferenceMenu(treeObjectState, treeObjectState.headerElement, function () { return treeObjectState.nicknameChipElement; }, CHILD_REFERENCE_MENU_HINT, usages.map(function (usage) {
+            return { label: describeNicknameUsage(usage), choose: function () { chooseNicknameUsage(usage); } };
+        }));
 
     }
 
-    // ONE LIST OPEN AT A TIME, ON A LINE OF ITS OWN UNDER THE HEADER; BUILT ON EVERY OPEN, SO AN EXCLUSION SINCE IS SHOWN
-    function openNicknameMenuOf(treeObjectState) {
+    /*
+        ONE LIST OPEN AT A TIME, ON A LINE OF ITS OWN UNDER THE ROW THAT OPENED IT; BUILT ON EVERY OPEN, SO AN
+        EXCLUSION SINCE IS SHOWN. ITS FIRST LINE SAYS WHERE A CLICK GOES (#491): TEXT THE KEYS NEVER STOP ON,
+        AND THE LIST'S NAME. IT SITS BESIDE THE role="menu" ELEMENT, NOT IN IT, SINCE A MENU OWNS ONLY ITS ITEMS
+    */
+    function openReferenceMenu(menuOwner, hostElement, openerOf, hintText, entries) {
 
         closeNicknameMenu(false);
 
-        const usages = listNicknameUsages(treeObjectState) || [];
-        const nickname = nicknameOfObject(treeObjectState.object);
-
-        if (!treeObjectState.nicknameMenuElement) {
-            treeObjectState.nicknameMenuElement = createElement('div', 'treeNicknameMenu hidden');
-            treeObjectState.nicknameMenuElement.setAttribute('role', 'menu');
-            treeObjectState.headerElement.appendChild(treeObjectState.nicknameMenuElement);
+        if (!menuOwner.nicknameMenuElement) {
+            menuOwner.nicknameMenuElement = createElement('div', 'treeNicknameMenu hidden');
+            hostElement.appendChild(menuOwner.nicknameMenuElement);
         }
 
-        const menuElement = treeObjectState.nicknameMenuElement;
+        const menuElement = menuOwner.nicknameMenuElement;
         menuElement.textContent = '';
-        menuElement.setAttribute('aria-label', 'Fields that point to ' + nickname);
 
-        const itemElements = usages.map(function (usage, usageIndex) {
+        nicknameMenuHintSequence += 1;
+        const hintId = 'treeNicknameMenuHint' + nicknameMenuHintSequence;
+        const hintElement = createElement('span', 'treeNicknameMenuHint', hintText);
+        hintElement.setAttribute('id', hintId);
+        menuElement.appendChild(hintElement);
 
-            const itemElement = createButton('link', 'treeNicknameMenuItem', describeNicknameUsage(usage));
+        const itemsElement = createElement('div', 'treeNicknameMenuItems');
+        itemsElement.setAttribute('role', 'menu');
+        itemsElement.setAttribute('aria-labelledby', hintId);
+        menuElement.appendChild(itemsElement);
+
+        const itemElements = entries.map(function (entry, entryIndex) {
+
+            const itemElement = createButton('link', 'treeNicknameMenuItem', entry.label);
             itemElement.setAttribute('role', 'menuitem');
-            itemElement.setAttribute('tabindex', usageIndex === 0 ? '0' : '-1');
-            itemElement.addEventListener('click', function () { chooseNicknameUsage(usage); });
-            itemElement.addEventListener('keydown', function (event) { handleNicknameMenuKey(event, usageIndex); });
-            menuElement.appendChild(itemElement);
+            itemElement.setAttribute('tabindex', entryIndex === 0 ? '0' : '-1');
+            itemElement.addEventListener('click', function () { entry.choose(); });
+            itemElement.addEventListener('keydown', function (event) { handleNicknameMenuKey(event, entryIndex); });
+            itemsElement.appendChild(itemElement);
 
             return itemElement;
 
         });
 
         menuElement.classList.remove('hidden');
-        treeObjectState.nicknameChipElement.setAttribute('aria-expanded', 'true');
+        const openerElement = openerOf();
+        if (openerElement) { openerElement.setAttribute('aria-expanded', 'true'); }
 
-        openNicknameMenu = { treeObjectState: treeObjectState, menuElement: menuElement, itemElements: itemElements, usages: usages };
+        openNicknameMenu = { menuOwner: menuOwner, menuElement: menuElement, itemElements: itemElements, entries: entries, openerOf: openerOf };
 
         if (itemElements.length > 0) { itemElements[0].focus(); }
 
@@ -21936,10 +21972,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         closingMenu.menuElement.textContent = '';
         closingMenu.menuElement.classList.add('hidden');
 
-        const chipElement = closingMenu.treeObjectState.nicknameChipElement;
-        if (chipElement) {
-            chipElement.setAttribute('aria-expanded', 'false');
-            if (isFocusReturned) { chipElement.focus(); }
+        const openerElement = closingMenu.openerOf();
+        if (openerElement) {
+            openerElement.setAttribute('aria-expanded', 'false');
+            if (isFocusReturned) { openerElement.focus(); }
         }
 
     }
@@ -21980,7 +22016,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (event.key === 'Enter' || event.key === ' ') {
             // THE BROWSER WOULD CLICK THE BUTTON TOO; ONE CHOICE, NOT TWO
             if (typeof event.preventDefault === 'function') { event.preventDefault(); }
-            chooseNicknameUsage(openNicknameMenu.usages[usageIndex]);
+            openNicknameMenu.entries[usageIndex].choose();
             return;
         }
 
@@ -22019,17 +22055,33 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    // A CHILD FIELD'S WAY BACK (#380): THE NICKNAME IT HOLDS, HIGHLIGHTED, OPENING THE ROW THAT HOLDS IT
-    function buildNicknameBackLink(treeState, ownerState) {
+    // A CHILD FIELD'S WAY BACK (#380): THE NICKNAME IT HOLDS, HIGHLIGHTED, LISTING THE ROW THAT HOLDS IT UNDER THE FIELD (#491)
+    function buildNicknameBackLink(treeState, ownerState, fieldHeaderElement) {
 
         const nickname = nicknameOfObject(ownerState.object);
         const backLinkElement = createButton('secondary', 'treeNicknameBackLink', '↖ ' + nickname, 'compact');
+        const menuOwner = { nicknameMenuElement: null };
+        const openerOf = function () { return backLinkElement; };
 
-        backLinkElement.setAttribute('title', 'Go to ' + ownerState.object.objectApiName + ', which holds ' + nickname);
-        backLinkElement.setAttribute('aria-label', 'Go to ' + nickname + ', the ' + ownerState.object.objectApiName + ' this field points to');
+        backLinkElement.setAttribute('aria-haspopup', 'menu');
+        backLinkElement.setAttribute('aria-expanded', 'false');
+        backLinkElement.setAttribute('title', 'Show the ' + ownerState.object.objectApiName + ' that holds ' + nickname);
+        backLinkElement.setAttribute('aria-label', nickname + ': show the ' + ownerState.object.objectApiName + ' this field points to');
         backLinkElement.addEventListener('click', function () {
-            closeNicknameMenu(false);
-            revealTreeObjectRow(treeState, ownerState, null, ownerState.nicknameChipElement);
+
+            if (openNicknameMenu && openNicknameMenu.menuOwner === menuOwner) {
+                closeNicknameMenu(true);
+                return;
+            }
+
+            openReferenceMenu(menuOwner, fieldHeaderElement, openerOf, PARENT_REFERENCE_MENU_HINT, [{
+                label: describeMenuObject(ownerState) + describeExclusion(ownerState),
+                choose: function () {
+                    closeNicknameMenu(false);
+                    revealTreeObjectRow(treeState, ownerState, null, ownerState.nicknameChipElement);
+                }
+            }]);
+
         });
 
         return backLinkElement;
@@ -24063,7 +24115,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const referencedOwnerState = findReferencedOwnerState(treeObjectState, fieldState);
         if (referencedOwnerState) {
-            fieldHeaderElement.appendChild(buildNicknameBackLink(treeObjectState.treeState, referencedOwnerState));
+            fieldHeaderElement.appendChild(buildNicknameBackLink(treeObjectState.treeState, referencedOwnerState, fieldHeaderElement));
         }
 
         if (field.fieldTypeWithSize || field.fieldType) {
@@ -31608,10 +31660,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
     });
 
-    // A CLICK ANYWHERE BUT THE OPEN NICKNAME LIST OR ITS BUTTON CLOSES IT; CAPTURED, SO A LISTENER THAT STOPS THE CLICK CANNOT KEEP IT OPEN
+    // A CLICK ANYWHERE BUT THE OPEN REFERENCES LIST OR ITS BUTTON CLOSES IT; CAPTURED, SO A LISTENER THAT STOPS THE CLICK CANNOT KEEP IT OPEN
     document.addEventListener('click', function (clickEvent) {
         if (!openNicknameMenu) { return; }
-        if (isElementWithin(clickEvent.target, openNicknameMenu.menuElement) || isElementWithin(clickEvent.target, openNicknameMenu.treeObjectState.nicknameChipElement)) { return; }
+        if (isElementWithin(clickEvent.target, openNicknameMenu.menuElement) || isElementWithin(clickEvent.target, openNicknameMenu.openerOf())) { return; }
         closeNicknameMenu(false);
     }, true);
 
