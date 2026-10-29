@@ -2517,6 +2517,9 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create with Salesforce 
 // #507: THE SAME CREATE THROUGH @salesforce/core, OFFERED ONLY WHEN IT WOULD MAKE THE SAME ORG
 export const RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL = 'Create with @salesforce/core';
 
+// NO CANCEL STOPS IT, SO THE PROGRESS SAYS HOW LONG IT MAY HOLD THE ORG PICKER
+export const RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT = 'Creating scratch org with @salesforce/core… this can take several minutes and cannot be cancelled.';
+
 export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
 
 // #279: THE READER NAMES THE ORG; THERE IS NO DEFAULT ALIAS, SO THE PLACEHOLDER IS ONLY AN EXAMPLE
@@ -8873,8 +8876,8 @@ export class RecipeCockpitService {
                 title: `Recipe Cockpit: scratch org ${scratchOrgPlan.alias}`,
                 cancellable: false
             }, async progress => await ScratchOrgService.runScratchOrgSetupWithLibrary(scratchOrgPlan, {
-                onPhase: (setupPhase: ScratchOrgSetupPhase) => {
-                    progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT[setupPhase] });
+                onPhase: () => {
+                    progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT });
                 }
             }))
             : await vscode.window.withProgress({

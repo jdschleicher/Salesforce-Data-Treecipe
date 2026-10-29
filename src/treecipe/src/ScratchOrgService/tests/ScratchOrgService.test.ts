@@ -23,13 +23,14 @@ jest.mock('@salesforce/core', () => ({
             }
         })
     },
+    ScratchOrgCache: { create: jest.fn() },
     scratchOrgCreate: jest.fn(),
     scratchOrgLifecycleEventName: 'scratchOrgLifecycleEvent'
 }));
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo, Org } from '@salesforce/core';
+import { AuthInfo, Org, ScratchOrgCache } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
@@ -850,6 +851,11 @@ describe('ScratchOrgService (#200)', () => {
                 expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe('sfdx-project.json sets signupTargetLoginUrl.');
             });
 
+            it('refuses a project that sets oauthLocalPort, which the library would read from elsewhere', () => {
+                writeProjectJson({ ...readProjectJson(), oauthLocalPort: 1718 });
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe('sfdx-project.json sets oauthLocalPort.');
+            });
+
             it('refuses a project that names package ancestors', () => {
                 writeProjectJson({ packageDirectories: [{ path: 'force-app', default: true, package: 'pkg', ancestorVersion: 'HIGHEST' }] });
                 expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe('sfdx-project.json names package ancestors.');
@@ -912,9 +918,14 @@ describe('ScratchOrgService (#200)', () => {
                 }
             };
 
+            const OWN_REQUEST_ID = '2SR000000000001AAA';
+            let cachedRequests: Record<string, unknown>;
+
             beforeEach(() => {
                 determineIfDevHubOrg.mockReset().mockResolvedValue(undefined);
                 (Org.create as jest.Mock).mockReset().mockResolvedValue(HUB_ORG);
+                cachedRequests = { [OWN_REQUEST_ID]: { alias: CHOSEN_ALIAS, hubUsername: CHOSEN_DEV_HUB.username } };
+                (ScratchOrgCache.create as jest.Mock).mockReset().mockImplementation(async () => ({ get: (key: string) => cachedRequests[key] }));
             });
 
             const runWithLibrary = async (createScratchOrg: jest.Mock) => {
@@ -966,15 +977,48 @@ describe('ScratchOrgService (#200)', () => {
 
             it('KEEPS an org whose username the Dev Hub named, when setting it up fails afterwards', async () => {
                 const createScratchOrg = jest.fn().mockImplementation(async () => {
-                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { SignupUsername: NEW_SCRATCH_USERNAME } });
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: OWN_REQUEST_ID, SignupUsername: NEW_SCRATCH_USERNAME } });
                     throw Object.assign(new Error('settings deploy failed'), { name: 'ProblemDeployingSettings' });
                 });
 
                 const { outcome } = await runWithLibrary(createScratchOrg);
 
-                expect(outcome).toMatchObject({ kind: 'created', username: NEW_SCRATCH_USERNAME, incompleteMessage: 'ProblemDeployingSettings: settings deploy failed' });
+                expect(outcome).toMatchObject({
+                    kind: 'created',
+                    username: NEW_SCRATCH_USERNAME,
+                    incompleteMessage: `ProblemDeployingSettings: settings deploy failed. If it is not listed, finish it with "sf org resume scratch --job-id ${OWN_REQUEST_ID}"`
+                });
                 expect(JSON.parse(fs.readFileSync(( outcome as { outputFilePath: string } ).outputFilePath, 'utf-8')))
                     .toMatchObject({ status: 1, result: { username: NEW_SCRATCH_USERNAME } });
+            });
+
+            it('ignores another request\'s org -- another extension\'s create, or another alias or Dev Hub -- and reports a failure', async () => {
+                cachedRequests['2SR000000000002AAA'] = { alias: 'someone-else', hubUsername: CHOSEN_DEV_HUB.username };
+                cachedRequests['2SR000000000003AAA'] = { alias: CHOSEN_ALIAS, hubUsername: 'other-hub@example.com' };
+                const createScratchOrg = jest.fn().mockImplementation(async () => {
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: '2SR000000000002AAA', SignupUsername: 'theirs@example.com' } });
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: '2SR000000000003AAA', SignupUsername: 'other-hub-org@example.com' } });
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: '2SR000000000004AAA', SignupUsername: 'uncached@example.com' } });
+                    throw new Error('signup failed');
+                });
+
+                const { outcome } = await runWithLibrary(createScratchOrg);
+
+                expect(outcome).toMatchObject({ kind: 'createFailed', failureMessage: 'Error: signup failed' });
+            });
+
+            it('ignores an event when the request cache cannot be read', async () => {
+                (ScratchOrgCache.create as jest.Mock).mockRejectedValue(new Error('unreadable'));
+                const createScratchOrg = jest.fn().mockImplementation(async () => {
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: OWN_REQUEST_ID, SignupUsername: NEW_SCRATCH_USERNAME } });
+                    throw new Error('auth failed');
+                });
+
+                expect((await runWithLibrary(createScratchOrg)).outcome).toMatchObject({ kind: 'createFailed' });
+            });
+
+            it('reads a thrown non-Error as its text', async () => {
+                expect((await runWithLibrary(jest.fn().mockRejectedValue('plain failure'))).outcome).toMatchObject({ kind: 'createFailed', failureMessage: 'plain failure' });
             });
 
             it('is a failure, filed under the alias, when the Dev Hub named no org', async () => {

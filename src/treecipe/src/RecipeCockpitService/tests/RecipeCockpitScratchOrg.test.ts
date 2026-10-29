@@ -55,6 +55,7 @@ import {
     RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
     RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL,
+    RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT,
     RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
     RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
@@ -415,7 +416,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             let libraryRunSpy: jest.SpyInstance;
 
             beforeEach(() => {
-                libraryRunSpy = jest.spyOn(ScratchOrgService, 'runScratchOrgSetupWithLibrary').mockImplementation(async () => {
+                libraryRunSpy = jest.spyOn(ScratchOrgService, 'runScratchOrgSetupWithLibrary').mockImplementation(async (_plan, setupHooks) => {
+                    setupHooks.onPhase('creating');
                     isNewOrgAuthorized = true;
                     return { kind: 'created', username: NEW_SCRATCH_USERNAME };
                 });
@@ -454,6 +456,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             it('creates with the library in a progress with no Cancel, starts no create process, and lists and selects the org like the CLI\'s', async () => {
 
+                const progressMessages: string[] = [];
+                (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: (progressReport: { message: string }) => progressMessages.push(progressReport.message) }, cancellationToken));
                 (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL);
                 await openRenderedCockpit();
 
@@ -462,6 +466,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
                 expect(libraryRunSpy).toHaveBeenCalledTimes(1);
                 expect(libraryRunSpy.mock.calls[0][0]).toMatchObject({ alias: CHOSEN_ALIAS, devHub: { username: DEFAULT_DEV_HUB.username } });
                 expect((vscode.window.withProgress as jest.Mock).mock.calls[0][0]).toMatchObject({ cancellable: false });
+                expect(progressMessages[0]).toBe(RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT);
                 expect(cliCalls.filter(argumentList => argumentList[1] === 'create')).toEqual([]);
                 expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, NEW_SCRATCH_USERNAME);
                 expect(runNotifications(vscode.window.showInformationMessage)).toEqual([[

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Lifecycle, Org, ScratchOrgCreateOptions, ScratchOrgCreateResult, ScratchOrgLifecycleEvent, scratchOrgCreate, scratchOrgLifecycleEventName } from '@salesforce/core';
+import { Lifecycle, Org, ScratchOrgCache, ScratchOrgCreateOptions, ScratchOrgCreateResult, ScratchOrgLifecycleEvent, scratchOrgCreate, scratchOrgLifecycleEventName } from '@salesforce/core';
 
 import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
@@ -595,6 +595,11 @@ export class ScratchOrgService {
             return 'sfdx-project.json sets signupTargetLoginUrl.';
         }
 
+        // THE LIBRARY BUILDS THE ORG'S OAUTH CALLBACK FROM IT, READ FROM THE WORKING DIRECTORY'S PROJECT
+        if ( projectJson.oauthLocalPort !== undefined ) {
+            return 'sfdx-project.json sets oauthLocalPort.';
+        }
+
         const packageDirectories = Array.isArray(projectJson.packageDirectories) ? projectJson.packageDirectories : [];
         const hasAncestors = packageDirectories.some(packageDirectory => packageDirectory !== null && typeof packageDirectory === 'object'
             && ( 'ancestorId' in packageDirectory || 'ancestorVersion' in packageDirectory ));
@@ -693,21 +698,51 @@ export class ScratchOrgService {
 
     }
 
-    // THE USERNAME OF THE ORG BEING CREATED, ONCE THE DEV HUB HAS ONE: SET BY THE ONE LIFECYCLE LISTENER WHILE A LIBRARY CREATE RUNS
-    private static libraryCreateUsernameSink: ((username: string) => void) | undefined;
+    /*
+        The org being created, once the Dev Hub has one: handed to the run by the one lifecycle
+        listener. Lifecycle is ONE object for the whole extension host, so another extension's
+        create reaches the listener too; the run keeps only an event whose ScratchOrgInfo the library
+        cached for ITS request (isOwnScratchOrgRequest).
+    */
+    private static libraryCreateSink: ((scratchOrgInfoId: string, username: string) => Promise<void>) | undefined;
 
     static registerLibraryLifecycleListener() {
 
         Lifecycle.getInstance().on<ScratchOrgLifecycleEvent>(scratchOrgLifecycleEventName, async (lifecycleEvent: ScratchOrgLifecycleEvent) => {
 
             const scratchOrgInfo = lifecycleEvent?.scratchOrgInfo;
+            const scratchOrgInfoId = scratchOrgInfo?.Id;
             const username = scratchOrgInfo?.Username ?? scratchOrgInfo?.SignupUsername;
 
-            if ( lifecycleEvent?.stage === 'authenticate' && typeof username === 'string' ) {
-                this.libraryCreateUsernameSink?.(username);
+            if ( lifecycleEvent?.stage === 'authenticate' && typeof scratchOrgInfoId === 'string' && typeof username === 'string' ) {
+                await this.libraryCreateSink?.(scratchOrgInfoId, username);
             }
 
         }, SCRATCH_ORG_LIBRARY_LIFECYCLE_LISTENER_ID);
+
+    }
+
+    // scratchOrgCreate CACHES EVERY REQUEST BY ITS ScratchOrgInfo ID, WITH THE ALIAS AND DEV HUB IT WAS MADE WITH, BEFORE IT POLLS
+    static async isOwnScratchOrgRequest(scratchOrgInfoId: string, alias: string, hubUsername: string): Promise<boolean> {
+
+        try {
+            const cachedRequest: unknown = ( await ScratchOrgCache.create() ).get(scratchOrgInfoId);
+            return cachedRequest !== null && typeof cachedRequest === 'object'
+                && ( cachedRequest as Record<string, unknown> ).alias === alias
+                && ( cachedRequest as Record<string, unknown> ).hubUsername === hubUsername;
+        } catch {
+            return false;
+        }
+
+    }
+
+    static readErrorDetail(caughtError: unknown): string {
+
+        if ( caughtError instanceof Error ) {
+            return [caughtError.name, caughtError.message].filter(detailPart => typeof detailPart === 'string' && detailPart.trim() !== '').join(': ') || String(caughtError);
+        }
+
+        return String(caughtError);
 
     }
 
@@ -738,9 +773,15 @@ export class ScratchOrgService {
         }
 
         let createdUsername: string | undefined;
+        let createdScratchOrgInfoId: string | undefined;
 
         this.registerLibraryLifecycleListener();
-        this.libraryCreateUsernameSink = (username: string) => { createdUsername = username; };
+        this.libraryCreateSink = async (scratchOrgInfoId: string, username: string) => {
+            if ( await this.isOwnScratchOrgRequest(scratchOrgInfoId, scratchOrgPlan.alias, scratchOrgPlan.devHub.username) ) {
+                createdScratchOrgInfoId = scratchOrgInfoId;
+                createdUsername = username;
+            }
+        };
 
         try {
 
@@ -777,27 +818,29 @@ export class ScratchOrgService {
                 }, now())
             };
 
-        } catch (createError) {
+        } catch (createError: unknown) {
 
-            const failureMessage = this.redactSecretText([createError?.name, createError?.message]
-                .filter((detailPart): detailPart is string => typeof detailPart === 'string' && detailPart.trim() !== '')
-                .join(': ') || String(createError));
+            const failureMessage = this.redactSecretText(this.readErrorDetail(createError));
             const keptUsername = typeof createdUsername === 'string' && PicklistDependencyCheckService.isValidTargetOrgIdentifier(createdUsername)
                 ? createdUsername
                 : undefined;
             const failurePayload = {
                 status: 1,
                 createdWith: '@salesforce/core',
-                name: createError?.name,
+                name: createError instanceof Error ? createError.name : undefined,
                 message: failureMessage,
                 ...( keptUsername ? { result: { username: keptUsername } } : {} )
             };
 
             if ( keptUsername ) {
+                // THE authenticate EVENT COMES BEFORE THE AUTHORIZATION IS SAVED: IF IT NEVER WAS, ONLY A RESUME LISTS THE ORG
+                const resumeText = createdScratchOrgInfoId && /^[A-Za-z0-9]{15,18}$/.test(createdScratchOrgInfoId)
+                    ? `. If it is not listed, finish it with "sf org resume scratch --job-id ${createdScratchOrgInfoId}"`
+                    : '';
                 return {
                     kind: 'created',
                     username: keptUsername,
-                    incompleteMessage: failureMessage,
+                    incompleteMessage: `${failureMessage}${resumeText}`,
                     outputFilePath: this.writeOrgOperationPayload(scratchOrgPlan.workspaceRoot, keptUsername, 'scratch-create', failurePayload, now())
                 };
             }
@@ -810,7 +853,7 @@ export class ScratchOrgService {
 
         } finally {
 
-            this.libraryCreateUsernameSink = undefined;
+            this.libraryCreateSink = undefined;
 
         }
 
