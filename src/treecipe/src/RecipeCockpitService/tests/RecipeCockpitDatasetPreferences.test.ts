@@ -29,9 +29,10 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 
 /*
     A data set's own name and favorite, and the data sets tab's Favorites only, as #235 does
-    for a tree card. The host keeps both by data set FOLDER NAME in workspaceState and asks for a
-    name in its own input box; the panel posts only the folder name of a row it drew, and redraws
-    that row in place on every card that lists it.
+    for a tree card. The host keeps both by data set FOLDER NAME in workspaceState. Since #551 ✎
+    opens the name inline: the panel posts the folder name of a row it drew and the name as typed,
+    the host checks it again, and the panel redraws that row in place on every card that lists it,
+    or writes the host's refusal under the box.
 */
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -203,16 +204,23 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         });
 
-        it.each(['renameDataset', 'toggleFavoriteDataset'])('given %s for a drawn row, names its folder', (command) => {
+        it('given toggleFavoriteDataset for a drawn row, names its folder', () => {
 
-            expect(RecipeCockpitService.routePanelMessage({ command: command, datasetFolderName: LEAD_DATASETS[1] }, buildDrawnPanelState()))
-                .toEqual({ kind: command, datasetFolderName: LEAD_DATASETS[1] });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[1] }, buildDrawnPanelState()))
+                .toEqual({ kind: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[1] });
+
+        });
+
+        it('given renameDataset for a drawn row and the model on screen, names its folder and carries the name as typed', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: LEAD_DATASETS[1], name: ' Seed ', renderSequence: 4 }, buildDrawnPanelState()))
+                .toEqual({ kind: 'renameDataset', datasetFolderName: LEAD_DATASETS[1], name: ' Seed ', renderSequence: 4 });
 
         });
 
         it.each(['renameDataset', 'toggleFavoriteDataset'])('given %s for anything else, does nothing', (command) => {
 
-            const route = (datasetFolderName: unknown, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: command, datasetFolderName: datasetFolderName }, panelState);
+            const route = (datasetFolderName: unknown, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: command, datasetFolderName: datasetFolderName, name: 'Seed', renderSequence: 4 }, panelState);
 
             expect(route('dataset-2026-09-03T00-00-00')).toBeUndefined();
             expect(route('../outside')).toBeUndefined();
@@ -229,6 +237,19 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         });
 
+        it('given renameDataset with a name that is not a string, is over 80 characters, or was typed over another model, does nothing', () => {
+
+            const route = (name: unknown, renderSequence: unknown) => RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET, name: name, renderSequence: renderSequence }, buildDrawnPanelState());
+
+            expect(route('x'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH), 4)).toMatchObject({ kind: 'renameDataset' });
+            expect(route(undefined, 4)).toBeUndefined();
+            expect(route(7, 4)).toBeUndefined();
+            expect(route('x'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH + 1), 4)).toBeUndefined();
+            expect(route('Seed', 3)).toBeUndefined();
+            expect(route('Seed', undefined)).toBeUndefined();
+
+        });
+
         it('allows a data set added in place only once the panel says its row is drawn', () => {
 
             const panelState = buildDrawnPanelState();
@@ -237,7 +258,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
             RecipeCockpitService.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset);
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: addedDataset.datasetFolderName }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: addedDataset.datasetFolderName, name: 'Seed', renderSequence: 4 }, panelState)).toBeUndefined();
             expect(panelState.pendingTreeHistoryAllowLists.nameableDatasetFolderNames.has(addedDataset.datasetFolderName)).toBe(true);
 
         });
@@ -300,20 +321,18 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         });
 
-        it('renames a data set through the host\'s input box, keeps the name, and posts the change for that row', async () => {
+        const renameDataset = (recipeDataMessage: any, datasetFolderName: string, name: unknown) => receivedMessageHandler({
+            command: 'renameDataset', datasetFolderName: datasetFolderName, name: name, renderSequence: recipeDataMessage.renderSequence
+        });
+
+        it('renames a data set from the name the panel posts, keeps it, posts the change for that row and closes the box', async () => {
 
             const workspaceState = buildWorkspaceState();
             const recipeDataMessage = await openAndDraw(workspaceState);
-            showInputBox.mockResolvedValue('  Before the fix ');
 
-            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: LEAD_DATASETS[1] });
+            await renameDataset(recipeDataMessage, LEAD_DATASETS[1], '  Before the fix ');
 
-            const inputBoxOptions = showInputBox.mock.calls[0][0];
-            expect(inputBoxOptions.value).toBe('');
-            expect(inputBoxOptions.placeHolder).toBe(LEAD_DATASETS[1]);
-            expect(inputBoxOptions.validateInput(ACCOUNT_DATASET)).toContain('already has that name');
-            expect(inputBoxOptions.validateInput('Anything else')).toBeUndefined();
-
+            expect(showInputBox).not.toHaveBeenCalled();
             expect(storedOf(workspaceState)).toEqual(storedPreferences({ [LEAD_DATASETS[1]]: 'Before the fix' }));
             expect(lastPosted('datasetPreferences')).toEqual({
                 command: 'datasetPreferences',
@@ -322,6 +341,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
                 customName: 'Before the fix',
                 isFavorite: false
             });
+            expect(lastPosted('datasetRenameResult')).toEqual({ command: 'datasetRenameResult', renderSequence: recipeDataMessage.renderSequence, datasetFolderName: LEAD_DATASETS[1] });
 
             // A REVEAL REPLAYS THE STORED MODEL, WHICH HAS TO CARRY THE NAME TOO
             postedPanelMessages = [];
@@ -330,56 +350,84 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         });
 
-        it('escapes a folder name in the prompt, which the input box would draw as a link that runs a command', async () => {
+        it('refuses another data set\'s folder name and a line break with a result naming why, and writes nothing', async () => {
 
-            await openAndDraw(buildWorkspaceState());
-            const forgedFolderName = '[Click](command:workbench.action.terminal.new)';
-            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
-            panelState.treeHistoryAllowLists.nameableDatasetFolderNames.add(forgedFolderName);
-            showInputBox.mockResolvedValue(undefined);
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
 
-            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: forgedFolderName });
+            await renameDataset(recipeDataMessage, LEAD_DATASETS[1], ACCOUNT_DATASET.toUpperCase());
+            expect(lastPosted('datasetRenameResult')).toEqual({
+                command: 'datasetRenameResult', renderSequence: recipeDataMessage.renderSequence, datasetFolderName: LEAD_DATASETS[1], refusal: 'Another data set already has that name.'
+            });
 
-            const prompt = showInputBox.mock.calls[0][0].prompt;
-            expect(prompt).not.toContain(forgedFolderName);
-            expect(prompt).not.toMatch(/[[\]()]/);
+            await renameDataset(recipeDataMessage, LEAD_DATASETS[1], 'Before\u2029the fix');
+            expect(lastPosted('datasetRenameResult').refusal).toContain('one line');
+
+            expect(lastPosted('datasetPreferences')).toBeUndefined();
+            expect(workspaceState.update).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, expect.anything());
 
         });
 
-        it('pre-fills the data set\'s own name, an emptied box clears it, and a cancelled box changes nothing', async () => {
+        it('clears the data set\'s own name for an empty name or its folder name', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: storedPreferences({ [ACCOUNT_DATASET]: 'Seed' }, [ACCOUNT_DATASET]) });
-            await openAndDraw(workspaceState);
+            const recipeDataMessage = await openAndDraw(workspaceState);
 
-            showInputBox.mockResolvedValue(undefined);
-            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET });
-            expect(lastPosted('datasetPreferences')).toBeUndefined();
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, '');
 
-            showInputBox.mockResolvedValue('');
-            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET });
-
-            expect(showInputBox.mock.calls[0][0].value).toBe('Seed');
             expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [ACCOUNT_DATASET]));
             expect(lastPosted('datasetPreferences')).toEqual(expect.objectContaining({ datasetFolderName: ACCOUNT_DATASET, isFavorite: true }));
             expect(lastPosted('datasetPreferences').customName).toBeUndefined();
 
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, 'Seed again');
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, ` ${ACCOUNT_DATASET} `);
+
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [ACCOUNT_DATASET]));
+
         });
 
-        it('given another window took the name while the box was open, refuses it and says why', async () => {
+        it('checks the name against what is stored NOW, so a name another window took since is refused', async () => {
 
             const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
-            showInputBox.mockImplementation(async () => {
-                workspaceState.storedValues.set(RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, storedPreferences({ 'dataset-elsewhere': 'Seed' }));
-                return 'seed';
-            });
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            workspaceState.storedValues.set(RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, storedPreferences({ 'dataset-elsewhere': 'Seed' }));
 
-            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET });
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, 'seed');
 
             expect(storedOf(workspaceState)).toEqual(storedPreferences({ 'dataset-elsewhere': 'Seed' }));
             expect(lastPosted('datasetPreferences')).toBeUndefined();
-            expect(warningSpy.mock.calls[0][0]).toContain('already has that name');
+            expect(lastPosted('datasetRenameResult').refusal).toContain('already has that name');
+
+        });
+
+        it('given a forged data set, a bad name, or a name typed over an older model, writes nothing and answers nothing', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+
+            await renameDataset(recipeDataMessage, '../outside', 'Seed');
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, 7);
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, 'x'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH + 1));
+            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET, name: 'Seed', renderSequence: recipeDataMessage.renderSequence + 1 });
+
+            expect(workspaceState.update).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, expect.anything());
+            expect(lastPosted('datasetPreferences')).toBeUndefined();
+            expect(lastPosted('datasetRenameResult')).toBeUndefined();
+
+        });
+
+        it('given a write that fails, warns, redraws nothing and closes the box onto the old name', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            workspaceState.update.mockImplementation(() => Promise.reject(new Error('read-only')));
+
+            await renameDataset(recipeDataMessage, ACCOUNT_DATASET, 'Seed');
+
+            expect(warningSpy).toHaveBeenCalledTimes(1);
+            expect(lastPosted('datasetPreferences')).toBeUndefined();
+            expect(lastPosted('datasetRenameResult')).toEqual({ command: 'datasetRenameResult', renderSequence: recipeDataMessage.renderSequence, datasetFolderName: ACCOUNT_DATASET });
 
         });
 
@@ -485,7 +533,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         });
 
-        it('posts only the data set\'s folder name for ✎ and ☆', () => {
+        it('posts only the data set\'s folder name for ☆, and ✎ opens the name inline rather than posting', () => {
 
             const panel = drawRecipe();
             const [firstRow] = rowsOf(panel, openLeadDatasets(panel));
@@ -494,9 +542,107 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             panel.findAll(firstRow, 'treeDatasetRename')[0].dispatch('click');
 
             expect(panel.postedHostMessages.filter((hostMessage: any) => ['toggleFavoriteDataset', 'renameDataset'].includes(hostMessage.command))).toEqual([
-                { command: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[0] },
-                { command: 'renameDataset', datasetFolderName: LEAD_DATASETS[0] }
+                { command: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[0] }
             ]);
+
+        });
+
+        describe('the inline name box (#551)', () => {
+
+            const openBoxOn = (panel: ReturnType<typeof runPanelScript>, rowIndex: number) => {
+                const rowElement = rowsOf(panel, openLeadDatasets(panel))[rowIndex];
+                panel.findAll(rowElement, 'treeDatasetRename')[0].dispatch('click');
+                return rowElement;
+            };
+            const parts = (panel: ReturnType<typeof runPanelScript>, rowElement: any) => ({
+                rename: panel.findAll(rowElement, 'treeDatasetRename')[0],
+                name: panel.findAll(rowElement, 'treeDatasetName')[0],
+                box: panel.findAll(rowElement, 'nameEditor')[0],
+                input: panel.findAll(rowElement, 'nameEditorInput')[0],
+                refusal: panel.findAll(rowElement, 'nameEditorRefusal')[0]
+            });
+            const renamesPosted = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'renameDataset');
+
+            it('opens in place of the name, pre-filled and selected, the folder as placeholder, and ✎ says it is open', () => {
+
+                const panel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[1].customName = 'Before the fix'; });
+                const rowElement = openBoxOn(panel, 1);
+                const { rename, name, box, input, refusal } = parts(panel, rowElement);
+
+                expect(input.value).toBe('Before the fix');
+                expect(input.attributes.placeholder).toBe(LEAD_DATASETS[1]);
+                expect(input.attributes.maxlength).toBe(String(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH));
+                expect(input.selectedCount).toBe(1);
+                expect(panel.activeElement()).toBe(input);
+                expect(panel.isHidden(name)).toBe(true);
+                expect(panel.isHidden(box)).toBe(false);
+                expect(rename.attributes['aria-expanded']).toBe('true');
+                expect(refusal.attributes.role).toBe('alert');
+
+            });
+
+            it('posts the folder name, the name as typed and the model on Enter once, then closes on the host\'s answer onto the new name', () => {
+
+                const panel = drawRecipe();
+                const rowElement = openBoxOn(panel, 0);
+                const { rename, name, box, input } = parts(panel, rowElement);
+
+                input.value = 'Seed';
+                input.dispatch('keydown', { key: 'Enter' });
+                input.dispatch('blur');
+
+                expect(renamesPosted(panel)).toEqual([{ command: 'renameDataset', datasetFolderName: LEAD_DATASETS[0], name: 'Seed', renderSequence: 3 }]);
+
+                panel.postToPanel({ command: 'datasetPreferences', renderSequence: 3, datasetFolderName: LEAD_DATASETS[0], customName: 'Seed', isFavorite: false });
+                // THE NAME STAYS HIDDEN UNDER THE OPEN BOX UNTIL THE ANSWER CLOSES IT
+                expect(panel.isHidden(name)).toBe(true);
+                panel.postToPanel({ command: 'datasetRenameResult', renderSequence: 3, datasetFolderName: LEAD_DATASETS[0] });
+
+                expect(panel.isHidden(box)).toBe(true);
+                expect(name.textContent).toBe('Seed');
+                expect(panel.isHidden(name)).toBe(false);
+                expect(rename.attributes['aria-expanded']).toBe('false');
+                expect(panel.activeElement()).toBe(rename);
+
+            });
+
+            it('Escape puts the name back, gives focus to ✎, and the blur after it saves nothing', () => {
+
+                const panel = drawRecipe();
+                const rowElement = openBoxOn(panel, 0);
+                const { rename, name, box, input } = parts(panel, rowElement);
+
+                input.value = 'Not this';
+                input.dispatch('keydown', { key: 'Escape' });
+                input.dispatch('blur');
+
+                expect(renamesPosted(panel)).toEqual([]);
+                expect(panel.isHidden(box)).toBe(true);
+                // NO NAME OF ITS OWN, SO THE NAME SLOT STAYS HIDDEN
+                expect(panel.isHidden(name)).toBe(true);
+                expect(panel.activeElement()).toBe(rename);
+
+            });
+
+            it('writes a refusal under the box and keeps it open with what was typed', () => {
+
+                const panel = drawRecipe();
+                const rowElement = openBoxOn(panel, 0);
+                const { box, input, refusal } = parts(panel, rowElement);
+
+                input.value = ACCOUNT_DATASET;
+                input.dispatch('blur');
+                panel.postToPanel({ command: 'datasetRenameResult', renderSequence: 3, datasetFolderName: LEAD_DATASETS[0], refusal: 'Another data set already has that name.' });
+
+                expect(panel.isHidden(box)).toBe(false);
+                expect(input.value).toBe(ACCOUNT_DATASET);
+                expect(refusal.textContent).toBe('Another data set already has that name.');
+                expect(panel.isHidden(refusal)).toBe(false);
+
+                panel.postToPanel({ command: 'datasetRenameResult', renderSequence: 2, datasetFolderName: LEAD_DATASETS[0] });
+                expect(panel.isHidden(box)).toBe(false);
+
+            });
 
         });
 

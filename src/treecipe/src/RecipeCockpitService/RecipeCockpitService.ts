@@ -1186,6 +1186,26 @@ export interface IRecipeCockpitDatasetPreferencesMessage {
     isFavorite: boolean;
 }
 
+/*
+    What became of a name typed in a card's or data set row's inline name box (#551). A refusal
+    keeps the box open with what was typed and says why under it; no refusal closes the box, and
+    the title on screen is whatever treePreferences / datasetPreferences last drew -- the old one
+    when the write failed, which the host warns about.
+*/
+export interface IRecipeCockpitTreeRenameResultMessage {
+    command: 'treeRenameResult';
+    renderSequence: number;
+    treeKey: string;
+    refusal?: string;
+}
+
+export interface IRecipeCockpitDatasetRenameResultMessage {
+    command: 'datasetRenameResult';
+    renderSequence: number;
+    datasetFolderName: string;
+    refusal?: string;
+}
+
 export interface IRecipeCockpitRecipeViewModel {
     runs: IRecipeCockpitRunViewModel[];
     selectedRunFolderName: string;
@@ -1324,6 +1344,8 @@ export interface IRecipeCockpitPanelMessage {
     isRemembered?: unknown;
     // A FIELD'S INLINE EDITOR (#337, #356): A FIXED VALUE OR AN EDITED EXPRESSION, AS TYPED -- CHECKED AGAIN BY THE HOST
     value?: unknown;
+    // A CARD'S OR DATA SET ROW'S INLINE NAME BOX (#551): THE NAME AS TYPED -- CHECKED AGAIN BY THE HOST
+    name?: unknown;
     picklistValues?: unknown;
     min?: unknown;
     max?: unknown;
@@ -2616,6 +2638,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitWireLookupStateMessage
                                         | IRecipeCockpitRecordTypeRegenerateStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
+                                        | IRecipeCockpitTreeRenameResultMessage
+                                        | IRecipeCockpitDatasetRenameResultMessage
                                         | IRecipeCockpitDatasetPreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
                                         | IRecipeCockpitFieldEditResultMessage
@@ -2897,9 +2921,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'useOrgRecordForLookup'; treeKey: string; recipeFilePath: string; emptyLookup: IRecipeCockpitEmptyLookupViewModel }
     | { kind: 'removeTodo'; treeKey: string; recipeFilePath: string; lineNumber: number; todoText: string }
     | { kind: 'restoreTodo'; treeKey: string; recipeFilePath: string; removed: IRemovedTodoComment }
-    | { kind: 'renameTree'; folderName: string }
+    | { kind: 'renameTree'; treeKey: string; folderName: string; name: string; renderSequence: number }
     | { kind: 'toggleFavoriteTree'; folderName: string }
-    | { kind: 'renameDataset'; datasetFolderName: string }
+    | { kind: 'renameDataset'; datasetFolderName: string; name: string; renderSequence: number }
     | { kind: 'toggleFavoriteDataset'; datasetFolderName: string }
     | { kind: 'setObjectIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
     | { kind: 'setFieldIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isIncluded: boolean }
@@ -3422,7 +3446,7 @@ export class RecipeCockpitService {
     /*
         The cards' names and favorites as workspaceState kept them, each entry checked on its own:
         the store is the reader's, but a name is drawn in the panel and compared with every other,
-        so one that could not have been saved through the input box is dropped rather than drawn.
+        so one that could not have been saved through the name box is dropped rather than drawn.
     */
     static readTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreePreferences {
 
@@ -3542,7 +3566,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        What the input box says is wrong with a name, or undefined when it can be saved. An empty
+        What the inline name box says is wrong with a name, or undefined when it can be saved. An empty
         name is valid: it clears the card's own name. A name is unique against every OTHER folder's
         name in the workspace and every other card's title on screen, compared trimmed and without
         case, because two cards a reader cannot tell apart are what a name exists to prevent.
@@ -3626,7 +3650,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        What the input box says is wrong with a data set's name. An empty name clears it. A
+        What the inline name box says is wrong with a data set's name. An empty name clears it. A
         name is unique against every OTHER data set's name in the workspace and every other row's
         folder name on screen, trimmed and without case: two rows a reader cannot tell apart are
         what a name exists to prevent.
@@ -7656,7 +7680,7 @@ export class RecipeCockpitService {
 
             case 'renameTree':
 
-                await this.renameTree(cockpitPanel, panelState, panelAction.folderName);
+                await this.renameTree(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'setObjectIncluded':
@@ -7721,7 +7745,7 @@ export class RecipeCockpitService {
 
             case 'renameDataset':
 
-                await this.renameDataset(cockpitPanel, panelState, panelAction.datasetFolderName);
+                await this.renameDataset(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'toggleFavoriteDataset': {
@@ -7955,52 +7979,50 @@ export class RecipeCockpitService {
 
     }
 
+    // A NAME POSTED FROM AN INLINE NAME BOX: A STRING NO LONGER THAN THE BOX'S OWN maxlength
+    private static isPostedCustomName(name: unknown, maxLength: number): name is string {
+
+        return typeof name === 'string' && name.length <= maxLength;
+
+    }
+
     /*
-        The name is asked for HOST-side, so the panel never posts text to be stored, and checked
-        twice: by the box as it is typed, and again on the preferences as they are when it closes,
-        because another window of the same workspace can have named a tree while it was open.
+        The name comes from the card's inline box (#551) and is checked here again, on the
+        preferences as they are now -- another window of the same workspace can have named a tree
+        since the box opened. A refusal goes back to the box, which stays open with what was typed;
+        every other ending closes it.
     */
-    private static async renameTree(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
+    private static async renameTree(cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        renameAction: Extract<RecipeCockpitPanelAction, { kind: 'renameTree' }>) {
 
-        const shownTrees = panelState.recipeDataMessage?.recipe.trees ?? [];
-        const shownTree = shownTrees.find(tree => tree.folderName === folderName);
-        const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
-        // THE INPUT BOX DRAWS [label](command:...) IN ITS PROMPT AS A LINK THAT RUNS THE COMMAND, AND THE FOLDER NAME COMES FROM DISK
-        const folderLabel = RecipeYamlScalar.escapeForNotification(folderName);
-        const defaultTitleLabel = RecipeYamlScalar.escapeForNotification(shownTree?.title ?? folderName);
-
-        const enteredName = await vscode.window.showInputBox({
-            title: 'Rename relationship tree',
-            prompt: shownTree === undefined || shownTree.title === folderName
-                ? `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to its folder name.`
-                : `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
-            placeHolder: shownTree?.title ?? '',
-            value: treePreferences.customNamesByFolderName.get(folderName) ?? '',
-            validateInput: candidateName => this.validateTreeName(candidateName, folderName, treePreferences, shownTrees)
+        const { treeKey, folderName, name, renderSequence } = renameAction;
+        const postResult = (refusal?: string) => this.postToPanel(cockpitPanel, {
+            command: 'treeRenameResult',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            ...( refusal !== undefined ? { refusal: refusal } : {} )
         });
 
-        if ( enteredName === undefined || this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState ) {
-            return;
-        }
-
-        const latestTreePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
-        const namingProblem = this.validateTreeName(enteredName, folderName, latestTreePreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
+        const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
+        const namingProblem = this.validateTreeName(name, folderName, treePreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
 
         if ( namingProblem ) {
-            VSCodeWorkspaceService.showWarningMessage(`The tree was not renamed. ${namingProblem}`);
+            postResult(namingProblem);
             return;
         }
 
-        const trimmedName = enteredName.trim();
+        const trimmedName = name.trim();
 
         // THE FOLDER NAME IS ALREADY THE DEFAULT TITLE (#389), SO NAMING A TREE AFTER ITS OWN FOLDER CLEARS ITS NAME
         if ( trimmedName === '' || trimmedName === folderName ) {
-            latestTreePreferences.customNamesByFolderName.delete(folderName);
+            treePreferences.customNamesByFolderName.delete(folderName);
         } else {
-            latestTreePreferences.customNamesByFolderName.set(folderName, trimmedName);
+            treePreferences.customNamesByFolderName.set(folderName, trimmedName);
         }
 
-        await this.saveAndPostTreePreferences(cockpitPanel, panelState, folderName, latestTreePreferences);
+        await this.saveAndPostTreePreferences(cockpitPanel, panelState, folderName, treePreferences);
+        postResult();
 
     }
 
@@ -8027,43 +8049,38 @@ export class RecipeCockpitService {
 
     }
 
-    // A DATA SET'S NAME, ASKED FOR AND CHECKED AS A CARD'S IS: BY THE BOX AS IT IS TYPED, AND AGAIN WHEN IT CLOSES
-    private static async renameDataset(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, datasetFolderName: string) {
+    // A DATA SET'S NAME, FROM ITS ROW'S INLINE BOX (#551), CHECKED AND ANSWERED AS A CARD'S IS
+    private static async renameDataset(cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        renameAction: Extract<RecipeCockpitPanelAction, { kind: 'renameDataset' }>) {
 
-        const shownTrees = panelState.recipeDataMessage?.recipe.trees ?? [];
-        const datasetPreferences = this.readDatasetPreferences(this.recipeCockpitWorkspaceState);
-        // THE INPUT BOX DRAWS [label](command:...) IN ITS PROMPT AS A LINK THAT RUNS THE COMMAND, AND THE FOLDER NAME COMES FROM DISK
-        const folderLabel = RecipeYamlScalar.escapeForNotification(datasetFolderName);
-
-        const enteredName = await vscode.window.showInputBox({
-            title: 'Rename data set',
-            prompt: `A name for the data set in "${folderLabel}", unique in this workspace. Leave it empty to show it by its folder name again. The folder is not renamed.`,
-            placeHolder: datasetFolderName,
-            value: datasetPreferences.customNamesByFolderName.get(datasetFolderName) ?? '',
-            validateInput: candidateName => this.validateDatasetName(candidateName, datasetFolderName, datasetPreferences, shownTrees)
+        const { datasetFolderName, name, renderSequence } = renameAction;
+        const postResult = (refusal?: string) => this.postToPanel(cockpitPanel, {
+            command: 'datasetRenameResult',
+            renderSequence: renderSequence,
+            datasetFolderName: datasetFolderName,
+            ...( refusal !== undefined ? { refusal: refusal } : {} )
         });
 
-        if ( enteredName === undefined || this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState ) {
-            return;
-        }
-
-        const latestDatasetPreferences = this.readDatasetPreferences(this.recipeCockpitWorkspaceState);
-        const namingProblem = this.validateDatasetName(enteredName, datasetFolderName, latestDatasetPreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
+        const datasetPreferences = this.readDatasetPreferences(this.recipeCockpitWorkspaceState);
+        const namingProblem = this.validateDatasetName(name, datasetFolderName, datasetPreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
 
         if ( namingProblem ) {
-            VSCodeWorkspaceService.showWarningMessage(`The data set was not renamed. ${namingProblem}`);
+            postResult(namingProblem);
             return;
         }
 
-        const trimmedName = enteredName.trim();
+        const trimmedName = name.trim();
 
-        if ( trimmedName === '' ) {
-            latestDatasetPreferences.customNamesByFolderName.delete(datasetFolderName);
+        // THE ROW ALREADY SHOWS ITS FOLDER NAME, SO A NAME EQUAL TO IT IS NO NAME
+        if ( trimmedName === '' || trimmedName === datasetFolderName ) {
+            datasetPreferences.customNamesByFolderName.delete(datasetFolderName);
         } else {
-            latestDatasetPreferences.customNamesByFolderName.set(datasetFolderName, trimmedName);
+            datasetPreferences.customNamesByFolderName.set(datasetFolderName, trimmedName);
         }
 
-        await this.saveAndPostDatasetPreferences(cockpitPanel, panelState, datasetFolderName, latestDatasetPreferences);
+        await this.saveAndPostDatasetPreferences(cockpitPanel, panelState, datasetFolderName, datasetPreferences);
+        postResult();
 
     }
 
@@ -17341,11 +17358,8 @@ export class RecipeCockpitService {
             }
 
             /*
-                ✎ and ☆ post the card's KEY, matched against the cards the confirmed-drawn model
-                drew them on. The name itself is never posted: the host asks for it in its own
-                input box, so no text from the panel is ever stored.
+                ☆ posts the card's KEY, matched against the cards the confirmed-drawn model drew it on.
             */
-            case 'renameTree':
             case 'toggleFavoriteTree': {
 
                 const { treeKey } = panelMessage;
@@ -17361,10 +17375,30 @@ export class RecipeCockpitService {
             }
 
             /*
-                A data set row's ✎ and ☆ post its FOLDER NAME, matched against the rows the
-                confirmed-drawn model listed. As for a card, the name is asked for by the host.
+                The inline name box (#551) posts the card's KEY and the name as typed, for the model it
+                was typed over. Only the shape is checked here -- a string the box's own maxlength
+                allows -- and the host checks the name itself with validateTreeName before storing it.
             */
-            case 'renameDataset':
+            case 'renameTree': {
+
+                const { treeKey, name, renderSequence } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !this.isPostedCustomName(name, RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)
+                        || !panelState.recipeDataMessage || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                const folderName = panelState.recipeDataMessage.recipe.trees.find(tree => tree.treeKey === treeKey)?.folderName;
+
+                return folderName ? { kind: 'renameTree', treeKey: treeKey, folderName: folderName, name: name, renderSequence: renderSequence } : undefined;
+
+            }
+
+            /*
+                A data set row's ☆ posts its FOLDER NAME, matched against the rows the confirmed-drawn
+                model listed.
+            */
             case 'toggleFavoriteDataset': {
 
                 const { datasetFolderName } = panelMessage;
@@ -17375,6 +17409,21 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: panelMessage.command, datasetFolderName: datasetFolderName };
+
+            }
+
+            // A DATA SET ROW'S INLINE NAME BOX (#551), ROUTED AS A CARD'S IS
+            case 'renameDataset': {
+
+                const { datasetFolderName, name, renderSequence } = panelMessage;
+
+                if ( typeof datasetFolderName !== 'string' || !this.isPostedCustomName(name, RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH)
+                        || !panelState.recipeDataMessage || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                return { kind: 'renameDataset', datasetFolderName: datasetFolderName, name: name, renderSequence: renderSequence };
 
             }
 
@@ -20815,6 +20864,8 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
     .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeDatasetName { font-weight: 600; }
     .treeDatasetFavorite, .treeDatasetRename { font-size: 1.1em; line-height: 1; }
+    .nameEditor { display: inline-flex; flex-direction: column; gap: 0.2rem; min-width: 0; flex: 0 1 20rem; }
+    .nameEditor .nameEditorInput { flex: none; width: 100%; font-family: inherit; }
     .treeRename, .treeDatasetRename { display: inline-flex; align-items: center; justify-content: center; }
     .treeDatasetRename { align-self: center; }
     .treeDataset { padding: 0.3rem 0.6rem; }
@@ -21359,6 +21410,8 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const DATASET_INSERT_UNRECORDED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE)};
     const DATASET_INSERT_INTERRUPTED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
+    const TREE_NAME_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)};
+    const DATASET_NAME_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
@@ -25930,7 +25983,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     /*
         ONE DATA SET: ITS OWN NAME AND STAR, WHEN, WHICH VERSION, ITS RECORD COUNTS, AND OPEN /
-        INSERT BY FOLDER NAME. ✎ AND ☆ POST THE FOLDER NAME ONLY; THE HOST ASKS FOR THE NAME ITSELF.
+        INSERT BY FOLDER NAME. ☆ POSTS THE FOLDER NAME; ✎ OPENS THE NAME INLINE (#551).
     */
     function buildDatasetRowState(treeState, dataset) {
 
@@ -25951,9 +26004,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         rowState.renameElement = createButton('secondary', 'historyAction treeDatasetRename');
         rowState.renameElement.appendChild(buildPencilGlyph('default'));
-        rowState.renameElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'renameDataset', datasetFolderName: dataset.datasetFolderName });
-        });
+        rowState.renameElement.setAttribute('aria-expanded', 'false');
+        rowState.renameElement.addEventListener('click', function () { toggleDatasetNameEditor(rowState); });
         datasetHeaderElement.appendChild(rowState.renameElement);
 
         rowState.nameElement = createElement('span', 'treeDatasetName');
@@ -26221,7 +26273,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const displayName = dataset.customName || dataset.datasetFolderName;
 
         rowState.nameElement.textContent = dataset.customName || '';
-        if (dataset.customName) { rowState.nameElement.classList.remove('hidden'); } else { rowState.nameElement.classList.add('hidden'); }
+        if (dataset.customName && !isNameEditorOpen(rowState.nameEditor)) { rowState.nameElement.classList.remove('hidden'); } else { rowState.nameElement.classList.add('hidden'); }
 
         rowState.favoriteElement.textContent = dataset.isFavorite ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL;
         rowState.favoriteElement.setAttribute('aria-pressed', dataset.isFavorite ? 'true' : 'false');
@@ -27248,9 +27300,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
             treeState.renameElement = createButton('secondary', 'treeRename');
             treeState.renameElement.appendChild(buildPencilGlyph('large'));
-            treeState.renameElement.addEventListener('click', function () {
-                vscodeApi.postMessage({ command: 'renameTree', treeKey: tree.treeKey });
-            });
+            treeState.renameElement.setAttribute('aria-expanded', 'false');
+            treeState.renameElement.addEventListener('click', function () { toggleTreeNameEditor(treeState); });
             actionsElement.appendChild(treeState.renameElement);
 
             treeHeaderElement.appendChild(actionsElement);
@@ -27312,6 +27363,211 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (treeState.insert) {
             drawTreeInsert(treeState);
         }
+
+    }
+
+    /*
+        The inline name box (#551) a card's ✎ and a data set row's ✎ open in place of the name they
+        rename. Built on the first open and kept, hidden, after it closes. Enter or blur saves --
+        once: a blur that follows Enter (waiting for the host) or Escape (already closed) does
+        nothing -- and Escape puts the name back and gives focus to ✎. The host decides: a refusal
+        comes back as text under the box, which stays open with what was typed; anything else
+        closes it, and the name on screen is whatever the host's preferences update last drew.
+    */
+    function buildNameEditor(editorOptions) {
+
+        const nameEditor = {
+            options: editorOptions,
+            element: createElement('span', 'nameEditor hidden'),
+            inputElement: buildFieldEditorInput(editorOptions.maxLength, '', editorOptions.ariaLabel, editorOptions.placeholder),
+            refusalElement: createElement('span', 'fieldEditorRefusal nameEditorRefusal hidden'),
+            isOpen: false,
+            isPosting: false,
+            isFocusReturnedOnClose: false,
+            refusedName: null
+        };
+
+        nameEditor.inputElement.classList.add('nameEditorInput');
+        nameEditor.refusalElement.setAttribute('role', 'alert');
+        nameEditor.element.appendChild(nameEditor.inputElement);
+        nameEditor.element.appendChild(nameEditor.refusalElement);
+
+        nameEditor.inputElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                commitNameEditor(nameEditor, true);
+            } else if (event.key === 'Escape') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                closeNameEditor(nameEditor, true);
+            }
+        });
+        nameEditor.inputElement.addEventListener('blur', function () { commitNameEditor(nameEditor, false); });
+        // A HEADER OR ROW UNDER THE BOX NEVER HEARS A CLICK OR KEY TYPED INTO IT
+        nameEditor.element.addEventListener('click', function (event) { event.stopPropagation(); });
+
+        editorOptions.parentElement.insertBefore(nameEditor.element, editorOptions.beforeElement);
+
+        return nameEditor;
+
+    }
+
+    function isNameEditorOpen(nameEditor) {
+
+        return !!nameEditor && nameEditor.isOpen;
+
+    }
+
+    function openNameEditor(nameEditor) {
+
+        const editorOptions = nameEditor.options;
+
+        nameEditor.isOpen = true;
+        nameEditor.isPosting = false;
+        nameEditor.refusedName = null;
+        nameEditor.inputElement.value = editorOptions.currentName();
+        nameEditor.inputElement.setAttribute('aria-label', editorOptions.ariaLabel);
+        nameEditor.refusalElement.textContent = '';
+        nameEditor.refusalElement.classList.add('hidden');
+        editorOptions.nameElement.classList.add('hidden');
+        nameEditor.element.classList.remove('hidden');
+        editorOptions.openerElement.setAttribute('aria-expanded', 'true');
+        nameEditor.inputElement.focus();
+        if (typeof nameEditor.inputElement.select === 'function') { nameEditor.inputElement.select(); }
+
+    }
+
+    // CLOSED BEFORE FOCUS MOVES, SO THE BOX'S OWN blur DOES NOT SAVE A NAME THE READER CANCELLED
+    function closeNameEditor(nameEditor, isFocusReturned) {
+
+        if (!nameEditor.isOpen) { return; }
+
+        nameEditor.isOpen = false;
+        nameEditor.isPosting = false;
+        nameEditor.refusedName = null;
+        nameEditor.refusalElement.textContent = '';
+        nameEditor.refusalElement.classList.add('hidden');
+        nameEditor.element.classList.add('hidden');
+        nameEditor.options.openerElement.setAttribute('aria-expanded', 'false');
+        nameEditor.options.onClose();
+        if (isFocusReturned) { nameEditor.options.openerElement.focus(); }
+
+    }
+
+    function commitNameEditor(nameEditor, isFocusReturned) {
+
+        if (!nameEditor.isOpen || nameEditor.isPosting) { return; }
+
+        const typedName = String(nameEditor.inputElement.value);
+
+        // THE SAME NAME THE HOST JUST REFUSED IS NOT SENT AGAIN: THE REASON IS STILL UNDER THE BOX
+        if (typedName === nameEditor.refusedName) { return; }
+
+        if (typedName.trim() === nameEditor.options.currentName()) {
+            closeNameEditor(nameEditor, isFocusReturned);
+            return;
+        }
+
+        nameEditor.isPosting = true;
+        nameEditor.isFocusReturnedOnClose = isFocusReturned;
+        nameEditor.options.post(typedName);
+
+    }
+
+    function answerNameEditor(nameEditor, refusal) {
+
+        if (!nameEditor || !nameEditor.isOpen || !nameEditor.isPosting) { return; }
+
+        if (typeof refusal === 'string') {
+            nameEditor.isPosting = false;
+            nameEditor.refusedName = String(nameEditor.inputElement.value);
+            nameEditor.refusalElement.textContent = refusal;
+            nameEditor.refusalElement.classList.remove('hidden');
+            return;
+        }
+
+        closeNameEditor(nameEditor, nameEditor.isFocusReturnedOnClose);
+
+    }
+
+    function toggleTreeNameEditor(treeState) {
+
+        const tree = treeState.tree;
+
+        if (!treeState.nameEditor) {
+            treeState.nameEditor = buildNameEditor({
+                parentElement: treeState.titleElement.parentNode,
+                beforeElement: treeState.folderElement,
+                nameElement: treeState.titleElement,
+                openerElement: treeState.renameElement,
+                maxLength: TREE_NAME_MAX_LENGTH,
+                ariaLabel: 'Name for ' + tree.folderName,
+                placeholder: tree.folderName,
+                currentName: function () { return tree.customName || ''; },
+                post: function (typedName) {
+                    vscodeApi.postMessage({ command: 'renameTree', treeKey: tree.treeKey, name: typedName, renderSequence: renderedSequence });
+                },
+                onClose: function () { treeState.titleElement.classList.remove('hidden'); }
+            });
+        }
+
+        if (treeState.nameEditor.isOpen) {
+            if (!treeState.nameEditor.isPosting) { closeNameEditor(treeState.nameEditor, true); }
+            return;
+        }
+
+        openNameEditor(treeState.nameEditor);
+
+    }
+
+    function toggleDatasetNameEditor(rowState) {
+
+        const dataset = rowState.dataset;
+
+        if (!rowState.nameEditor) {
+            rowState.nameEditor = buildNameEditor({
+                parentElement: rowState.nameElement.parentNode,
+                beforeElement: rowState.lastInsertSlotElement,
+                nameElement: rowState.nameElement,
+                openerElement: rowState.renameElement,
+                maxLength: DATASET_NAME_MAX_LENGTH,
+                ariaLabel: 'Name for ' + dataset.datasetFolderName,
+                placeholder: dataset.datasetFolderName,
+                currentName: function () { return rowState.dataset.customName || ''; },
+                post: function (typedName) {
+                    vscodeApi.postMessage({ command: 'renameDataset', datasetFolderName: dataset.datasetFolderName, name: typedName, renderSequence: renderedSequence });
+                },
+                onClose: function () { drawDatasetName(rowState); }
+            });
+        }
+
+        if (rowState.nameEditor.isOpen) {
+            if (!rowState.nameEditor.isPosting) { closeNameEditor(rowState.nameEditor, true); }
+            return;
+        }
+
+        openNameEditor(rowState.nameEditor);
+
+    }
+
+    // ONLY FOR THE MODEL THE NAME WAS TYPED OVER: A NEWER ONE DREW ITS CARDS AFRESH, WITH NO BOX OPEN
+    function renderTreeRenameResult(renameResultMessage) {
+
+        if (renderedSequence === null || renameResultMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(renameResultMessage.treeKey);
+        if (treeState) { answerNameEditor(treeState.nameEditor, renameResultMessage.refusal); }
+
+    }
+
+    function renderDatasetRenameResult(renameResultMessage) {
+
+        if (renderedSequence === null || renameResultMessage.renderSequence !== renderedSequence) { return; }
+
+        treeStates.forEach(function (treeState) {
+            (treeState.datasetRowStates || [])
+                .filter(function (rowState) { return rowState.dataset.datasetFolderName === renameResultMessage.datasetFolderName; })
+                .forEach(function (rowState) { answerNameEditor(rowState.nameEditor, renameResultMessage.refusal); });
+        });
 
     }
 
@@ -32363,6 +32619,16 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'fieldEditResult') {
             renderFieldEditResult(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'treeRenameResult') {
+            renderTreeRenameResult(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'datasetRenameResult') {
+            renderDatasetRenameResult(hostMessage);
             return;
         }
 
