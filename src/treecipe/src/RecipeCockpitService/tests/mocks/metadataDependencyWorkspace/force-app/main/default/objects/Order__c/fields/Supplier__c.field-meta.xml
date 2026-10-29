@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Supplier__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <label>Supplier</label>
+    <referenceTo>Supplier__c</referenceTo>
+    <relationshipName>Orders</relationshipName>
+    <type>Lookup</type>
+</CustomField>

@@ -22,6 +22,11 @@ import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './Recipe
     lacks): never a standard
     object, a layout, a list view or anything else in an object folder, so an unrelated broken file
     cannot fail the deploy. Every member is an api name before it is written.
+
+    A custom object's file can name what the org must already hold (#547): a FlexiPage or a component
+    an <actionOverrides> opens, a custom <compactLayoutAssignment>. A fields deploy also ships the
+    FlexiPages and compact layouts the project holds; every other such reference is set back to the
+    standard page (resolveObjectReferences) in the copy that is deployed, never in the project.
 */
 
 export type MetadataDeployKind = 'permissionSet' | 'fields' | 'globalValueSets' | 'recordTypes';
@@ -31,7 +36,10 @@ export type MetadataDeployType = 'PermissionSet' | 'CustomField' | 'CustomObject
 export const METADATA_DEPLOY_TYPES: readonly MetadataDeployType[] = Object.freeze(['CustomField', 'CustomObject', 'GlobalValueSet', 'PermissionSet', 'RecordType', 'ValidationRule'] as MetadataDeployType[]);
 
 // A RETRIEVE'S PACKAGE.XML (#401) NAMES ONLY THESE; A DEPLOY'S ALSO NAMES VALIDATION RULES SINCE #402, WHEN THE FIELDS CONFIRMATION'S BOX IS TICKED
-export type MetadataPackageXmlType = MetadataDeployType;
+export type MetadataPackageXmlType = MetadataDeployType | 'CompactLayout' | 'FlexiPage';
+
+// WHAT A FIELDS DEPLOY'S PACKAGE.XML MAY NAME (#547): THE OBJECTS' FLEXIPAGES AND COMPACT LAYOUTS THE PROJECT HOLDS AS WELL
+export const METADATA_FIELDS_DEPLOY_PACKAGE_XML_TYPES: readonly MetadataPackageXmlType[] = Object.freeze([...METADATA_DEPLOY_TYPES, 'CompactLayout', 'FlexiPage'] as MetadataPackageXmlType[]);
 
 export const METADATA_RETRIEVE_PACKAGE_XML_TYPES: readonly MetadataPackageXmlType[] = Object.freeze(['CustomField', 'GlobalValueSet', 'RecordType', 'ValidationRule'] as MetadataPackageXmlType[]);
 
@@ -70,11 +78,22 @@ export const METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES = 200;
 
 export const METADATA_DEPLOY_PACKAGE_XML_SUFFIX = '-package.xml';
 
+// THE METADATA API ZIP THE CLI SENDS WITH --metadata-dir WHEN AN OBJECT'S COPY IS EDITED (#547), SAVED BESIDE ITS PACKAGE.XML
+export const METADATA_DEPLOY_ZIP_SUFFIX = '-metadata.zip';
+
 const FIELD_FILE_SUFFIX = '.field-meta.xml';
 const RECORD_TYPE_FILE_SUFFIX = '.recordType-meta.xml';
 const GLOBAL_VALUE_SET_FILE_SUFFIX = '.globalValueSet-meta.xml';
 const VALIDATION_RULE_FILE_SUFFIX = '.validationRule-meta.xml';
 const OBJECT_FILE_SUFFIX = '.object-meta.xml';
+const FLEXIPAGE_FILE_SUFFIX = '.flexipage-meta.xml';
+const COMPACT_LAYOUT_FILE_SUFFIX = '.compactLayout-meta.xml';
+
+// THE <compactLayoutAssignment> THAT NAMES NO CUSTOM LAYOUT
+const SYSTEM_COMPACT_LAYOUT = 'SYSTEM';
+
+// AN OVERRIDE OPENING ANYTHING BUT A FLEXIPAGE OR THE STANDARD PAGE (#547): A BUNDLE OR PAGE THAT CAN PULL IN APEX, SO NEVER SHIPPED WITH THE FIELDS
+const COMPONENT_OVERRIDE_TYPES: readonly string[] = Object.freeze(['LightningComponent', 'Scontrol', 'Visualforce']);
 
 // ONLY A CUSTOM FIELD OF THE OBJECT ITSELF IS DEPLOYED; __pc, __Latitude__s AND STANDARD FIELDS ARE NOT
 const CUSTOM_FIELD_NAME_PATTERN = /__c$/;
@@ -87,6 +106,21 @@ const API_VERSION_PATTERN = /^[1-9][0-9]{1,2}\.0$/;
 export interface IMetadataDeployComponent {
     type: MetadataPackageXmlType;
     member: string;
+}
+
+// ONE <actionOverrides> OR THE <compactLayoutAssignment> OF A DEPLOYED OBJECT THAT IS SET BACK TO THE STANDARD ONE IN THE DEPLOYED COPY (#547)
+export interface IObjectReferenceReset {
+    objectApiName: string;
+    // WHAT WAS SET BACK, e.g. "View override, Large form factor, FlexiPage Order_Record_Page"
+    reference: string;
+    // WHY, e.g. "not in this project"
+    reason: string;
+}
+
+export interface IResolvedObjectReferences {
+    // THE OBJECT'S ELEMENTS WITH EVERY RESET APPLIED; THE SAME OBJECT WHEN NOTHING WAS RESET
+    objectContent: Record<string, unknown>;
+    resets: IObjectReferenceReset[];
 }
 
 export interface IMetadataDeployObject {
@@ -118,6 +152,14 @@ export interface IMetadataDeploySummary {
     unreadableCustomObjects: string[];
     // EVERY *.validationRule-meta.xml IN EACH TREE OBJECT'S validationRules FOLDER, "<Object>.<Rule>"
     validationRules: string[];
+    // FLEXIPAGES A DEPLOYED CUSTOM OBJECT'S <actionOverrides> OPEN THAT THE PROJECT HOLDS, AS THEIR FILES SPELL THEM (#547)
+    flexiPages: string[];
+    // "<Object>.<Layout>": A DEPLOYED CUSTOM OBJECT'S <compactLayoutAssignment> THAT ITS compactLayouts FOLDER HOLDS (#547)
+    compactLayouts: string[];
+    // WHAT A DEPLOYED CUSTOM OBJECT NAMES THAT IS SET BACK TO THE STANDARD ONE IN THE DEPLOYED COPY (#547)
+    objectReferenceResets: IObjectReferenceReset[];
+    // "<Object>.<Field> → <Object>": A DEPLOYED LOOKUP OR MASTER-DETAIL TO A CUSTOM OBJECT THIS TREE DOES NOT DEPLOY (#547)
+    outOfTreeLookups: string[];
     // OBJECT, FIELD, VALUE SET OR RECORD TYPE NAMES THAT ARE NOT API NAMES, SO NOTHING WAS OFFERED FOR THEM
     skippedNameCount: number;
 }
@@ -141,7 +183,7 @@ export class RecipeCockpitMetadataDeploy {
             return false;
         }
 
-        if ( type === 'PermissionSet' || type === 'GlobalValueSet' ) {
+        if ( type === 'PermissionSet' || type === 'GlobalValueSet' || type === 'FlexiPage' ) {
             return SalesforceApiName.isApiName(member);
         }
 
@@ -253,44 +295,180 @@ export class RecipeCockpitMetadataDeploy {
 
     // A FIELD'S <valueSet><valueSetName>; undefined FOR A FILE THAT IS NOT A <CustomField>, '' FOR ONE NAMING NONE
     static async readValueSetName(fieldXml: string): Promise<string | undefined> {
+        return ( await this.readFieldReferences(fieldXml) )?.valueSetName;
+    }
 
-        let parsedXml: unknown;
-        try {
-            parsedXml = await xml2js.parseStringPromise(fieldXml);
-        } catch {
+    // A FIELD'S VALUE SET AND, FOR A LOOKUP OR MASTER-DETAIL, ITS <referenceTo> ('' FOR NONE); undefined FOR A FILE THAT IS NOT A <CustomField>
+    static async readFieldReferences(fieldXml: string): Promise<{ valueSetName: string; referenceTo: string } | undefined> {
+
+        const customField = await this.readRootContent(fieldXml, 'CustomField');
+        if ( !customField ) {
             return undefined;
         }
 
-        const customField = ( parsedXml as Record<string, unknown> | null )?.CustomField;
-        if ( typeof customField === 'string' ) {
-            return '';
-        }
-        if ( !customField || typeof customField !== 'object' || Array.isArray(customField) ) {
-            return undefined;
-        }
+        const valueSet = Array.isArray(customField.valueSet) ? customField.valueSet[0] : undefined;
+        const valueSetName = valueSet !== null && typeof valueSet === 'object' ? this.readText(( valueSet as Record<string, unknown> ).valueSetName) : '';
+        const fieldType = this.readText(customField.type);
 
-        const valueSets = ( customField as Record<string, unknown> ).valueSet;
-        const valueSet = Array.isArray(valueSets) ? valueSets[0] : undefined;
-        const valueSetNames = valueSet !== null && typeof valueSet === 'object' ? ( valueSet as Record<string, unknown> ).valueSetName : undefined;
-        const valueSetName = Array.isArray(valueSetNames) ? valueSetNames[0] : undefined;
-
-        return typeof valueSetName === 'string' ? valueSetName.trim() : '';
+        return {
+            valueSetName: valueSetName,
+            referenceTo: fieldType === 'Lookup' || fieldType === 'MasterDetail' ? this.readText(customField.referenceTo) : ''
+        };
 
     }
 
     // WHETHER AN .object-meta.xml READS AS A <CustomObject>; AN EMPTY <CustomObject/> IS ONE
     static async isCustomObjectXml(objectXml: string): Promise<boolean> {
+        return ( await this.readRootContent(objectXml, 'CustomObject') ) !== undefined;
+    }
+
+    // A ROOT ELEMENT'S CONTENT AS xml2js READS IT ({} FOR AN EMPTY ONE); undefined FOR TEXT THAT IS NOT XML OR HAS ANOTHER ROOT
+    static async readRootContent(xmlText: string, rootElementName: string): Promise<Record<string, unknown> | undefined> {
 
         let parsedXml: unknown;
         try {
-            parsedXml = await xml2js.parseStringPromise(objectXml);
+            parsedXml = await xml2js.parseStringPromise(xmlText);
         } catch {
-            return false;
+            return undefined;
         }
 
-        const customObject = ( parsedXml as Record<string, unknown> | null )?.CustomObject;
+        const rootContent = ( parsedXml as Record<string, unknown> | null )?.[rootElementName];
+        if ( typeof rootContent === 'string' ) {
+            return {};
+        }
 
-        return typeof customObject === 'string' || ( customObject !== null && typeof customObject === 'object' && !Array.isArray(customObject) );
+        return rootContent !== null && typeof rootContent === 'object' && !Array.isArray(rootContent) ? rootContent as Record<string, unknown> : undefined;
+
+    }
+
+    // THE TRIMMED TEXT OF AN ELEMENT xml2js READ AS AN ARRAY OF ONE; '' FOR ANYTHING ELSE
+    static readText(element: unknown): string {
+
+        const value = Array.isArray(element) ? element[0] : element;
+        if ( typeof value === 'string' ) {
+            return value.trim();
+        }
+        const text = value !== null && typeof value === 'object' ? ( value as Record<string, unknown> )._ : undefined;
+
+        return typeof text === 'string' ? text.trim() : '';
+
+    }
+
+    /*
+        The one rule for what a deployed custom object's file may still name (#547), shared by the
+        summary the confirmation is built from and the copy the zip carries, so the two agree:
+        - an <actionOverrides> of type Flexipage keeps its page only when isFlexiPageShipped says the
+          page goes in the same deploy; one naming no page, or a name that is not an api name, is reset
+        - an override of type LightningComponent, Visualforce or Scontrol is always reset
+        - a <compactLayoutAssignment> other than SYSTEM is kept only when isCompactLayoutShipped says
+          the layout goes in the same deploy, else it is set to SYSTEM
+        A reset override keeps its action, form factor and the rest, and becomes <type>Default</type>
+        with no <content>. The object passed in is never changed.
+    */
+    static resolveObjectReferences(objectApiName: string,
+                                    objectContent: Readonly<Record<string, unknown>>,
+                                    isFlexiPageShipped: (flexiPageName: string) => boolean,
+                                    isCompactLayoutShipped: (compactLayoutName: string) => boolean,
+                                    describeNotShipped: (kind: 'FlexiPage' | 'CompactLayout', name: string) => string = () => 'not in this project'): IResolvedObjectReferences {
+
+        const resets: IObjectReferenceReset[] = [];
+        const resolved: Record<string, unknown> = { ...objectContent };
+        const toSingleLine = (text: string) => text.replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
+
+        if ( Array.isArray(objectContent.actionOverrides) ) {
+
+            resolved.actionOverrides = objectContent.actionOverrides.map(actionOverride => {
+
+                if ( actionOverride === null || typeof actionOverride !== 'object' || Array.isArray(actionOverride) ) {
+                    return actionOverride;
+                }
+
+                const overrideElements = actionOverride as Record<string, unknown>;
+                const overrideType = this.readText(overrideElements.type);
+                const target = this.readText(overrideElements.content);
+                let reason: string | undefined;
+
+                if ( overrideType === 'Flexipage' ) {
+                    reason = target === '' ? 'it names no page'
+                        : !SalesforceApiName.isApiName(target) ? 'its page name is not a Salesforce api name'
+                        : isFlexiPageShipped(target) ? undefined
+                        : describeNotShipped('FlexiPage', target);
+                } else if ( COMPONENT_OVERRIDE_TYPES.includes(overrideType) ) {
+                    reason = `a ${overrideType} override is never deployed with the fields`;
+                }
+
+                if ( reason === undefined ) {
+                    return actionOverride;
+                }
+
+                const actionName = this.readText(overrideElements.actionName) || 'an action';
+                const formFactor = this.readText(overrideElements.formFactor);
+                resets.push({
+                    objectApiName: objectApiName,
+                    reference: toSingleLine(`${actionName} override${formFactor ? `, ${formFactor} form factor` : ''}, ${overrideType === 'Flexipage' ? 'FlexiPage' : overrideType}${target ? ` ${target}` : ''}`),
+                    reason: toSingleLine(reason)
+                });
+
+                const { content, ...keptElements } = overrideElements;
+                return { ...keptElements, type: ['Default'] };
+
+            });
+
+        }
+
+        const compactLayoutName = this.readText(objectContent.compactLayoutAssignment);
+        if ( compactLayoutName !== '' && compactLayoutName !== SYSTEM_COMPACT_LAYOUT ) {
+
+            const reason = !SalesforceApiName.isApiName(compactLayoutName) ? 'its name is not a Salesforce api name'
+                : isCompactLayoutShipped(compactLayoutName) ? undefined
+                : describeNotShipped('CompactLayout', compactLayoutName);
+
+            if ( reason !== undefined ) {
+                resets.push({ objectApiName: objectApiName, reference: toSingleLine(`compact layout ${compactLayoutName}`), reason: toSingleLine(reason) });
+                resolved.compactLayoutAssignment = [SYSTEM_COMPACT_LAYOUT];
+            }
+
+        }
+
+        return { objectContent: resets.length > 0 ? resolved : objectContent as Record<string, unknown>, resets: resets };
+
+    }
+
+    // EVERY FLEXIPAGE THE PROJECT HOLDS, BY LOWER-CASED NAME -> FILE PATH; THE FIRST PACKAGE DIRECTORY WINS
+    static findFlexiPageFilePaths(workspaceRoot: string, packageDirectoryPaths: readonly string[]): Map<string, string> {
+
+        const filePathsByLowerName = new Map<string, string>();
+
+        this.findMetadataFolderPaths(workspaceRoot, packageDirectoryPaths, 'flexipages').forEach(folderPath => {
+            this.listEntries(folderPath)
+                .filter(entry => entry.isFile() && entry.name.endsWith(FLEXIPAGE_FILE_SUFFIX))
+                .map(entry => entry.name)
+                .sort()
+                .forEach(fileName => {
+                    const lowerName = fileName.slice(0, -FLEXIPAGE_FILE_SUFFIX.length).toLowerCase();
+                    if ( !filePathsByLowerName.has(lowerName) ) {
+                        filePathsByLowerName.set(lowerName, path.join(folderPath, fileName));
+                    }
+                });
+        });
+
+        return filePathsByLowerName;
+
+    }
+
+    // THE FIRST OF THE OBJECT'S FOLDERS WHOSE compactLayouts FOLDER HOLDS <Layout>.compactLayout-meta.xml AS A FILE, MATCHED CASE-INSENSITIVELY
+    static findCompactLayoutFilePath(objectFolderPaths: readonly string[], compactLayoutName: string): string | undefined {
+
+        const compactLayoutFileName = `${compactLayoutName}${COMPACT_LAYOUT_FILE_SUFFIX}`.toLowerCase();
+
+        for ( const objectFolderPath of objectFolderPaths ) {
+            const compactLayoutEntry = this.listSubfolderEntries(objectFolderPath, 'compactLayouts').find(entry => entry.isFile() && entry.name.toLowerCase() === compactLayoutFileName);
+            if ( compactLayoutEntry ) {
+                return path.join(objectFolderPath, 'compactLayouts', compactLayoutEntry.name);
+            }
+        }
+
+        return undefined;
 
     }
 
@@ -321,7 +499,8 @@ export class RecipeCockpitMetadataDeploy {
 
         const summary: IMetadataDeploySummary = {
             customFields: [], standardFields: [], unreadableFields: [], globalValueSets: [], missingGlobalValueSets: [], recordTypes: [],
-            customObjects: [], missingCustomObjects: [], unreadableCustomObjects: [], validationRules: [], skippedNameCount: 0
+            customObjects: [], missingCustomObjects: [], unreadableCustomObjects: [], validationRules: [],
+            flexiPages: [], compactLayouts: [], objectReferenceResets: [], outOfTreeLookups: [], skippedNameCount: 0
         };
         const fieldApiNamesByObject = new Map<string, Set<string>>();
 
@@ -349,7 +528,40 @@ export class RecipeCockpitMetadataDeploy {
         const namedValueSetNames = new Set<string>();
         const recordTypes = new Set<string>();
         const validationRules = new Set<string>();
+        const treeObjectLowerNames = new Set(objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+        const flexiPages = new Set<string>();
+        const compactLayouts = new Set<string>();
         let readFileCount = 0;
+        const yieldEveryFiles = async () => {
+            readFileCount++;
+            if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                await new Promise<void>(resolve => setImmediate(resolve));
+            }
+        };
+
+        // A REFERENCED FLEXIPAGE OR COMPACT LAYOUT IS HELD ONLY WHEN ITS FILE READS AS ITS ROOT ELEMENT; EACH FILE IS READ ONCE (#547)
+        let flexiPageFilePathsByLowerName: Map<string, string> | undefined;
+        const heldFileStatuses = new Map<string, { heldName?: string; isUnreadable: boolean }>();
+        const readHeldFile = async (statusKey: string, filePath: string | undefined, rootElementName: string): Promise<{ heldName?: string; isUnreadable: boolean }> => {
+            const knownStatus = heldFileStatuses.get(statusKey);
+            if ( knownStatus ) {
+                return knownStatus;
+            }
+            let status: { heldName?: string; isUnreadable: boolean } = { isUnreadable: false };
+            if ( filePath ) {
+                await yieldEveryFiles();
+                let isReadable = false;
+                try {
+                    isReadable = ( await this.readRootContent(fs.readFileSync(filePath, 'utf-8'), rootElementName) ) !== undefined;
+                } catch {
+                    isReadable = false;
+                }
+                const heldName = path.basename(filePath).slice(0, -( rootElementName === 'FlexiPage' ? FLEXIPAGE_FILE_SUFFIX : COMPACT_LAYOUT_FILE_SUFFIX ).length);
+                status = isReadable && SalesforceApiName.isApiName(heldName) ? { heldName: heldName, isUnreadable: false } : { isUnreadable: isReadable === false };
+            }
+            heldFileStatuses.set(statusKey, status);
+            return status;
+        };
 
         for ( const objectApiName of objectApiNames ) {
 
@@ -357,19 +569,49 @@ export class RecipeCockpitMetadataDeploy {
 
             if ( this.isCustomObjectName(objectApiName) ) {
                 const objectFilePath = this.findObjectFilePath(objectFolderPaths, objectApiName);
-                let isReadable = false;
+                let objectContent: Record<string, unknown> | undefined;
                 if ( objectFilePath ) {
-                    readFileCount++;
-                    if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
-                        await new Promise<void>(resolve => setImmediate(resolve));
-                    }
+                    await yieldEveryFiles();
                     try {
-                        isReadable = await this.isCustomObjectXml(fs.readFileSync(objectFilePath, 'utf-8'));
+                        objectContent = await this.readRootContent(fs.readFileSync(objectFilePath, 'utf-8'), 'CustomObject');
                     } catch {
-                        isReadable = false;
+                        objectContent = undefined;
                     }
                 }
-                ( !objectFilePath ? summary.missingCustomObjects : isReadable ? summary.customObjects : summary.unreadableCustomObjects ).push(objectApiName);
+                ( !objectFilePath ? summary.missingCustomObjects : objectContent ? summary.customObjects : summary.unreadableCustomObjects ).push(objectApiName);
+
+                if ( objectContent ) {
+                    const heldStatuses = new Map<string, { heldName?: string; isUnreadable: boolean }>();
+                    for ( const actionOverride of Array.isArray(objectContent.actionOverrides) ? objectContent.actionOverrides : [] ) {
+                        const target = actionOverride !== null && typeof actionOverride === 'object' && this.readText(( actionOverride as Record<string, unknown> ).type) === 'Flexipage'
+                            ? this.readText(( actionOverride as Record<string, unknown> ).content)
+                            : '';
+                        if ( SalesforceApiName.isApiName(target) ) {
+                            flexiPageFilePathsByLowerName = flexiPageFilePathsByLowerName ?? this.findFlexiPageFilePaths(workspaceRoot, packageDirectoryPaths);
+                            heldStatuses.set(`FlexiPage\n${target.toLowerCase()}`, await readHeldFile(`FlexiPage\n${target.toLowerCase()}`, flexiPageFilePathsByLowerName.get(target.toLowerCase()), 'FlexiPage'));
+                        }
+                    }
+                    const compactLayoutName = this.readText(objectContent.compactLayoutAssignment);
+                    if ( compactLayoutName !== SYSTEM_COMPACT_LAYOUT && SalesforceApiName.isApiName(compactLayoutName) ) {
+                        const statusKey = `CompactLayout\n${objectApiName.toLowerCase()}.${compactLayoutName.toLowerCase()}`;
+                        heldStatuses.set(`CompactLayout\n${compactLayoutName.toLowerCase()}`, await readHeldFile(statusKey, this.findCompactLayoutFilePath(objectFolderPaths, compactLayoutName), 'CompactLayout'));
+                    }
+
+                    const heldStatusOf = (kind: 'FlexiPage' | 'CompactLayout', name: string) => heldStatuses.get(`${kind}\n${name.toLowerCase()}`);
+                    const resolved = this.resolveObjectReferences(
+                        objectApiName,
+                        objectContent,
+                        flexiPageName => heldStatusOf('FlexiPage', flexiPageName)?.heldName !== undefined,
+                        compactLayoutName => heldStatusOf('CompactLayout', compactLayoutName)?.heldName !== undefined,
+                        (kind, name) => heldStatusOf(kind, name)?.isUnreadable ? `its ${kind} file could not be read` : `${kind} ${name} is not in this project`
+                    );
+                    summary.objectReferenceResets.push(...resolved.resets);
+                    heldStatuses.forEach((status, statusKey) => {
+                        if ( status.heldName !== undefined ) {
+                            ( statusKey.startsWith('FlexiPage\n') ? flexiPages : compactLayouts ).add(statusKey.startsWith('FlexiPage\n') ? status.heldName : `${objectApiName}.${status.heldName}`);
+                        }
+                    });
+                }
             }
 
             // THE FIRST FOLDER HOLDING A FIELD'S FILE WINS
@@ -388,16 +630,21 @@ export class RecipeCockpitMetadataDeploy {
                 const fieldFilePath = fieldFilePathsByLowerName.get(`${fieldApiName}${FIELD_FILE_SUFFIX}`.toLowerCase());
 
                 let valueSetName: string | undefined;
+                let referenceTo = '';
                 if ( fieldFilePath ) {
-                    readFileCount++;
-                    if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
-                        await new Promise<void>(resolve => setImmediate(resolve));
-                    }
+                    await yieldEveryFiles();
                     try {
-                        valueSetName = await this.readValueSetName(fs.readFileSync(fieldFilePath, 'utf-8'));
+                        const fieldReferences = await this.readFieldReferences(fs.readFileSync(fieldFilePath, 'utf-8'));
+                        valueSetName = fieldReferences?.valueSetName;
+                        referenceTo = fieldReferences?.referenceTo ?? '';
                     } catch {
                         valueSetName = undefined;
                     }
+                }
+
+                // A LOOKUP TO A CUSTOM OBJECT THIS DEPLOY DOES NOT CARRY NEEDS THE ORG TO HAVE IT (#547); A STANDARD ONE IS THE ORG'S
+                if ( isCustomField && valueSetName !== undefined && this.isCustomObjectName(referenceTo) && !treeObjectLowerNames.has(referenceTo.toLowerCase()) ) {
+                    summary.outOfTreeLookups.push(`${member} → ${referenceTo}`);
                 }
 
                 if ( valueSetName ) {
@@ -459,12 +706,14 @@ export class RecipeCockpitMetadataDeploy {
         summary.missingGlobalValueSets = [...missingValueSetNames].sort();
         summary.recordTypes = [...recordTypes].sort();
         summary.validationRules = [...validationRules].sort();
+        summary.flexiPages = [...flexiPages].sort();
+        summary.compactLayouts = [...compactLayouts].sort();
 
         return summary;
 
     }
 
-    // A FIELDS DEPLOY ALSO NAMES THE CUSTOM OBJECTS IT READ (#402): A FIELD CANNOT LAND ON AN OBJECT THE ORG LACKS
+    // A FIELDS DEPLOY ALSO NAMES THE CUSTOM OBJECTS IT READ (#402): A FIELD CANNOT LAND ON AN OBJECT THE ORG LACKS, AND THE FLEXIPAGES AND COMPACT LAYOUTS THEY OPEN (#547)
     static listSummaryComponents(summary: IMetadataDeploySummary, deployKind: Exclude<MetadataDeployKind, 'permissionSet'>): IMetadataDeployComponent[] {
 
         const members = deployKind === 'fields' ? summary.customFields
@@ -473,7 +722,12 @@ export class RecipeCockpitMetadataDeploy {
 
         return [
             ...members.map(member => ({ type: METADATA_DEPLOY_TYPE_BY_KIND[deployKind], member: member })),
-            ...( deployKind === 'fields' ? summary.customObjects.map(member => ({ type: 'CustomObject' as const, member: member })) : [] )
+            ...( deployKind === 'fields' ? [
+                ...summary.customObjects.map(member => ({ type: 'CustomObject' as const, member: member })),
+                // WHAT THOSE OBJECTS OPEN THAT THE PROJECT HOLDS GOES WITH THEM (#547)
+                ...summary.flexiPages.map(member => ({ type: 'FlexiPage' as const, member: member })),
+                ...summary.compactLayouts.map(member => ({ type: 'CompactLayout' as const, member: member }))
+            ] : [] )
         ];
 
     }
@@ -492,7 +746,7 @@ export class RecipeCockpitMetadataDeploy {
     // "<n> <Type>: <members>" PER TYPE, TYPES SORTED WITH "<"
     static describeComponentsByType(components: readonly IMetadataDeployComponent[]): string[] {
 
-        const membersByType = new Map<MetadataDeployType, Set<string>>();
+        const membersByType = new Map<MetadataPackageXmlType, Set<string>>();
         components.forEach(component => {
             const members = membersByType.get(component.type) ?? new Set<string>();
             membersByType.set(component.type, members);
@@ -542,7 +796,7 @@ export class RecipeCockpitMetadataDeploy {
         components.forEach(component => {
 
             if ( !allowedTypes.includes(component.type) ) {
-                throw new Error(`"${String(component.type).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a type the Troubleshooting tab ${allowedTypes === METADATA_DEPLOY_TYPES ? 'deploys' : 'retrieves'}, so ${failureClause}.`);
+                throw new Error(`"${String(component.type).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a type the Troubleshooting tab ${allowedTypes === METADATA_RETRIEVE_PACKAGE_XML_TYPES ? 'retrieves' : 'deploys'}, so ${failureClause}.`);
             }
 
             if ( !this.isDeployableMember(component.type, component.member) ) {
@@ -627,6 +881,48 @@ export class RecipeCockpitMetadataDeploy {
                 || !manifestRelativePath.endsWith(METADATA_DEPLOY_PACKAGE_XML_SUFFIX) ) {
             throw new Error(`The package.xml path is not a plain path inside the workspace, so ${failureClause}.`);
         }
+
+    }
+
+    // WHERE THE ZIP GOES: ITS PACKAGE.XML'S NAME WITH THE ZIP'S SUFFIX, IN THE SAME FOLDER
+    static buildMetadataZipFilePath(packageXmlFilePath: string): string {
+        return `${packageXmlFilePath.slice(0, -METADATA_DEPLOY_PACKAGE_XML_SUFFIX.length)}${METADATA_DEPLOY_ZIP_SUFFIX}`;
+    }
+
+    // WRITTEN AS THE PACKAGE.XML IS: "wx", THE FIRST FREE NAME, ONLY INSIDE THE WORKSPACE; ITS FOLDER WAS MADE FOR THE PACKAGE.XML
+    static writeMetadataZip(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, zipFilePath: string, zipContent: Uint8Array): string | undefined {
+
+        if ( !SfdxProjectService.isPathContainedInWorkspace(zipFilePath, runArtifactsLocation.workspaceRoot)
+                || !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, path.dirname(zipFilePath)) ) {
+            return undefined;
+        }
+
+        return RecipeCockpitRunArtifacts.writeNewFile(zipFilePath, zipContent, METADATA_DEPLOY_ZIP_SUFFIX, ORG_OPERATION_RESULT_FILE_ATTEMPTS);
+
+    }
+
+    // A --metadata-dir VALUE: THE SAME PLAIN-PATH RULE AS A MANIFEST'S, ENDING IN THE ZIP'S SUFFIX
+    static buildMetadataZipDeployArguments(zipRelativePath: string, orgUsername: string): string[] {
+
+        const zipSegments = String(zipRelativePath).split('/');
+        if ( zipRelativePath === ''
+                || path.isAbsolute(zipRelativePath)
+                || /^[A-Za-z]:/.test(zipRelativePath)
+                || /[\\\0\r\n]/.test(zipRelativePath)
+                || zipRelativePath.startsWith('-')
+                || zipSegments.some(segment => segment === '' || segment === '.' || segment === '..')
+                || !zipRelativePath.endsWith(METADATA_DEPLOY_ZIP_SUFFIX) ) {
+            throw new Error('The metadata zip path is not a plain path inside the workspace, so nothing was deployed.');
+        }
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+
+        return [
+            'project', 'deploy', 'start',
+            '--json',
+            '--target-org', orgUsername,
+            '--metadata-dir', zipRelativePath,
+            '--single-package'
+        ];
 
     }
 
@@ -732,11 +1028,13 @@ export class RecipeCockpitMetadataDeploy {
                                     summary?: IMetadataDeploySummary,
                                     hasFileOrEnvironmentReplacements = false,
                                     fullSetComponents: readonly IMetadataDeployComponent[] = [],
-                                    howItDeploysLines: readonly string[] = ['Only these components are deployed, through a generated package.xml.', 'Nothing else in the object folders is.']): IRecipeCockpitConfirmContent {
+                                    howItDeploysLines: readonly string[] = ['Only these components are deployed, through a generated package.xml.', 'Nothing else in the object folders is.'],
+                                    resetNotAppliedReason?: string): IRecipeCockpitConfirmContent {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
         const warnings: string[] = [];
         const notes: string[] = [];
+        const resetLines: string[] = [];
 
         if ( summary && deployKind === 'fields' ) {
             if ( summary.customObjects.length > 0 ) {
@@ -756,6 +1054,18 @@ export class RecipeCockpitMetadataDeploy {
             }
             if ( summary.unreadableFields.length > 0 ) {
                 notes.push(`Not deployed: ${summary.unreadableFields.length} custom ${summary.unreadableFields.length === 1 ? 'field' : 'fields'} whose source file is missing or could not be read: ${this.describeCappedList(summary.unreadableFields)}`);
+            }
+            // WHAT A DEPLOYED OBJECT NAMES THAT THE ORG MAY LACK (#547)
+            const resetCount = summary.objectReferenceResets.length;
+            if ( resetCount > 0 && resetNotAppliedReason === undefined ) {
+                warnings.push(`${resetCount} ${resetCount === 1 ? 'reference' : 'references'} a custom object makes to a page or compact layout this deploy does not carry ${resetCount === 1 ? 'is' : 'are'} set back to the standard one in the deployed copy; this project's files are not changed.`);
+            }
+            if ( resetCount > 0 && resetNotAppliedReason !== undefined ) {
+                warnings.push(`${resetCount} ${resetCount === 1 ? 'reference' : 'references'} a custom object makes to a page or compact layout this deploy does not carry could not be set back, because ${toSingleLine(resetNotAppliedReason)}: the org must already have ${resetCount === 1 ? 'it' : 'them'}, or the object fails.`);
+            }
+            resetLines.push(...summary.objectReferenceResets.map(reset => toSingleLine(`${reset.objectApiName}: ${reset.reference} — ${reset.reason}`)));
+            if ( summary.outOfTreeLookups.length > 0 ) {
+                warnings.push(`${summary.outOfTreeLookups.length} ${summary.outOfTreeLookups.length === 1 ? 'lookup points' : 'lookups point'} to a custom object this deploy does not carry — the org must already have it, or the field fails: ${this.describeCappedList(summary.outOfTreeLookups)}`);
             }
         }
 
@@ -781,6 +1091,7 @@ export class RecipeCockpitMetadataDeploy {
             sections: [
                 { title: 'Components', count: components.length, lines: this.describeComponentsByType(components) },
                 { title: 'Not deployed', lines: notes },
+                { title: resetNotAppliedReason === undefined ? 'Set back to the standard one in the deployed copy' : 'Could not be set back', count: resetLines.length, lines: resetLines },
                 { title: 'Ticking the box below also deploys, in the same package.xml', count: fullSetComponents.length, lines: this.describeComponentsByType(fullSetComponents) },
                 { title: 'How it deploys', lines: [...howItDeploysLines] }
             ]

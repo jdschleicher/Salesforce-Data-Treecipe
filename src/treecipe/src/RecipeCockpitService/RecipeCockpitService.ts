@@ -57,6 +57,8 @@ import {
     IMetadataDeploySummary,
     METADATA_DEPLOY_FAILURES_SHOWN,
     METADATA_DEPLOY_OPERATION_BY_KIND,
+    METADATA_DEPLOY_TYPES,
+    METADATA_FIELDS_DEPLOY_PACKAGE_XML_TYPES,
     METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
     MetadataDeployKind,
     MetadataDeployOutcome,
@@ -624,7 +626,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter\'s read straight from the org instead of through the Salesforce CLI (listing an org\'s validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields & dependencies (Fields: custom fields, the custom objects that hold them and the record pages and compact layouts those objects open, any such page or layout not in your project set back to the standard one in what is sent, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
             'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
@@ -664,7 +666,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org that answer when checked (Treecipe pings each authorized org once per session or per ⟳, which may renew its access token, and otherwise connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under RunArtifacts in the tree folder. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under RunArtifacts in the tree folder, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org that answer when checked (Treecipe pings each authorized org once per session or per ⟳, which may renew its access token, and otherwise connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under RunArtifacts in the tree folder. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields & dependencies…" (the tree's custom fields, the custom objects that hold them and the record pages and compact layouts this project holds that those objects open, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a page layout, and any other page, component or compact layout an object names is set back to the standard one in the copy that is sent, never in your project), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under RunArtifacts in the tree folder, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -2157,7 +2159,7 @@ export const RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS: Readonly<Record<MetadataR
 */
 export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeployKind, string>> = Object.freeze({
     permissionSet: 'Deploy permission set…',
-    fields: 'Deploy fields…',
+    fields: 'Deploy fields & dependencies…',
     globalValueSets: 'Deploy global value sets…',
     recordTypes: 'Deploy record types…'
 });
@@ -2205,7 +2207,7 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     assignPermissionSets: { verb: 'assign', why: 'Insert refused for access? Assign permission sets the org already holds for these objects.' },
     generatePermissionSet: { verb: 'generate', why: 'No permission set grants these objects? Write a create/read one into the project. Deploys nothing.' },
     deployPermissionSet: { verb: 'deploy', why: 'Push the tree\'s permission sets to the sandbox or scratch org before assigning them.' },
-    deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields or objects this tree writes.' },
+    deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields or objects this tree writes, or the pages they open.' },
     retrieveFields: { verb: 'retrieve', why: 'Project behind the org? Pull this tree\'s custom fields so Generate Treecipe writes what the org holds.' },
     retrieveValidationRules: { verb: 'retrieve', why: 'Pull the org\'s validation rules so Generate Treecipe can respect them.' },
     retrieveRecordTypes: { verb: 'retrieve', why: 'Pull the org\'s record types for these objects so Generate Treecipe can choose among them.' },
@@ -13437,7 +13439,8 @@ export class RecipeCockpitService {
 
             touchedObjectApiNames = deployKind === 'globalValueSets'
                 ? treeObjectApiNames
-                : [...new Set(components.map(component => component.member.split('.')[0]))];
+                // A FLEXIPAGE'S MEMBER IS NO OBJECT'S (#547)
+                : [...new Set(components.filter(component => component.type !== 'FlexiPage').map(component => component.member.split('.')[0]))];
 
         }
 
@@ -13457,15 +13460,18 @@ export class RecipeCockpitService {
         const packageDirectoryRelativePath = path.relative(workspaceRoot, packageDirectoryPath).split(path.sep).join('/') || '.';
         const describeComponentCount = (componentCount: number) => `${componentCount} ${componentCount === 1 ? 'component' : 'components'}`;
         const confirmTitle = `Deploy ${describeComponentCount(components.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`;
+        // AN OBJECT'S COPY IS EDITED WHEN IT NAMES A PAGE OR COMPACT LAYOUT THIS DEPLOY DOES NOT CARRY (#547), WHICH ONLY THE ZIP CAN SEND
+        const hasObjectEdits = deployKind === 'fields' && ( summary?.objectReferenceResets.length ?? 0 ) > 0;
         // WHICH WAY IT GOES (#505), DECIDED FOR EVERYTHING THE CONFIRMATION CAN SEND SO THE CONFIRMATION SAYS IT
         const deployMethodPlan = RecipeCockpitMetadataDeployPackage.planDeployMethod(
             RecipeCockpitMetadataDeployPackage.readDeployMethod(ConfigurationService.getExtensionConfigValue(METADATA_DEPLOY_METHOD_SETTING)),
             workspaceRoot,
             packageDirectoryPaths,
-            [...components, ...fullSetComponents]
+            [...components, ...fullSetComponents],
+            hasObjectEdits
         );
         const confirmOptions = {
-            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, this.buildConfirmOrg(orgDetail), packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents, RecipeCockpitMetadataDeployPackage.describeDeployMethod(deployMethodPlan)),
+            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, this.buildConfirmOrg(orgDetail), packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents, RecipeCockpitMetadataDeployPackage.describeDeployMethod(deployMethodPlan), hasObjectEdits ? RecipeCockpitMetadataDeployPackage.describeEditsNotApplied(deployMethodPlan) : undefined),
             isDestructive: true,
             changeOrg: { restartMessage: { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: tree.treeKey, orgIndex: null }, isSandboxOnly: true }
         };
@@ -13521,23 +13527,25 @@ export class RecipeCockpitService {
         let deploySourceFiles: IMetadataDeploySourceFile[] | undefined;
         let packageXml = '';
         let packageXmlWrittenFilePath: string | undefined;
+        let metadataZipWrittenFilePath: string | undefined;
         try {
-            packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
+            packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot), undefined, deployKind === 'fields' ? METADATA_FIELDS_DEPLOY_PACKAGE_XML_TYPES : METADATA_DEPLOY_TYPES);
             const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, operationName, operationDate) : undefined;
             packageXmlWrittenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
             if ( !packageXmlWrittenFilePath ) {
                 return refuse(`Nothing was deployed: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
-            if ( deployMethodPlan.method === 'jsforce' ) {
+            if ( deployMethodPlan.method !== 'cli' ) {
                 // PLANNED AGAIN NOW, FOR EXACTLY WHAT WAS CONFIRMED: THE PROJECT CAN HAVE CHANGED WHILE THE CONFIRMATION WAS OPEN
                 const confirmedPlan = RecipeCockpitMetadataDeployPackage.planDeployMethod(
                     RecipeCockpitMetadataDeployPackage.readDeployMethod(ConfigurationService.getExtensionConfigValue(METADATA_DEPLOY_METHOD_SETTING)),
                     workspaceRoot,
                     packageDirectoryPaths,
-                    components
+                    components,
+                    hasObjectEdits
                 );
-                if ( confirmedPlan.method !== 'jsforce' ) {
-                    return refuse(`Nothing was deployed: ${RecipeCockpitMetadataDeployPackage.describeChangedPlan(confirmedPlan)}. Deploy again to see how it goes now.`);
+                if ( confirmedPlan.method !== deployMethodPlan.method ) {
+                    return refuse(`Nothing was deployed: ${RecipeCockpitMetadataDeployPackage.describeChangedPlan(confirmedPlan) || 'the metadata deploy method setting changed'}. Deploy again to see how it goes now.`);
                 }
                 deploySourceFiles = confirmedPlan.sourceFiles;
             } else {
@@ -13558,13 +13566,13 @@ export class RecipeCockpitService {
             startedAt: operationDate,
             finishedAt: new Date(),
             ...counts,
-            filePaths: [packageXmlWrittenFilePath, deployOutputFilePath]
+            filePaths: [packageXmlWrittenFilePath, metadataZipWrittenFilePath, deployOutputFilePath]
         });
 
         const progressTitle = RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`);
         let deployOutcome: MetadataDeployOutcome;
 
-        if ( deploySourceFiles ) {
+        if ( deploySourceFiles && deployMethodPlan.method === 'jsforce' ) {
 
             const sourceFiles = deploySourceFiles;
             const metadataConnection: IMetadataDeployConnection = {
@@ -13630,6 +13638,39 @@ export class RecipeCockpitService {
                 );
 
         } else {
+
+            // THE CLI SENDS THE ZIP WITH THE OBJECTS' EDITED COPIES (#547), BUILT UNDER ITS OWN CANCELLABLE PROGRESS AND SAVED BESIDE THE PACKAGE.XML
+            if ( deploySourceFiles ) {
+                const sourceFiles = deploySourceFiles;
+                const zipAttempt: { zipInput?: Buffer; refusalText?: string } = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: preparing ${componentText} for ${orgDetail.username}`),
+                    cancellable: true
+                }, async (_progress, cancellationToken) => {
+                    try {
+                        return { zipInput: await RecipeCockpitMetadataDeployPackage.buildDeployZip(packageXml, sourceFiles, () => cancellationToken.isCancellationRequested) };
+                    } catch (zipError) {
+                        return { refusalText: this.describeThrown(zipError) };
+                    }
+                });
+                if ( zipAttempt.refusalText !== undefined ) {
+                    return refuse(zipAttempt.refusalText);
+                }
+                if ( !zipAttempt.zipInput ) {
+                    return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled before it was sent, so nothing was deployed.`);
+                }
+                metadataZipWrittenFilePath = runArtifactsLocation && packageXmlWrittenFilePath
+                    ? RecipeCockpitMetadataDeploy.writeMetadataZip(runArtifactsLocation, RecipeCockpitMetadataDeploy.buildMetadataZipFilePath(packageXmlWrittenFilePath), zipAttempt.zipInput)
+                    : undefined;
+                if ( !metadataZipWrittenFilePath ) {
+                    return refuse(`Nothing was deployed: the metadata zip could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
+                }
+                try {
+                    deployArguments = RecipeCockpitMetadataDeploy.buildMetadataZipDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, metadataZipWrittenFilePath), orgDetail.username);
+                } catch (argumentError) {
+                    return refuse(this.describeThrown(argumentError));
+                }
+            }
 
             const deployRun = await this.runCancellableCli(
                 progressTitle,

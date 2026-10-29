@@ -31,7 +31,7 @@ export const RUN_HISTORY_STEPS = [
 export type RunHistoryStep = typeof RUN_HISTORY_STEPS[number];
 
 export const RUN_HISTORY_STEP_LABELS: Readonly<Record<RunHistoryStep, string>> = Object.freeze({
-    'field-deploy': 'Deploy fields',
+    'field-deploy': 'Deploy fields & dependencies',
     'record-type-deploy': 'Deploy record types',
     'global-value-set-deploy': 'Deploy global value sets',
     'permission-set-deploy': 'Deploy permission set',
