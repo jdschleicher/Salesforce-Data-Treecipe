@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.178.0] - Every org picker checks the org connections itself, without "sf org list"
+## [3.179.0] - Every org picker checks the org connections itself, without "sf org list"
 
 [#502](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/502), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The Target Org Manager could show "The Salesforce CLI could not report which authorized orgs are connected, so no org is listed" and list nothing: `sf org list --json --verbose` was missing from PATH, timed out after 60 seconds (one unreachable org could stall the whole answer), printed something that was not JSON, or exited non-zero.
 
@@ -16,6 +16,18 @@
 - **Unchanged.** The session cache, ⟳ (shares a check in flight), the generation bump, `checkedAuthorizationUsernames` (an org authorized since is checked again), the busy quick pick and the Treecipe tab's provisional label. The note under the picker now says it lists the orgs "that answer when checked".
 - **Removed.** `SALESFORCE_CLI_ORG_LIST_ARGUMENTS`, `SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS`, `parseOrgListInvocation`, `normalizeOrgListResult`, `classifyOrgListEntry`, `readOrgListEntryAlias`, `runOrgListCommand` and its entry in `SalesforceCliCallSites.test.ts`, and the `sfOrgListVerbose.json` fixture.
 - **Tests.** `SalesforceOrgService.test.ts`: no process; each case `checkOrgConnection` reads (answers, fails, expired without a request, unreadable without a request, an unusable username, an org that cannot be opened, no answer in time); the concurrency bound; one hung org left out when the listing's time runs out; caching, sharing, refresh and the generation bump; an unreadable authorization list; a ping that calls nothing but `refreshAuth`. The cockpit suites answer pings through the new `tests/OrgConnectionPings.ts` helper and its `orgConnectionPings.json` fixture, and `RecipeCockpitConnectedOrgs.test.ts` lists the orgs that answered while one org never answers.
+
+## [3.178.0] - Recipe Cockpit: the Generate Treecipe run list moves into the Treecipes section, labelled "Select Generate Treecipe runs by date"
+
+[#533](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/533). The run list sat alone in the top toolbar with no visible label, away from the trees it changes, with the pinned Target Org Manager in between.
+
+- **First in the Treecipes section.** `buildRunPicker` draws a `runPicker` row (a `<label for="runSelect">` reading **Select Generate Treecipe runs by date**, `RECIPE_COCKPIT_RUN_PICKER_LABEL`, then the `runSelect` dropdown) as the first child of `treecipesControls`, above the section search, its results, the Treecipe dropdown and the insert order line. The label names the dropdown, so it no longer carries its own `aria-label`.
+- **Not in the toolbar.** `renderToolbar` draws only Favorites only now.
+- **Still there when there is no card.** A run with objects and no trees, or a run that could not be read, draws the row right under the toolbar, above its notice or empty state, so another run can still be chosen. With no run at all there is no row, as before.
+- **Narrow panels.** The row wraps: the label, then the dropdown taking what is left (`flex: 1 1 12rem; min-width: 0`). Its colours are the search box's, so the contrast pair list did not change.
+- **Unchanged.** A change still posts `selectRun {runFolderName}` and nothing else; the run-switch confirmation (#399), its Cancel putting the dropdown back, the saved place and the restore are as they were. No faker backend changed.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the run list where it now is, and the screenshots were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts`: the row's place in the section and its absence from the toolbar, the label's text and `for`, the wrapping CSS, the row above a no-trees notice and above an unreadable run's empty state. `RecipeCockpitTreecipePicker.test.ts`: the section's control order.
 
 ## [3.177.0] - Recipe Cockpit: retrieves can run without the Salesforce CLI, and listing validation rules and record types never uses it
 

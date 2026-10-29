@@ -517,6 +517,7 @@ export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Manager';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
 // THE TREECIPES SECTION DRAWS ONE CARD, CHOSEN IN A DROPDOWN, UNDER ONE SEARCH ACROSS EVERY CARD (#374)
 export const RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = 'Treecipe';
+export const RECIPE_COCKPIT_RUN_PICKER_LABEL = 'Select Generate Treecipe runs by date';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER = 'Search treecipes, objects, fields and record types';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = 'No treecipe, object, field or record type matches this search.';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ' (no match)';
@@ -606,10 +607,10 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         heading: 'Where recipes come from',
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
-            'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
+            'The cockpit opens the newest run, or the one you pick in Select Generate Treecipe runs by date, the first line of the Treecipes section (or under the toolbar, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
-            'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
+            'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
@@ -19720,13 +19721,16 @@ ${this.buildPaletteCustomProperties()}
     }
     .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
-    .toolbar select, .tabSearchInput, .treecipesSearchInput {
+    .runSelect, .tabSearchInput, .treecipesSearchInput {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
     }
-    .toolbar select { padding: 0.3rem; }
+    /* THE DATED RUNS (#533): THE LABEL, THEN THE DROPDOWN TAKING WHAT IS LEFT OF THE ROW, WRAPPING WHEN NARROW */
+    .runPicker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.4rem 0 0.2rem 0; }
+    .runPickerLabel { font-weight: 600; }
+    .runSelect { flex: 1 1 12rem; min-width: 0; max-width: 100%; padding: 0.3rem; }
     .tabSearch, .treecipesSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
     /* THE MAGNIFIER INSIDE EVERY SEARCH BOX (#373), DRAWN LIKE THE CHAIN LINK; THE TEXT STARTS PAST IT */
     .tabSearchField { position: relative; display: flex; align-items: center; flex: 1 1 16rem; min-width: 0; }
@@ -20836,6 +20840,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const ORG_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_ORG_SECTION_TITLE)};
     const TREECIPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SECTION_TITLE)};
     const TREECIPE_PICKER_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREECIPE_PICKER_LABEL)};
+    const RUN_PICKER_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_PICKER_LABEL)};
     const TREECIPES_SEARCH_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER)};
     const TREECIPES_SEARCH_NO_MATCH = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH)};
     const TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX)};
@@ -21210,34 +21215,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The run selector and the favorites filter. The org picker is no longer here (#255): it is
-        drawn at the top of every card's Treecipe tab, and asks the host for its orgs only when it is
-        first used or a Treecipe tab is first opened: listing orgs runs the CLI's connection check,
-        which no panel open should pay for.
+        The favorites filter. The org picker is no longer here (#255): it is drawn once in the
+        Target Org Manager section, and asks the host for its orgs only when it is first used or a
+        Treecipe tab is first opened: listing orgs runs the CLI's connection check, which no panel
+        open should pay for. The run selector is not here either (#533): buildRunPicker draws it
+        first in the Treecipes section, or above the notice of a run with no trees.
     */
     function renderToolbar(recipe, hasObjects) {
 
         const toolbarElement = createElement('div', 'toolbar');
-
-        if (recipe.runs.length > 0) {
-
-            runSelectElement = createElement('select', 'runSelect');
-            runSelectElement.setAttribute('aria-label', 'Generated recipe run');
-
-            recipe.runs.forEach(function (run) {
-                const runOptionElement = createElement('option', '', run.label);
-                runOptionElement.value = run.runFolderName;
-                runOptionElement.selected = run.runFolderName === recipe.selectedRunFolderName;
-                runSelectElement.appendChild(runOptionElement);
-            });
-
-            runSelectElement.value = recipe.selectedRunFolderName;
-            runSelectElement.addEventListener('change', function () {
-                vscodeApi.postMessage({ command: 'selectRun', runFolderName: runSelectElement.value });
-            });
-            toolbarElement.appendChild(runSelectElement);
-
-        }
 
         cockpitBodyElement.appendChild(toolbarElement);
 
@@ -21246,6 +21232,37 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         }
 
         renderHelp(recipe, hasObjects);
+
+    }
+
+    // THE DATED RUNS, WITH A VISIBLE LABEL THAT NAMES THE DROPDOWN (#533); NOTHING WITHOUT A RUN
+    function buildRunPicker(recipe) {
+
+        if (recipe.runs.length === 0) { return null; }
+
+        const pickerElement = createElement('div', 'runPicker');
+        const labelElement = createElement('label', 'runPickerLabel', RUN_PICKER_LABEL);
+
+        runSelectElement = createElement('select', 'runSelect');
+        runSelectElement.setAttribute('id', 'runSelect');
+        labelElement.setAttribute('for', 'runSelect');
+
+        recipe.runs.forEach(function (run) {
+            const runOptionElement = createElement('option', '', run.label);
+            runOptionElement.value = run.runFolderName;
+            runOptionElement.selected = run.runFolderName === recipe.selectedRunFolderName;
+            runSelectElement.appendChild(runOptionElement);
+        });
+
+        runSelectElement.value = recipe.selectedRunFolderName;
+        runSelectElement.addEventListener('change', function () {
+            vscodeApi.postMessage({ command: 'selectRun', runFolderName: runSelectElement.value });
+        });
+
+        pickerElement.appendChild(labelElement);
+        pickerElement.appendChild(runSelectElement);
+
+        return pickerElement;
 
     }
 
@@ -31027,6 +31044,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         renderToolbar(recipe, hasObjects);
 
+        const runPickerElement = buildRunPicker(recipe);
+        const trees = recipe.trees || [];
+
+        // A RUN THE CARDS CANNOT SHOW KEEPS ITS SELECTOR ABOVE EVERYTHING ELSE, SO ANOTHER RUN CAN BE CHOSEN
+        if (runPickerElement && (!hasObjects || trees.length === 0)) {
+            cockpitBodyElement.appendChild(runPickerElement);
+        }
+
         recipe.notices.forEach(function (notice) {
             cockpitBodyElement.appendChild(createElement('div', 'notice', notice));
         });
@@ -31039,8 +31064,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             }
             return;
         }
-
-        const trees = recipe.trees || [];
 
         // A RUN WITH NO TREES SAYS SO, WITH NO SECTION AROUND THE NOTICE AND NO ORG TO PICK FOR NOTHING
         if (trees.length === 0) {
@@ -31058,6 +31081,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const treecipesSection = buildStaticCockpitSection('cockpitTreecipesSection', TREECIPES_SECTION_TITLE);
         treecipesControlsElement = createElement('div', 'treecipesControls');
+        // THE RUN FIRST, THEN THE SEARCH AND THE TREECIPE DROPDOWN renderTrees ADDS UNDER IT (#533)
+        if (runPickerElement) { treecipesControlsElement.appendChild(runPickerElement); }
         treecipesSection.bodyElement.appendChild(treecipesControlsElement);
         treecipesSection.bodyElement.appendChild(treesViewElement);
         cockpitBodyElement.appendChild(treecipesSection.element);
