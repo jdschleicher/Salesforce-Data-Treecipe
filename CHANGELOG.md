@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.183.0] - Recipe Cockpit: Favorites only sits beside the Treecipe dropdown, and the run list reads "Select Generated Treecipe runs by date:"
+
+[#548](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/548). **Favorites only** was the last thing in the toolbar row just above the pinned Target Org Manager, so it read as an org control, though it narrows the Treecipes section's dropdown.
+
+- **Beside the dropdown it narrows.** **Favorites only** and its *N of M trees* count are drawn on the Treecipe dropdown's row, to its right, and wrap under it in a narrow panel. They are drawn only when a card has a folder to star, as before. What the filter does, its place in the saved position (`isFavoritesOnly`) and a focus turning it off are unchanged, and so is the data sets tab's own Favorites only.
+- **No toolbar row.** Nothing else was in it, so the row and its `.toolbar` rule are gone. The ? help section is now the first thing in the panel body, and a run with no cards draws its run list at the top of the panel.
+- **The run list's label** reads **Select Generated Treecipe runs by date:**.
+- **Help.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and its pictures say where Favorites only is and use the new label; the screenshot script waits for the help section rather than the toolbar.
+- **Tests.** The toggle and its count on the dropdown's row and nowhere before the Target Org Manager, the filter still narrowing from there, no toggle on a run with no card to star, no toolbar row anywhere, the help section first in the body, and the new label text.
+
 ## [3.182.0] - Recipe Cockpit: a data set's Insert… uses the Target Org Manager selection and confirms in the panel
 
 [#541](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/541). A row's **Insert…** under **Previously Used Data Sets** ran **Insert Data Set by Directory**, which ignored the org chosen in Target Org Manager, opened its own org picker, and inserted after only the all-or-none question.

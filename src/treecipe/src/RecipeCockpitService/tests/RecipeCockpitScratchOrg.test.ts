@@ -1205,11 +1205,11 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             return panel.findAll(leadCard, 'treeInsert')[0];
         };
 
-        it('draws "+ New scratch org" beside the org dropdown in the Target Org Manager section (#348, #355), never in the toolbar or a card, and posts a message that carries nothing', () => {
+        it('draws "+ New scratch org" beside the org dropdown in the Target Org Manager section (#348, #355), never in a card, and posts a message that carries nothing', () => {
 
             const panel = renderPanel();
 
-            expect(panel.findAll(firstOf(panel, 'toolbar'), 'dataOrgControls')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
 
             panel.expandAllTrees();
             expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgControls')).toHaveLength(1);

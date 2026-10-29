@@ -96,14 +96,15 @@ describe('RecipeCockpitService, the Target Org Manager and Treecipes sections (#
 
         });
 
-        it('draws the toolbar, then the Org section, then the Treecipes section holding every card', () => {
+        it('draws the help section, then the Org section, then the Treecipes section holding every card, and no toolbar row (#548)', () => {
 
             const panel = drawRecipe(loadRecipe());
             const bodyChildren = panel.cockpitBodyElement.children;
             const orgIndex = bodyChildren.indexOf(orgSectionOf(panel));
             const treecipesIndex = bodyChildren.indexOf(treecipesSectionOf(panel));
 
-            expect(bodyChildren[0].classList.contains('toolbar')).toBeTrue();
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
+            expect(bodyChildren[0].classList.contains('helpSection')).toBeTrue();
             expect(orgIndex).toBeGreaterThan(0);
             expect(treecipesIndex).toBe(orgIndex + 1);
             expect(panel.findAll(headerOf(orgSectionOf(panel)), 'cockpitSectionTitle').map((element: any) => element.textContent)).toEqual([RECIPE_COCKPIT_ORG_SECTION_TITLE]);

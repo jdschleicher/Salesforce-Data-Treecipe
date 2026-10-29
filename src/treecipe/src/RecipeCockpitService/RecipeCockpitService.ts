@@ -491,7 +491,7 @@ export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Manager';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
 // THE TREECIPES SECTION DRAWS ONE CARD, CHOSEN IN A DROPDOWN, UNDER ONE SEARCH ACROSS EVERY CARD (#374)
 export const RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = 'Treecipe';
-export const RECIPE_COCKPIT_RUN_PICKER_LABEL = 'Select Generate Treecipe runs by date';
+export const RECIPE_COCKPIT_RUN_PICKER_LABEL = 'Select Generated Treecipe runs by date:';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER = 'Search treecipes, objects, fields and record types';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = 'No treecipe, object, field or record type matches this search.';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ' (no match)';
@@ -581,10 +581,10 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         heading: 'Where recipes come from',
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
-            'The cockpit opens the newest run, or the one you pick in Select Generate Treecipe runs by date, the first line of the Treecipes section (or under the toolbar, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
+            'The cockpit opens the newest run, or the one you pick in Select Generated Treecipe runs by date:, the first line of the Treecipes section (or at the top of the panel, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
             'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
-            'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
+            'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.',
@@ -20075,7 +20075,6 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
     }
     .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
-    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
     .runSelect, .tabSearchInput, .treecipesSearchInput {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
@@ -21382,21 +21381,11 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     /*
-        The favorites filter. The org picker is no longer here (#255): it is drawn once in the
-        Target Org Manager section, and asks the host for its orgs only when it is first used or a
-        Treecipe tab is first opened: listing orgs runs the CLI's connection check, which no panel
-        open should pay for. The run selector is not here either (#533): buildRunPicker draws it
-        first in the Treecipes section, or above the notice of a run with no trees.
+        No toolbar row is drawn any more (#548): the org picker is the Target Org Manager's (#255),
+        the run selector the Treecipes section's first row (#533), and Favorites only sits beside
+        the Treecipe dropdown it narrows (buildTreePicker). Only the help section is left here.
     */
     function renderToolbar(recipe, hasObjects) {
-
-        const toolbarElement = createElement('div', 'toolbar');
-
-        cockpitBodyElement.appendChild(toolbarElement);
-
-        if (hasObjects && (recipe.trees || []).some(function (tree) { return !!tree.folderName; })) {
-            renderFavoritesToggle(toolbarElement);
-        }
 
         renderHelp(recipe, hasObjects);
 
@@ -21590,7 +21579,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     // A PANEL-ONLY FILTER (#235): IT HIDES CARDS, ASKS THE HOST NOTHING, AND IS KEPT WITH THE READER'S PLACE
-    function renderFavoritesToggle(toolbarElement) {
+    function renderFavoritesToggle(containerElement) {
 
         const favoritesElement = createElement('span', 'favoritesControls');
 
@@ -21606,7 +21595,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         favoritesElement.appendChild(favoritesToggleElement);
         favoritesElement.appendChild(favoritesCountElement);
-        toolbarElement.appendChild(favoritesElement);
+        containerElement.appendChild(favoritesElement);
 
     }
 
@@ -21838,7 +21827,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    function buildTreePicker() {
+    function buildTreePicker(trees) {
 
         const pickerElement = createElement('div', 'treePicker');
         const labelElement = createElement('label', 'treePickerLabel', TREECIPE_PICKER_LABEL);
@@ -21857,6 +21846,11 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         pickerElement.appendChild(labelElement);
         pickerElement.appendChild(treePickerElement);
+
+        // FAVORITES ONLY NARROWS THIS DROPDOWN (#374), SO IT IS DRAWN ON ITS ROW (#548), AND ONLY WHEN A CARD CAN BE STARRED
+        if (trees.some(function (tree) { return !!tree.folderName; })) {
+            renderFavoritesToggle(pickerElement);
+        }
 
         return pickerElement;
 
@@ -30396,7 +30390,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const search = buildTreecipesSearch();
             treecipesControlsElement.appendChild(search.element);
             treecipesControlsElement.appendChild(search.resultsElement);
-            treecipesControlsElement.appendChild(buildTreePicker());
+            treecipesControlsElement.appendChild(buildTreePicker(trees));
             treePickerObjectsElement = createElement('div', 'treePickerObjects hidden');
             treecipesControlsElement.appendChild(treePickerObjectsElement);
         }
@@ -30900,8 +30894,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     /*
-        The toolbar is the FIRST thing drawn, and what sits between it and the cards is only what
-        the cards cannot say themselves: notices about entries that could not be read. Each card
+        The help section is the FIRST thing drawn (there is no toolbar row since #548), and what sits
+        between it and the cards is only what the cards cannot say themselves: notices about entries that could not be read. Each card
         carries its own searches (#217), so there is no find box above them.
     */
     /*

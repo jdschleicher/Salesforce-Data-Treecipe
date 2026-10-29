@@ -222,6 +222,50 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
         });
 
+        // #548: FAVORITES ONLY NARROWS THE DROPDOWN, SO IT IS DRAWN ON THE DROPDOWN'S ROW, NOT ABOVE THE TARGET ORG MANAGER
+        it('draws Favorites only and its count on the dropdown\'s row, to its right, and nothing of it before the Target Org Manager', () => {
+
+            const { panel } = drawRecipe();
+            const [pickerRow] = panel.findAll(panel.cockpitBodyElement, 'treePicker');
+            const bodyChildren = panel.cockpitBodyElement.children;
+            const orgSectionIndex = bodyChildren.findIndex((element: any) => element.attributes.id === 'cockpitOrgSection');
+
+            expect(pickerRow.children.map((element: any) => element.className.split(' ')[0])).toEqual(['treePickerLabel', 'treePickerSelect', 'favoritesControls']);
+            expect(panel.findAll(pickerRow, 'favoritesToggle')).toEqual([favoritesToggleOf(panel)]);
+            expect(panel.findAll(pickerRow, 'favoritesCount')).toHaveLength(1);
+            expect(panel.findAll(panel.cockpitBodyElement, 'favoritesToggle')).toHaveLength(1);
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
+            expect(orgSectionIndex).toBeGreaterThan(-1);
+            bodyChildren.slice(0, orgSectionIndex).forEach((element: any) => {
+                expect(panel.findAll(element, 'favoritesToggle')).toEqual([]);
+            });
+
+        });
+
+        it('still narrows the dropdown to the starred cards from its new row, and puts every card back when turned off', () => {
+
+            const { panel } = drawRecipe(recipe => { recipe.trees[1].isFavorite = true; });
+
+            favoritesToggleOf(panel).dispatch('click');
+            expect(panel.treePickerLabels()).toEqual(['★ Lead-ONLY']);
+            expect(favoritesToggleOf(panel).attributes['aria-pressed']).toBe('true');
+            expect(panel.findAll(panel.cockpitBodyElement, 'favoritesCount')[0].textContent).toBe('1 of 3 trees');
+
+            favoritesToggleOf(panel).dispatch('click');
+            expect(panel.treePickerLabels()).toHaveLength(3);
+            expect(favoritesToggleOf(panel).attributes['aria-pressed']).toBe('false');
+
+        });
+
+        it('draws no Favorites only when no card has a folder to star', () => {
+
+            const { panel } = drawRecipe(recipe => { recipe.trees = [recipe.trees[recipe.trees.length - 1]]; });
+
+            expect(panel.treePicker()).toBeDefined();
+            expect(panel.findAll(panel.cockpitBodyElement, 'favoritesToggle')).toEqual([]);
+
+        });
+
         it('given a one-tree run, still draws the dropdown with its one entry', () => {
 
             const { panel } = drawRecipe(recipe => { recipe.trees = [recipe.trees[1]]; });

@@ -98,7 +98,6 @@ describe('RecipeCockpitService help section (#332)', () => {
         it('draws "?" last on the top-right line, outside the body, collapsed, naming the section it controls (#350)', () => {
 
             const panel = drawRecipe(loadRecipe());
-            const toolbar = panel.findAll(panel.cockpitBodyElement, 'toolbar')[0];
             const toggle = toggleOf(panel);
 
             expect(panel.cockpitMetaElement.children[panel.cockpitMetaElement.children.length - 1]).toBe(toggle);
@@ -110,8 +109,9 @@ describe('RecipeCockpitService help section (#332)', () => {
             expect(toggle.attributes['aria-expanded']).toBe('false');
             expect(toggle.attributes['aria-controls']).toBe(sectionOf(panel).attributes.id);
             expect(panel.isHidden(sectionOf(panel))).toBeTrue();
-            // RIGHT UNDER THE TOOLBAR, ABOVE THE CARDS
-            expect(panel.cockpitBodyElement.children.indexOf(sectionOf(panel))).toBe(panel.cockpitBodyElement.children.indexOf(toolbar) + 1);
+            // FIRST IN THE BODY, ABOVE THE CARDS: THERE IS NO TOOLBAR ROW (#548)
+            expect(panel.findAll(panel.cockpitBodyElement, 'toolbar')).toEqual([]);
+            expect(panel.cockpitBodyElement.children.indexOf(sectionOf(panel))).toBe(0);
 
         });
 
