@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.171.0] - Target Org Manager: a scratch org's type and expiration are read from its local authorization, not `sf org display`
+
+[#499](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/499), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The Target Org Manager's type label started an `sf org display --target-org <username> --json` process (#458) for every sandbox selected, only to learn whether it was a scratch org and when it expires.
+
+- **Read in process.** `SalesforceOrgService.readScratchOrgDetail` (was `readOrgDisplayDetail`) reads the CLI's local authorization with `AuthInfo.create({ username }).getFields()`: no process, no network. It is never `getFields(true)`, so no token is decrypted, and only two facts are kept: a scratch org is one whose authorization records a `devHubUsername` (what `AuthInfo.listAllAuthorizations` derives `isScratchOrg` from) or an `isScratch` of exactly `true`, and `expirationDate` only when it is a real `yyyy-MM-dd`.
+- **Same labels.** `Scratch org · expires 2026-11-01`, `Scratch org`, `Sandbox`, `Production · <edition>` and `type unknown` are unchanged, and the Organization row still decides sandbox or not. An authorization that cannot be read (missing, unreadable, not an object) answers unknown, as a failed `sf org display` did, and the label falls back to `Sandbox`. A username that is not a usable target org is not read at all; that check refuses every `!`, so `AuthInfo` never takes one for an access token.
+- **No session cache.** A local file read needs none, and a fresh read follows a scratch org re-created under the same username. `clearOrgDisplayCache`, `buildOrgDisplayArguments`, `parseOrgDisplayOutput` and `ORG_DISPLAY_TIMEOUT_MILLISECONDS` are gone; the authorization is parsed by `parseScratchOrgAuthorizationFields`. `IOrgDisplayDetail` is now `IScratchOrgDetail` (the selection's `scratchOrgDetail`).
+- **Fixtures.** The two `sf org display` answers in `SalesforceOrgService/tests/mocks` are replaced by `authFieldsScratchOrg.json` and `authFieldsSandbox.json`, made-up authorization files.
+- **Guide.** `docs/RECIPE-COCKPIT-GUIDE.md` says the expiration comes from the CLI's local authorization.
+- **Tests.** `SalesforceOrgService.test.ts` (read by username with no CLI and `getFields` never asked to decrypt, nothing but the two facts kept, a sandbox, an unreadable authorization, a refused username, dates, `devHubUsername`/`isScratch`, no cache); `RecipeCockpitDataByOrg.test.ts` (the label read end to end from the fixture, no `org display` process, no token posted or stored); `SalesforceCliCallSites.test.ts` (#496's list of call sites that still start the CLI no longer names `runOrgDisplayCommand`).
+
 ## [3.170.0] - Recipe Cockpit: "Assign permission sets to me…" inserts the assignments itself, with no Salesforce CLI
 
 [#500](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/500), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The assignment used to start a separate `sf org assign permset` process, which took seconds, needed `sf` on PATH and was capped at 50 picks only because of `cmd.exe`'s 8,191-character line.

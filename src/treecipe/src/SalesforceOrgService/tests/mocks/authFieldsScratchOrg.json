@@ -1,0 +1,21 @@
+{
+  "accessToken": "fixtureiv0000000000000000000000:fixture-encrypted-access-token-not-real",
+  "instanceUrl": "https://fixture-scratch.scratch.my.salesforce.com",
+  "orgId": "00DFIXTUREFIXTURE",
+  "username": "test-fixture@example.com",
+  "loginUrl": "https://fixture-scratch.scratch.my.salesforce.com",
+  "clientId": "PlatformCLI",
+  "isDevHub": false,
+  "instanceApiVersion": "62.0",
+  "created": "1760796131000",
+  "createdOrgInstance": "CS0",
+  "devHubUsername": "devhub@example.com",
+  "expirationDate": "2026-11-01",
+  "tracksSource": true,
+  "name": "Fixture Company",
+  "instanceName": "CS0",
+  "namespacePrefix": null,
+  "isSandbox": false,
+  "isScratch": true,
+  "trailExpirationDate": null
+}
