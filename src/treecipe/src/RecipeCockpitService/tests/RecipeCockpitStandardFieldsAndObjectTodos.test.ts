@@ -87,7 +87,7 @@ const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unk
 answerInPanelConfirmationsThroughWarningMock();
 
 beforeEach(() => {
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "TODOs only" (#477)', () => {

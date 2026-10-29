@@ -1,0 +1,17 @@
+{
+  "accessToken": "fixtureiv0000000000000000000000:fixture-encrypted-access-token-not-real",
+  "refreshToken": "fixtureiv0000000000000000000000:fixture-encrypted-refresh-token-not-real",
+  "instanceUrl": "https://fixture--qa.sandbox.my.salesforce.com",
+  "orgId": "00DFIXTURESANDBOX",
+  "username": "qa@example.com.qa",
+  "loginUrl": "https://test.salesforce.com",
+  "clientId": "PlatformCLI",
+  "isDevHub": false,
+  "instanceApiVersion": "62.0",
+  "name": "Fixture Company",
+  "instanceName": "CS1",
+  "namespacePrefix": null,
+  "isSandbox": true,
+  "isScratch": false,
+  "trailExpirationDate": null
+}
