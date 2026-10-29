@@ -41,8 +41,10 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo } from '@salesforce/core';
+import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
+// jszip COMES WITH @salesforce/core AND IS ONLY EVER USED IN TESTS: HERE, TO BUILD THE ZIP A FAKED ORG ANSWERS A RETRIEVE WITH
+import JSZip = require('jszip');
 
 import {
     IRecipeCockpitPanelState,
@@ -57,6 +59,7 @@ import {
     RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
 import { IMetadataDeploySummary } from '../RecipeCockpitMetadataDeploy';
@@ -65,6 +68,8 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeCockpitMetadataRetrievePackage } from '../RecipeCockpitMetadataRetrievePackage';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
@@ -99,8 +104,6 @@ const retrievedFile = (type: string, fullName: string, extra: Record<string, unk
 
 const listedRecordType = (fullName: unknown) => ({ fullName: fullName, type: 'RecordType', id: '012000000000001' });
 
-const buildListAnswer = (entries: unknown) => JSON.stringify({ status: 0, result: entries, warnings: [] });
-
 const buildRetrieveAnswer = (files: unknown[], overrides: Record<string, unknown> = {}) => JSON.stringify({
     status: 0,
     result: { done: true, status: 'Succeeded', success: true, files: files },
@@ -118,24 +121,28 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
     describe('RecipeCockpitMetadataRetrieve', () => {
 
-        it('lists record types with "org list metadata", as validation rules are (#401), and keeps only the tree\'s', () => {
+        it('lists record types with listMetadata on a connection, as validation rules are (#401, #498), and keeps only the tree\'s', async () => {
 
-            expect(RecipeCockpitMetadataRetrieve.buildListMetadataArguments('recordTypes', PROD_USERNAME))
-                .toEqual(['org', 'list', 'metadata', '--json', '--target-org', PROD_USERNAME, '--metadata-type', 'RecordType']);
-            expect(() => RecipeCockpitMetadataRetrieve.buildListMetadataArguments('recordTypes', '--target-org')).toThrow();
+            const listedQueries: unknown[] = [];
+            const notCancelled = { isCancellationRequested: false, onCancellationRequested: jest.fn() };
 
-            expect(RecipeCockpitMetadataRetrieve.parseListMetadataOutput('recordTypes', invocation(buildListAnswer([
-                listedRecordType('Account.Wholesale'),
-                listedRecordType('Account.Business'),
-                listedRecordType('Lead.Not_This_Tree'),
-                listedRecordType('Account.Bad Name'),
-                { fullName: 'Contact.Rule', type: 'ValidationRule' }
-            ])), ACCOUNT_TREE_OBJECTS)).toEqual({
+            expect(await RecipeCockpitMetadataRetrieve.listOrgMetadata(async () => ({ list: async (query: unknown) => {
+                listedQueries.push(query);
+                return [
+                    listedRecordType('Account.Wholesale'),
+                    listedRecordType('Account.Business'),
+                    listedRecordType('Lead.Not_This_Tree'),
+                    listedRecordType('Account.Bad Name'),
+                    { fullName: 'Contact.Rule', type: 'ValidationRule' }
+                ];
+            } }), 'recordTypes', ACCOUNT_TREE_OBJECTS, 1000, notCancelled)).toEqual({
                 kind: 'listed',
                 components: [{ type: 'RecordType', member: 'Account.Business' }, { type: 'RecordType', member: 'Account.Wholesale' }],
                 skippedCount: 1
             });
-            expect(RecipeCockpitMetadataRetrieve.parseListMetadataOutput('recordTypes', invocation('', { timedOut: true }), ACCOUNT_TREE_OBJECTS))
+            expect(listedQueries).toEqual([{ type: 'RecordType' }]);
+
+            expect(await RecipeCockpitMetadataRetrieve.listOrgMetadata(async () => ({ list: () => new Promise(() => undefined) }), 'recordTypes', ACCOUNT_TREE_OBJECTS, 5, notCancelled))
                 .toEqual({ kind: 'unconfirmed', failureMessage: 'The listing did not finish in time and was stopped, so which record types the org holds is unknown.' });
 
             expect(RecipeCockpitMetadataRetrieve.buildRetrievePackageXml([{ type: 'RecordType', member: 'Account.Business' }])).toContain('<members>Account.Business</members>\n        <name>RecordType</name>');
@@ -398,7 +405,8 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
         let postedPanelMessages: any[];
         let cliCalls: string[][];
         let retrievedManifests: string[];
-        let listHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
+        let listHandler: (query: { type: string }) => unknown;
+        let listedQueries: { username: string; query: unknown }[];
         let retrieveHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let cancellationToken: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void };
         let promptSpy: jest.Mock;
@@ -456,7 +464,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             modalAnswer = RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL;
             workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
             retrieveHandler = () => ({ stdout: buildRetrieveAnswer([]) });
-            listHandler = () => ({ stdout: buildListAnswer([listedRecordType('Account.Business'), listedRecordType('Account.Partner'), listedRecordType('Account.Wholesale'), listedRecordType('Lead.Not_This_Tree')]) });
+            listHandler = () => ([listedRecordType('Account.Business'), listedRecordType('Account.Partner'), listedRecordType('Account.Wholesale'), listedRecordType('Lead.Not_This_Tree')]);
 
             (execFile as unknown as jest.Mock).mockReset();
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], execOptions: any, callback: any) => {
@@ -465,14 +473,23 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 if ( manifestIndex !== -1 ) {
                     retrievedManifests.push(fs.readFileSync(path.join(execOptions.cwd, argumentList[manifestIndex + 1]), 'utf-8'));
                 }
-                const cliAnswer = argumentList[0] === 'org' && argumentList[1] === 'list' && argumentList[2] === 'metadata' ? listHandler(argumentList)
-                    : argumentList[0] === 'org' && argumentList[1] === 'list' ? { stdout: JSON.stringify(SF_ORG_LIST) }
+                const cliAnswer = argumentList[0] === 'org' && argumentList[1] === 'list' ? { stdout: JSON.stringify(SF_ORG_LIST) }
                     : retrieveHandler(argumentList);
                 setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
                 return { kill: jest.fn() };
             });
 
             (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => ORG_AUTHORIZATIONS);
+
+            // #498: THE LISTING IS listMetadata ON A CONNECTION OPENED BY USERNAME, NOT A CLI
+            listedQueries = [];
+            (Org.create as jest.Mock).mockReset();
+            (Org.create as jest.Mock).mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+                getConnection: () => ({ metadata: { list: async (query: { type: string }) => {
+                    listedQueries.push({ username: aliasOrUsername, query: query });
+                    return listHandler(query);
+                } } })
+            }));
 
             cancellationToken = { isCancellationRequested: false, onCancellationRequested: jest.fn() };
             (vscode.window.withProgress as jest.Mock).mockReset();
@@ -589,7 +606,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(modalCalls()[0][0]).toBe(`Retrieve 3 record types of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
             expect(modalCalls()[0][1].detail).toContain('3 record types\nAccount.Business, Account.Partner, Account.Wholesale');
             expect(modalCalls()[0][1].detail).toContain('2 existing local record type files for these objects will be overwritten');
-            expect(cliCalls.filter(argumentList => argumentList[2] === 'metadata')).toEqual([['org', 'list', 'metadata', '--json', '--target-org', PROD_USERNAME, '--metadata-type', 'RecordType']]);
+            expect(listedQueries).toEqual([{ username: PROD_USERNAME, query: { type: 'RecordType' } }]);
             expect(retrieveCalls()).toHaveLength(1);
             expect(retrieveCalls()[0]).not.toContain('--metadata');
             expect(retrieveCalls()[0][retrieveCalls()[0].indexOf('--manifest') + 1]).toMatch(/-record-type-retrieve-package\.xml$/);
@@ -632,20 +649,20 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             ]);
 
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
-            listHandler = () => ({ stdout: '{"status":1,"message":"No authorization"}', error: Object.assign(new Error('exit 1'), { code: 1 }) });
+            listHandler = () => { throw new Error('No authorization'); };
             await retrieve('recordTypes');
 
             expect(summaries().map(summary => summary.outcome).sort()).toEqual(['failed', 'succeeded']);
 
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
-            listHandler = () => ({ stdout: '', error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
+            (Org.create as jest.Mock).mockRejectedValueOnce(new Error('No authorization'));
             await retrieve('recordTypes');
 
             expect(summaries().map(summary => summary.outcome).sort()).toEqual(['failed', 'failed', 'succeeded']);
 
             // EVERY RECORD TYPE CAME BACK FAILED: NOTHING WAS RETRIEVED, SO THE STEP FAILED RATHER THAN PARTLY SUCCEEDED
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
-            listHandler = () => ({ stdout: buildListAnswer([listedRecordType('Account.Business')]) });
+            listHandler = () => ([listedRecordType('Account.Business')]);
             retrieveHandler = () => ({ stdout: buildRetrieveAnswer([retrievedFile('RecordType', 'Account.Business', { state: 'Failed', problemType: 'Error', error: 'Not found' })]) });
             await retrieve('recordTypes');
 
@@ -700,7 +717,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 const promptArguments = selectPromptSpy.mock.calls[0];
                 expect(promptArguments.slice(4)).toEqual([RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes, 'Nothing was retrieved']);
                 expect(panelState().isOrgPromptOpen).toBeFalse();
-                expect(cliCalls.filter(argumentList => argumentList[2] === 'metadata').map(argumentList => argumentList[5])).toEqual([PROD_USERNAME, PROD_USERNAME]);
+                expect(listedQueries.map(listedQuery => listedQuery.username)).toEqual([PROD_USERNAME, PROD_USERNAME]);
 
             });
 
@@ -855,6 +872,156 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             expect(retrieveCalls()).toEqual([]);
             expect(notifications()).toEqual([{ severity: 'warning', text: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL, actions: [] }]);
+
+        });
+
+        describe('with the metadataRetrieveMethod setting at jsforce (#506)', () => {
+
+            const RETRIEVE_ID = '09S000000000001AAA';
+            const NAMESPACE = 'http://soap.sforce.com/2006/04/metadata';
+            const ACCOUNT_FIELDS_PATH = ['force-app', 'main', 'default', 'objects', 'Account', 'fields'];
+            let retrieveRequests: Array<Record<string, unknown>>;
+            let statusAnswers: unknown[];
+            let connectionFailure: Error | undefined;
+
+            const accountObjectXml = (fieldApiNames: string[]) => [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                `<CustomObject xmlns="${NAMESPACE}">`,
+                ...fieldApiNames.flatMap(fieldApiName => ['    <fields>', `        <fullName>${fieldApiName}</fullName>`, `        <label>${fieldApiName} from the org</label>`, '        <type>Text</type>', '    </fields>']),
+                '</CustomObject>'
+            ].join('\n');
+            const finishedWith = async (files: Record<string, string>, messages: unknown[] = []) => {
+                const zip = new JSZip();
+                Object.entries(files).forEach(([name, content]) => zip.file(name, content));
+                return { id: RETRIEVE_ID, done: true, success: true, status: 'Succeeded', messages: messages, zipFile: ( await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) ).toString('base64') };
+            };
+            const operationsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME);
+            const operationFiles = () => fs.existsSync(operationsFolderPath()) ? fs.readdirSync(operationsFolderPath()) : [];
+
+            beforeEach(async () => {
+
+                retrieveRequests = [];
+                statusAnswers = [await finishedWith({})];
+                connectionFailure = undefined;
+
+                jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockImplementation(((settingKey: string) => settingKey === 'metadataRetrieveMethod' ? 'jsforce' : undefined) as any);
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => {
+                    if ( connectionFailure ) {
+                        throw connectionFailure;
+                    }
+                    return {
+                        getApiVersion: () => '62.0',
+                        metadata: {
+                            retrieve: jest.fn().mockImplementation(async (request: Record<string, unknown>) => { retrieveRequests.push(request); return { id: RETRIEVE_ID, done: false }; }),
+                            checkRetrieveStatus: jest.fn().mockImplementation(async () => statusAnswers.length > 1 ? statusAnswers.shift() : statusAnswers[0])
+                        }
+                    } as any;
+                });
+
+            });
+
+            it('retrieves the package.xml\'s members on a connection, never through the CLI, writes them where the CLI does, and says how it went as the CLI retrieve does', async () => {
+
+                statusAnswers = [{ id: RETRIEVE_ID, done: false }, await finishedWith(
+                    { 'objects/Account.object': accountObjectXml(['Rating__c', 'Regions__c', 'Not_Asked__c']) },
+                    [{ fileName: 'package.xml', problem: "Entity of type 'CustomField' named 'Account.Sub_Rating__c' cannot be found" }]
+                )];
+                await openCockpit();
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                const packageXmlFileName = operationFiles().find(fileName => fileName.endsWith('-field-retrieve-package.xml')) as string;
+                expect(retrieveRequests).toEqual([{
+                    apiVersion: 64,
+                    singlePackage: true,
+                    unpackaged: { types: [{ members: manifestMembers(fs.readFileSync(path.join(operationsFolderPath(), packageXmlFileName), 'utf-8')), name: 'CustomField' }], version: '64.0' }
+                }]);
+                expect(( retrieveRequests[0].unpackaged as any ).types[0].members).toEqual(ACCOUNT_RETRIEVE_FIELDS);
+
+                // THE HELD FILE IS WRITTEN OVER WHERE IT IS, THE NEW ONE UNDER THE DEFAULT PACKAGE DIRECTORY, AND NOTHING NOT ASKED FOR
+                expect(fs.readFileSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Rating__c.field-meta.xml'), 'utf-8')).toContain('<label>Rating__c from the org</label>');
+                expect(fs.readFileSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Regions__c.field-meta.xml'), 'utf-8')).toContain('<fullName>Regions__c</fullName>');
+                expect(fs.existsSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Not_Asked__c.field-meta.xml'))).toBe(false);
+
+                expect(notifications()).toEqual([{
+                    severity: 'warning',
+                    text: `Retrieved 2 of the 8 custom fields of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}. Generate Treecipe writes them into the recipe. 1 could not be retrieved: Account.Sub_Rating__c: Entity of type 'CustomField' named 'Account.Sub_Rating__c' cannot be found.`,
+                    actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL, RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]
+                }]);
+
+                const resultFileName = operationFiles().find(fileName => /^\d{8}-\d{6}-field-retrieve\.json$/.test(fileName)) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), resultFileName), 'utf-8'))).toEqual(expect.objectContaining({ status: 0, retrieveId: RETRIEVE_ID, retrievedWith: 'jsforce' }));
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({
+                    step: 'field-retrieve', outcome: 'partial', succeededCount: 2, failedCount: 1, fileNames: [packageXmlFileName, resultFileName]
+                }));
+
+            });
+
+            it('writes nothing and offers no Generate Treecipe when cancelled before the org\'s zip is read', async () => {
+
+                const ratingFilePath = path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Rating__c.field-meta.xml');
+                const heldRating = fs.readFileSync(ratingFilePath, 'utf-8');
+                statusAnswers = [{ id: RETRIEVE_ID, done: false }];
+                const connectionWithoutCancel = (SalesforceOrgService.getConnection as jest.Mock).getMockImplementation() as () => Promise<any>;
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => {
+                    const orgConnection = await connectionWithoutCancel();
+                    orgConnection.metadata.checkRetrieveStatus = jest.fn().mockImplementation(async () => { cancellationToken.isCancellationRequested = true; return { id: RETRIEVE_ID, done: false }; });
+                    return orgConnection;
+                });
+                await openCockpit();
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(fs.readFileSync(ratingFilePath, 'utf-8')).toBe(heldRating);
+                expect(fs.existsSync(path.join(workspaceRoot, ...ACCOUNT_FIELDS_PATH, 'Regions__c.field-meta.xml'))).toBe(false);
+                expect(notifications()).toEqual([{ severity: 'warning', text: `The retrieve of custom fields from prod · ${PROD_USERNAME} was cancelled before anything was written.`, actions: [] }]);
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({ step: 'field-retrieve', outcome: 'cancelled', detail: 'Nothing was written.' }));
+
+            });
+
+            it('says nothing was written when the org does not finish in time, and offers no Generate Treecipe', async () => {
+
+                jest.spyOn(RecipeCockpitMetadataRetrievePackage, 'runRetrieve').mockResolvedValue({ kind: 'timedOut', retrieveId: RETRIEVE_ID });
+                await openCockpit();
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(notifications()).toEqual([{ severity: 'warning', text: `The retrieve of custom fields from prod · ${PROD_USERNAME} did not finish in time, so nothing was written.`, actions: [] }]);
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({ step: 'field-retrieve', outcome: 'failed', detail: 'It did not finish in time. Nothing was written.' }));
+
+            });
+
+            it('warns, writing nothing, when no connection opens or the org\'s zip cannot be read', async () => {
+
+                connectionFailure = new Error('No authorization information found for admin@example.com');
+                await openCockpit();
+
+                await retrieve('globalValueSets');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(notifications()).toEqual([{
+                    severity: 'warning',
+                    text: `No global value sets were retrieved from prod · ${PROD_USERNAME}: ConnectionError: could not connect to the org: No authorization information found for admin@example.com`,
+                    actions: [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]
+                }]);
+
+                (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+                connectionFailure = undefined;
+                statusAnswers = [{ id: RETRIEVE_ID, done: true, success: true, zipFile: Buffer.from('not a zip but long enough to be searched for one').toString('base64') }];
+                (vscode.window.showWarningMessage as jest.Mock).mockClear();
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+
+                await retrieve('globalValueSets');
+
+                expect(notifications()).toEqual([expect.objectContaining({ severity: 'warning', text: expect.stringContaining("The org's retrieve zip could not be read: no end of central directory. Nothing was written.") })]);
+
+            });
 
         });
 
