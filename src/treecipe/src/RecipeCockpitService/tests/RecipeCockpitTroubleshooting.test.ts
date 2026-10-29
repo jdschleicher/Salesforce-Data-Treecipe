@@ -63,6 +63,7 @@ import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL
 } from '../RecipeCockpitService';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
+import { RecipeCockpitRunHistory } from '../RecipeCockpitRunHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerOrgConnectionPings } from '../../SalesforceOrgService/tests/OrgConnectionPings';
@@ -513,6 +514,106 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             // A DEPLOY THAT LANDED DROPS THE DEPLOYED OBJECTS' DESCRIBES AND RE-CHECKS THE CARDS LISTING THEM
             ['Account', 'OtherChildObject__c'].forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
             expect(describeCalls.slice(describesBefore)).toEqual(expect.arrayContaining(['Account', 'OtherChildObject__c']));
+
+        });
+
+        describe('what a deployed custom object names (#547)', () => {
+
+            const otherChildObjectFilePath = () => path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'OtherChildObject__c', 'OtherChildObject__c.object-meta.xml');
+            const flexiPagesFolderPath = () => path.join(workspaceRoot, 'force-app', 'main', 'default', 'flexipages');
+            const addOverride = (pageName: string) => fs.writeFileSync(otherChildObjectFilePath(), fs.readFileSync(otherChildObjectFilePath(), 'utf-8').replace(
+                '<deploymentStatus>',
+                `<actionOverrides><actionName>View</actionName><content>${pageName}</content><formFactor>Large</formFactor><type>Flexipage</type></actionOverrides>\n    <deploymentStatus>`
+            ));
+
+            it('ships a FlexiPage the project holds with the object, through the same --manifest', async () => {
+
+                addOverride('Other_Record_Page');
+                fs.mkdirSync(flexiPagesFolderPath(), { recursive: true });
+                fs.writeFileSync(path.join(flexiPagesFolderPath(), 'Other_Record_Page.flexipage-meta.xml'), '<FlexiPage xmlns="http://soap.sforce.com/2006/04/metadata"><type>RecordPage</type></FlexiPage>');
+
+                await openCockpitWithQaSelected();
+                await deploy('deployTreeFields');
+
+                const [deployArgv] = deployCalls();
+                expect(deployArgv).toContain('--manifest');
+                expect(deployArgv).not.toContain('--metadata-dir');
+                expect([...deployedManifests[0].matchAll(/<name>([^<]*)<\/name>/g)].map(match => match[1])).toEqual(['CustomField', 'CustomObject', 'FlexiPage']);
+                expect(deployedManifests[0]).toContain('<members>Other_Record_Page</members>');
+                expect(modalCalls()[0][1].detail).toContain('1 FlexiPage: Other_Record_Page');
+                expect(modalCalls()[0][1].detail).not.toContain('set back');
+
+            });
+
+            it('sends a zip with the override set back through the CLI\'s --metadata-dir when the page is not in the project, leaving the project file as it was', async () => {
+
+                addOverride('Missing_Page');
+                const projectObjectXml = fs.readFileSync(otherChildObjectFilePath(), 'utf-8');
+
+                await openCockpitWithQaSelected();
+                await deploy('deployTreeFields');
+
+                const detail = modalCalls()[0][1].detail as string;
+                expect(detail).toContain('1 reference a custom object makes to a page or compact layout this deploy does not carry is set back to the standard one in the deployed copy; this project\'s files are not changed.');
+                expect(detail).toContain('OtherChildObject__c: View override, Large form factor, FlexiPage Missing_Page — FlexiPage Missing_Page is not in this project');
+                expect(detail).toContain('--metadata-dir');
+
+                expect(deployCalls()).toHaveLength(1);
+                const [deployArgv] = deployCalls();
+                expect(deployArgv.slice(0, 7)).toEqual(['project', 'deploy', 'start', '--json', '--target-org', QA_USERNAME, '--metadata-dir']);
+                expect(deployArgv[7]).toMatch(/-field-deploy-metadata\.zip$/);
+                expect(deployArgv[8]).toBe('--single-package');
+                expect(deployArgv).not.toContain('--manifest');
+
+                const zipFileNames = operationFiles().filter(fileName => fileName.endsWith('-field-deploy-metadata.zip'));
+                expect(zipFileNames).toHaveLength(1);
+                const zip = await JSZip.loadAsync(fs.readFileSync(path.join(operationsFolderPath(), zipFileNames[0])), { checkCRC32: true });
+                const objectXml = await zip.files['objects/OtherChildObject__c.object'].async('string');
+                expect(objectXml).not.toContain('Missing_Page');
+                expect(objectXml).toContain('<type>Default</type>');
+                expect(Object.keys(zip.files)).toContain('package.xml');
+
+                expect(fs.readFileSync(otherChildObjectFilePath(), 'utf-8')).toBe(projectObjectXml);
+                expect(informationCalls()).toContainEqual([`Deployed 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
+
+                // THE HISTORY'S SUMMARY READS BACK (#485): IT NAMES THE PACKAGE.XML AND THE RESULT, NEVER THE ZIP, WHICH A ROW COULD NOT OPEN
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-field-deploy-summary.json')) as string;
+                const summary = RecipeCockpitRunHistory.parseSummary(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'));
+                expect(summary?.outcome).toBe('succeeded');
+                expect(summary?.fileNames).not.toContain(zipFileNames[0]);
+                expect(summary?.fileNames.some(fileName => fileName.endsWith('-field-deploy-package.xml'))).toBe(true);
+
+            });
+
+            it('deploys the project\'s own files through --manifest, and says the override could not be set back, when sfdx-project.json has replacements', async () => {
+
+                addOverride('Missing_Page');
+                const projectJsonPath = path.join(workspaceRoot, 'sfdx-project.json');
+                fs.writeFileSync(projectJsonPath, JSON.stringify({ ...JSON.parse(fs.readFileSync(projectJsonPath, 'utf-8')), replacements: [{ filename: 'x', stringToReplace: 'a', replaceWithEnv: 'B' }] }));
+
+                await openCockpitWithQaSelected();
+                await deploy('deployTreeFields');
+
+                expect(modalCalls()[0][1].detail).toContain('could not be set back, because sfdx-project.json has "replacements"');
+                const [deployArgv] = deployCalls();
+                expect(deployArgv).toContain('--manifest');
+                expect(operationFiles().filter(fileName => fileName.endsWith('-metadata.zip'))).toEqual([]);
+
+            });
+
+            it('sends nothing, and writes no zip, when the zip is cancelled before the CLI runs', async () => {
+
+                addOverride('Missing_Page');
+                await openCockpitWithQaSelected();
+                cancellationToken.isCancellationRequested = true;
+
+                await deploy('deployTreeFields');
+
+                expect(deployCalls()).toEqual([]);
+                expect(operationFiles().filter(fileName => fileName.endsWith('-metadata.zip'))).toEqual([]);
+                expect(lastWarning()?.text).toBe(`The deploy of 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME} was cancelled before it was sent, so nothing was deployed.`);
+
+            });
 
         });
 
@@ -1383,7 +1484,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 '1 GlobalValueSet; 1 named value set this project does not hold.'
             ]);
             expect(deployButtonOf(panel, 'fields').disabled).toBe(false);
-            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields…');
+            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields & dependencies…');
             expect(deployButtonOf(panel, 'recordTypes').disabled).toBe(true);
             expect(deployButtonOf(panel, 'recordTypes').attributes.title).toBe('No object of this tree has a record type in this project.\n0 RecordType.');
 
@@ -1423,7 +1524,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' });
 
             expect(deployButtonOf(panel, 'fields').disabled).toBe(false);
-            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields…');
+            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields & dependencies…');
             expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0].disabled).toBe(false);
 
         });

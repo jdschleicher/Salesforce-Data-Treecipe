@@ -78,7 +78,7 @@ const summary = {
 
 describe('RecipeCockpitService, a disabled insert links its reason to the fix (#539)', () => {
 
-    it('links an object the org lacks to Troubleshooting › Fields, and focuses Deploy fields… once it can be clicked', () => {
+    it('links an object the org lacks to Troubleshooting › Fields, and focuses Deploy fields & dependencies… once it can be clicked', () => {
 
         const panel = renderPanel();
         selectOrg(panel);

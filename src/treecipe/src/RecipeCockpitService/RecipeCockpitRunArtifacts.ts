@@ -196,7 +196,7 @@ export class RecipeCockpitRunArtifacts {
         link already at a name is never written through) and answers the path written, or
         undefined. The folder must already be made by makeFolder.
     */
-    static writeNewFile(filePath: string, content: string, extension: string, attempts: number): string | undefined {
+    static writeNewFile(filePath: string, content: string | Uint8Array, extension: string, attempts: number): string | undefined {
 
         for ( let attempt = 1; attempt <= attempts; attempt++ ) {
             const attemptFilePath = attempt === 1 ? filePath : `${filePath.slice(0, -extension.length)}-${attempt}${extension}`;
