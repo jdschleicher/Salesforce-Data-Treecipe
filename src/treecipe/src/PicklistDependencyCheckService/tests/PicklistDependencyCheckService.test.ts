@@ -742,15 +742,15 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
 
     });
 
-    it('shouldLabelByALabelAliasWithoutMakingItTheTargetOrgIdentifier', () => {
+    it('shouldLabelByTheAuthorizationsOwnAliasElseLeaveTheAliasUnset', () => {
 
         const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
             buildOrgAuthorization({ username: 'qa@example.com', aliases: [] }),
             buildOrgAuthorization({ username: 'uat@example.com', aliases: ['uat'] })
-        ], new Map([['qa@example.com', 'qa'], ['uat@example.com', 'staleUat']]));
+        ]);
 
         expect(orgDetails).toEqual([
-            { targetOrgIdentifier: 'qa@example.com', username: 'qa@example.com', alias: 'qa' },
+            { targetOrgIdentifier: 'qa@example.com', username: 'qa@example.com', alias: undefined },
             { targetOrgIdentifier: 'uat', username: 'uat@example.com', alias: 'uat' }
         ]);
 
