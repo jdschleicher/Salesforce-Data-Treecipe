@@ -1,4 +1,4 @@
-import { PicklistDependencyCheckService, SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE } from "../PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyTestRunCancelledError, SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE } from "../PicklistDependencyCheckService";
 
 import { OrgAuthorization } from '@salesforce/core';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -19,16 +19,6 @@ jest.mock('vscode', () => ({
         file: (filePath: string) => ({ fsPath: filePath })
     }
 }), { virtual: true });
-
-function buildTestRunPayload(tests: any[]): any {
-    return {
-        status: 0,
-        result: {
-            summary: { outcome: tests.some(test => test.Outcome === 'Fail') ? 'Failed' : 'Passed' },
-            tests
-        }
-    };
-}
 
 /*
     execFile is invoked as execFile(command, args, options, callback) and the service reads exitCode
@@ -90,9 +80,7 @@ describe('shouldTranslateApexTestRunResults', () => {
 
     it('shouldReportPassedWhenEveryMethodPasses', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(passingTestMethods)
-        );
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults(passingTestMethods);
 
         expect(checkOutcome.passed).toBeTrue();
         expect(checkOutcome.failureCount).toBe(0);
@@ -102,9 +90,7 @@ describe('shouldTranslateApexTestRunResults', () => {
 
     it('shouldReportFailedWithCountWhenAMethodFails', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(failingTestMethods)
-        );
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults(failingTestMethods);
 
         expect(checkOutcome.passed).toBeFalse();
         expect(checkOutcome.failureCount).toBe(1);
@@ -114,9 +100,7 @@ describe('shouldTranslateApexTestRunResults', () => {
 
     it('shouldCarryTheAssertionMessageThroughForFailedMethods', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(failingTestMethods)
-        );
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults(failingTestMethods);
 
         const failedMethodOutcome = checkOutcome.methodOutcomes.find(methodOutcome => !methodOutcome.passed);
 
@@ -124,18 +108,45 @@ describe('shouldTranslateApexTestRunResults', () => {
 
     });
 
-    it('shouldThrowWhenNoResultPayloadIsReturned', () => {
+    it.each([
+        ['no list', undefined],
+        ['an object', { records: [] }],
+        ['a string', 'Pass']
+    ])('shouldThrowRatherThanReportWhenTheResultsAre %s', (_description, testResults) => {
 
-        const authFailurePayload = { status: 1, name: 'NoOrgFound', message: 'No authorization information found' };
+        expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestResults(testResults))
+            .toThrow('no readable Apex test results');
 
-        expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(authFailurePayload))
-            .toThrow('NoOrgFound: No authorization information found');
+    });
+
+    it('shouldReadAFieldThatIsNotTextAsAbsentRatherThanTrustingIt', () => {
+
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([
+            { MethodName: 42, Outcome: { pass: true }, Message: ['drift'] },
+            null
+        ]);
+
+        expect(checkOutcome.methodOutcomes).toEqual([
+            { methodName: 'unknown', passed: false, message: undefined },
+            { methodName: 'unknown', passed: false, message: undefined }
+        ]);
+
+    });
+
+    it('shouldReportACompileFailureAsAFailedMethodWithItsMessage', () => {
+
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([
+            { MethodName: 'specRegistryIsNotEmpty', Outcome: 'CompileFail', Message: 'Dependent class is invalid and needs recompilation' }
+        ]);
+
+        expect(checkOutcome.passed).toBeFalse();
+        expect(checkOutcome.methodOutcomes[0].message).toContain('needs recompilation');
 
     });
 
     it('shouldThrowWhenNoTestMethodsRan', () => {
 
-        expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload([])))
+        expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestResults([]))
             .toThrow('No SDTPLDSpecsTest test methods ran');
 
     });
@@ -150,9 +161,7 @@ describe('shouldReadTestResultKeysCaseInsensitively', () => {
 
     it('shouldAcceptLowerCaseMethodNameKey', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload([{ methodName: 'specRegistryIsNotEmpty', Outcome: 'Pass' }])
-        );
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([{ methodName: 'specRegistryIsNotEmpty', Outcome: 'Pass' }]);
 
         expect(checkOutcome.methodOutcomes[0].methodName).toBe('specRegistryIsNotEmpty');
 
@@ -160,12 +169,10 @@ describe('shouldReadTestResultKeysCaseInsensitively', () => {
 
     it('shouldNotReportFalseDriftWhenOutcomeKeyArrivesLowerCase', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload([
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([
                 { methodName: 'Account_picklistDependenciesMatchSourceMetadata', outcome: 'Pass' },
                 { methodName: 'specRegistryIsNotEmpty', outcome: 'Pass' }
-            ])
-        );
+            ]);
 
         expect(checkOutcome.passed).toBeTrue();
         expect(checkOutcome.failureCount).toBe(0);
@@ -174,9 +181,7 @@ describe('shouldReadTestResultKeysCaseInsensitively', () => {
 
     it('shouldTreatOutcomeValueCaseInsensitively', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload([{ MethodName: 'specRegistryIsNotEmpty', Outcome: 'pass' }])
-        );
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([{ MethodName: 'specRegistryIsNotEmpty', Outcome: 'pass' }]);
 
         expect(checkOutcome.passed).toBeTrue();
 
@@ -184,9 +189,7 @@ describe('shouldReadTestResultKeysCaseInsensitively', () => {
 
     it('shouldAcceptLowerCaseMessageKeyOnAFailedMethod', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload([{ methodName: 'Account_picklistDependenciesMatchSourceMetadata', outcome: 'Fail', message: 'drift detail' }])
-        );
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([{ methodName: 'Account_picklistDependenciesMatchSourceMetadata', outcome: 'Fail', message: 'drift detail' }]);
 
         expect(checkOutcome.methodOutcomes[0].message).toBe('drift detail');
 
@@ -198,13 +201,11 @@ describe('shouldNeverTreatEmptyRegistryAsSuccess', () => {
 
     it('shouldSurfaceEmptyRegistryAsAFailingMethodWithGuidance', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload([{
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults([{
                 MethodName: 'specRegistryIsNotEmpty',
                 Outcome: 'Fail',
                 Message: 'No picklist dependency specs are registered, so this run verified nothing.'
-            }])
-        );
+            }]);
 
         expect(checkOutcome.passed).toBeFalse();
         expect(checkOutcome.methodOutcomes[0].message).toContain('verified nothing');
@@ -217,7 +218,7 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
     it('shouldListEveryMethodWithItsOutcome', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload(failingTestMethods));
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults(failingTestMethods);
         const report = PicklistDependencyCheckService.buildOutputChannelReport('devHub', checkOutcome);
 
         expect(report).toContain('Picklist Dependency Check — devHub');
@@ -229,7 +230,7 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
     it('shouldIndentEachLineOfAMultiLineAssertionMessage', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload(failingTestMethods));
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults(failingTestMethods);
         const report = PicklistDependencyCheckService.buildOutputChannelReport('devHub', checkOutcome);
         const missingValuesLine = report.split('\n').find(reportLine => reportLine.includes('MISSING_VALUES'));
 
@@ -239,7 +240,7 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
     it('shouldNotEmitAMessageBlockForPassingMethods', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload(passingTestMethods));
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestResults(passingTestMethods);
         const report = PicklistDependencyCheckService.buildOutputChannelReport('devHub', checkOutcome);
 
         expect(report).not.toContain('MISSING_VALUES');
@@ -257,64 +258,6 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         // spawnSync WOULD BLOCK THE SHARED VS CODE EXTENSION HOST FOR THE WHOLE CLI RUN
         expect(serviceSource).not.toContain('spawnSync');
-
-    });
-
-    it('shouldReturnOutcomeFromAnAsyncTestRun', async () => {
-
-        stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
-
-        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
-
-        expect(checkOutcome.passed).toBeTrue();
-
-    });
-
-    it('shouldStillReportFailuresWhenTheCliExitsNonZeroForFailingTests', async () => {
-
-        stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(failingTestMethods)), exitCode: 100 });
-
-        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
-
-        expect(checkOutcome.passed).toBeFalse();
-        expect(checkOutcome.failureCount).toBe(1);
-
-    });
-
-    it('shouldRequestTheGeneratedTestSuiteAndBoundTheWait', async () => {
-
-        const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
-
-        await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
-
-        const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
-
-        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--suite-names', 'SDTPicklistDependencyTests']);
-        expect(salesforceCliArguments).toIncludeAllMembers(['--target-org', 'devHub']);
-
-        // THE SUITE IS THE PUBLISHED HANDLE -- ADDRESSING THE CLASS DIRECTLY WOULD BE A SECOND ROUTE
-        expect(salesforceCliArguments).not.toContain('--tests');
-
-        /*
-            --wait is in MINUTES. An unbounded or very large value would hold the command open long
-            past anything a spec registry can justify.
-        */
-        const waitMinutes = Number(salesforceCliArguments[salesforceCliArguments.indexOf('--wait') + 1]);
-        expect(waitMinutes).toBeGreaterThan(0);
-        expect(waitMinutes).toBeLessThanOrEqual(10);
-
-    });
-
-    it('shouldKillTheChildProcessWhenCancellationIsRequested', async () => {
-
-        const { killMock } = stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
-
-        let capturedKill: (() => void) | undefined;
-        await PicklistDependencyCheckService.runPicklistDependencyTests('devHub', killChildProcess => { capturedKill = killChildProcess; });
-
-        expect(capturedKill).toBeDefined();
-        capturedKill();
-        expect(killMock).toHaveBeenCalled();
 
     });
 
@@ -633,13 +576,428 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
 });
 
+/*
+    The run goes through the Tooling API on a @salesforce/core connection (#503). The fake answers
+    runTestsAsynchronous with a job id, the AsyncApexJob poll with each status in turn (the last one
+    repeated), ApexTestResult with its pages and ApexTestQueueItem with the items an abort sets.
+*/
+describe('shouldRunThePicklistDependencySuiteThroughTheToolingApi', () => {
+
+    const testRunId = '7070000000000AAAAA';
+
+    interface ITestRunConnectionOptions {
+        startAnswer?: unknown;
+        statuses?: ({ Status: string; ExtendedStatus?: string } | undefined)[];
+        statusAnswer?: unknown;
+        testResultPages?: unknown[][];
+        queueItems?: unknown[];
+        updateAnswer?: (record: { Id: string }) => unknown;
+        onStatusQuery?: (callCount: number) => void;
+    }
+
+    function stubTestRunConnection(options: ITestRunConnectionOptions) {
+
+        const statuses = options.statuses ?? [{ Status: 'Completed' }];
+        const testResultPages = options.testResultPages ?? [passingTestMethods];
+        let statusCallCount = 0;
+
+        const runTestsAsynchronous = jest.fn().mockResolvedValue('startAnswer' in options ? options.startAnswer : testRunId);
+
+        const query = jest.fn().mockImplementation(async () => {
+            statusCallCount++;
+            options.onStatusQuery?.(statusCallCount);
+            if ( 'statusAnswer' in options ) {
+                return options.statusAnswer;
+            }
+            const jobRecord = statuses[Math.min(statusCallCount, statuses.length) - 1];
+            return { done: true, records: jobRecord ? [jobRecord] : [] };
+        });
+
+        const toolingQuery = jest.fn().mockImplementation(async (soql: string) => {
+            if ( soql.includes('FROM ApexTestQueueItem') ) {
+                return { done: true, records: options.queueItems ?? [] };
+            }
+            return {
+                done: testResultPages.length <= 1,
+                nextRecordsUrl: testResultPages.length > 1 ? '/services/data/v60.0/tooling/query/01g-2000' : undefined,
+                records: testResultPages[0]
+            };
+        });
+
+        const queryMore = jest.fn().mockImplementation(async (nextRecordsUrl: string) => {
+            const pageIndex = Number(nextRecordsUrl.split('-').pop()) / 2000;
+            return {
+                done: pageIndex >= testResultPages.length - 1,
+                nextRecordsUrl: pageIndex < testResultPages.length - 1 ? `/services/data/v60.0/tooling/query/01g-${(pageIndex + 1) * 2000}` : undefined,
+                records: testResultPages[pageIndex]
+            };
+        });
+
+        const update = jest.fn().mockImplementation(async (_type: string, record: { Id: string }) =>
+            options.updateAnswer ? options.updateAnswer(record) : { id: record.Id, success: true, errors: [] });
+
+        const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({
+            query,
+            tooling: { runTestsAsynchronous, query: toolingQuery, queryMore, update }
+        } as any);
+
+        const execFileSpy = jest.spyOn(childProcess, 'execFile');
+
+        return { getConnectionSpy, execFileSpy, runTestsAsynchronous, query, toolingQuery, queryMore, update };
+
+    }
+
+    beforeEach(() => {
+        jest.replaceProperty(PicklistDependencyCheckService, 'apexTestRunPollIntervalMilliseconds', 0);
+    });
+
+    it('shouldRunBySuiteNameNeverByClassNameAndStartNoProcess', async () => {
+
+        const { getConnectionSpy, execFileSpy, runTestsAsynchronous } = stubTestRunConnection({});
+
+        await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(getConnectionSpy).toHaveBeenCalledWith('devHub');
+        expect(runTestsAsynchronous).toHaveBeenCalledTimes(1);
+        expect(runTestsAsynchronous).toHaveBeenCalledWith({ suiteNames: 'SDTPicklistDependencyTests' });
+        expect(execFileSpy).not.toHaveBeenCalled();
+
+    });
+
+    it('shouldKeepTheWaitLimitAtTenMinutes', () => {
+        expect(PicklistDependencyCheckService.apexTestRunWaitMilliseconds).toBe(10 * 60 * 1000);
+    });
+
+    it('shouldPollTheJobUntilItFinishesThenReadItsResults', async () => {
+
+        const { query, toolingQuery } = stubTestRunConnection({
+            statuses: [undefined, { Status: 'Queued' }, { Status: 'Processing' }, { Status: 'Completed' }]
+        });
+
+        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(checkOutcome.passed).toBeTrue();
+        expect(query).toHaveBeenCalledTimes(4);
+        expect(query.mock.calls[0][0]).toBe(`SELECT Status, ExtendedStatus FROM AsyncApexJob WHERE Id = '${testRunId}'`);
+        expect(toolingQuery).toHaveBeenCalledTimes(1);
+        expect(toolingQuery.mock.calls[0][0]).toContain(`FROM ApexTestResult WHERE AsyncApexJobId = '${testRunId}'`);
+
+    });
+
+    it('shouldReportEveryFailedMethodWithItsMessage', async () => {
+
+        stubTestRunConnection({ testResultPages: [failingTestMethods] });
+
+        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(checkOutcome.passed).toBeFalse();
+        expect(checkOutcome.failureCount).toBe(1);
+        expect(checkOutcome.methodOutcomes[0].message).toContain('Account.Type @ Customer');
+
+    });
+
+    it('shouldReadEveryPageOfResults', async () => {
+
+        const { queryMore } = stubTestRunConnection({ testResultPages: [[passingTestMethods[0]], [failingTestMethods[0]], [passingTestMethods[1]]] });
+
+        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(queryMore).toHaveBeenCalledTimes(2);
+        expect(checkOutcome.methodOutcomes).toHaveLength(3);
+        expect(checkOutcome.failureCount).toBe(1);
+
+    });
+
+    it('shouldThrowWhenNoTestMethodsRan', async () => {
+
+        stubTestRunConnection({ testResultPages: [[]] });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('No SDTPLDSpecsTest test methods ran');
+
+    });
+
+    it('shouldReportACompileFailureRowAsAFailedMethod', async () => {
+
+        stubTestRunConnection({
+            statuses: [{ Status: 'Failed' }],
+            testResultPages: [[{ MethodName: 'specRegistryIsNotEmpty', Outcome: 'CompileFail', Message: 'Dependent class is invalid and needs recompilation' }]]
+        });
+
+        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(checkOutcome.passed).toBeFalse();
+        expect(checkOutcome.methodOutcomes[0].message).toContain('needs recompilation');
+
+    });
+
+    it('shouldSayWhyAFailedJobRanNothing', async () => {
+
+        stubTestRunConnection({
+            statuses: [{ Status: 'Failed', ExtendedStatus: 'Class SDTPLDSpecsTest failed to compile' }],
+            testResultPages: [[]]
+        });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow(`The picklist dependency test run ${testRunId} failed in "devHub" without running a test method: Class SDTPLDSpecsTest failed to compile`);
+
+    });
+
+    it('shouldNotReportAJobSomeoneElseAbortedAsAResult', async () => {
+
+        const { toolingQuery } = stubTestRunConnection({ statuses: [{ Status: 'Aborted' }] });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('was aborted in "devHub" before it finished');
+
+        expect(toolingQuery).not.toHaveBeenCalled();
+
+    });
+
+    it.each([
+        ['nothing', undefined],
+        ['an empty string', ''],
+        ['an object', { id: testRunId }],
+        ['a string that is not an id', "707' OR Id != '"]
+    ])('shouldQueryNothingWhenTheStartAnswerIs %s', async (_description, startAnswer) => {
+
+        const { query } = stubTestRunConnection({ startAnswer });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('returned no test run id');
+
+        expect(query).not.toHaveBeenCalled();
+
+    });
+
+    it('shouldAcceptAJobIdAnsweredAsAJsonString', async () => {
+
+        const { query } = stubTestRunConnection({ startAnswer: `"${testRunId}"` });
+
+        await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(query.mock.calls[0][0]).toContain(`'${testRunId}'`);
+
+    });
+
+    it('shouldThrowRatherThanWaitWhenTheStatusAnswerHasNoRecordsList', async () => {
+
+        stubTestRunConnection({ statusAnswer: { done: true } });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('no records list');
+
+    });
+
+    it('shouldLeaveARunThatOutlastsTheWaitRunningAndSaySo', async () => {
+
+        jest.replaceProperty(PicklistDependencyCheckService, 'apexTestRunWaitMilliseconds', 25);
+        jest.replaceProperty(PicklistDependencyCheckService, 'apexTestRunPollIntervalMilliseconds', 5);
+
+        const { update, toolingQuery } = stubTestRunConnection({ statuses: [{ Status: 'Processing' }] });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow(`The picklist dependency test run ${testRunId} did not finish within`);
+
+        expect(update).not.toHaveBeenCalled();
+        expect(toolingQuery).not.toHaveBeenCalled();
+
+    });
+
+    it('shouldWordTheTimeoutWithTheTenMinuteWait', () => {
+
+        expect(PicklistDependencyCheckService.buildTestRunTimedOutMessage('devHub', testRunId))
+            .toContain(`${testRunId} did not finish within 10 minutes in "devHub", so no results were written. It is still running there`);
+
+    });
+
+    describe('cancel', () => {
+
+        function startCancellableRun(options: ITestRunConnectionOptions & { cancelOnStatusQuery?: number }) {
+
+            let cancelTestRun: (() => void) | undefined;
+
+            const connection = stubTestRunConnection({
+                statuses: [{ Status: 'Processing' }],
+                ...options,
+                onStatusQuery: callCount => {
+                    if ( callCount === (options.cancelOnStatusQuery ?? 2) ) {
+                        cancelTestRun();
+                    }
+                }
+            });
+
+            const runPromise = PicklistDependencyCheckService.runPicklistDependencyTests('devHub', registeredCancel => { cancelTestRun = registeredCancel; });
+
+            return { ...connection, runPromise };
+
+        }
+
+        it('shouldAbortTheTestJobInTheOrgAndSaySo', async () => {
+
+            const { runPromise, toolingQuery, update } = startCancellableRun({
+                queueItems: [{ Id: '7090000000000AAAAA', Status: 'Processing' }, { Id: '7090000000000BBBBB', Status: 'Queued' }]
+            });
+
+            const cancelError = await runPromise.then(() => undefined, (error: Error) => error);
+
+            expect(cancelError).toBeInstanceOf(PicklistDependencyTestRunCancelledError);
+            expect(cancelError.message).toBe(`Picklist dependency check cancelled. The test run ${testRunId} was aborted in "devHub" (2 queued test class(es) stopped).`);
+
+            const queueItemQuery = toolingQuery.mock.calls.map(([soql]) => soql as string).find(soql => soql.includes('ApexTestQueueItem'));
+            expect(queueItemQuery).toBe(`SELECT Id, Status FROM ApexTestQueueItem WHERE ParentJobId = '${testRunId}' AND Status IN ('Holding', 'Queued', 'Preparing', 'Processing')`);
+
+            expect(update.mock.calls).toEqual([
+                ['ApexTestQueueItem', { Id: '7090000000000AAAAA', Status: 'Aborted' }],
+                ['ApexTestQueueItem', { Id: '7090000000000BBBBB', Status: 'Aborted' }]
+            ]);
+
+        });
+
+        it('shouldStopPollingOnceCancelled', async () => {
+
+            const { runPromise, query } = startCancellableRun({ queueItems: [{ Id: '7090000000000AAAAA' }] });
+
+            await runPromise.catch(() => undefined);
+
+            expect(query).toHaveBeenCalledTimes(2);
+
+        });
+
+        it('shouldSayThereWasNothingToAbortWhenNoQueueItemIsStillRunning', async () => {
+
+            const { runPromise, update } = startCancellableRun({ queueItems: [] });
+
+            await expect(runPromise).rejects.toThrow(`The test run ${testRunId} had already finished in "devHub", so there was nothing to abort.`);
+            expect(update).not.toHaveBeenCalled();
+
+        });
+
+        it('shouldNeverSendAQueueItemIdTheOrgAnsweredOutOfShape', async () => {
+
+            const { runPromise, update } = startCancellableRun({ queueItems: [{ Id: "709' OR Id != '" }, { Status: 'Queued' }, null] });
+
+            await expect(runPromise).rejects.toThrow('nothing to abort');
+            expect(update).not.toHaveBeenCalled();
+
+        });
+
+        it.each([
+            ['an item the org refused', () => ({ success: false, errors: [{ message: 'INSUFFICIENT_ACCESS' }] })],
+            ['an update that throws', () => { throw new Error('INVALID_SESSION_ID'); }]
+        ])('shouldSayTheRunMayStillBeRunningFor %s', async (_description, updateAnswer) => {
+
+            const { runPromise } = startCancellableRun({ queueItems: [{ Id: '7090000000000AAAAA' }], updateAnswer });
+
+            const cancelError = await runPromise.then(() => undefined, (error: Error) => error);
+
+            expect(cancelError).toBeInstanceOf(PicklistDependencyTestRunCancelledError);
+            expect(cancelError.message).toContain(`the test run ${testRunId} could not be aborted in "devHub" and may still be running there`);
+
+        });
+
+        it('shouldStillAbortARunTheOrgStartedAfterTheCancel', async () => {
+
+            let cancelTestRun: (() => void) | undefined;
+            const { runTestsAsynchronous, update, query } = stubTestRunConnection({ queueItems: [{ Id: '7090000000000AAAAA' }] });
+            runTestsAsynchronous.mockImplementation(async () => {
+                cancelTestRun();
+                return testRunId;
+            });
+
+            await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub', registeredCancel => { cancelTestRun = registeredCancel; }))
+                .rejects.toThrow('was aborted in "devHub"');
+
+            expect(update).toHaveBeenCalledTimes(1);
+            expect(query).not.toHaveBeenCalled();
+
+        });
+
+        it('shouldStartNothingWhenCancelledBeforeTheConnectionOpened', async () => {
+
+            let cancelTestRun: (() => void) | undefined;
+            const { getConnectionSpy, runTestsAsynchronous } = stubTestRunConnection({});
+            getConnectionSpy.mockImplementation(async () => {
+                cancelTestRun();
+                return { tooling: { runTestsAsynchronous } } as any;
+            });
+
+            await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub', registeredCancel => { cancelTestRun = registeredCancel; }))
+                .rejects.toThrow('cancelled before the test run started. Nothing was run in "devHub".');
+
+            expect(runTestsAsynchronous).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    /*
+        results.json and report.md are built from the outcome alone, so an outcome read from
+        ApexTestResult rows writes exactly what the CLI's payload wrote for the same methods.
+    */
+    describe('artifacts', () => {
+
+        const os = jest.requireActual('os');
+        const path = jest.requireActual('path');
+        const realFs = jest.requireActual('fs');
+
+        let temporaryRoot: string;
+
+        beforeEach(() => {
+            temporaryRoot = realFs.mkdtempSync(path.join(os.tmpdir(), 'pld-tooling-run-'));
+        });
+
+        afterEach(() => {
+            realFs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
+
+        it.each([
+            ['all pass', passingTestMethods],
+            ['some fail', failingTestMethods]
+        ])('shouldWriteTheSameResultsJsonAndReportFor %s', async (_description, testMethods) => {
+
+            stubTestRunConnection({ testResultPages: [testMethods] });
+
+            const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+            const runResultsFolderPath = PicklistDependencyCheckService.writeCheckResultArtifacts(temporaryRoot, 'devHub', '2026-10-29T10-00-00', checkOutcome);
+
+            const expectedMethodOutcomes = testMethods.map((testMethod: { MethodName: string; Outcome: string; Message?: string }) => ({
+                methodName: testMethod.MethodName,
+                passed: testMethod.Outcome === 'Pass',
+                ...( testMethod.Message ? { message: testMethod.Message } : {} )
+            }));
+            const failureCount = expectedMethodOutcomes.filter(methodOutcome => !methodOutcome.passed).length;
+
+            expect(JSON.parse(realFs.readFileSync(path.join(runResultsFolderPath, 'results.json'), 'utf8'))).toEqual({
+                targetOrg: 'devHub',
+                ranAt: '2026-10-29T10-00-00',
+                passed: failureCount === 0,
+                failureCount,
+                methodsRun: expectedMethodOutcomes.length,
+                methodOutcomes: expectedMethodOutcomes
+            });
+
+            expect(realFs.readFileSync(path.join(runResultsFolderPath, 'report.md'), 'utf8')).toBe(
+                PicklistDependencyCheckService.buildResultsMarkdown('devHub', '2026-10-29T10-00-00', {
+                    passed: failureCount === 0,
+                    failureCount,
+                    methodOutcomes: expectedMethodOutcomes.map(methodOutcome => ({ message: undefined, ...methodOutcome }))
+                })
+            );
+
+        });
+
+    });
+
+});
+
 describe('shouldTranslateSalesforceCliSpawnFailures', () => {
 
     it('shouldThrowActionableMessageWhenCliIsNotInstalled', async () => {
 
         stubSalesforceCli({ error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
 
-        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+        await expect(PicklistDependencyCheckService.deploySourcePaths(['/workspace/classes/SDTPLDSpecsTest.cls'], 'devHub'))
             .rejects.toThrow('not installed or not on PATH');
 
     });
@@ -648,7 +1006,7 @@ describe('shouldTranslateSalesforceCliSpawnFailures', () => {
 
         stubSalesforceCli({ error: Object.assign(new Error('spawn EINVAL'), { code: 'EINVAL' }) });
 
-        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+        await expect(PicklistDependencyCheckService.deploySourcePaths(['/workspace/classes/SDTPLDSpecsTest.cls'], 'devHub'))
             .rejects.toThrow('EINVAL');
 
     });
@@ -657,7 +1015,7 @@ describe('shouldTranslateSalesforceCliSpawnFailures', () => {
 
         stubSalesforceCli({ stdout: '', stderr: 'ERROR running apex: No authorization found', exitCode: 1 });
 
-        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+        await expect(PicklistDependencyCheckService.deploySourcePaths(['/workspace/classes/SDTPLDSpecsTest.cls'], 'devHub'))
             .rejects.toThrow('No authorization found');
 
     });
@@ -681,11 +1039,22 @@ describe('shouldValidateTheTargetOrgIdentifier', () => {
         expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev"quote')).toBeFalse();
     });
 
+    it('shouldThrowBeforeOpeningAConnectionForAnUnusableIdentifier', async () => {
+
+        const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('--target-org'))
+            .rejects.toThrow('not a usable Salesforce org alias');
+
+        expect(getConnectionSpy).not.toHaveBeenCalled();
+
+    });
+
     it('shouldThrowBeforeInvokingTheCliForAnUnusableIdentifier', async () => {
 
         const { execFileSpy } = stubSalesforceCli({ stdout: '{}' });
 
-        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('--target-org'))
+        await expect(PicklistDependencyCheckService.deploySourcePaths(['/workspace/classes/SDTPLDSpecsTest.cls'], '--target-org'))
             .rejects.toThrow('not a usable Salesforce org alias');
 
         expect(execFileSpy).not.toHaveBeenCalled();
@@ -1255,9 +1624,7 @@ describe('shouldPersistCheckResultsToTheTreecipeDirectory', () => {
     const isoDateTimestamp = '2026-08-16T14-22-08';
 
     function buildCheckOutcome(passed: boolean) {
-        return PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(passed ? passingTestMethods : failingTestMethods)
-        );
+        return PicklistDependencyCheckService.buildCheckOutcomeByTestResults(passed ? passingTestMethods : failingTestMethods);
     }
 
     it('shouldNameTheRunFolderByOrgAndTimestamp', () => {

@@ -1,6 +1,6 @@
 import { PicklistDependencyTestService } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
-import { OrgAuthorization } from '@salesforce/core';
+import { Connection, OrgAuthorization } from '@salesforce/core';
 import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 
 import * as fs from 'fs';
@@ -53,24 +53,41 @@ export const SALESFORCE_CLI_DEFAULT_MAX_BUFFER_BYTES = 1024 * 1024 * 8;
 export const SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE = 'EUNCWORKINGDIRECTORY';
 
 /*
-    The shape the CLI returns for "sf apex run test --json". Only the fields this service reads are
-    modelled -- the payload carries considerably more, and typing the remainder would be inventing a
-    contract rather than describing one.
+    An ApexTestResult row as the Tooling API returns it. Only the fields this service reads are
+    modelled, and each is type-checked before it is read: the row comes from the org.
 */
 export interface ISalesforceApexTestMethodResult {
-    MethodName?: string;
-    methodName?: string;
-    Outcome?: string;
-    outcome?: string;
-    Message?: string | null;
-    message?: string | null;
+    MethodName?: unknown;
+    methodName?: unknown;
+    Outcome?: unknown;
+    outcome?: unknown;
+    Message?: unknown;
+    message?: unknown;
+}
+
+// AN AsyncApexJob'S STATUS WHILE THE SUITE RUNS: Queued, Preparing, Processing, THEN Completed, Failed OR Aborted
+export interface ITestRunStatus {
+    status: string;
+    extendedStatus?: string;
+}
+
+/*
+    A cancelled check. The message says whether the test job was aborted in the org, so the caller
+    shows it as it is rather than as an error.
+*/
+export class PicklistDependencyTestRunCancelledError extends Error {
+
+    constructor(message: string) {
+        super(message);
+        this.name = 'PicklistDependencyTestRunCancelledError';
+    }
+
 }
 
 export interface ISalesforceCliJsonPayload {
     name?: string;
     message?: string;
     result?: {
-        tests?: ISalesforceApexTestMethodResult[];
         success?: boolean;
         numberComponentsDeployed?: number;
         details?: {
@@ -475,20 +492,17 @@ export class PicklistDependencyCheckService {
     }
 
     /*
-        A failing Apex test makes the CLI exit non-zero, so a non-zero status is NOT an error here --
-        the result payload still carries the per-method outcomes and is what the user needs to see.
-        Only a missing payload means the run itself could not happen.
+        A failing Apex test is not an error here -- its row carries the outcome and message the user
+        needs to see. Only a run that produced no rows at all means nothing was checked.
+
+        The rows are ApexTestResult records the org returned, so the list and every field are
+        type-checked rather than trusted.
     */
-    static buildCheckOutcomeByTestRunPayload(parsedCliOutput: ISalesforceCliJsonPayload): IPicklistDependencyCheckOutcome {
+    static buildCheckOutcomeByTestResults(testMethodResults: unknown): IPicklistDependencyCheckOutcome {
 
-        const testRunResult = parsedCliOutput?.result;
-
-        if ( !testRunResult ) {
-            const cliErrorDetail = [parsedCliOutput?.name, parsedCliOutput?.message].filter(Boolean).join(': ');
-            throw new Error(cliErrorDetail || 'The Salesforce CLI returned no test result payload.');
+        if ( !Array.isArray(testMethodResults) ) {
+            throw new Error('The org returned no readable Apex test results.');
         }
-
-        const testMethodResults = Array.isArray(testRunResult.tests) ? testRunResult.tests : [];
 
         if ( testMethodResults.length === 0 ) {
             throw new Error(`No ${this.getSpecsTestClassName()} test methods ran in the target org. The class may not be deployed, or it may contain no generated specs.`);
@@ -499,11 +513,15 @@ export class PicklistDependencyCheckService {
             casing render every method as failed, which is a false report of picklist dependency
             drift -- precisely the condition this command exists to detect truthfully.
         */
-        const methodOutcomes: IPicklistDependencyMethodOutcome[] = testMethodResults.map(testMethodResult => {
+        const methodOutcomes: IPicklistDependencyMethodOutcome[] = testMethodResults.map((testMethodResult: unknown) => {
 
-            const methodName = testMethodResult.MethodName ?? testMethodResult.methodName ?? 'unknown';
-            const outcome = testMethodResult.Outcome ?? testMethodResult.outcome;
-            const message = testMethodResult.Message ?? testMethodResult.message;
+            const result: ISalesforceApexTestMethodResult = testMethodResult !== null && typeof testMethodResult === 'object'
+                ? testMethodResult as ISalesforceApexTestMethodResult
+                : {};
+
+            const methodName = this.readStringField(result.MethodName) ?? this.readStringField(result.methodName) ?? 'unknown';
+            const outcome = this.readStringField(result.Outcome) ?? this.readStringField(result.outcome);
+            const message = this.readStringField(result.Message) ?? this.readStringField(result.message);
 
             return {
                 methodName,
@@ -519,43 +537,285 @@ export class PicklistDependencyCheckService {
 
     }
 
-    /*
-        "--json" alone produces the structured payload this reads. "--result-format json" was also
-        passed at first and is redundant -- verified against an org, both forms return an identical
-        result shape, so only the flag that does the work is sent.
+    private static readStringField(fieldValue: unknown): string | undefined {
+        return typeof fieldValue === 'string' ? fieldValue : undefined;
+    }
 
-        "--wait" is in MINUTES, not seconds, and makes the run synchronous. Without it the CLI queues
-        the tests and returns a job id, leaving nothing to report. Ten minutes is generous for a spec
-        registry while still bounding how long a wedged org side queue can hold the command open, and
-        the run is cancellable throughout.
+    /*
+        The longest the check waits for the org to finish the suite, as "sf apex run test --wait 10"
+        did before #503. Generous for a spec registry while still bounding how long a wedged org side
+        queue can hold the command open, and the run is cancellable throughout. A run still going
+        when it runs out is left running in the org, as the CLI left it.
     */
-    private static apexTestRunWaitMinutes = '10';
+    static readonly apexTestRunWaitMilliseconds = 10 * 60 * 1000;
+
+    static apexTestRunPollIntervalMilliseconds = 2000;
+
+    // HOW LONG A CANCEL WAITS FOR THE ORG TO TAKE THE ABORT BEFORE SAYING IT MAY STILL BE RUNNING
+    static apexTestRunAbortTimeoutMilliseconds = 30 * 1000;
 
     private static deployWaitMinutes = '10';
 
+    private static salesforceIdPattern = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
+
+    // APEX TEST QUEUE ITEMS STILL WAITING OR RUNNING; ABORTING ANY OTHER IS REFUSED BY THE ORG
+    private static abortableTestQueueItemStatuses = ['Holding', 'Queued', 'Preparing', 'Processing'];
+
+    private static finishedTestRunStatuses = ['Completed', 'Failed', 'Aborted'];
+
+    /*
+        Runs the generated suite through the Tooling API on a @salesforce/core connection (#503): no
+        sf process. The run is started with runTestsAsynchronous by SUITE, never by class name -- the
+        suite is the handle this feature publishes, so a pipeline, Setup and this command all address
+        the same one. Its AsyncApexJob is polled until it finishes or the wait runs out, and the
+        outcome is read from its ApexTestResult rows.
+
+        registerCancellation hands the caller a function that cancels the run. A cancel ABORTS the
+        test job in the org (its ApexTestQueueItems are set to Aborted, as "sf apex run test"'s own
+        abort does) rather than only stopping the wait, and ends in a
+        PicklistDependencyTestRunCancelledError saying whether the abort landed.
+    */
     static async runPicklistDependencyTests(targetOrgIdentifier: string,
-                                            registerCancellation?: (killChildProcess: () => void) => void): Promise<IPicklistDependencyCheckOutcome> {
+                                            registerCancellation?: (cancelTestRun: () => void) => void): Promise<IPicklistDependencyCheckOutcome> {
 
         this.assertValidTargetOrgIdentifier(targetOrgIdentifier);
 
-        /*
-            Run by suite rather than by class name. The suite is the handle this feature publishes --
-            a pipeline, Setup and this command all address the same one -- so pointing the extension
-            at the class it happens to generate today would leave the extension and everyone else
-            running the tests by two different routes.
-        */
-        const salesforceCliArguments = [
-            'apex', 'run', 'test',
-            '--suite-names', this.getSpecsTestSuiteName(),
-            '--target-org', targetOrgIdentifier,
-            '--wait', this.apexTestRunWaitMinutes,
-            '--json'
-        ];
+        let isCancellationRequested = false;
+        let resolveCancellation: () => void = () => undefined;
+        const whenCancelled = new Promise<'cancelled'>(resolve => {
+            resolveCancellation = () => resolve('cancelled');
+        });
 
-        const invocationResult = await this.runSalesforceCli(salesforceCliArguments, registerCancellation);
-        const parsedCliOutput = this.parseSalesforceCliJsonOutput(invocationResult);
+        registerCancellation?.(() => {
+            isCancellationRequested = true;
+            resolveCancellation();
+        });
 
-        return this.buildCheckOutcomeByTestRunPayload(parsedCliOutput);
+        let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+        const whenTimedOut = new Promise<'timedOut'>(resolve => {
+            deadlineTimer = setTimeout(() => resolve('timedOut'), this.apexTestRunWaitMilliseconds);
+        });
+
+        try {
+
+            const connection = await SalesforceOrgService.getConnection(targetOrgIdentifier);
+
+            if ( isCancellationRequested ) {
+                throw new PicklistDependencyTestRunCancelledError(`Picklist dependency check cancelled before the test run started. Nothing was run in "${targetOrgIdentifier}".`);
+            }
+
+            // NOT RACED: A RUN THE ORG STARTED AFTER A CANCEL STILL HAS TO BE ABORTED, SO ITS ID IS WAITED FOR
+            const startAnswer: unknown = await connection.tooling.runTestsAsynchronous({ suiteNames: this.getSpecsTestSuiteName() });
+            const testRunId = this.readTestRunId(startAnswer);
+
+            const raceWithStop = <T>(request: Promise<T>, isDeadlineApplied: boolean): Promise<T | 'cancelled' | 'timedOut'> => {
+                request.catch(() => undefined);
+                return Promise.race([request, whenCancelled, ...( isDeadlineApplied ? [whenTimedOut] : [] )]);
+            };
+
+            let finishedStatus: ITestRunStatus | undefined;
+
+            while ( !finishedStatus ) {
+
+                if ( isCancellationRequested ) {
+                    break;
+                }
+
+                const status = await raceWithStop(this.readTestRunStatus(connection, testRunId), true);
+
+                if ( status === 'cancelled' ) {
+                    break;
+                }
+
+                if ( status === 'timedOut' ) {
+                    throw new Error(this.buildTestRunTimedOutMessage(targetOrgIdentifier, testRunId));
+                }
+
+                if ( status && this.finishedTestRunStatuses.includes(status.status) ) {
+                    finishedStatus = status;
+                    break;
+                }
+
+                const pause = await raceWithStop(new Promise<'paused'>(resolve => setTimeout(() => resolve('paused'), this.apexTestRunPollIntervalMilliseconds)), true);
+
+                if ( pause === 'timedOut' ) {
+                    throw new Error(this.buildTestRunTimedOutMessage(targetOrgIdentifier, testRunId));
+                }
+
+            }
+
+            if ( !finishedStatus ) {
+                throw new PicklistDependencyTestRunCancelledError(await this.abortTestRun(connection, testRunId, targetOrgIdentifier));
+            }
+
+            if ( finishedStatus.status === 'Aborted' ) {
+                throw new Error(`The picklist dependency test run ${testRunId} was aborted in "${targetOrgIdentifier}" before it finished, so nothing was checked. Run the command again.`);
+            }
+
+            const testResults = await raceWithStop(this.readTestResults(connection, testRunId), false);
+
+            if ( testResults === 'cancelled' || testResults === 'timedOut' ) {
+                throw new PicklistDependencyTestRunCancelledError(`Picklist dependency check cancelled. The test run ${testRunId} had already finished in "${targetOrgIdentifier}", so there was nothing to abort; its results were not read.`);
+            }
+
+            // A FAILED JOB WITH NO ROWS SAYS WHY ONLY IN ITS ExtendedStatus
+            if ( finishedStatus.status === 'Failed' && testResults.length === 0 ) {
+                const failureDetail = finishedStatus.extendedStatus ? `: ${finishedStatus.extendedStatus}` : '.';
+                throw new Error(`The picklist dependency test run ${testRunId} failed in "${targetOrgIdentifier}" without running a test method${failureDetail}`);
+            }
+
+            return this.buildCheckOutcomeByTestResults(testResults);
+
+        } finally {
+
+            if ( deadlineTimer !== undefined ) {
+                clearTimeout(deadlineTimer);
+            }
+
+        }
+
+    }
+
+    // runTestsAsynchronous ANSWERS THE AsyncApexJob ID AS A BARE STRING; ANYTHING ELSE IS NOT QUOTED INTO A QUERY
+    static readTestRunId(startAnswer: unknown): string {
+
+        const testRunId = typeof startAnswer === 'string' ? startAnswer.trim().replace(/^"(.*)"$/, '$1') : undefined;
+
+        if ( !testRunId || !this.salesforceIdPattern.test(testRunId) ) {
+            throw new Error(`The org did not start the ${this.getSpecsTestSuiteName()} test suite: it returned no test run id.`);
+        }
+
+        return testRunId;
+
+    }
+
+    static buildTestRunTimedOutMessage(targetOrgIdentifier: string, testRunId: string): string {
+
+        const waitMinutes = this.apexTestRunWaitMilliseconds / 60000;
+
+        return `The picklist dependency test run ${testRunId} did not finish within ${waitMinutes} minutes in "${targetOrgIdentifier}", so no results were written. It is still running there; see Setup > Apex Test Execution, or run the command again once it has finished.`;
+
+    }
+
+    // UNDEFINED WHILE THE JOB IS NOT VISIBLE YET; AN ANSWER WITH NO RECORDS LIST THROWS RATHER THAN READING AS "NOT FINISHED"
+    static async readTestRunStatus(connection: Connection, testRunId: string): Promise<ITestRunStatus | undefined> {
+
+        const queryResult: unknown = await connection.query(`SELECT Status, ExtendedStatus FROM AsyncApexJob WHERE Id = '${testRunId}'`);
+        const records = this.readRecords(queryResult);
+        const jobRecord: unknown = records[0];
+
+        if ( jobRecord === null || typeof jobRecord !== 'object' ) {
+            return undefined;
+        }
+
+        const status = this.readStringField((jobRecord as { Status?: unknown }).Status);
+
+        if ( !status ) {
+            return undefined;
+        }
+
+        return { status, extendedStatus: this.readStringField((jobRecord as { ExtendedStatus?: unknown }).ExtendedStatus) || undefined };
+
+    }
+
+    static async readTestResults(connection: Connection, testRunId: string): Promise<unknown[]> {
+
+        const testResults: unknown[] = [];
+
+        let queryResult: unknown = await connection.tooling.query(
+            `SELECT MethodName, Outcome, Message, ApexClass.Name FROM ApexTestResult WHERE AsyncApexJobId = '${testRunId}' ORDER BY ApexClass.Name, MethodName`
+        );
+
+        testResults.push(...this.readRecords(queryResult));
+
+        while ( this.readNextRecordsUrl(queryResult) ) {
+            queryResult = await connection.tooling.queryMore(this.readNextRecordsUrl(queryResult) as string);
+            testResults.push(...this.readRecords(queryResult));
+        }
+
+        return testResults;
+
+    }
+
+    private static readRecords(queryResult: unknown): unknown[] {
+
+        const records = queryResult !== null && typeof queryResult === 'object' ? (queryResult as { records?: unknown }).records : undefined;
+
+        if ( !Array.isArray(records) ) {
+            throw new Error('The org returned an answer with no records list.');
+        }
+
+        return records;
+
+    }
+
+    private static readNextRecordsUrl(queryResult: unknown): string | undefined {
+
+        const answer = queryResult as { done?: unknown; nextRecordsUrl?: unknown };
+
+        return answer.done === false && typeof answer.nextRecordsUrl === 'string' && answer.nextRecordsUrl ? answer.nextRecordsUrl : undefined;
+
+    }
+
+    /*
+        Sets every queue item of the run that is still waiting or running to Aborted -- what Setup's
+        Abort and the CLI's own abort do. Answers the sentence the cancel reports, never throws: a
+        cancel always ends the check, and the sentence says whether the org stopped the run.
+    */
+    static async abortTestRun(connection: Connection, testRunId: string, targetOrgIdentifier: string): Promise<string> {
+
+        const notAbortedMessage = `Picklist dependency check cancelled, but the test run ${testRunId} could not be aborted in "${targetOrgIdentifier}" and may still be running there. Abort it from Setup > Apex Test Execution.`;
+
+        const abort = async (): Promise<string> => {
+
+            const abortableStatuses = this.abortableTestQueueItemStatuses.map(status => `'${status}'`).join(', ');
+            const queryResult: unknown = await connection.tooling.query(
+                `SELECT Id, Status FROM ApexTestQueueItem WHERE ParentJobId = '${testRunId}' AND Status IN (${abortableStatuses})`
+            );
+
+            const queueItemIds = this.readRecords(queryResult)
+                .map((record: unknown) => record !== null && typeof record === 'object' ? (record as { Id?: unknown }).Id : undefined)
+                .filter((queueItemId): queueItemId is string => typeof queueItemId === 'string' && this.salesforceIdPattern.test(queueItemId));
+
+            if ( queueItemIds.length === 0 ) {
+                return `Picklist dependency check cancelled. The test run ${testRunId} had already finished in "${targetOrgIdentifier}", so there was nothing to abort.`;
+            }
+
+            const saveResults: unknown[] = [];
+
+            for ( const queueItemId of queueItemIds ) {
+                saveResults.push(await connection.tooling.update('ApexTestQueueItem', { Id: queueItemId, Status: 'Aborted' }));
+            }
+
+            const isEveryItemAborted = saveResults.every(saveResult => saveResult !== null && typeof saveResult === 'object' && (saveResult as { success?: unknown }).success === true);
+
+            return isEveryItemAborted
+                ? `Picklist dependency check cancelled. The test run ${testRunId} was aborted in "${targetOrgIdentifier}" (${queueItemIds.length} queued test class(es) stopped).`
+                : notAbortedMessage;
+
+        };
+
+        let abortTimer: ReturnType<typeof setTimeout> | undefined;
+
+        try {
+
+            const abortRequest = abort();
+            abortRequest.catch(() => undefined);
+
+            return await Promise.race([
+                abortRequest,
+                new Promise<string>(resolve => {
+                    abortTimer = setTimeout(() => resolve(notAbortedMessage), this.apexTestRunAbortTimeoutMilliseconds);
+                })
+            ]);
+
+        } catch {
+            return notAbortedMessage;
+        } finally {
+            if ( abortTimer !== undefined ) {
+                clearTimeout(abortTimer);
+            }
+        }
 
     }
 
@@ -565,7 +825,7 @@ export class PicklistDependencyCheckService {
         something already present is recoverable, silently skipping a required deploy is not.
 
         MEMBERSHIP is what is asked about, not the suite's existence. A suite whose member class has
-        been deleted still exists, and "sf apex run test --suite-names" against it runs zero tests
+        been deleted still exists, and a run of the suite against it runs zero tests
         and reports success -- a green check that verified nothing, which is the exact failure mode
         the generated specRegistryIsNotEmpty guard exists to prevent one layer down. One query over
         TestSuiteMembership answers "is the suite there AND does it still contain the generated test
@@ -712,7 +972,7 @@ export class PicklistDependencyCheckService {
         const testSuiteFilePath = PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath);
 
         if ( !fs.existsSync(testSuiteFilePath) ) {
-            throw new Error(`No Apex test suite was found at "${testSuiteFilePath}". The check runs "sf apex run test --suite-names ${this.getSpecsTestSuiteName()}", so it cannot run without it -- a workspace generated by an earlier version has the classes but not the suite. Run "Generate Picklist Dependency Tests" again to add it, then run the command again.`);
+            throw new Error(`No Apex test suite was found at "${testSuiteFilePath}". The check runs the ${this.getSpecsTestSuiteName()} test suite, so it cannot run without it -- a workspace generated by an earlier version has the classes but not the suite. Run "Generate Picklist Dependency Tests" again to add it, then run the command again.`);
         }
 
         return classFilePathsToDeploy;
