@@ -239,8 +239,72 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             // ITS Open AND Insert… NAME THE FOLDER, AND THE ROW SAYS WHICH VERSION IT CAME FROM
             const addedRow = panel.findAll(panel.tabPanelOf(leadCard, 'treeDatasets'), 'treeDataset')[0];
             panel.findAll(addedRow, 'treeDatasetInsert')[0].dispatch('click');
-            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'insertDataset', datasetFolderName: ADDED_DATASET.datasetFolderName, treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+            // THE TARGET ORG MANAGER'S SELECTION, BY INDEX (#541)
+            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'insertDataset', datasetFolderName: ADDED_DATASET.datasetFolderName, treeKey: LEAD_TREE_KEY, tab: 'datasets', orgIndex: 0 });
             expect(panel.findAll(addedRow, 'treeDatasetVersion')[0].textContent).toBe('current version');
+
+        });
+
+        describe('a data set row\'s Insert… (#541)', () => {
+
+            const datasetInsertButtons = (panel: any) => panel.findAll(panel.tabPanelOf(cardNamed(panel, LEAD_TREE_KEY), 'treeDatasets'), 'treeDatasetInsert');
+
+            it('posts no org index when no org is selected, and says the org will be asked for', () => {
+
+                const panel = runPanelScript();
+                panel.postToPanel({ command: 'recipeData', recipe: loadHistoryRecipe(), renderSequence: 1 });
+                panel.expandAllTrees();
+                panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Previously Used Data Sets'));
+                panel.postedHostMessages.length = 0;
+
+                const insertButton = datasetInsertButtons(panel)[0];
+                expect(insertButton.attributes.title).toBe('Choose the org to insert this data set into');
+                insertButton.dispatch('click');
+
+                expect(panel.postedHostMessages.at(-1)).not.toHaveProperty('orgIndex');
+                expect(panel.postedHostMessages.at(-1).command).toBe('insertDataset');
+
+            });
+
+            it('names the selected org in its tooltip', () => {
+
+                const panel = renderEverythingOpen();
+
+                expect(datasetInsertButtons(panel)[0].attributes.title).toBe('Insert this data set into qa, the org selected in the Target Org Manager');
+
+            });
+
+            it('says Inserting… on the row being inserted, disables every Insert… and the tree inserts while it runs, and gives them back', () => {
+
+                const panel = renderEverythingOpen();
+                const runningFolderName = datasetFolderNamesIn(panel, panel.tabPanelOf(cardNamed(panel, LEAD_TREE_KEY), 'treeDatasets'))[0];
+
+                panel.postToPanel({ command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: runningFolderName });
+
+                const buttons = datasetInsertButtons(panel);
+                expect(buttons.map((button: any) => button.disabled)).toEqual(buttons.map(() => true));
+                expect(buttons[0].textContent).toBe('Inserting…');
+                expect(buttons.slice(1).map((button: any) => button.textContent)).toEqual(buttons.slice(1).map(() => 'Insert…'));
+                const treeInsertButton = panel.findAll(cardNamed(panel, LEAD_TREE_KEY), 'treeInsert')[0];
+                expect(treeInsertButton.disabled).toBe(true);
+                expect(panel.findAll(cardNamed(panel, LEAD_TREE_KEY), 'treeInsertReason')[0].textContent).toContain('A data set is being inserted.');
+
+                panel.postToPanel({ command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: runningFolderName });
+
+                expect(datasetInsertButtons(panel).map((button: any) => [button.disabled, button.textContent])).toEqual(buttons.map(() => [false, 'Insert…']));
+                expect(treeInsertButton.disabled).toBe(false);
+
+            });
+
+            it('is disabled while a tree inserts', () => {
+
+                const panel = renderEverythingOpen();
+
+                panel.postToPanel({ command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+
+                expect(datasetInsertButtons(panel).every((button: any) => button.disabled)).toBe(true);
+
+            });
 
         });
 

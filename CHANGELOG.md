@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.178.0] - Recipe Cockpit: a data set's Insert… uses the Target Org Manager selection and confirms in the panel
+
+[#541](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/541). A row's **Insert…** under **Previously Used Data Sets** ran **Insert Data Set by Directory**, which ignored the org chosen in Target Org Manager, opened its own org picker, and inserted after only the all-or-none question.
+
+- **The selected org.** The panel posts the Target Org Manager selection's INDEX. The router inserts only when it is still the selection, names the same username and answered `IsSandbox: true` (the tree insert's rule; the palette command's Developer Edition rule is not merged). Any other index is refused with a warning, so a stale or forged click inserts nothing.
+- **No org chosen.** The org is asked for once through `promptAndSelectDataOrg` over the dropdown's own listing, and the pick becomes the selection, as for the tree insert (#375).
+- **A confirmation in the panel.** Destructive, naming the data set (and its own name), the org as its own part with **Change org…**, the org type, and each object's records from its Collections API files (a file that cannot be counted is a warning). Cancel writes nothing, not even `InsertAttempts/`.
+- **Checked again before anything is written.** The data set folder still exists (a deleted one is a warning and the run reloads), its Collections API folder is not a link out of the workspace (refused before any confirmation, as **Show record counts** refuses it), all-or-none is asked, the selection is the one confirmed, and the Organization row is asked again on the connection the insert uses.
+- **One insert per window.** `insertState` carries the data set's `datasetFolderName` with an empty `treeKey`. While it runs every data set's Insert… and every tree insert are disabled (the running row says Inserting…, a tree says *A data set is being inserted.*), and nothing that changes the selection starts. A click while a scratch org run, an assignment, a deploy, an org prompt or a Treecipe Adapter update holds the selection is refused with a warning.
+- **The same insert and notification.** `CollectionsApiService.insertDataSetFolderIntoOrg` with the tree insert's notification (View errors / View results / Open Troubleshooting), and the row's last insert (#469) is read again afterwards.
+- **The palette's Insert Data Set by Directory is unchanged.**
+- **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say where the row inserts.
+- **Tests.** The router (a matching index, a forged or stale one, no index with a selection, a non-sandbox or unanswered selection, every hold, the prompt route), the executor end to end on a fake connection (no picker, the confirmation's content and Change org…, Cancel and a dismissed all-or-none writing no attempt, a folder deleted during the confirmation, a selection changed after it, a non-sandbox Organization row, the prompt route and a dismissed pick, the insert lock), and the panel script (the index posted, the tooltip, Inserting… and the disabled buttons).
+
 ## [3.177.0] - Recipe Cockpit: retrieves can run without the Salesforce CLI, and listing validation rules and record types never uses it
 
 [#506](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/506), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The four Troubleshooting retrieves and the Treecipe Adapter's two retrieves always ran `sf project retrieve start --manifest`. The spike on `@salesforce/source-deploy-retrieve` ([#504](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/504)) is still open, so, as for deploys (#505), this release offers both ways and adds no runtime dependency.
