@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.173.0] - Recipe Cockpit: "+ New scratch org" can create the org with @salesforce/core instead of the Salesforce CLI
+## [3.174.0] - Recipe Cockpit: "+ New scratch org" can create the org with @salesforce/core instead of the Salesforce CLI
 
 [#507](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/507), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). Adopted as a CHOICE rather than a replacement, a decision on the issue: `@salesforce/core`'s `scratchOrgCreate` reads `sfdx-project.json` and the project's `.sf` config from the extension host's working directory, which is not the workspace, so it does not always make the org the CLI makes.
 
@@ -11,6 +11,19 @@
 - **Result file.** `treecipe/OrgOperations/<username or alias>/<ts>-scratch-create.json`, `createdWith: '@salesforce/core'`, through `redactSecrets` (`authFields` whole, and the scratch org info's `AuthCode`), the error text through `redactSecretText`.
 - **No delete.** Nothing builds an `sf org delete` argv or deletes an org.
 - **Tests.** `ScratchOrgService.test.ts`: every refusal of `findLibraryCreateRefusal`, `buildLibraryOrgConfig`, the create's options, a redacted result file, an org kept after a failed setup with its resume command, another request's event ignored (and one when the cache cannot be read), a failure before any org, a thrown non-Error, a non-Dev-Hub org, an unusable username, one lifecycle listener, no process. `RecipeCockpitScratchOrg.test.ts`: both buttons and the no-Cancel note, only the CLI with the reason, the library run listed and selected with no create process, and a kept org whose setup stopped.
+
+## [3.173.0] - Recipe Cockpit: a parent row's 👥 N lists its friends
+
+[#492](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/492). A friend row's 👥 chip (#411) linked up to its parent, but a parent row had no way down to the rows nested under or pointing to it.
+
+- **👥 N on a parent row.** A row #411's friend index lists as having at least one friend draws a compact `secondary` button right after its 🌳 nickname: an `aria-hidden` 👥 and the count, `aria-haspopup="menu"`, `aria-expanded`, and an `aria-label` of `<Object>: N friends`. A row with no friends, and every row of a flat snowfakery card, draws none.
+- **A list of its friends.** A click opens a list under the header led by *Click to go to a friend* (the #491 hint: muted, never focused, the list's name), then one item per friend in recipe line order, labelled as that friend's chip reads followed by the object (`Account_NickName-2: Case`, ` · <nickname>` for an object written more than once, ` — excluded` when the tree icon excluded it).
+- **Choosing one** opens that friend's row and focuses its 👥 chip pointing back to this parent.
+- **The same list behaviour.** It is drawn by `openReferenceMenu`, so the keys, Escape (focus back), Tab, a second click and a click elsewhere work as on the 🌳 and ↖ lists, only one of the three is open at a time, and it is rebuilt on every open.
+- **One pass.** The lists are the sorted per-parent lists `ensureFriendIndex` already numbers chips from, inverted once per card into `friendsByOwnerState`, never scanned per open.
+- **Nothing posted or saved.** The posted model, messages and saved place are unchanged, and the button's text joins no search.
+- **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the button.
+- **Tests.** `RecipeCockpitFriendsMenu.test.ts`: the count and attributes, no button on rows with no friends or on snowfakery, the hint and item order, choosing by click, Enter and Space, an excluded friend, every way it closes, one list open across all three kinds, and a root with 300 friends.
 
 ## [3.172.0] - Recipe Cockpit: each references list says where a click goes, and a field's ↖ lists its parent
 
