@@ -265,7 +265,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
         it('given renameTree for a drawn card, carries the typed name as it was typed, to be checked by the executor', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: '  Sales leads ', renderSequence: 4 }, buildDrawnPanelState()))
-                .toEqual({ kind: 'renameTree', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, name: '  Sales leads ' });
+                .toEqual({ kind: 'renameTree', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, name: '  Sales leads ', renderSequence: 4 });
             expect(RecipeCockpitService.routePanelMessage({ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: 'x'.repeat(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH), renderSequence: 4 }, buildDrawnPanelState()))
                 .toMatchObject({ kind: 'renameTree' });
 
@@ -386,7 +386,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 renderSequence: recipeDataMessage.renderSequence,
                 trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Sales leads', isFavorite: false }]
             });
-            expect(lastPosted('nameEditResult')).toEqual({ command: 'nameEditResult', renderSequence: recipeDataMessage.renderSequence, nameTarget: 'tree', nameKey: LEAD_TREE_KEY });
+            expect(lastPosted('nameEditResult')).toEqual({ command: 'nameEditResult', renderSequence: recipeDataMessage.renderSequence, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: '  Sales leads ' });
 
             // A REVEAL REPLAYS THE STORED MODEL, WHICH HAS TO CARRY THE NAME TOO
             postedPanelMessages = [];
@@ -460,6 +460,27 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             expect(lastPosted('nameEditResult').refusal).toBe(RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL);
             expect(warningSpy.mock.calls[0][0]).toContain('read-only');
             expect(treeOf((RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage, LEAD_TREE_KEY).customName).toBeUndefined();
+
+        });
+
+        it('answers with the model the name was typed over, even when a new model is drawn while the name is written', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            let finishWrite: () => void = () => undefined;
+            workspaceState.update.mockImplementation((key: string, value: unknown) => new Promise<void>(resolve => {
+                finishWrite = () => { workspaceState.storedValues.set(key, JSON.parse(JSON.stringify(value))); resolve(); };
+            }));
+
+            const renaming = renameTo(recipeDataMessage, 'Sales leads');
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: CURRENT_RUN_FOLDER_NAME });
+            const newRecipeDataMessage = lastPosted('recipeData');
+            await receivedMessageHandler({ command: 'rendered', renderSequence: newRecipeDataMessage.renderSequence });
+            finishWrite();
+            await renaming;
+
+            expect(newRecipeDataMessage.renderSequence).not.toBe(recipeDataMessage.renderSequence);
+            expect(lastPosted('nameEditResult')).toMatchObject({ renderSequence: recipeDataMessage.renderSequence, name: 'Sales leads' });
 
         });
 
@@ -673,6 +694,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 expect(panel.isHidden(editorOf(panel))).toBe(false);
                 expect(panel.isHidden(leadTitleElementOf(panel))).toBe(true);
                 expect(editorOf(panel).attributes.role).toBe('group');
+                expect(editorOf(panel).attributes['aria-label']).toBe('Rename Leads');
                 expect(inputOf(panel).value).toBe('Leads');
                 expect(inputOf(panel).attributes.placeholder).toBe(LEAD_TREE_KEY);
                 expect(inputOf(panel).attributes.maxlength).toBe(String(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH));
@@ -776,10 +798,12 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 type(panel, 'account-thru-otherchildobject__c');
                 inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
 
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, refusal: '<b>Another tree</b> already has that name.' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'account-thru-otherchildobject__c', refusal: '<b>Another tree</b> already has that name.' });
 
                 expect(refusalOf(panel).textContent).toBe('<b>Another tree</b> already has that name.');
                 expect(refusalOf(panel).children).toEqual([]);
+                expect(inputOf(panel).attributes['aria-invalid']).toBe('true');
+                expect(inputOf(panel).attributes['aria-describedby']).toBe(refusalOf(panel).attributes.id);
                 expect(panel.isHidden(refusalOf(panel))).toBe(false);
                 expect(panel.isHidden(editorOf(panel))).toBe(false);
                 expect(inputOf(panel).value).toBe('account-thru-otherchildobject__c');
@@ -793,6 +817,37 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             });
 
+            it('settles only the answer to the name posted last, whatever order the answers arrive in', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'Foo');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+                type(panel, 'Bar');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Foo' });
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Bar', refusal: 'Another tree already has that name.' });
+                expect(refusalOf(panel).textContent).toBe('Another tree already has that name.');
+                expect(inputOf(panel).value).toBe('Bar');
+
+            });
+
+            it('does not save on the Enter that ends an input method\'s composition', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, '名前');
+
+                inputOf(panel).dispatch('keydown', { key: 'Enter', isComposing: true, preventDefault: () => undefined });
+
+                expect(renamesPosted(panel)).toEqual([]);
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+
+            });
+
             it('closes once the host has saved and redrawn the name', () => {
 
                 const panel = drawAndAcknowledge();
@@ -801,7 +856,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
 
                 panel.postToPanel({ command: 'treePreferences', renderSequence: 3, trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Sales leads', isFavorite: false }] });
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Sales leads' });
 
                 expect(panel.isHidden(editorOf(panel))).toBe(true);
                 expect(panel.isHidden(leadTitleElementOf(panel))).toBe(false);
@@ -817,13 +872,14 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 openBox(panel);
                 type(panel, 'Sales leads');
 
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, refusal: 'Not posted yet.' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Sales leads', refusal: 'Not posted yet.' });
                 expect(panel.isHidden(refusalOf(panel))).toBe(true);
 
                 inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 2, nameTarget: 'tree', nameKey: LEAD_TREE_KEY });
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: ACCOUNT_TREE_KEY });
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_TREE_KEY });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 2, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Sales leads' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: ACCOUNT_TREE_KEY, name: 'Sales leads' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_TREE_KEY, name: 'Sales leads' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY });
 
                 expect(panel.isHidden(editorOf(panel))).toBe(false);
 
@@ -835,6 +891,8 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
                 expect(shellHtml).toMatch(/\.nameEditorInput \{[^}]*color: var\(--sdt-text\);[^}]*background-color: var\(--sdt-surface\);/);
                 expect(shellHtml).toContain('.treeNameEditor .nameEditorRefusal { font-weight: 600; color: var(--sdt-on-header); }');
+                // A NAVY RING VANISHES ON THE NAVY HEADER, SO THE BOX RINGS IN TEAL THERE, AS EVERY HEADER CONTROL DOES
+                expect(shellHtml).toContain('.treeHeader .nameEditorInput:focus { outline-color: var(--sdt-action); }');
                 expect(shellHtml).toContain('.nameEditorRefusal { font-size: 0.9em; color: var(--sdt-removed); }');
 
             });

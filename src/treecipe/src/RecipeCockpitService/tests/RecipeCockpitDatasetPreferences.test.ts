@@ -214,7 +214,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
         it('given renameDataset for a drawn row, carries the typed name as it was typed, to be checked by the executor', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: LEAD_DATASETS[1], name: ' Before the fix ', renderSequence: 4 }, buildDrawnPanelState()))
-                .toEqual({ kind: 'renameDataset', datasetFolderName: LEAD_DATASETS[1], name: ' Before the fix ' });
+                .toEqual({ kind: 'renameDataset', datasetFolderName: LEAD_DATASETS[1], name: ' Before the fix ', renderSequence: 4 });
 
         });
 
@@ -337,7 +337,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
                 customName: 'Before the fix',
                 isFavorite: false
             });
-            expect(lastPosted('nameEditResult')).toEqual({ command: 'nameEditResult', renderSequence: recipeDataMessage.renderSequence, nameTarget: 'dataset', nameKey: LEAD_DATASETS[1] });
+            expect(lastPosted('nameEditResult')).toEqual({ command: 'nameEditResult', renderSequence: recipeDataMessage.renderSequence, nameTarget: 'dataset', nameKey: LEAD_DATASETS[1], name: '  Before the fix ' });
 
             // A REVEAL REPLAYS THE STORED MODEL, WHICH HAS TO CARRY THE NAME TOO
             postedPanelMessages = [];
@@ -558,7 +558,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
                 input.value = ACCOUNT_DATASET;
                 enter(input);
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_DATASETS[1], refusal: 'Another data set already has that name.' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_DATASETS[1], name: ACCOUNT_DATASET, refusal: 'Another data set already has that name.' });
 
                 expect(refusal.textContent).toBe('Another data set already has that name.');
                 expect(panel.isHidden(refusal)).toBe(false);
@@ -569,11 +569,44 @@ describe('RecipeCockpitService, data set names and favorites', () => {
                 panel.postToPanel({ command: 'datasetPreferences', renderSequence: 3, datasetFolderName: LEAD_DATASETS[1], customName: 'Before the fix', isFavorite: false });
                 // THE BOX STILL STANDS IN THE NAME'S PLACE UNTIL THE ANSWER CLOSES IT
                 expect(panel.isHidden(partOf(panel, row, 'treeDatasetName'))).toBe(true);
-                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_DATASETS[1] });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_DATASETS[1], name: 'Before the fix' });
 
                 expect(panel.isHidden(partOf(panel, row, 'datasetNameEditor'))).toBe(true);
                 expect(panel.isHidden(partOf(panel, row, 'treeDatasetName'))).toBe(false);
                 expect(partOf(panel, row, 'treeDatasetName').textContent).toBe('Before the fix');
+
+            });
+
+            it('keeps the box in the name\'s place when the row\'s star changes while it is open', () => {
+
+                const panel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[1].customName = 'Before the fix'; });
+                const row = secondRowOf(panel);
+                partOf(panel, row, 'treeDatasetRename').dispatch('click');
+
+                panel.postToPanel({ command: 'datasetPreferences', renderSequence: 3, datasetFolderName: LEAD_DATASETS[1], customName: 'Before the fix', isFavorite: true });
+
+                expect(partOf(panel, row, 'treeDatasetFavorite').textContent).toBe('★');
+                expect(panel.isHidden(partOf(panel, row, 'treeDatasetName'))).toBe(true);
+                expect(panel.isHidden(partOf(panel, row, 'datasetNameEditor'))).toBe(false);
+
+            });
+
+            it('posts the typed name when the box is left, and ✎ while it is open cancels', () => {
+
+                const panel = drawRecipe();
+                const row = secondRowOf(panel);
+                const rename = partOf(panel, row, 'treeDatasetRename');
+                rename.dispatch('click');
+                const input = partOf(panel, row, 'nameEditorInput');
+
+                input.value = 'Before the fix';
+                input.dispatch('blur');
+                expect(renamesPosted(panel)).toEqual([{ command: 'renameDataset', datasetFolderName: LEAD_DATASETS[1], name: 'Before the fix', renderSequence: 3 }]);
+
+                rename.dispatch('mousedown', { preventDefault: () => undefined });
+                rename.dispatch('click');
+                expect(panel.isHidden(partOf(panel, row, 'datasetNameEditor'))).toBe(true);
+                expect(renamesPosted(panel)).toHaveLength(1);
 
             });
 
