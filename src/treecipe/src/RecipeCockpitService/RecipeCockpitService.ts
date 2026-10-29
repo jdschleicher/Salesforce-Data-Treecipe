@@ -5,6 +5,35 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Connection } from '@salesforce/core';
+import { COCKPIT_PALETTE, CockpitPalette, CockpitPaletteToken } from '../CockpitKit/CockpitPalette';
+import {
+    COCKPIT_ACTION_CARD_HEIGHT,
+    COCKPIT_BUTTON_KINDS,
+    COCKPIT_KIT_BUTTON_KINDS_SCRIPT,
+    COCKPIT_KIT_BUTTON_KIND_BASE_STYLES,
+    COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES,
+    COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES,
+    COCKPIT_KIT_BUTTON_KIND_STATE_STYLES,
+    COCKPIT_KIT_CREATE_BUTTON_SCRIPT,
+    CockpitButtonKind
+} from '../CockpitKit/CockpitButtonKinds';
+import {
+    COCKPIT_KIT_ORG_PICKER_REFRESH_STYLES,
+    COCKPIT_KIT_ORG_PICKER_STYLES,
+    COCKPIT_KIT_PINNED_SECTION_STYLES,
+    COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
+    COCKPIT_SPINNER_ROTATION_MILLISECONDS
+} from '../CockpitKit/CockpitOrgPicker';
+import {
+    COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
+    COCKPIT_CONFIRM_WARNINGS_LABEL,
+    COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP,
+    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT,
+    COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT,
+    COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
+    COCKPIT_KIT_CONFIRM_LABELS_SCRIPT,
+    CockpitConfirmDialog
+} from '../CockpitKit/CockpitConfirmDialog';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
@@ -125,66 +154,12 @@ export const RECIPE_COCKPIT_PANEL_TITLE = 'Recipe Cockpit';
 // WHAT THE PANEL SHOWS BEFORE THE HOST HAS ANSWERED, SO A HANDSHAKE THAT NEVER COMPLETES IS VISIBLE RATHER THAN BLANK
 export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecipe extension host…';
 
-export type RecipeCockpitPaletteToken =
-    | 'page' | 'surface' | 'border' | 'header' | 'onHeader' | 'onHeaderMuted'
-    | 'text' | 'muted' | 'accent'
-    | 'action' | 'onAction' | 'actionEdge'
-    | 'rowHover' | 'chipBg' | 'chipText'
-    | 'added' | 'removed' | 'changed'
-    | 'disabledBg' | 'disabledText'
-    | 'orgSection'
-    | 'excludedOverlay'
-    | 'dialogBackdrop';
+// THE PALETTE AND BUTTON KINDS ARE THE COCKPIT KIT'S (#524), SHARED WITH EVERY COCKPIT; THESE NAMES STAY FOR WHAT ALREADY READS THEM
+export type RecipeCockpitPaletteToken = CockpitPaletteToken;
+export const RECIPE_COCKPIT_PALETTE = COCKPIT_PALETTE;
 
-/*
-    The cockpit's ONE palette, and the only source of a colour in its stylesheet. The cockpit used
-    to read every colour from the VS Code theme, which under a dark theme drew a flat black page
-    with no hierarchy; it now looks the same whatever theme the editor uses. Every text/background
-    pair the stylesheet draws is held to WCAG 4.5:1 by a test, so a value changed here is measured
-    rather than eyeballed.
-
-    Each colour has one job (#434): navy is the header background and every accent TEXT (links,
-    outlined buttons, object names, the focus ring); teal is ONLY a fill or an edge (filled buttons,
-    the selected tab, ticked boxes). Teal is never text: it is 1.9:1 on white, and white on teal is
-    the same, so what is drawn on teal is navy.
-*/
-export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, string>> = Object.freeze({
-    page: '#F4F7F6',
-    surface: '#FFFFFF',
-    border: '#D5DDDB',
-    header: '#1D3557',
-    onHeader: '#F4F7F6',
-    onHeaderMuted: '#C9D3E0',
-    text: '#333333',
-    muted: '#5C6470',
-    accent: '#1D3557',
-    action: '#06D6A0',
-    onAction: '#1D3557',
-    // A DARKER TEAL FOR AN EDGE: THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, HELD TO 3:1 ON --sdt-surface AND --sdt-row-hover
-    actionEdge: '#049C74',
-    rowHover: '#E8F8F2',
-    chipBg: '#E3F7EF',
-    chipText: '#1D3557',
-    added: '#15803D',
-    removed: '#B91C1C',
-    changed: '#B45309',
-    disabledBg: '#E4E9E8',
-    disabledText: '#4F5654',
-    // THE PINNED TARGET ORG MANAGER SECTION'S OWN LIGHT TINT (#433), A TOKEN OF ITS OWN SO A RETUNED header NEVER RECOLOURS IT; IT MUST STAY OPAQUE, SINCE CARDS SCROLL UNDER IT
-    orgSection: '#EEF3FB',
-    // SLATE GRAY AT 40%, LAID OVER AN OBJECT THE STRUCTURE TAB EXCLUDES (#219); --sdt-text UNDER IT HOLDS 4.5:1, A TEST COMPOSITES IT
-    excludedOverlay: 'rgba(148, 163, 184, 0.40)',
-    // --sdt-text AT 55%, BEHIND AN IN-PANEL CONFIRMATION (#349); A TEST COMPOSITES IT AND HOLDS THE DIALOG'S EDGE TO 3:1 AGAINST IT
-    dialogBackdrop: 'rgba(51, 51, 51, 0.55)'
-});
-
-/*
-    Every button the panel draws is ONE of these kinds (#363), styled by one rule each in the shell,
-    so a new button cannot come out as a browser default by missing a selector list. A button's own
-    class keeps only its size and layout. compact is a size, not a kind: it can go with any kind.
-*/
-export type RecipeCockpitButtonKind = 'primary' | 'secondary' | 'icon' | 'check' | 'link' | 'card';
-export const RECIPE_COCKPIT_BUTTON_KINDS: readonly RecipeCockpitButtonKind[] = Object.freeze(['primary', 'secondary', 'icon', 'check', 'link', 'card'] as RecipeCockpitButtonKind[]);
+export type RecipeCockpitButtonKind = CockpitButtonKind;
+export const RECIPE_COCKPIT_BUTTON_KINDS = COCKPIT_BUTTON_KINDS;
 
 export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
@@ -533,7 +508,7 @@ export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS = 'Show less';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
 // THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
-export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = '10rem';
+export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING;
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
 export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
 // WHAT THE SECTION SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
@@ -1556,7 +1531,7 @@ export const RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = 'Loading orgs…';
 export const RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX = ' (default)';
 
 // ONE TURN OF THE ORG CHECK'S SPINNER (#305): A LOOP RATHER THAN A TRANSITION, SO IT IS NOT HELD TO THE 120-180 MS OF MOTION (#227)
-export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = 800;
+export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = COCKPIT_SPINNER_ROTATION_MILLISECONDS;
 
 // THE DROPDOWN'S ONE OPTION WHEN THE CHECK ANSWERED WITH NO ORG TO OFFER: IT STAYS DRAWN, AND ⟳ BESIDE IT
 export const RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = 'No org listed';
@@ -2181,7 +2156,7 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
 */
 export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'regenerate' | 'generateData' | 'update';
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
-export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = '10.5rem';
+export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = COCKPIT_ACTION_CARD_HEIGHT;
 
 export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActionVerb, string>> = Object.freeze({
     deploy: '🚀',
@@ -2609,7 +2584,7 @@ export interface IRecipeCockpitConfirmRequestMessage {
 }
 
 // THE HEADING OF A CONFIRMATION'S CALLOUT (#457), ALWAYS ON SCREEN ABOVE ITS FOLDED SECTIONS
-export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = 'Before you confirm';
+export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = COCKPIT_CONFIRM_WARNINGS_LABEL;
 
 // A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
@@ -2618,7 +2593,7 @@ export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in 
 const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set(['retrieveTreeMetadata', 'deployTreeMetadataComponents', 'assignTreePermissionSets', 'insertTree', 'promptInsertOrg']);
 
 // THE BUTTON BESIDE A CONFIRMATION'S ORG (#480), AND WHAT IT SAYS WHEN THE ACTION IS NOT STARTED AGAIN
-export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = 'Change org…';
+export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = COCKPIT_CONFIRM_CHANGE_ORG_LABEL;
 export const RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER = 'Choose the org to run this on: it becomes the Target Org Manager selection';
 export const RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX = 'The action was not started again';
 export const RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON = 'this action writes to the org, so it runs only in a sandbox or scratch org';
@@ -6913,7 +6888,7 @@ export class RecipeCockpitService {
             return Promise.resolve(cancelled);
         }
 
-        const confirmationId = crypto.randomBytes(16).toString('hex');
+        const confirmationId = CockpitConfirmDialog.buildConfirmationId();
         // "Change org…" ONLY INSIDE A PANEL ACTION, WHICH IS WHAT CAN START THE ACTION AGAIN ONCE IT HAS ENDED
         const actionContext = this.panelActionContextStorage.getStore();
         const changeOrg = actionContext && confirmOptions.changeOrg && confirmOptions.org ? confirmOptions.changeOrg : undefined;
@@ -6985,12 +6960,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
-        const isReadableCheck = isChecked === undefined || typeof isChecked === 'boolean';
-
-        pendingConfirmation.resolve(isOfferedChoice && isReadableCheck
-            ? { chosenLabel: pendingConfirmation.buttonLabels[choice], isChecked: pendingConfirmation.hasCheckbox && isChecked === true }
-            : { chosenLabel: undefined, isChecked: false });
+        pendingConfirmation.resolve(CockpitConfirmDialog.readAnswer(pendingConfirmation.buttonLabels, pendingConfirmation.hasCheckbox, choice, isChecked));
 
     }
 
@@ -19543,15 +19513,13 @@ export class RecipeCockpitService {
 
     static buildPaletteCustomPropertyName(paletteToken: RecipeCockpitPaletteToken): string {
 
-        return '--sdt-' + paletteToken.replace(/[A-Z]/g, upperCaseLetter => '-' + upperCaseLetter.toLowerCase());
+        return CockpitPalette.buildCustomPropertyName(paletteToken);
 
     }
 
     static buildPaletteCustomProperties(): string {
 
-        return (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[])
-            .map(paletteToken => `        ${this.buildPaletteCustomPropertyName(paletteToken)}: ${RECIPE_COCKPIT_PALETTE[paletteToken]};`)
-            .join('\n');
+        return CockpitPalette.buildCustomProperties();
 
     }
 
@@ -19761,29 +19729,8 @@ ${this.buildPaletteCustomProperties()}
     .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    /*
-        THE BUTTON KINDS (#363): every button the panel makes carries sdtButton and exactly one
-        sdtButton-<kind>, and these rules are the only place a button's colours, border and states
-        are set. A button's own class adds size and layout only, so a new button is styled by its
-        kind or fails the button-kind test; it is never a browser default.
-    */
-    .sdtButton-primary, .sdtButton-secondary {
-        min-height: 2.25rem;
-        min-width: 2.25rem;
-        padding: 0.4rem 0.8rem;
-        font: inherit;
-        font-size: 1.1em;
-        color: var(--sdt-accent);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 6px;
-        cursor: pointer;
-    }
-    .sdtButton-secondary:hover:not(:disabled) {
-        border-color: var(--sdt-accent);
-    }
-    .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
-    .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
+${COCKPIT_KIT_BUTTON_KIND_BASE_STYLES}
+${COCKPIT_KIT_ORG_PICKER_REFRESH_STYLES}
     .chevronToggle {
         box-sizing: border-box;
         flex: none;
@@ -19803,72 +19750,12 @@ ${this.buildPaletteCustomProperties()}
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-    .sdtButton-primary {
-        color: var(--sdt-on-action);
-        background-color: var(--sdt-action);
-        border-color: var(--sdt-action);
-        font-weight: 600;
-    }
-    .sdtButton-primary:hover:not(:disabled) { filter: brightness(0.92); }
-    .sdtButton-primary:active:not(:disabled) { filter: brightness(0.84); }
+${COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES}
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .sdtButton-primary:disabled, .sdtButton-secondary:disabled {
-        color: var(--sdt-disabled-text);
-        background-color: var(--sdt-disabled-bg);
-        border-color: var(--sdt-border);
-        cursor: not-allowed;
-        opacity: 1;
-    }
-    .sdtButton-compact { min-height: 0; min-width: 0; padding: 0.15rem 0.6rem; font-size: inherit; }
-    .sdtButton-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        color: var(--sdt-text);
-        background-color: transparent;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .sdtButton-icon:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
-    .sdtButton-icon:disabled { cursor: not-allowed; }
-    .sdtButton-link {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: var(--sdt-accent);
-        text-align: left;
-        cursor: pointer;
-    }
-    .sdtButton-link:focus-visible { outline-offset: -1px; }
-    .sdtButton-card {
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        justify-content: flex-start;
-        gap: 0.3rem;
-        width: 100%;
-        height: ${RECIPE_COCKPIT_ACTION_CARD_HEIGHT};
-        overflow: hidden;
-        padding: 0.6rem 0.75rem;
-        font: inherit;
-        text-align: left;
-        color: var(--sdt-text);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 8px;
-        cursor: pointer;
-    }
-    .sdtButton-card:hover:not(:disabled) { border-color: var(--sdt-accent); background-color: var(--sdt-row-hover); }
-    .sdtButton-card:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
-    .sdtButton-card:disabled .actionCardTitle, .sdtButton-card:disabled .actionCardDetail { color: var(--sdt-disabled-text); }
-    .sdtButton-link:hover { text-decoration: underline; }
+${COCKPIT_KIT_BUTTON_KIND_STATE_STYLES}
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; }
@@ -19996,26 +19883,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     /* AN ANIMATING BODY IS ITS OWN STACKING CONTEXT, WHICH WOULD DRAW ITS CONTROLS UNDER THE OVERLAY MID-FADE */
     .treeObject.excluded .motionReveal { animation: none; }
     .treeObject.excluded .hidden.motionConceal { display: none !important; }
-    .sdtButton-check {
-        position: relative;
-        z-index: 2;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.25em;
-        height: 1.25em;
-        padding: 0;
-        font: inherit;
-        font-weight: 700;
-        line-height: 1;
-        color: var(--sdt-on-action);
-        background-color: var(--sdt-action);
-        border: 1px solid var(--sdt-action-edge);
-        border-radius: 3px;
-        cursor: pointer;
-    }
-    .sdtButton-check[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
-    .sdtButton-check:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
     /* THE TREECIPE TAB'S FILTER TILE (#490): ONE ROW PER CHECK, THEN "Manage record types" */
     .treecipeFilterTile {
         display: flex;
@@ -20191,41 +20059,9 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
         border-radius: 0.6rem;
     }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
-    .dataOrgControls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-    .dataOrgSelect {
-        padding: 0.3rem;
-        color: var(--sdt-text);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 4px;
-    }
-    .dataOrgType {
-        font-size: 0.85em;
-        padding: 0 0.4rem;
-        color: var(--sdt-chip-text);
-        background-color: var(--sdt-chip-bg);
-        border-radius: 0.6rem;
-    }
-    @keyframes sdtSpin { to { transform: rotate(360deg); } }
-    /* A RING, NOT A GLYPH: ITS COLOURS ARE THE PALETTE'S, AND REDUCED MOTION LEAVES IT DRAWN BUT STILL */
-    .dataOrgSpinner {
-        display: inline-block;
-        width: 0.9rem;
-        height: 0.9rem;
-        border: 2px solid var(--sdt-border);
-        border-top-color: var(--sdt-accent);
-        border-radius: 50%;
-        animation: sdtSpin ${RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS}ms linear infinite;
-    }
-    .dataOrgStatus { margin: 0.4rem 0; }
-    .dataOrgStatus.failed { color: var(--sdt-removed); }
+${COCKPIT_KIT_ORG_PICKER_STYLES}
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
-    .cockpitSection { margin: 0.6rem 0; }
-    .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: default; border-bottom: 2px solid var(--sdt-header); }
-    #cockpitOrgSection { position: sticky; top: 0; z-index: 10; margin: 0; padding: 0.6rem; background-color: var(--sdt-org-section); border-bottom: 1px solid var(--sdt-border); }
-    html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }
-    .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; color: var(--sdt-header); }
-    #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
+${COCKPIT_KIT_PINNED_SECTION_STYLES}
     .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     /*
         The sub-panel pads its contents off its teal border (#393), and its search box drops its own
@@ -20522,63 +20358,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .githubGlyph { display: block; width: 18px; height: 18px; }
     .githubGlyph path { fill: var(--sdt-on-header-muted); }
     .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }
-    .confirmOverlay {
-        position: fixed;
-        inset: 0;
-        z-index: 50;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        background-color: var(--sdt-dialog-backdrop);
-    }
-    .confirmDialog {
-        display: flex;
-        flex-direction: column;
-        width: min(42rem, 100%);
-        max-height: calc(100vh - 32px);
-        color: var(--sdt-text);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 8px;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08);
-    }
-    .confirmTitle { margin: 0; padding: 0.9rem 1rem 0.5rem 1rem; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
-    .confirmBody {
-        flex: 1 1 auto;
-        min-height: 0;
-        max-height: 60vh;
-        overflow-y: auto;
-        padding: 0.25rem 1rem 0.75rem 1rem;
-        border-top: 1px solid var(--sdt-border);
-        border-bottom: 1px solid var(--sdt-border);
-    }
-    .confirmLine { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.15rem 0; }
-    .confirmBullets { margin: 0.15rem 0; padding-left: 1.25rem; }
-    .confirmBullets .confirmBullet { margin: 0.2rem 0; }
-    .confirmBullet::marker { color: var(--sdt-muted); }
-    .confirmSubBullets { margin: 0.1rem 0 0.25rem 0; list-style-type: circle; }
-    .confirmWarnings .confirmBullet::marker { color: var(--sdt-changed); }
-    .confirmGap { height: 0.6rem; }
-    .confirmSummary { margin: 0.5rem 0; font-size: 1.02rem; }
-    .confirmOrg { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.45rem; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
-    .confirmOrgLabel { color: var(--sdt-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
-    .confirmOrgAlias { font-weight: 700; color: var(--sdt-accent); overflow-wrap: anywhere; }
-    .confirmOrgSeparator { color: var(--sdt-muted); }
-    .confirmOrgUsername { font-family: var(--vscode-editor-font-family), monospace; color: var(--sdt-muted); overflow-wrap: anywhere; }
-    .confirmOrg .confirmBadge { margin-top: 0; }
-    .confirmChangeOrg { margin-left: auto; }
-    .confirmBadge { display: inline-block; margin-top: 0.3rem; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
-    .confirmWarnings { margin: 0.6rem 0; padding: 0.45rem 0.7rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-left: 4px solid var(--sdt-changed); border-radius: 6px; }
-    .confirmWarningsHeading { margin-bottom: 0.15rem; font-weight: 600; color: var(--sdt-changed); }
-    .confirmSection { margin: 0.35rem 0; }
-    .confirmSectionToggle { display: flex; align-items: center; gap: 0.4rem; width: 100%; padding: 0.35rem 0.5rem; text-align: left; line-height: 1.3; }
-    .confirmSectionTitle { flex: 1 1 auto; font-weight: 600; overflow-wrap: anywhere; }
-    .confirmSectionCount { flex: none; padding: 0 0.45rem; border-radius: 999px; font-size: 0.85rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
-    .confirmSectionBody { padding: 0.2rem 0.5rem 0.2rem 2rem; }
-    .confirmCheckRow { flex: none; display: flex; align-items: center; gap: 0.4rem; padding: 0.75rem 1rem 0 1rem; }
-    .confirmCheckLabel { cursor: pointer; overflow-wrap: anywhere; }
-    .confirmActions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; }
+${COCKPIT_KIT_CONFIRM_DIALOG_STYLES}
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             transition: none !important;
@@ -20594,7 +20374,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 </div>
 <div id="loadStatus" class="loadStatus">${RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT}</div>
 <div id="cockpitBody"></div>
-<div id="cockpitDialogHost"></div>
+${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
 <script nonce="${nonce}">
 (function () {
 
@@ -20603,8 +20383,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const cockpitBodyElement = document.getElementById('cockpitBody');
     const cockpitMetaElement = document.getElementById('cockpitMeta');
     const cockpitDialogHostElement = document.getElementById('cockpitDialogHost');
-    // THE ONE IN-PANEL CONFIRMATION ON SCREEN (#349), OR null
-    let confirmDialog = null;
+${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
     const CHANGELOG_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHANGELOG_LINK_LABEL)};
     const GITHUB_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX)};
     const GITHUB_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_PATH)};
@@ -20634,7 +20413,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
-    const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
+${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
     const TROUBLESHOOTING_GROUP_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI)};
     const ACTION_CARDS = ${JSON.stringify({ ...RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS, ...RECIPE_COCKPIT_STANDALONE_ACTION_CARDS })};
@@ -20815,8 +20594,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
     const FRIENDS_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_FRIENDS_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
-    const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
-    const CONFIRM_CHANGE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL)};
+${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
     const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
@@ -20991,14 +20769,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    // THE ONLY WAY THE PANEL MAKES A BUTTON (#363): ITS KIND STYLES IT, ITS OWN CLASS ONLY SIZES AND PLACES IT
-    function createButton(kind, className, textContent, size) {
-
-        if (BUTTON_KINDS.indexOf(kind) === -1) { throw new Error('Unknown button kind: ' + kind); }
-        const buttonClassName = 'sdtButton sdtButton-' + kind + (size === 'compact' ? ' sdtButton-compact' : '') + (className ? ' ' + className : '');
-        return createElement('button', buttonClassName, textContent);
-
-    }
+${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     let actionCardCount = 0;
 
@@ -31173,342 +30944,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    /*
-        A confirmation the HOST asked for (#349), drawn over the cockpit in place of VS Code's modal.
-        Every string is the host's and goes through textContent; the panel answers only with the
-        index of a button it was given (null is Cancel), under the id it was asked with. A request
-        for a model that is not the one on screen is answered Cancel without being drawn. Focus moves
-        into the dialog and stays there, Escape is Cancel, and focus goes back to what opened it.
-    */
-    function renderConfirmRequest(hostMessage) {
-
-        const confirmationId = hostMessage.confirmationId;
-        if (typeof confirmationId !== 'string' || !confirmationId) { return; }
-
-        const content = readConfirmContent(hostMessage);
-        const buttonLabels = Array.isArray(hostMessage.buttons) ? hostMessage.buttons.filter(function (label) { return typeof label === 'string' && !!label; }) : null;
-
-        if (hostMessage.renderSequence !== renderedSequence || typeof hostMessage.title !== 'string' || !content || !buttonLabels || buttonLabels.length === 0) {
-            vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
-            return;
-        }
-
-        // THE HOST ANSWERED AN OPEN ONE CANCEL BEFORE ASKING AGAIN; THE NEW ONE TAKES ITS PLACE
-        const openerElement = confirmDialog ? confirmDialog.openerElement : document.activeElement;
-        closeConfirmDialog(false);
-
-        const isDestructive = hostMessage.isDestructive === true;
-        const overlayElement = createElement('div', 'confirmOverlay');
-        const dialogElement = createElement('div', 'confirmDialog');
-        const titleElement = createElement('h2', 'confirmTitle', hostMessage.title);
-        const bodyElement = createElement('div', 'confirmBody');
-        const actionsElement = createElement('div', 'confirmActions');
-
-        titleElement.setAttribute('id', 'confirmTitle');
-        bodyElement.setAttribute('id', 'confirmBody');
-        // THE BODY SCROLLS, SO A KEYBOARD READER CAN REACH IT TO SCROLL IT
-        bodyElement.setAttribute('tabindex', '0');
-        dialogElement.setAttribute('role', isDestructive ? 'alertdialog' : 'dialog');
-        dialogElement.setAttribute('aria-modal', 'true');
-        dialogElement.setAttribute('aria-labelledby', 'confirmTitle');
-        dialogElement.setAttribute('aria-describedby', 'confirmBody');
-
-        const sectionToggleElements = drawConfirmContent(bodyElement, content, hostMessage.canChangeOrg === true);
-
-        const buttonElements = buttonLabels.map(function (label, labelIndex) {
-            const buttonElement = createButton(labelIndex === 0 ? 'primary' : 'secondary', 'confirmChoice', label);
-            buttonElement.addEventListener('click', function () { answerConfirm(labelIndex); });
-            return buttonElement;
-        });
-        const cancelElement = createButton('secondary', 'confirmCancel', 'Cancel');
-        cancelElement.addEventListener('click', function () { answerConfirm(null); });
-
-        // ONE UNTICKED BOX WHEN THE HOST ASKS FOR IT (#402); ITS STATE GOES BACK WITH THE ANSWER, AND WHAT IT ADDS IS THE HOST'S
-        const checkboxLabel = typeof hostMessage.checkboxLabel === 'string' && hostMessage.checkboxLabel ? hostMessage.checkboxLabel : null;
-        let checkElement = null;
-        let checkRowElement = null;
-        const checkState = { isChecked: false };
-        if (checkboxLabel) {
-            checkRowElement = createElement('div', 'confirmCheckRow');
-            checkElement = createButton('check', 'confirmCheck');
-            const checkLabelElement = createElement('span', 'confirmCheckLabel', checkboxLabel);
-            const toggleCheck = function () {
-                checkState.isChecked = !checkState.isChecked;
-                checkElement.setAttribute('aria-checked', checkState.isChecked ? 'true' : 'false');
-                checkElement.textContent = checkState.isChecked ? '✓' : '';
-            };
-            checkElement.setAttribute('role', 'checkbox');
-            checkElement.setAttribute('aria-checked', 'false');
-            checkElement.setAttribute('aria-label', checkboxLabel);
-            checkElement.addEventListener('click', toggleCheck);
-            checkLabelElement.addEventListener('click', toggleCheck);
-            checkRowElement.appendChild(checkElement);
-            checkRowElement.appendChild(checkLabelElement);
-        }
-
-        buttonElements.forEach(function (buttonElement) { actionsElement.appendChild(buttonElement); });
-        actionsElement.appendChild(cancelElement);
-
-        dialogElement.appendChild(titleElement);
-        dialogElement.appendChild(bodyElement);
-        if (checkRowElement) { dialogElement.appendChild(checkRowElement); }
-        dialogElement.appendChild(actionsElement);
-        overlayElement.appendChild(dialogElement);
-
-        const focusableElements = [bodyElement].concat(sectionToggleElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
-
-        dialogElement.addEventListener('keydown', function (event) {
-            if (event.key === 'Escape') {
-                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
-                answerConfirm(null);
-                return;
-            }
-            if (event.key !== 'Tab') { return; }
-            const currentIndex = focusableElements.indexOf(document.activeElement);
-            const nextIndex = event.shiftKey
-                ? (currentIndex <= 0 ? focusableElements.length - 1 : currentIndex - 1)
-                : (currentIndex === -1 || currentIndex === focusableElements.length - 1 ? 0 : currentIndex + 1);
-            if (typeof event.preventDefault === 'function') { event.preventDefault(); }
-            focusElement(focusableElements[nextIndex]);
-        });
-
-        // A PRESS ON THE BACKDROP WOULD MOVE FOCUS OUT OF THE DIALOG, WHERE TAB IS NO LONGER KEPT INSIDE IT
-        overlayElement.addEventListener('mousedown', function (event) {
-            if (event.target === overlayElement && typeof event.preventDefault === 'function') { event.preventDefault(); }
-        });
-
-        // THE REST OF THE COCKPIT IS OUT OF REACH WHILE THE DIALOG IS OPEN
-        [cockpitBodyElement, cockpitMetaElement, loadStatusElement].forEach(function (backgroundElement) {
-            if (backgroundElement) { backgroundElement.setAttribute('inert', ''); }
-        });
-
-        if (!isMotionReduced()) { dialogElement.classList.add('motionReveal'); }
-        cockpitDialogHostElement.appendChild(overlayElement);
-
-        confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement, checkState: checkElement ? checkState : null };
-
-        // AN ACTION WITH NO UNDO STARTS ON CANCEL
-        focusElement(isDestructive ? cancelElement : buttonElements[0]);
-
-    }
-
-    /*
-        The parts of a confirmation (#457), read whole or not at all: a summary of strings, warnings
-        of strings, and sections each with a title, lines and an optional count. Anything out of shape
-        is null, and the request is answered Cancel rather than drawn with a part missing.
-    */
-    function readConfirmContent(hostMessage) {
-
-        const isStringList = function (value) { return Array.isArray(value) && value.every(function (item) { return typeof item === 'string'; }); };
-
-        if (!isStringList(hostMessage.summary) || !isStringList(hostMessage.warnings) || !Array.isArray(hostMessage.sections)) { return null; }
-        if (hostMessage.badge !== undefined && typeof hostMessage.badge !== 'string') { return null; }
-        const org = hostMessage.org;
-        if (org !== undefined && !(org && typeof org === 'object' && typeof org.username === 'string' && !!org.username && (org.alias === undefined || typeof org.alias === 'string'))) { return null; }
-
-        const isReadableSection = function (section) {
-            return !!section && typeof section === 'object' && typeof section.title === 'string' && !!section.title && isStringList(section.lines)
-                && (section.count === undefined || (typeof section.count === 'number' && Number.isSafeInteger(section.count) && section.count >= 0));
-        };
-        if (!hostMessage.sections.every(isReadableSection)) { return null; }
-
-        return {
-            summary: hostMessage.summary,
-            org: org ? { alias: org.alias || '', username: org.username } : null,
-            badge: hostMessage.badge || '',
-            warnings: hostMessage.warnings.filter(function (warning) { return warning.trim() !== ''; }),
-            sections: hostMessage.sections.filter(function (section) { return section.lines.some(function (line) { return line.trim() !== ''; }); })
-        };
-
-    }
-
-    /*
-        Each statement is its own bullet (#457), so separate thoughts never run together: a blank line
-        starts a new group, a line that ends with ":" leads in the indented lines under it as a nested
-        list, and any other indented line is a bullet of its own. A part with one statement and no
-        bullets asked for is drawn as plain text.
-    */
-    function drawConfirmLines(parentElement, lines, isBulleted) {
-
-        const groups = [[]];
-        lines.forEach(function (line) {
-            if (line.trim() === '') {
-                if (groups[groups.length - 1].length > 0) { groups.push([]); }
-                return;
-            }
-            groups[groups.length - 1].push(line);
-        });
-
-        groups.filter(function (group) { return group.length > 0; }).forEach(function (group, groupIndex) {
-
-            if (groupIndex > 0) { parentElement.appendChild(createElement('div', 'confirmGap')); }
-
-            if (!isBulleted) {
-                group.forEach(function (line) { parentElement.appendChild(createElement('div', 'confirmLine', line)); });
-                return;
-            }
-
-            const listElement = createElement('ul', 'confirmBullets');
-            let leadInItem = null;
-            let leadInList = null;
-
-            group.forEach(function (line) {
-                const isIndented = /^\\s/.test(line);
-                // AN INDENTED LINE LOSES ONLY ITS TWO-SPACE STEP, SO A RECIPE LINE KEEPS ITS OWN INDENTATION; A WRITTEN "- " MARKER GIVES WAY TO THE BULLET
-                const text = isIndented ? line.replace(/^ {1,2}/, '').trimEnd() : line.trim().replace(/^[-•]\\s+/, '');
-                if (isIndented && leadInItem) {
-                    // THE NESTED LIST IS MADE WITH ITS FIRST ITEM, SO A LEAD-IN WITH NOTHING UNDER IT KEEPS NO EMPTY LIST
-                    if (!leadInList) {
-                        leadInList = createElement('ul', 'confirmBullets confirmSubBullets');
-                        leadInItem.appendChild(leadInList);
-                    }
-                    leadInList.appendChild(createElement('li', 'confirmLine confirmBullet confirmSubBullet', text));
-                    return;
-                }
-                const itemElement = createElement('li', 'confirmLine confirmBullet', text);
-                listElement.appendChild(itemElement);
-                leadInItem = !isIndented && /:$/.test(text) ? itemElement : null;
-                leadInList = null;
-            });
-
-            parentElement.appendChild(listElement);
-
-        });
-
-    }
-
-    function countConfirmStatements(lines) {
-        return lines.filter(function (line) { return line.trim() !== '' && !/^\\s/.test(line); }).length;
-    }
-
-    /*
-        Summary first; then the org (#480), its alias and username each in their own style so neither
-        reads as part of the sentence around it, with the org type's badge and, when the host offered
-        it, "Change org…"; then the warnings in one callout that is always on screen; then each
-        section folded under a toggle that names it and its count. A section's lines are built the
-        first time it opens, since a long one (every component of a deploy) costs nothing until the
-        reader asks for it. Returns the org's button and the toggles, in order, for the Tab cycle.
-    */
-    function drawConfirmContent(bodyElement, content, canChangeOrg) {
-
-        const summaryElement = createElement('div', 'confirmSummary');
-        drawConfirmLines(summaryElement, content.summary, countConfirmStatements(content.summary) > 1);
-        bodyElement.appendChild(summaryElement);
-
-        let changeOrgElement = null;
-
-        if (content.org) {
-            const orgElement = createElement('div', 'confirmOrg');
-            orgElement.appendChild(createElement('span', 'confirmOrgLabel', 'Org'));
-            if (content.org.alias) {
-                orgElement.appendChild(createElement('span', 'confirmOrgAlias', content.org.alias));
-                const separatorElement = createElement('span', 'confirmOrgSeparator', '·');
-                separatorElement.setAttribute('aria-hidden', 'true');
-                orgElement.appendChild(separatorElement);
-            }
-            orgElement.appendChild(createElement('span', 'confirmOrgUsername', content.org.username));
-            if (content.badge) { orgElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
-            if (canChangeOrg) {
-                changeOrgElement = createButton('secondary', 'confirmChangeOrg', CONFIRM_CHANGE_ORG_LABEL, 'compact');
-                changeOrgElement.addEventListener('click', function () { answerConfirmChangeOrg(); });
-                orgElement.appendChild(changeOrgElement);
-            }
-            bodyElement.appendChild(orgElement);
-        } else if (content.badge) {
-            summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge));
-        }
-
-        if (content.warnings.length > 0) {
-            const warningsElement = createElement('div', 'confirmWarnings');
-            warningsElement.setAttribute('role', 'note');
-            warningsElement.setAttribute('aria-label', CONFIRM_WARNINGS_LABEL);
-            warningsElement.appendChild(createElement('div', 'confirmWarningsHeading', CONFIRM_WARNINGS_LABEL));
-            drawConfirmLines(warningsElement, content.warnings, true);
-            bodyElement.appendChild(warningsElement);
-        }
-
-        const sectionToggleElements = content.sections.map(function (section, sectionIndex) {
-
-            const sectionElement = createElement('div', 'confirmSection');
-            const toggleElement = createButton('secondary', 'confirmSectionToggle');
-            const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-            const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-            const sectionBodyElement = createElement('div', 'confirmSectionBody hidden');
-            const sectionBodyId = 'confirmSection' + sectionIndex;
-            let isBuilt = false;
-            let isSectionExpanded = false;
-
-            glyphElement.setAttribute('class', 'toggleGlyph');
-            glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-            glyphElement.setAttribute('aria-hidden', 'true');
-            glyphElement.setAttribute('focusable', 'false');
-            pathElement.setAttribute('d', TOGGLE_COLLAPSED_GLYPH_PATH);
-            glyphElement.appendChild(pathElement);
-            toggleElement.appendChild(glyphElement);
-            toggleElement.appendChild(createElement('span', 'confirmSectionTitle', section.title));
-            if (section.count !== undefined) { toggleElement.appendChild(createElement('span', 'confirmSectionCount', String(section.count))); }
-
-            sectionBodyElement.setAttribute('id', sectionBodyId);
-            toggleElement.setAttribute('aria-controls', sectionBodyId);
-            drawToggle(toggleElement, false, false);
-
-            toggleElement.addEventListener('click', function () {
-                isSectionExpanded = !isSectionExpanded;
-                if (isSectionExpanded && !isBuilt) {
-                    drawConfirmLines(sectionBodyElement, section.lines, true);
-                    isBuilt = true;
-                }
-                drawToggle(toggleElement, isSectionExpanded, !isMotionReduced());
-                setShownWithMotion(sectionBodyElement, isSectionExpanded, !isMotionReduced());
-            });
-
-            sectionElement.appendChild(toggleElement);
-            sectionElement.appendChild(sectionBodyElement);
-            bodyElement.appendChild(sectionElement);
-
-            return toggleElement;
-
-        });
-
-        return (changeOrgElement ? [changeOrgElement] : []).concat(sectionToggleElements);
-
-    }
-
-    // "Change org…" (#480): NOT A BUTTON'S ANSWER -- THE HOST CANCELS THE ACTION, ASKS FOR THE ORG, AND STARTS THE ACTION AGAIN
-    function answerConfirmChangeOrg() {
-
-        if (!confirmDialog) { return; }
-        vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: null, changeOrg: true });
-        closeConfirmDialog(true);
-
-    }
-
-    function answerConfirm(choice) {
-
-        if (!confirmDialog) { return; }
-        const response = { command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: choice };
-        if (confirmDialog.checkState) { response.isChecked = choice !== null && confirmDialog.checkState.isChecked; }
-        vscodeApi.postMessage(response);
-        closeConfirmDialog(true);
-
-    }
-
-    // A DIALOG CLOSED WITHOUT AN ANSWER IS ONE THE HOST ALREADY ANSWERED CANCEL: A NEW MODEL, A FAILURE TO DRAW OR A NEWER REQUEST
-    function closeConfirmDialog(isFocusReturned) {
-
-        if (!confirmDialog) { return; }
-
-        const openerElement = confirmDialog.openerElement;
-        cockpitDialogHostElement.textContent = '';
-        confirmDialog = null;
-
-        [cockpitBodyElement, cockpitMetaElement, loadStatusElement].forEach(function (backgroundElement) {
-            if (backgroundElement) { backgroundElement.removeAttribute('inert'); }
-        });
-
-        if (isFocusReturned && openerElement && !openerElement.disabled) { focusElement(openerElement); }
-
-    }
+${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
     function focusElement(element) {
         if (element && typeof element.focus === 'function') { element.focus(); }
