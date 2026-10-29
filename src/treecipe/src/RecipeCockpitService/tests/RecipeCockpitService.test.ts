@@ -40,6 +40,10 @@ import {
     RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
     RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
+    RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_INSERT_RUNNING_LABEL,
@@ -3441,10 +3445,168 @@ describe('RecipeCockpitService', () => {
 
                 expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', filePath: '/etc' }, panelState))
                     .toEqual({ kind: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', datasetFolderPath: datasetFolderPath });
-                expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', treeKey: LEAD_TREE_KEY, tab: 'datasets' }, panelState))
-                    .toEqual({ kind: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', datasetFolderPath: datasetFolderPath, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'datasets' } });
+                panelState.dataOrgObjectApiNames = new Set(['Lead']);
+                expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', treeKey: LEAD_TREE_KEY, tab: 'datasets', filePath: '/etc' }, panelState))
+                    .toEqual({ kind: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', datasetFolderPath: datasetFolderPath, isOrgToPrompt: true, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'datasets' } });
                 expect(RecipeCockpitService.routePanelMessage({ command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' }, panelState))
                     .toEqual({ kind: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00', datasetFolderPath: path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets', 'dataset-2026-09-02T00-00-00'), renderSequence: 7 });
+
+            });
+
+            describe('a data set\'s Insert… against the Target Org Manager selection (#541)', () => {
+
+                const DATASET_FOLDER_NAME = 'dataset-2026-09-21T00-00-00';
+                const SANDBOX_ORG = { targetOrgIdentifier: 'qa', alias: 'qa', username: 'qa@example.com' };
+                const PRODUCTION_ORG = { targetOrgIdentifier: 'prod', alias: 'prod', username: 'prod@example.com' };
+
+                const buildSelectedPanelState = (isSandbox: boolean | 'unanswered' = true): IRecipeCockpitPanelState => {
+                    const panelState = buildHistoryPanelState();
+                    panelState.dataOrgObjectApiNames = new Set(['Lead']);
+                    panelState.dataOrgDetails = [PRODUCTION_ORG, SANDBOX_ORG];
+                    panelState.dataOrgSelection = {
+                        orgIndex: 1,
+                        orgDetail: SANDBOX_ORG,
+                        requestSequence: 3,
+                        ...( isSandbox === 'unanswered' ? {} : { orgTypeDetail: { isSandbox: isSandbox, organizationType: isSandbox ? 'Developer Edition' : 'Enterprise Edition' } } )
+                    };
+                    return panelState;
+                };
+                const datasetFolderPath = path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets', DATASET_FOLDER_NAME);
+
+                it('inserts into the selection the panel names by index, and asks for no org', () => {
+
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: 1 }, buildSelectedPanelState()))
+                        .toEqual({ kind: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, datasetFolderPath: datasetFolderPath, isOrgToPrompt: false });
+
+                });
+
+                it('refuses an index that is not the selection, names another username, is not an integer, or is missing while an org is selected', () => {
+
+                    const renamedPanelState = buildSelectedPanelState();
+                    renamedPanelState.dataOrgDetails = [PRODUCTION_ORG, { targetOrgIdentifier: 'qa', alias: 'qa', username: 'other@example.com' }];
+
+                    [
+                        [{ orgIndex: 0 }, buildSelectedPanelState()],
+                        [{ orgIndex: 1.5 }, buildSelectedPanelState()],
+                        [{ orgIndex: '1' }, buildSelectedPanelState()],
+                        [{}, buildSelectedPanelState()],
+                        [{ orgIndex: 1 }, renamedPanelState]
+                    ].forEach(([orgPart, panelState]) => expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, ...orgPart }, panelState as IRecipeCockpitPanelState))
+                        .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL }));
+
+                });
+
+                it('refuses a selection that answered it is not a sandbox, or has not answered yet', () => {
+
+                    ([false, 'unanswered'] as const).forEach(isSandbox => expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: 1 }, buildSelectedPanelState(isSandbox)))
+                        .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL }));
+
+                });
+
+                it('refuses while a run holds the selection, and answers a click during an insert with the running insert\'s state', () => {
+
+                    const holds: Array<(panelState: IRecipeCockpitPanelState) => void> = [
+                        panelState => { panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true }; },
+                        panelState => { panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: LEAD_TREE_KEY }; },
+                        panelState => { panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: LEAD_TREE_KEY, deployKind: 'fields' }; },
+                        panelState => { panelState.isOrgPromptOpen = true; },
+                        panelState => { panelState.isQueryOrgPromptOpen = true; }
+                    ];
+
+                    holds.forEach(hold => {
+                        const panelState = buildSelectedPanelState();
+                        hold(panelState);
+                        expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: 1 }, panelState))
+                            .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL });
+                    });
+
+                    const insertingPanelState = buildSelectedPanelState();
+                    insertingPanelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: 'dataset-2026-09-15T00-00-00' };
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: 1 }, insertingPanelState))
+                        .toEqual({ kind: 'postInsertState', hostMessage: insertingPanelState.insertStateMessage });
+
+                });
+
+                it('answers nothing for a name whose folder the host no longer maps, and refuses an index past the listing', () => {
+
+                    const unmappedPanelState = buildSelectedPanelState();
+                    unmappedPanelState.treeHistoryTargets.datasetFolderPathsByName.delete(DATASET_FOLDER_NAME);
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: 1 }, unmappedPanelState)).toBeUndefined();
+
+                    const shortListPanelState = buildSelectedPanelState();
+                    shortListPanelState.dataOrgDetails = [PRODUCTION_ORG];
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: 1 }, shortListPanelState))
+                        .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL });
+
+                });
+
+                it('refuses again in the executor when the selection is gone or is not a sandbox by the time it runs, asking nothing', async () => {
+
+                    const confirmSpy = jest.spyOn(RecipeCockpitService, 'confirmInPanel');
+                    const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+                    const insertAction = { kind: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, datasetFolderPath: datasetFolderPath, isOrgToPrompt: false };
+                    const performDatasetInsert = (panelState: IRecipeCockpitPanelState) =>
+                        (RecipeCockpitService as any).performDatasetInsert({}, panelState, insertAction, () => true, () => undefined);
+
+                    const unselectedPanelState = buildHistoryPanelState();
+                    await expect(performDatasetInsert(unselectedPanelState)).resolves.toBe(false);
+                    expect(warningSpy).toHaveBeenLastCalledWith(RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL);
+
+                    await expect(performDatasetInsert(buildSelectedPanelState(false))).resolves.toBe(false);
+                    expect(warningSpy).toHaveBeenLastCalledWith(RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL);
+
+                    expect(confirmSpy).not.toHaveBeenCalled();
+
+                });
+
+                it('asks for the org only when none is selected and the drawn model names objects to check', () => {
+
+                    const panelState = buildHistoryPanelState();
+
+                    // NO ORG AND NO OBJECT TO CHECK ONE AGAINST: SAID AS SUCH, NOT AS A CHANGED SELECTION
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME }, panelState))
+                        .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL });
+
+                    panelState.dataOrgObjectApiNames = new Set(['Lead']);
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: null }, panelState))
+                        .toEqual({ kind: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, datasetFolderPath: datasetFolderPath, isOrgToPrompt: true });
+
+                });
+
+            });
+
+            describe('what a data set\'s insert confirmation says (#541)', () => {
+
+                const buildContent = (recordCountsByObject: Record<string, number>, unreadableFileNames: string[] = [], customName?: string) =>
+                    RecipeCockpitService.buildDatasetInsertConfirmationContent('dataset-2026-09-21T00-00-00', customName, 'qa (qa@example.com)',
+                        { isSandbox: true, organizationType: 'Developer Edition' }, { recordCountsByObject, unreadableFileNames });
+
+                it('totals the records, lists each object in name order, and names the data set by its folder', () => {
+
+                    const content = buildContent({ Lead: 3, Account: 2 });
+
+                    expect(content.summary).toEqual(['Insert 5 records from this data set into qa (qa@example.com), parents first.']);
+                    expect(content.sections[0]).toEqual({ title: 'Records per object', count: 2, lines: ['  Account: 2', '  Lead: 3'] });
+                    expect(content.sections[1].lines[0]).toBe('Data set: dataset-2026-09-21T00-00-00');
+                    expect(content.warnings).toEqual(['Cancel on the progress notification deletes every record this insert saved.']);
+
+                });
+
+                it('says "record" for one, warns about a file it could not count, and names the data set by its own name', () => {
+
+                    const content = buildContent({ Lead: 1 }, ['collectionsApi-Broken.json'], 'Smoke test');
+
+                    expect(content.summary).toEqual(['Insert 1 record from this data set into qa (qa@example.com), parents first.']);
+                    expect(content.warnings).toContain('These files could not be counted and are inserted as they are: collectionsApi-Broken.json');
+                    expect(content.sections[1].lines[0]).toBe('Data set: Smoke test (dataset-2026-09-21T00-00-00)');
+
+                });
+
+                it('finds no row for a data set no card lists', () => {
+
+                    expect((RecipeCockpitService as any).findDatasetEntry(loadHistoryRecipe().recipeViewModel, 'dataset-not-listed')).toBeUndefined();
+
+                });
 
             });
 
@@ -3662,6 +3824,8 @@ describe('RecipeCockpitService', () => {
 
                 const { panel } = renderHistoryRecipe();
                 const accountCard = openTab(panel, ACCOUNT_TREE_KEY, 'Previously Used Data Sets');
+                // Insert… WAITS FOR THE ORG CHECK THE TREECIPE TAB STARTED (#541), ANSWERED HERE WITH NO ORG SELECTED
+                panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
                 panel.findAll(accountCard, 'treeDatasetOpen')[0].dispatch('click');
                 panel.findAll(accountCard, 'treeDatasetInsert')[0].dispatch('click');
@@ -4408,7 +4572,10 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('reveals a data set folder in the Explorer, and hands one to Insert Data Set by Directory pre-selected', async () => {
+            it('reveals a data set folder in the Explorer, and inserts one without Insert Data Set by Directory or its own picker (#541)', async () => {
+
+                const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockResolvedValue(undefined);
+                jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } } as any);
 
                 await openRenderedHistoryCockpit();
                 await receivedMessageHandler({ command: 'openDataset', datasetFolderName: RECORDED_DATASET });
@@ -4417,7 +4584,9 @@ describe('RecipeCockpitService', () => {
                 const datasetFolderPath = path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets', RECORDED_DATASET);
 
                 expect(executedCommandsNamed('revealInExplorer')).toEqual([['revealInExplorer', vscode.Uri.file(datasetFolderPath)]]);
-                expect(executedCommandsNamed(RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([[RECIPE_COCKPIT_INSERT_DATASET_COMMAND, datasetFolderPath]]);
+                expect(executedCommandsNamed(RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([]);
+                // NO ORG IS SELECTED, SO THE TARGET ORG MANAGER'S OWN LISTING IS ASKED, ONCE
+                expect(promptSpy).toHaveBeenCalledTimes(1);
 
             });
 
