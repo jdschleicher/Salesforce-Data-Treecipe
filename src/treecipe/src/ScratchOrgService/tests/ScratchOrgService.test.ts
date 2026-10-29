@@ -8,15 +8,29 @@ import * as path from 'path';
 // THE CLI HELPER'S OWN IMPORTS REACH vscode; NOTHING HERE CALLS IT
 jest.mock('vscode', () => ({}), { virtual: true });
 
+const lifecycleListeners: Array<{ eventName: string; listener: (data: unknown) => Promise<void>; listenerId?: string }> = [];
+
 jest.mock('@salesforce/core', () => ({
     AuthInfo: { listAllAuthorizations: jest.fn() },
     StateAggregator: { clearInstance: jest.fn() },
-    Org: { create: jest.fn() }
+    Org: { create: jest.fn() },
+    Lifecycle: {
+        getInstance: () => ({
+            on: (eventName: string, listener: (data: unknown) => Promise<void>, listenerId?: string) => {
+                if ( !listenerId || !lifecycleListeners.some(registered => registered.listenerId === listenerId) ) {
+                    lifecycleListeners.push({ eventName, listener, listenerId });
+                }
+            }
+        })
+    },
+    ScratchOrgCache: { create: jest.fn() },
+    scratchOrgCreate: jest.fn(),
+    scratchOrgLifecycleEventName: 'scratchOrgLifecycleEvent'
 }));
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo } from '@salesforce/core';
+import { AuthInfo, Org, ScratchOrgCache } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
@@ -27,6 +41,7 @@ import {
     SCRATCH_ORG_ALIAS_MAX_LENGTH,
     SCRATCH_ORG_DURATION_DAYS,
     ORG_OPERATION_REDACTED_VALUE,
+    SCRATCH_ORG_LIBRARY_LIFECYCLE_LISTENER_ID,
     ScratchOrgService,
     ScratchOrgSetupPhase
 } from '../ScratchOrgService';
@@ -802,6 +817,252 @@ describe('ScratchOrgService (#200)', () => {
             fs.rmSync(path.join(workspaceRoot, 'unpackaged'), { recursive: true });
 
             await expect(resolvePlan()).rejects.toThrow('The package directory "unpackaged"');
+
+        });
+
+    });
+
+    describe('creating with @salesforce/core (#507)', () => {
+
+        let outsideWorkingDirectory: string;
+
+        beforeEach(() => {
+            outsideWorkingDirectory = path.join(temporaryRoot, 'elsewhere');
+            fs.mkdirSync(outsideWorkingDirectory, { recursive: true });
+        });
+
+        const writeProjectJson = (projectJson: Record<string, unknown>) =>
+            fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), JSON.stringify(projectJson));
+
+        const readProjectJson = () => JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'sfdx-project.json'), 'utf-8'));
+
+        describe('findLibraryCreateRefusal', () => {
+
+            it('offers the library for a project that sets nothing only the CLI would read', () => {
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBeUndefined();
+            });
+
+            it('offers it when VS Code runs from inside this workspace', () => {
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, path.join(workspaceRoot, 'force-app'))).toBeUndefined();
+            });
+
+            it('refuses a project that sets signupTargetLoginUrl', () => {
+                writeProjectJson({ ...readProjectJson(), signupTargetLoginUrl: 'https://test.salesforce.com' });
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe('sfdx-project.json sets signupTargetLoginUrl.');
+            });
+
+            it('refuses a project that sets oauthLocalPort, which the library would read from elsewhere', () => {
+                writeProjectJson({ ...readProjectJson(), oauthLocalPort: 1718 });
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe('sfdx-project.json sets oauthLocalPort.');
+            });
+
+            it('refuses a project that names package ancestors', () => {
+                writeProjectJson({ packageDirectories: [{ path: 'force-app', default: true, package: 'pkg', ancestorVersion: 'HIGHEST' }] });
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe('sfdx-project.json names package ancestors.');
+            });
+
+            it('refuses a project config that sets what the library would not read', () => {
+                fs.writeFileSync(path.join(workspaceRoot, '.sf', 'config.json'), JSON.stringify({ 'target-dev-hub': 'devhub', 'org-api-version': '61.0' }));
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe(`${path.join('.sf', 'config.json')} sets org-api-version.`);
+            });
+
+            it('refuses a legacy .sfdx config that sets apiVersion, and one that cannot be read', () => {
+                fs.mkdirSync(path.join(workspaceRoot, '.sfdx'));
+                fs.writeFileSync(path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), JSON.stringify({ apiVersion: '61.0' }));
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe(`${path.join('.sfdx', 'sfdx-config.json')} sets apiVersion.`);
+
+                fs.writeFileSync(path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), '{ not json');
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, outsideWorkingDirectory)).toBe(`${path.join('.sfdx', 'sfdx-config.json')} could not be read.`);
+            });
+
+            it('refuses when VS Code runs from inside ANOTHER project, whose settings the library would read', () => {
+                const otherProjectPath = path.join(temporaryRoot, 'other-project');
+                fs.mkdirSync(path.join(otherProjectPath, 'nested'), { recursive: true });
+                fs.writeFileSync(path.join(otherProjectPath, 'sfdx-project.json'), '{}');
+
+                expect(ScratchOrgService.findLibraryCreateRefusal(workspaceRoot, path.join(otherProjectPath, 'nested')))
+                    .toBe('VS Code is running from inside another Salesforce DX project, whose settings the library would read.');
+            });
+
+        });
+
+        describe('buildLibraryOrgConfig', () => {
+
+            it('is the definition without $schema, with the project namespace only when the definition names none', async () => {
+                const plan = await resolvePlan();
+                fs.writeFileSync(plan.definitionFilePath, JSON.stringify({ $schema: 'x', edition: 'Developer', features: ['EnableSetPasswordInApi'] }));
+                writeProjectJson({ ...readProjectJson(), namespace: 'acme' });
+
+                expect(ScratchOrgService.buildLibraryOrgConfig(plan)).toEqual({ edition: 'Developer', features: ['EnableSetPasswordInApi'], namespace: 'acme' });
+
+                fs.writeFileSync(plan.definitionFilePath, JSON.stringify({ edition: 'Developer', namespace: 'own' }));
+                expect(ScratchOrgService.buildLibraryOrgConfig(plan)).toEqual({ edition: 'Developer', namespace: 'own' });
+            });
+
+            it('is undefined for a definition that is not a JSON object', async () => {
+                const plan = await resolvePlan();
+                fs.writeFileSync(plan.definitionFilePath, '[1]');
+                expect(ScratchOrgService.buildLibraryOrgConfig(plan)).toBeUndefined();
+            });
+
+        });
+
+        describe('runScratchOrgSetupWithLibrary', () => {
+
+            const determineIfDevHubOrg = jest.fn();
+            const HUB_ORG = { determineIfDevHubOrg };
+
+            const emitLifecycle = async (data: unknown) => {
+                for ( const registered of lifecycleListeners.filter(listener => listener.eventName === 'scratchOrgLifecycleEvent') ) {
+                    await registered.listener(data);
+                }
+            };
+
+            const OWN_REQUEST_ID = '2SR000000000001AAA';
+            let cachedRequests: Record<string, unknown>;
+
+            beforeEach(() => {
+                determineIfDevHubOrg.mockReset().mockResolvedValue(undefined);
+                (Org.create as jest.Mock).mockReset().mockResolvedValue(HUB_ORG);
+                cachedRequests = { [OWN_REQUEST_ID]: { alias: CHOSEN_ALIAS, hubUsername: CHOSEN_DEV_HUB.username } };
+                (ScratchOrgCache.create as jest.Mock).mockReset().mockImplementation(async () => ({ get: (key: string) => cachedRequests[key] }));
+            });
+
+            const runWithLibrary = async (createScratchOrg: jest.Mock) => {
+                const phases: ScratchOrgSetupPhase[] = [];
+                const outcome = await ScratchOrgService.runScratchOrgSetupWithLibrary(await resolvePlan(), { onPhase: phase => phases.push(phase), now: () => PLAN_DATE }, createScratchOrg);
+                return { outcome, phases };
+            };
+
+            it('opens the Dev Hub by USERNAME, checks it is one, and creates with the plan\'s alias and duration, never as the default', async () => {
+                const createScratchOrg = jest.fn().mockResolvedValue({ username: NEW_SCRATCH_USERNAME, warnings: [] });
+
+                const { outcome, phases } = await runWithLibrary(createScratchOrg);
+
+                expect(phases).toEqual(['creating']);
+                expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: CHOSEN_DEV_HUB.username });
+                expect(determineIfDevHubOrg).toHaveBeenCalledWith(true);
+                expect(createScratchOrg).toHaveBeenCalledWith({
+                    hubOrg: HUB_ORG,
+                    orgConfig: JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'), 'utf-8')),
+                    durationDays: SCRATCH_ORG_DURATION_DAYS,
+                    alias: CHOSEN_ALIAS,
+                    setDefault: false
+                });
+                expect(outcome).toMatchObject({ kind: 'created', username: NEW_SCRATCH_USERNAME });
+                expect(outcome).not.toHaveProperty('incompleteMessage');
+            });
+
+            it('writes the result through redactSecrets: no authFields, access token or auth code', async () => {
+                const createScratchOrg = jest.fn().mockResolvedValue({
+                    username: NEW_SCRATCH_USERNAME,
+                    warnings: ['a feature is deprecated'],
+                    authFields: { orgId: '00D000000000001EAA', accessToken: '00D000000000001!secret' },
+                    scratchOrgInfo: { Id: '2SR000000000001', AuthCode: 'one-time-code', SignupUsername: NEW_SCRATCH_USERNAME }
+                });
+
+                const { outcome } = await runWithLibrary(createScratchOrg);
+                const outputFilePath = ( outcome as { outputFilePath: string } ).outputFilePath;
+                const written = fs.readFileSync(outputFilePath, 'utf-8');
+
+                expect(outputFilePath).toBe(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME, '20261010-142233-scratch-create.json'));
+                expect(written).not.toContain('secret');
+                expect(written).not.toContain('one-time-code');
+                expect(JSON.parse(written)).toMatchObject({
+                    status: 0,
+                    createdWith: '@salesforce/core',
+                    result: { username: NEW_SCRATCH_USERNAME, orgId: '00D000000000001EAA', authFields: ORG_OPERATION_REDACTED_VALUE, warnings: ['a feature is deprecated'] }
+                });
+            });
+
+            it('KEEPS an org whose username the Dev Hub named, when setting it up fails afterwards', async () => {
+                const createScratchOrg = jest.fn().mockImplementation(async () => {
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: OWN_REQUEST_ID, SignupUsername: NEW_SCRATCH_USERNAME } });
+                    throw Object.assign(new Error('settings deploy failed'), { name: 'ProblemDeployingSettings' });
+                });
+
+                const { outcome } = await runWithLibrary(createScratchOrg);
+
+                expect(outcome).toMatchObject({
+                    kind: 'created',
+                    username: NEW_SCRATCH_USERNAME,
+                    incompleteMessage: `ProblemDeployingSettings: settings deploy failed. If it is not listed, finish it with "sf org resume scratch --job-id ${OWN_REQUEST_ID}"`
+                });
+                expect(JSON.parse(fs.readFileSync(( outcome as { outputFilePath: string } ).outputFilePath, 'utf-8')))
+                    .toMatchObject({ status: 1, result: { username: NEW_SCRATCH_USERNAME } });
+            });
+
+            it('ignores another request\'s org -- another extension\'s create, or another alias or Dev Hub -- and reports a failure', async () => {
+                cachedRequests['2SR000000000002AAA'] = { alias: 'someone-else', hubUsername: CHOSEN_DEV_HUB.username };
+                cachedRequests['2SR000000000003AAA'] = { alias: CHOSEN_ALIAS, hubUsername: 'other-hub@example.com' };
+                const createScratchOrg = jest.fn().mockImplementation(async () => {
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: '2SR000000000002AAA', SignupUsername: 'theirs@example.com' } });
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: '2SR000000000003AAA', SignupUsername: 'other-hub-org@example.com' } });
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: '2SR000000000004AAA', SignupUsername: 'uncached@example.com' } });
+                    throw new Error('signup failed');
+                });
+
+                const { outcome } = await runWithLibrary(createScratchOrg);
+
+                expect(outcome).toMatchObject({ kind: 'createFailed', failureMessage: 'Error: signup failed' });
+            });
+
+            it('ignores an event when the request cache cannot be read', async () => {
+                (ScratchOrgCache.create as jest.Mock).mockRejectedValue(new Error('unreadable'));
+                const createScratchOrg = jest.fn().mockImplementation(async () => {
+                    await emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Id: OWN_REQUEST_ID, SignupUsername: NEW_SCRATCH_USERNAME } });
+                    throw new Error('auth failed');
+                });
+
+                expect((await runWithLibrary(createScratchOrg)).outcome).toMatchObject({ kind: 'createFailed' });
+            });
+
+            it('reads a thrown non-Error as its text', async () => {
+                expect((await runWithLibrary(jest.fn().mockRejectedValue('plain failure'))).outcome).toMatchObject({ kind: 'createFailed', failureMessage: 'plain failure' });
+            });
+
+            it('is a failure, filed under the alias, when the Dev Hub named no org', async () => {
+                const createScratchOrg = jest.fn().mockRejectedValue(Object.assign(new Error('limit reached'), { name: 'SignupFailedError' }));
+
+                const { outcome } = await runWithLibrary(createScratchOrg);
+
+                expect(outcome).toMatchObject({ kind: 'createFailed', failureMessage: 'SignupFailedError: limit reached' });
+                expect(( outcome as { outputFilePath: string } ).outputFilePath).toContain(path.join(ORG_OPERATIONS_FOLDER_NAME, CHOSEN_ALIAS));
+            });
+
+            it('creates nothing through an org that is not a Dev Hub', async () => {
+                determineIfDevHubOrg.mockRejectedValue(new Error('not a Dev Hub'));
+                const createScratchOrg = jest.fn();
+
+                const { outcome } = await runWithLibrary(createScratchOrg);
+
+                expect(createScratchOrg).not.toHaveBeenCalled();
+                expect(outcome).toMatchObject({ kind: 'createFailed', failureMessage: 'Error: not a Dev Hub' });
+            });
+
+            it('refuses a success that names no usable username, and a definition that is not an object', async () => {
+                expect((await runWithLibrary(jest.fn().mockResolvedValue({ username: 'bad name', warnings: [] }))).outcome)
+                    .toEqual({ kind: 'createFailed', failureMessage: '@salesforce/core reported the scratch org created but named no usable username for it.' });
+
+                fs.writeFileSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'), '"edition"');
+                const createScratchOrg = jest.fn();
+                expect((await runWithLibrary(createScratchOrg)).outcome).toMatchObject({ kind: 'createFailed' });
+                expect(createScratchOrg).not.toHaveBeenCalled();
+            });
+
+            it('registers its lifecycle listener once however many creates run, and a later event names no org of a finished run', async () => {
+                const createScratchOrg = jest.fn().mockResolvedValue({ username: NEW_SCRATCH_USERNAME, warnings: [] });
+                await runWithLibrary(createScratchOrg);
+                await runWithLibrary(createScratchOrg);
+
+                expect(lifecycleListeners.filter(listener => listener.listenerId === SCRATCH_ORG_LIBRARY_LIFECYCLE_LISTENER_ID)).toHaveLength(1);
+                await expect(emitLifecycle({ stage: 'authenticate', scratchOrgInfo: { Username: 'late@example.com' } })).resolves.toBeUndefined();
+            });
+
+            it('never builds an sf org delete argv nor starts a process', async () => {
+                await runWithLibrary(jest.fn().mockResolvedValue({ username: NEW_SCRATCH_USERNAME, warnings: [] }));
+                expect(execFile).not.toHaveBeenCalled();
+            });
 
         });
 

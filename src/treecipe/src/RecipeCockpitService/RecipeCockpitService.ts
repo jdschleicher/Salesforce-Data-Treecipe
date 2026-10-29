@@ -2515,7 +2515,13 @@ export const RECIPE_COCKPIT_QUERY_LIST_CACHE_LIMIT = 50;
 // THE LONGEST QUERY KEY A MESSAGE MAY CARRY: <object api name, at most 80>:<kind>:<index>
 const RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH = 200;
 
-export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
+export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create with Salesforce CLI';
+
+// #507: THE SAME CREATE THROUGH @salesforce/core, OFFERED ONLY WHEN IT WOULD MAKE THE SAME ORG
+export const RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL = 'Create with @salesforce/core';
+
+// NO CANCEL STOPS IT, SO THE PROGRESS SAYS HOW LONG IT MAY HOLD THE ORG PICKER
+export const RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT = 'Creating scratch org with @salesforce/core… this can take several minutes and cannot be cancelled.';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
 
@@ -8763,7 +8769,9 @@ export class RecipeCockpitService {
     /*
         "+ New scratch org" (#200). The plan is resolved on the host and refused before any process
         when an input is missing; the modal names what was resolved, and Cancel runs nothing. Then
-        the create alone runs under one cancellable notification (#358: nothing is deployed), and how
+        the create alone runs under one cancellable notification (#358: nothing is deployed) -- or,
+        when the reader picks "Create with @salesforce/core" (#507, offered only where it would make
+        the same org), in the extension host under a notification with no Cancel -- and how
         the run ended is a notification with a "View output" button (#301). Once a username exists the org is kept whatever followed, and the
         connected-org cache is dropped BEFORE re-listing -- the session's cached "sf org list"
         predates the org -- so it is selected by username from a fresh answer, or reported not
@@ -8851,18 +8859,31 @@ export class RecipeCockpitService {
         }
 
         const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
+        const libraryRefusal = ScratchOrgService.findLibraryCreateRefusal(workspaceRoot);
 
         const confirmation = await this.confirmInPanel(
             `Create a scratch org through the Dev Hub ${devHubLabel}? Nothing is deployed to it.`,
-            { ...this.buildScratchOrgConfirmationContent(scratchOrgPlan), isDestructive: true },
-            RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL
+            { ...this.buildScratchOrgConfirmationContent(scratchOrgPlan, libraryRefusal), isDestructive: true },
+            RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
+            ...( libraryRefusal ? [] : [RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL] )
         );
 
-        if ( confirmation !== RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL ) {
+        if ( confirmation !== RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL && ( libraryRefusal || confirmation !== RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL ) ) {
             return;
         }
 
-        const setupOutcome: ScratchOrgSetupOutcome = await vscode.window.withProgress({
+        // NOTHING IN scratchOrgCreate STOPS A POLL, SO THAT PROGRESS OFFERS NO CANCEL IT COULD NOT HONOUR
+        const setupOutcome: ScratchOrgSetupOutcome = confirmation === RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL
+            ? await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Recipe Cockpit: scratch org ${scratchOrgPlan.alias}`,
+                cancellable: false
+            }, async progress => await ScratchOrgService.runScratchOrgSetupWithLibrary(scratchOrgPlan, {
+                onPhase: () => {
+                    progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT });
+                }
+            }))
+            : await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Recipe Cockpit: scratch org ${scratchOrgPlan.alias}`,
             cancellable: true
@@ -8913,9 +8934,12 @@ export class RecipeCockpitService {
         const selectionText = isListed
             ? 'It is selected in the Treecipe tab.'
             : `The Salesforce CLI does not list ${orgText} as connected yet, so no org was selected in its place: press ⟳ to check again.`;
+        const createdText = setupOutcome.incompleteMessage
+            ? `Scratch org ${orgText} was created, but setting it up stopped: ${setupOutcome.incompleteMessage}. It is kept.`
+            : `Scratch org ${orgText} is ready.`;
 
-        this.showCreatedScratchOrgNotification(isListed ? 'information' : 'warning',
-            `Scratch org ${orgText} is ready. Nothing was deployed to it. ${selectionText}`,
+        this.showCreatedScratchOrgNotification(isListed && !setupOutcome.incompleteMessage ? 'information' : 'warning',
+            `${createdText} Nothing was deployed to it. ${selectionText}`,
             setupOutcome.username,
             setupOutcome.outputFilePath,
             workspaceRoot);
@@ -9092,7 +9116,7 @@ export class RecipeCockpitService {
         choose among the reader's Dev Hubs) and what the definition sets for the admin. Nothing is
         deployed (#358), so no package directory or replacement is named.
     */
-    static buildScratchOrgConfirmationContent(scratchOrgPlan: IScratchOrgPlan): IRecipeCockpitConfirmContent {
+    static buildScratchOrgConfirmationContent(scratchOrgPlan: IScratchOrgPlan, libraryRefusal?: string): IRecipeCockpitConfirmContent {
 
         const devHubSourceText: Record<DevHubConfigSource, string> = {
             environment: 'set by an environment variable',
@@ -9122,7 +9146,14 @@ export class RecipeCockpitService {
             ],
             warnings: ['The definition file, authored in this repository, decides who administers the new org.'],
             sections: [
-                { title: 'What happens next', lines: ['Nothing is deployed to the new org: deploy what you need yourself once it is ready.', 'The scratch org is kept whatever happens, and nothing here deletes an org.'] }
+                { title: 'What happens next', lines: ['Nothing is deployed to the new org: deploy what you need yourself once it is ready.', 'The scratch org is kept whatever happens, and nothing here deletes an org.'] },
+                {
+                    title: 'Salesforce CLI or @salesforce/core',
+                    lines: libraryRefusal
+                        ? ['Create with Salesforce CLI runs sf org create scratch from this workspace.', this.toSingleLine(`Create with @salesforce/core is not offered: ${libraryRefusal}`)]
+                        : ['Create with Salesforce CLI runs sf org create scratch from this workspace, and can be cancelled.',
+                            'Create with @salesforce/core creates the same org inside VS Code, without starting the CLI, and saves it where the CLI keeps its orgs. It cannot be cancelled once it starts.']
+                }
             ]
         };
 
