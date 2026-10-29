@@ -25,6 +25,7 @@ export interface ExtensionConfig {
     recipeCockpitEnabled?: boolean;
     showRecipeCockpitStatusBarItem?: boolean;
     metadataDeployMethod?: string;
+    metadataRetrieveMethod?: string;
 }
 
 export interface TreecipeConfigDetail {
