@@ -43,6 +43,7 @@ import {
     RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
     RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL,
     RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_INSERT_RUNNING_LABEL,
@@ -3561,8 +3562,9 @@ describe('RecipeCockpitService', () => {
 
                     const panelState = buildHistoryPanelState();
 
+                    // NO ORG AND NO OBJECT TO CHECK ONE AGAINST: SAID AS SUCH, NOT AS A CHANGED SELECTION
                     expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME }, panelState))
-                        .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL });
+                        .toEqual({ kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL });
 
                     panelState.dataOrgObjectApiNames = new Set(['Lead']);
                     expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, orgIndex: null }, panelState))
@@ -3821,6 +3823,8 @@ describe('RecipeCockpitService', () => {
 
                 const { panel } = renderHistoryRecipe();
                 const accountCard = openTab(panel, ACCOUNT_TREE_KEY, 'Previously Used Data Sets');
+                // Insert… WAITS FOR THE ORG CHECK THE TREECIPE TAB STARTED (#541), ANSWERED HERE WITH NO ORG SELECTED
+                panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
                 panel.findAll(accountCard, 'treeDatasetOpen')[0].dispatch('click');
                 panel.findAll(accountCard, 'treeDatasetInsert')[0].dispatch('click');

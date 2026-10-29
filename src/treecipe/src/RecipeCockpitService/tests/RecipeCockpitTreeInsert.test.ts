@@ -1887,6 +1887,58 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             });
 
+            it('names the org and the data set as they are in the dialog, and escaped only in a notification', async () => {
+
+                await openCockpitWithInsertedDataset();
+                const datasetRow = panelState().recipeDataMessage.recipe.trees.flatMap(tree => tree.history?.datasets ?? [])
+                    .find(dataset => dataset.datasetFolderName === insertedDatasetFolderName);
+                datasetRow.customName = 'Smoke [run]';
+                panelState().dataOrgSelection.orgDetail = { ...panelState().dataOrgSelection.orgDetail, alias: 'qa (team)' };
+                const notificationSpy = jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+
+                await insertDatasetRow();
+
+                expect(inPanelConfirmations()[0][0]).toBe('Insert Smoke [run] into qa (team) (qa@example.com.qa)?');
+                expect(inPanelConfirmations()[0][1].detail).toContain('Insert 14 records from this data set into qa (team) (qa@example.com.qa), parents first.');
+                expect(inPanelConfirmations()[0][1].detail).toContain('Data set: Smoke [run] (' + insertedDatasetFolderName + ')');
+                expect(notificationSpy.mock.calls[0].slice(1, 3)).toEqual([
+                    RecipeYamlScalar.escapeForNotification('Smoke [run]'),
+                    `${RecipeYamlScalar.escapeForNotification('qa (team)')} (qa@example.com.qa)`
+                ]);
+
+            });
+
+            it('gives the button back, and reports the error, when the insert connection cannot be opened', async () => {
+
+                await openCockpitWithInsertedDataset();
+                getConnectionSpy.mockRejectedValue(new Error('INVALID_SESSION_ID'));
+                expectsCapturedError = true;
+
+                await insertDatasetRow();
+
+                expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+                expect(insertSpy).not.toHaveBeenCalled();
+                expect(panelState().insertStateMessage).toBeUndefined();
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: '', datasetFolderName: insertedDatasetFolderName });
+
+            });
+
+            it('replays the running data set insert to a document reloaded while it runs', async () => {
+
+                await openCockpitWithInsertedDataset();
+                let replayedInsertStates: unknown[] = [];
+                datasetConfirmAnswer = () => {
+                    postedPanelMessages.length = 0;
+                    replayedInsertStates = (RecipeCockpitService as any).buildReplayMessages(panelState()).filter((hostMessage: any) => hostMessage.command === 'insertState');
+                    return undefined;
+                };
+
+                await insertDatasetRow();
+
+                expect(replayedInsertStates).toEqual([{ command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: insertedDatasetFolderName }]);
+
+            });
+
             it('refuses when the org selection changed after the confirmation', async () => {
 
                 await openCockpitWithInsertedDataset();

@@ -2703,6 +2703,7 @@ export const RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER = 'Select the sandbox
 export const RECIPE_COCKPIT_DATASET_INSERT_REFUSAL_PREFIX = 'Nothing was inserted';
 export const RECIPE_COCKPIT_DATASET_INSERT_SANDBOX_ONLY_REASON = 'the Recipe Cockpit inserts a data set only into a sandbox or scratch org';
 export const RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL = 'Nothing was inserted: a scratch org run, a permission set assignment, a metadata deploy, an org prompt or a Treecipe Adapter update holds the org selection. Try again when it has finished.';
+export const RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL = 'Nothing was inserted: choose a sandbox or scratch org in the Target Org Manager first.';
 export const RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL = 'Nothing was inserted: the org selected in the Target Org Manager changed. Choose Insert… again.';
 export const RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL = 'Nothing was inserted: the org selected in the Target Org Manager has not answered that it is a sandbox or scratch org. Choose a sandbox or scratch org there.';
 export const RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON = 'A data set is being inserted.';
@@ -15697,11 +15698,13 @@ export class RecipeCockpitService {
             : RecipeYamlScalar.escapeForNotification(orgDetail.username);
         const datasetEntry = this.findDatasetEntry(recipeDataMessage.recipe, datasetFolderName);
         const datasetLabel = RecipeYamlScalar.escapeForNotification(datasetEntry?.dataset.customName ?? datasetFolderName);
+        // THE DIALOG IS WRITTEN WITH textContent, SO IT TAKES THE NAMES AS THEY ARE; ONLY A NOTIFICATION NEEDS THEM ESCAPED
+        const dialogOrgLabel = orgDetail.alias ? `${orgDetail.alias} (${orgDetail.username})` : orgDetail.username;
 
         const confirmation = await this.confirmInPanel(
-            `Insert ${datasetLabel} into ${orgLabel}?`,
+            `Insert ${datasetEntry?.dataset.customName ?? datasetFolderName} into ${dialogOrgLabel}?`,
             {
-                ...this.buildDatasetInsertConfirmationContent(datasetFolderName, datasetEntry?.dataset.customName, orgLabel, dataOrgSelection.orgTypeDetail,
+                ...this.buildDatasetInsertConfirmationContent(datasetFolderName, datasetEntry?.dataset.customName, dialogOrgLabel, dataOrgSelection.orgTypeDetail,
                     DatasetSourceService.countLegacyRecordsByObject(datasetFolderPath), dataOrgSelection.scratchOrgDetail),
                 org: this.buildConfirmOrg(orgDetail),
                 isDestructive: true,
@@ -16749,9 +16752,12 @@ export class RecipeCockpitService {
 
                 if ( orgIndex === undefined || orgIndex === null ) {
                     // THE OBJECTS A SELECTION CHECKS ARE THE CONFIRMED-DRAWN MODEL'S, AS FOR A PICK IN THE DROPDOWN
-                    return !dataOrgSelection && panelState.dataOrgObjectApiNames.size > 0
+                    if ( dataOrgSelection ) {
+                        return { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL };
+                    }
+                    return panelState.dataOrgObjectApiNames.size > 0
                         ? { ...datasetInsert, isOrgToPrompt: true }
-                        : { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL };
+                        : { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL };
                 }
 
                 if ( typeof orgIndex !== 'number'
@@ -25687,12 +25693,17 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (!insertElement) { return; }
 
         const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
-        insertElement.disabled = insertRunningTreeKey !== null || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+        // WHILE THE ORGS ARE CHECKED THE SELECTION IS CLEARED, SO A CLICK WOULD ASK FOR AN ORG BESIDE THE LISTING IN FLIGHT
+        insertElement.disabled = insertRunningTreeKey !== null || isDataOrgChecking || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
         insertElement.textContent = insertRunningDatasetFolderName === rowState.dataset.datasetFolderName ? INSERT_RUNNING_LABEL : 'Insert…';
-        insertElement.setAttribute('title', orgLabel
-            ? 'Insert this data set into ' + orgLabel + ', the org selected in the Target Org Manager'
+        insertElement.setAttribute('title', isDataOrgChecking ? DATA_ORG_CONNECTION_CHECK_INSERT_REASON
+            : orgLabel ? 'Insert this data set into ' + orgLabel + ', the org selected in the Target Org Manager'
             : 'Choose the org to insert this data set into');
 
+    }
+
+    function describeRunningInsert() {
+        return insertRunningDatasetFolderName !== null ? DATASET_INSERT_RUNNING_REASON : 'A tree is being inserted.';
     }
 
     function drawDatasetInserts() {
@@ -30296,7 +30307,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (permissionSetCard) {
             const assignReason = isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : insertRunningTreeKey !== null ? describeRunningInsert()
                 : isScratchOrgRunning ? 'A scratch org is being set up.'
                 : '';
             drawActionCardState(permissionSetCard, assignReason, ASSIGN_PERMISSION_SETS_TITLE);
@@ -30317,7 +30328,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const retrieveCard = retrieveCards[retrieveKind];
             const described = describeRetrieveSummary(treeState, retrieveKind);
             const busyReason = isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
-                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : insertRunningTreeKey !== null ? describeRunningInsert()
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : '';
@@ -30337,7 +30348,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const deployCard = deployCards[deployKind];
             const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
             const busyReason = isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : insertRunningTreeKey !== null ? describeRunningInsert()
                 : isScratchOrgRunning ? 'A scratch org is being set up.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataRetrieveRunning ? 'Metadata is being retrieved.'

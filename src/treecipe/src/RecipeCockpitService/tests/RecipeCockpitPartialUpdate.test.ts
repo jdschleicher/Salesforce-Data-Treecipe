@@ -8,7 +8,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitService, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -255,6 +255,8 @@ describe('Recipe Cockpit partial updates (#226)', () => {
                 panel.postToPanel({ command: 'recipeData', recipe: loadHistoryRecipe(), renderSequence: 1 });
                 panel.expandAllTrees();
                 panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Previously Used Data Sets'));
+                // THE ORG CHECK THE TREECIPE TAB STARTED ANSWERS WITH NO ORG SELECTED
+                panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
                 panel.postedHostMessages.length = 0;
 
                 const insertButton = datasetInsertButtons(panel)[0];
@@ -293,6 +295,32 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
                 expect(datasetInsertButtons(panel).map((button: any) => [button.disabled, button.textContent])).toEqual(buttons.map(() => [false, 'Insert…']));
                 expect(treeInsertButton.disabled).toBe(false);
+
+            });
+
+            it('is disabled while the org connections are checked, saying so, and given back when the list arrives', () => {
+
+                const panel = renderEverythingOpen();
+                panel.findAll(panel.cockpitBodyElement, 'dataOrgRefresh')[0].dispatch('click');
+
+                expect(datasetInsertButtons(panel).every((button: any) => button.disabled)).toBe(true);
+                expect(datasetInsertButtons(panel)[0].attributes.title).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON);
+
+                panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+
+                expect(datasetInsertButtons(panel).every((button: any) => !button.disabled)).toBe(true);
+
+            });
+
+            it('names a data set insert, not a tree insert, as what holds the Troubleshooting actions', () => {
+
+                const panel = renderEverythingOpen();
+                panel.openTab(cardNamed(panel, LEAD_TREE_KEY), 'Troubleshooting');
+                panel.postToPanel({ command: 'insertState', isRunning: true, treeKey: '', datasetFolderName: ADDED_DATASET.datasetFolderName });
+
+                const reasons = panel.findAll(cardNamed(panel, LEAD_TREE_KEY), 'actionCardReason').map((reasonElement: any) => reasonElement.textContent);
+                expect(reasons).toContain('A data set is being inserted.');
+                expect(reasons).not.toContain('A tree is being inserted.');
 
             });
 
