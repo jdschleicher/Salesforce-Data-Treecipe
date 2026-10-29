@@ -450,7 +450,8 @@ describe('RecipeCockpitService', () => {
         });
 
         // #374: THE HEADER NO LONGER FOLDS ITS CARD, SO IT IS NOT DRAWN AS SOMETHING TO CLICK
-        it('draws a tree header as a tall row tile with its actions at the end', () => {
+        // #540: ☆ AND ✎ MOVED TO THE START OF THE ROW, SO NOTHING PUSHES THEM TO THE END
+        it('draws a tree header as a tall row tile with its actions at the start', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             const treeHeaderRule = ruleFor(styleSheet, '\\.treeHeader');
@@ -458,7 +459,7 @@ describe('RecipeCockpitService', () => {
             expect(treeHeaderRule).toContain('min-height: 4rem;');
             expect(treeHeaderRule).not.toContain('cursor: pointer;');
             expect(treeHeaderRule).toContain('align-items: center;');
-            expect(ruleFor(styleSheet, '\\.treeHeaderActions')).toContain('margin-left: auto;');
+            expect(ruleFor(styleSheet, '\\.treeHeaderActions')).not.toContain('margin-left: auto;');
 
         });
 
@@ -3772,8 +3773,7 @@ describe('RecipeCockpitService', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = treeCardFolded(panel, 'Lead-ONLY');
-                    const headerChildren = headerOf(leadCard).children;
-                    const actionGroup = headerChildren[headerChildren.length - 1];
+                    const actionGroup = headerOf(leadCard).children[0];
 
                     expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
                     expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['sdtButton sdtButton-secondary treeFavorite', 'sdtButton sdtButton-secondary treeRename']);

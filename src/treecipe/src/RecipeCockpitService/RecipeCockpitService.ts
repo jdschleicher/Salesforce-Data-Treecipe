@@ -354,7 +354,6 @@ export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
 export const RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
-export const RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL = '✎';
 
 /*
     The cockpit's first SVG glyphs (#219, #257): a chain link, one path per state, drawn by the panel
@@ -607,7 +606,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
+            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -627,7 +626,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         items: [
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
-            'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact record(s) per Account (a friend\'s count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
+            'Record counts: each object\'s row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend\'s count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
         ]
@@ -651,7 +650,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
-            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the pencil edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -2391,7 +2390,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     Adapter cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Adapter';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
 /*
     The Adapter's two steps (#443): step 1 chooses the parent object and the WHERE for the parent
@@ -19844,7 +19843,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader .muted { color: var(--sdt-on-header-muted); }
     .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
-    .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
+    .treeHeaderActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
     /*
         THE BUTTON KINDS (#363): every button the panel makes carries sdtButton and exactly one
         sdtButton-<kind>, and these rules are the only place a button's colours, border and states
@@ -20124,6 +20123,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .recordTypesRememberLabel { cursor: pointer; }
     .treeFieldFixedValue { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
     .fixedValueGlyph { display: block; width: 1.1em; height: 1.1em; }
+    .fixedValueGlyph-large { width: 1.4em; height: 1.4em; }
     .fixedValueGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeFieldFixedValue[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
     .treeFieldFixedValue:disabled .fixedValueGlyph path { stroke: var(--sdt-muted); stroke-dasharray: 2 2.5; }
@@ -20260,6 +20260,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeDatasetName { font-weight: 600; }
     .treeDatasetFavorite, .treeDatasetRename { font-size: 1.1em; line-height: 1; }
+    .treeRename, .treeDatasetRename { display: inline-flex; align-items: center; justify-content: center; }
     .treeDataset { padding: 0.3rem 0.6rem; }
     .treeDataset:hover { background-color: var(--sdt-row-hover); }
     .treeDatasetDate { font-weight: 600; }
@@ -20532,7 +20533,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .treeRecordCountButton { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; }
     .treeRecordCountButton.changed:not(:disabled) { border-color: var(--sdt-changed); }
     .treeRecordCountChanged { font-weight: normal; font-size: 0.85em; color: var(--sdt-muted); }
-    .treeRecordCountButton:disabled .fixedValueGlyph path { stroke: var(--sdt-disabled-text); }
+    .sdtButton-secondary:disabled .fixedValueGlyph path { stroke: var(--sdt-disabled-text); }
     .treeRecordCountButton:disabled .treeRecordCountChanged { color: var(--sdt-disabled-text); }
     .treeRecordCountInput {
         width: 4.5rem;
@@ -20855,7 +20856,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
     const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
-    const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const DATASET_ADAPTED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_ADAPTED_LABEL)};
     const DATASET_INSERT_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY)};
     const DATASET_INSERT_RESULTS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL)};
@@ -23500,22 +23500,33 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
+        The ONE pencil every edit button draws (#540), built node by node like the chain link. Its
+        size is a class: 'default' on a row's buttons, 'large' on a tree card's rename.
+    */
+    function buildPencilGlyph(size) {
+
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+
+        glyphElement.setAttribute('class', size === 'large' ? 'fixedValueGlyph fixedValueGlyph-large' : 'fixedValueGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+
+        return glyphElement;
+
+    }
+
+    /*
         A field's edit button (#356): a real button, keyboard operable, its glyph built node by node
         like the chain link. A click opens its inline editor (#337) under the row.
     */
     function buildFieldFixedValueElement(treeObjectState, fieldState) {
 
         const buttonElement = createButton('icon', 'treeFieldFixedValue');
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', 'fixedValueGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
-        buttonElement.appendChild(glyphElement);
+        buttonElement.appendChild(buildPencilGlyph('default'));
 
         buttonElement.addEventListener('click', function () {
             if (buttonElement.disabled) { return; }
@@ -24890,18 +24901,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const buttonElement = createButton('secondary', 'treeRecordCountButton', '', 'compact');
         const valueElement = createElement('span', 'treeRecordCountValue');
         const changedElement = createElement('span', 'treeRecordCountChanged hidden', 'changed');
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
         const labelElement = createElement('span', 'treeRecordCountLabel');
 
-        glyphElement.setAttribute('class', 'fixedValueGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
         buttonElement.appendChild(valueElement);
-        buttonElement.appendChild(glyphElement);
+        buttonElement.appendChild(buildPencilGlyph('default'));
         buttonElement.appendChild(changedElement);
 
         buttonElement.addEventListener('click', function () {
@@ -25443,6 +25446,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
         datasetHeaderElement.appendChild(rowState.favoriteElement);
 
+        rowState.renameElement = createButton('secondary', 'historyAction treeDatasetRename');
+        rowState.renameElement.appendChild(buildPencilGlyph('default'));
+        rowState.renameElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'renameDataset', datasetFolderName: dataset.datasetFolderName });
+        });
+        datasetHeaderElement.appendChild(rowState.renameElement);
+
         rowState.nameElement = createElement('span', 'treeDatasetName');
         datasetHeaderElement.appendChild(rowState.nameElement);
 
@@ -25461,12 +25471,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
-
-        rowState.renameElement = createButton('secondary', 'historyAction treeDatasetRename', RENAME_TREE_ACTION_LABEL);
-        rowState.renameElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'renameDataset', datasetFolderName: dataset.datasetFolderName });
-        });
-        datasetHeaderElement.appendChild(rowState.renameElement);
 
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
             Object.assign({ command: 'openDataset' }, actionMessage)));
@@ -26504,6 +26508,35 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const objectStatesCounted = treeState.objectStates.filter(function (treeObjectState) { return !treeObjectState.isIteration; });
         const treeFieldCount = objectStatesCounted.reduce(function (fieldCount, treeObjectState) { return fieldCount + treeObjectState.fieldStates.length; }, 0);
 
+        /*
+            The actions sit at the START of the row, before the name they rename (#540). The click is
+            stopped on the GROUP rather than on each button, because a browser may hand a click on a
+            DISABLED button -- a rename while a write runs -- to its ancestors without running the
+            button's own listener. Only a card with a folder has them: the name and the favorite are
+            kept by folder, and the ungrouped card has none.
+        */
+        if (tree.folderName) {
+
+            const actionsElement = createElement('span', 'treeHeaderActions');
+            actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
+
+            treeState.favoriteElement = createButton('secondary', 'treeFavorite');
+            treeState.favoriteElement.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'toggleFavoriteTree', treeKey: tree.treeKey });
+            });
+            actionsElement.appendChild(treeState.favoriteElement);
+
+            treeState.renameElement = createButton('secondary', 'treeRename');
+            treeState.renameElement.appendChild(buildPencilGlyph('large'));
+            treeState.renameElement.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'renameTree', treeKey: tree.treeKey });
+            });
+            actionsElement.appendChild(treeState.renameElement);
+
+            treeHeaderElement.appendChild(actionsElement);
+
+        }
+
         treeState.titleElement = createElement('span', 'treeTitle', displayTitleOf(tree));
         treeHeaderElement.appendChild(treeState.titleElement);
 
@@ -26520,34 +26553,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeHeaderElement.appendChild(treeState.countElement);
         drawObjectSelection(treeState);
 
-        /*
-            The actions sit at the END of the row. The click is stopped on the GROUP rather than on
-            each button, because a browser may hand a click on a DISABLED button -- a rename while a
-            write runs -- to its ancestors without running the button's own listener.
-        */
-        const actionsElement = createElement('span', 'treeHeaderActions');
-        actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
-
-        // ONLY A CARD WITH A FOLDER: THE NAME AND THE FAVORITE ARE KEPT BY FOLDER, AND THE UNGROUPED CARD HAS NONE
-        if (tree.folderName) {
-
-            treeState.favoriteElement = createButton('secondary', 'treeFavorite');
-            treeState.favoriteElement.addEventListener('click', function () {
-                vscodeApi.postMessage({ command: 'toggleFavoriteTree', treeKey: tree.treeKey });
-            });
-            actionsElement.appendChild(treeState.favoriteElement);
-
-            treeState.renameElement = createButton('secondary', 'treeRename', RENAME_TREE_ACTION_LABEL);
-            treeState.renameElement.addEventListener('click', function () {
-                vscodeApi.postMessage({ command: 'renameTree', treeKey: tree.treeKey });
-            });
-            actionsElement.appendChild(treeState.renameElement);
-
-            drawTreeName(treeState);
-
-        }
-
-        treeHeaderElement.appendChild(actionsElement);
+        // ITS NAME AND STAR ARE DRAWN ONCE THE FOLDER AND COUNT ARE IN PLACE
+        if (tree.folderName) { drawTreeName(treeState); }
 
         treeElement.appendChild(treeHeaderElement);
         treeElement.appendChild(treeState.bodyElement);
@@ -28247,16 +28254,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState) {
 
         const buttonElement = createButton('icon', 'updaterFieldEdit');
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', 'fixedValueGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
-        buttonElement.appendChild(glyphElement);
+        buttonElement.appendChild(buildPencilGlyph('default'));
         buttonElement.setAttribute('aria-expanded', 'false');
 
         buttonElement.addEventListener('click', function () {

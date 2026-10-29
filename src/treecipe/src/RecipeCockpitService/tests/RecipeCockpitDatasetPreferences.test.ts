@@ -21,7 +21,8 @@ import {
     RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
     RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
     RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -458,6 +459,25 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(panel.findAll(rows[0], 'treeDatasetFavorite')[0].attributes['aria-pressed']).toBe('true');
             expect(panel.findAll(rows[1], 'treeDatasetFavorite')[0].textContent).toBe('☆');
             expect(panel.findAll(rows[1], 'treeDatasetRename')[0].attributes['aria-label']).toBe('Rename Before the fix');
+
+        });
+
+        // #540: A DATA SET ROW'S ✎ IS THE ONE DRAWN PENCIL, DEFAULT SIZE, RIGHT AFTER ☆ AND BEFORE THE NAME
+        it('draws ✎ as the default drawn pencil, right after ☆ and before the name', () => {
+
+            const panel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[0].customName = 'Before the fix'; });
+            const [firstRow] = rowsOf(panel, openLeadDatasets(panel));
+            const header = panel.findAll(firstRow, 'treeDatasetHeader')[0];
+            const classNames = header.children.map((childElement: any) => childElement.className.split(' ').pop());
+            const rename = panel.findAll(header, 'treeDatasetRename')[0];
+            const glyph = rename.children[0];
+
+            expect(classNames.slice(0, 3)).toEqual(['treeDatasetFavorite', 'treeDatasetRename', 'treeDatasetName']);
+            expect(rename.children).toHaveLength(1);
+            expect(glyph.attributes.class).toBe('fixedValueGlyph');
+            expect(glyph.children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
+            expect(rename.textContent).not.toContain('✎');
+            expect(rename.attributes['aria-label']).toBe('Rename Before the fix');
 
         });
 
