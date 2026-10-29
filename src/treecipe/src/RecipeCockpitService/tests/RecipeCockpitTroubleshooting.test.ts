@@ -70,6 +70,8 @@ import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../RecipeCock
 import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import JSZip = require('jszip');
 
 const findDescendantsByClass = (rootElement: any, className: string): any[] => {
     const found: any[] = [];
@@ -1069,6 +1071,178 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             await deploy('deployTreeRecordTypes');
 
             expect(modalCalls()[0][1].detail).toContain('sfdx-project.json has \u0022replacements\u0022'.replace(/\\u0022/g, '"'));
+
+        });
+
+        describe('with the metadataDeployMethod setting at jsforce (#505)', () => {
+
+            const DEPLOY_ID = '0Af000000000001AAA';
+            let deployZips: Buffer[];
+            let deployOptions: Array<Record<string, unknown>>;
+            let statusAnswers: unknown[];
+            let cancelledIds: string[];
+            let deployingConnections: unknown[];
+            let queryingConnections: unknown[];
+
+            const orgDeployResult = (componentFailures: Array<{ fullName: string; problem: string }> = []) => ({
+                id: DEPLOY_ID,
+                done: true,
+                status: componentFailures.length === 0 ? 'Succeeded' : 'Failed',
+                success: componentFailures.length === 0,
+                numberComponentsDeployed: componentFailures.length === 0 ? 7 : 0,
+                details: { componentSuccesses: [], componentFailures: componentFailures }
+            });
+
+            beforeEach(() => {
+
+                deployZips = [];
+                deployOptions = [];
+                statusAnswers = [orgDeployResult()];
+                cancelledIds = [];
+                deployingConnections = [];
+                queryingConnections = [];
+
+                jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockImplementation(((settingKey: string) => settingKey === 'metadataDeployMethod' ? 'jsforce' : undefined) as any);
+
+                const connectionWithoutMetadata = (SalesforceOrgService.getConnection as jest.Mock).getMockImplementation() as (username: string) => Promise<any>;
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async (username: string) => {
+                    const orgConnection = await connectionWithoutMetadata(username);
+                    const query = orgConnection.query;
+                    orgConnection.query = jest.fn().mockImplementation(async (soql: string) => { queryingConnections.push(orgConnection); return query(soql); });
+                    orgConnection.metadata = {
+                        deploy: jest.fn().mockImplementation(async (zipInput: Buffer, options: Record<string, unknown>) => {
+                            deployingConnections.push(orgConnection);
+                            deployZips.push(zipInput);
+                            deployOptions.push(options);
+                            return { id: DEPLOY_ID, done: false };
+                        }),
+                        checkDeployStatus: jest.fn().mockImplementation(async () => statusAnswers.length > 1 ? statusAnswers.shift() : statusAnswers[0]),
+                        cancelDeploy: jest.fn().mockImplementation(async (deployId: string) => { cancelledIds.push(deployId); return { done: false }; })
+                    };
+                    return orgConnection;
+                });
+
+            });
+
+            const zipEntryNames = async (zipInput: Buffer) => Object.keys((await JSZip.loadAsync(zipInput, { checkCRC32: true })).files).sort();
+
+            it('deploys the package.xml\'s components on the connection the sandbox check was asked on, never through the CLI, and says how it went as the CLI deploy does', async () => {
+
+                await openCockpitWithQaSelected();
+
+                await deploy('deployTreeFields');
+
+                const [, modalOptions] = modalCalls()[0];
+                expect(modalOptions.detail).toContain('It is sent on the connection checked above, not through the Salesforce CLI.');
+
+                expect(deployCalls()).toEqual([]);
+                expect(deployZips).toHaveLength(1);
+                expect(deployOptions[0]).toEqual({ rollbackOnError: true, singlePackage: true, ignoreWarnings: false, checkOnly: false });
+                // THE ORGANIZATION ROW WAS ASKED ON THE SAME CONNECTION THAT DEPLOYED
+                expect(queryingConnections).toContain(deployingConnections[0]);
+
+                const zip = await JSZip.loadAsync(deployZips[0], { checkCRC32: true });
+                expect(await zipEntryNames(deployZips[0])).toEqual(['objects/Account.object', 'objects/OtherChildObject__c.object', 'package.xml']);
+                expect(await zip.files['package.xml'].async('string')).toBe(fs.readFileSync(path.join(operationsFolderPath(), packageXmlFiles()[0]), 'utf-8'));
+                const accountObject = await zip.files['objects/Account.object'].async('string');
+                ['Annual_Budget__c', 'Rating__c', 'Sub_Rating__c'].forEach(fieldApiName => expect(accountObject).toContain(`<fullName>${fieldApiName}</fullName>`));
+                expect(accountObject).not.toContain('ParentId');
+
+                expect(informationCalls()).toContainEqual([`Deployed 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
+                expect(notificationWarnings()).toEqual([]);
+                const resultFileName = operationFiles().find(fileName => /^\d{8}-\d{6}-field-deploy\.json$/.test(fileName)) as string;
+                const resultFile = JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), resultFileName), 'utf-8'));
+                expect(resultFile).toEqual(expect.objectContaining({ status: 0, deployId: DEPLOY_ID, result: expect.objectContaining({ success: true, numberComponentsDeployed: 7 }) }));
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'))).toEqual(expect.objectContaining({
+                    step: 'field-deploy', outcome: 'succeeded', succeededCount: 7, fileNames: [packageXmlFiles()[0], resultFileName]
+                }));
+
+            });
+
+            it('names each failed component in the same warning the CLI deploy gives', async () => {
+
+                statusAnswers = [orgDeployResult([{ fullName: 'Account.Rating__c', problem: 'Value set Account_Ratings not found' }])];
+                await openCockpitWithQaSelected();
+
+                await deploy('deployTreeFields');
+
+                expect(lastWarning()).toEqual({ text: `Nothing was deployed to qa · ${QA_USERNAME}: Account.Rating__c: Value set Account_Ratings not found`, actions: [RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL] });
+                expect(informationCalls()).toEqual([]);
+
+            });
+
+            it('sends nothing to an org whose Organization row does not answer IsSandbox: true', async () => {
+
+                await openCockpitWithQaSelected();
+                organizationAnswers = [{ IsSandbox: false, OrganizationType: 'Enterprise Edition' }];
+
+                await deploy('deployTreeFields');
+
+                expect(deployZips).toEqual([]);
+                expect(deployCalls()).toEqual([]);
+                expect(lastWarning()?.text).toContain('Metadata is deployed only to a sandbox or scratch org.');
+
+            });
+
+            it('cancels the deploy in the org on a cancel, and says nothing was deployed once the org says it stopped', async () => {
+
+                statusAnswers = [{ id: DEPLOY_ID, done: true, status: 'Canceled', success: false }];
+                await openCockpitWithQaSelected();
+                const connectionWithMetadata = (SalesforceOrgService.getConnection as jest.Mock).getMockImplementation() as (username: string) => Promise<any>;
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async (username: string) => {
+                    const orgConnection = await connectionWithMetadata(username);
+                    const deployToOrg = orgConnection.metadata.deploy;
+                    orgConnection.metadata.deploy = async (zipInput: Buffer, options: Record<string, unknown>) => {
+                        cancellationToken.isCancellationRequested = true;
+                        return deployToOrg(zipInput, options);
+                    };
+                    return orgConnection;
+                });
+
+                await deploy('deployTreeFields');
+
+                expect(cancelledIds).toEqual([DEPLOY_ID]);
+                expect(lastWarning()?.text).toBe(`The deploy of 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME} was cancelled in the org, so nothing was deployed.`);
+                const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-summary.json')) as string;
+                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8')).outcome).toBe('cancelled');
+
+            });
+
+            it('plans again after the confirmation, and sends nothing when the project changed while it was open', async () => {
+
+                await openCockpitWithQaSelected();
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
+                    if ( options?.inPanel ) {
+                        fs.writeFileSync(path.join(workspaceRoot, '.forceignore'), '**/Rating__c.field-meta.xml\n');
+                        return RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL;
+                    }
+                    return undefined;
+                });
+
+                await deploy('deployTreeFields');
+
+                expect(modalCalls()[0][1].detail).toContain('It is sent on the connection checked above, not through the Salesforce CLI.');
+                expect(deployZips).toEqual([]);
+                expect(deployCalls()).toEqual([]);
+                expect(lastWarning()?.text).toBe('Nothing was deployed: .forceignore now covers a file being deployed. Deploy again to see how it goes now.');
+
+            });
+
+            it('deploys through the CLI, and says so in the confirmation, when sfdx-project.json has replacements', async () => {
+
+                const projectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+                const project = JSON.parse(fs.readFileSync(projectFilePath, 'utf-8'));
+                fs.writeFileSync(projectFilePath, JSON.stringify({ ...project, replacements: [{ filename: 'x', stringToReplace: 'y', replaceWithFile: 'z' }] }));
+                await openCockpitWithQaSelected();
+
+                await deploy('deployTreeRecordTypes');
+
+                expect(modalCalls()[0][1].detail).toContain('Through the Salesforce CLI: sfdx-project.json has "replacements", which the CLI applies to what it sends.');
+                expect(deployZips).toEqual([]);
+                expect(deployCalls()).toHaveLength(1);
+
+            });
 
         });
 
