@@ -28,6 +28,7 @@ import {
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 } from '../RecipeCockpitService';
+import { AuthInfo } from '@salesforce/core';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
     IDataOrgListing,
@@ -88,7 +89,7 @@ function buildFakeConnection(organizationRow: unknown = { IsSandbox: true, Organ
 // THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
 beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
-    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #255)', () => {
@@ -417,21 +418,21 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        describe('says whether a sandbox is a scratch org, from "sf org display" (#458)', () => {
+        describe('says whether a sandbox is a scratch org, from the local authorization (#458, #499)', () => {
 
             const selectionLabels = () => postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox, selection.failureMessage]);
 
-            it('asks "sf org display" only once the Organization row says sandbox, and labels a scratch org with its expiration date when it answers', async () => {
+            it('reads the local authorization only once the Organization row says sandbox, and labels a scratch org with its expiration date when it answers', async () => {
 
-                let answerDisplay: (orgDisplayDetail: { isScratchOrg: boolean; expirationDate?: string } | undefined) => void = () => undefined;
-                const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(resolveDisplay => { answerDisplay = resolveDisplay; }));
+                let answerDisplay: (scratchOrgDetail: { isScratchOrg: boolean; expirationDate?: string } | undefined) => void = () => undefined;
+                const readScratchOrgDetailSpy = jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockImplementation(() => new Promise(resolveDisplay => { answerDisplay = resolveDisplay; }));
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ IsSandbox: true, OrganizationType: 'Developer Edition' }) as any);
 
                 await openRenderedCockpit();
                 await receivedMessageHandler({ command: 'loadDataOrgs' });
                 await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
-                expect(readOrgDisplayDetailSpy).toHaveBeenCalledWith('qa@example.com.qa');
+                expect(readScratchOrgDetailSpy).toHaveBeenCalledWith('qa@example.com.qa');
                 // THE LABEL WAITS; THE DESCRIBES DO NOT
                 expect(selectionLabels()).toEqual([['', null, ''], ['', true, '']]);
                 expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
@@ -445,10 +446,10 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             });
 
-            it('drops a "sf org display" answer for an org the reader has since replaced', async () => {
+            it('drops the answer read for an org the reader has since replaced', async () => {
 
-                const answersByUsername = new Map<string, (orgDisplayDetail: { isScratchOrg: boolean } | undefined) => void>();
-                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(username => new Promise(resolveDisplay => { answersByUsername.set(username, resolveDisplay); }));
+                const answersByUsername = new Map<string, (scratchOrgDetail: { isScratchOrg: boolean } | undefined) => void>();
+                jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockImplementation(username => new Promise(resolveDisplay => { answersByUsername.set(username, resolveDisplay); }));
                 jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([SANDBOX_ORG, { ...SANDBOX_ORG, username: 'uat@example.com.uat', alias: 'uat' } as IAuthenticatedOrgDetail]));
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
@@ -471,9 +472,9 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             });
 
-            it('falls back to "Sandbox" when "sf org display" cannot answer', async () => {
+            it('falls back to "Sandbox" when the local authorization cannot answer', async () => {
 
-                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+                jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
                 await openRenderedCockpit();
@@ -484,9 +485,9 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             });
 
-            it('labels production from its Organization row without waiting for "sf org display", and never relabels it', async () => {
+            it('labels production from its Organization row without waiting for the local authorization, and never relabels it', async () => {
 
-                const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(() => undefined));
+                const readScratchOrgDetailSpy = jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockImplementation(() => new Promise(() => undefined));
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ IsSandbox: false, OrganizationType: 'Enterprise Edition' }) as any);
 
                 await openRenderedCockpit();
@@ -496,14 +497,14 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 const [lastLabel] = selectionLabels().slice(-1);
                 expect(lastLabel[0]).toBe('Production · Enterprise Edition');
                 expect(lastLabel[2]).toContain('It inserts records only into a sandbox or scratch org.');
-                // ONLY A SANDBOX IS ASKED: A PRODUCTION DEFAULT NEVER STARTS THE CLI
-                expect(readOrgDisplayDetailSpy).not.toHaveBeenCalled();
+                // ONLY A SANDBOX IS ASKED: A PRODUCTION DEFAULT NEVER READS THE AUTHORIZATION
+                expect(readScratchOrgDetailSpy).not.toHaveBeenCalled();
 
             });
 
-            it('keeps "type unknown" and the connection failure when the org could not be connected to, whatever "sf org display" says', async () => {
+            it('keeps "type unknown" and the connection failure when the org could not be connected to, whatever the local authorization says', async () => {
 
-                const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue({ isScratchOrg: true, expirationDate: '2026-11-01' });
+                const readScratchOrgDetailSpy = jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue({ isScratchOrg: true, expirationDate: '2026-11-01' });
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockRejectedValue(new Error('expired token'));
 
                 await openRenderedCockpit();
@@ -514,16 +515,17 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 const [lastLabel] = selectionLabels().slice(-1);
                 expect(lastLabel[0]).toBe('type unknown');
                 expect(lastLabel[2]).toContain('Could not connect to qa');
-                expect(readOrgDisplayDetailSpy).not.toHaveBeenCalled();
+                expect(readScratchOrgDetailSpy).not.toHaveBeenCalled();
 
             });
 
-            it('posts and stores no part of the access token "sf org display" answers with', async () => {
+            it('labels a scratch org from its local authorization, with no CLI process, and posts and stores no part of its token (#499)', async () => {
 
-                (SalesforceOrgService.readOrgDisplayDetail as jest.Mock).mockRestore();
-                SalesforceOrgService.clearConnectedOrgStatusCache();
-                const fixtureAnswer = fs.readFileSync(path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks', 'sfOrgDisplayScratchOrg.json'), 'utf8');
-                const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValue({ stdout: fixtureAnswer, stderr: '', exitCode: 0 });
+                (SalesforceOrgService.readScratchOrgDetail as jest.Mock).mockRestore();
+                const authorizationFields = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks', 'authFieldsScratchOrg.json'), 'utf8'));
+                const getFields = jest.fn(() => authorizationFields);
+                const createAuthInfoSpy = jest.spyOn(AuthInfo, 'create').mockResolvedValue({ getFields: getFields } as unknown as AuthInfo);
+                const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
                 await openRenderedCockpit();
@@ -531,11 +533,12 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
                 await new Promise(resolveYield => setImmediate(resolveYield));
 
-                expect(runSalesforceCliSpy.mock.calls.map(([cliArguments]) => cliArguments.slice(0, 2).join(' '))).toContain('org display');
+                expect(createAuthInfoSpy).toHaveBeenCalledWith({ username: 'qa@example.com.qa' });
+                expect(getFields.mock.calls.every(callArguments => callArguments.length === 0)).toBe(true);
+                expect(runSalesforceCliSpy.mock.calls.map(([cliArguments]) => cliArguments.slice(0, 2).join(' '))).not.toContain('org display');
                 expect(selectionLabels().slice(-1)).toEqual([['Scratch org · expires 2026-11-01', true, '']]);
-                const fixtureToken = JSON.parse(fixtureAnswer).result.accessToken;
-                expect(JSON.stringify(postedPanelMessages)).not.toContain(fixtureToken);
-                expect(JSON.stringify([...workspaceStateValues.entries()])).not.toContain(fixtureToken);
+                expect(JSON.stringify(postedPanelMessages)).not.toContain(authorizationFields.accessToken);
+                expect(JSON.stringify([...workspaceStateValues.entries()])).not.toContain(authorizationFields.accessToken);
 
             });
 
