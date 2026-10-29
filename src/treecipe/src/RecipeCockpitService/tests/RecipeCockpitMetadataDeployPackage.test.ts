@@ -15,7 +15,9 @@ import {
     IMetadataDeployConnection,
     METADATA_DEPLOY_DEFAULT_METHOD,
     METADATA_DEPLOY_JSFORCE_OPTIONS,
+    METADATA_DEPLOY_SOURCE_FILE_MAX_BYTES,
     METADATA_DEPLOY_STATUS_CHECK_ATTEMPTS,
+    METADATA_DEPLOY_ZIP_YIELD_EVERY_FILES,
     RecipeCockpitMetadataDeployPackage
 } from '../RecipeCockpitMetadataDeployPackage';
 import { IMetadataDeployComponent, RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
@@ -131,11 +133,38 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
 
     });
 
+    describe('resolveSourceFiles at scale', () => {
+
+        it('lists each object\'s fields folder once, however many of its fields are deployed', () => {
+
+            const fieldsPath = path.join(workspaceRoot, OBJECTS_PATH, 'Account', 'fields');
+            const manyFields: IMetadataDeployComponent[] = Array.from({ length: 300 }, (_unused, fieldIndex) => {
+                fs.writeFileSync(path.join(fieldsPath, `Bulk_${fieldIndex}__c.field-meta.xml`), `<CustomField xmlns="http://soap.sforce.com/2006/04/metadata"><fullName>Bulk_${fieldIndex}__c</fullName></CustomField>`);
+                return { type: 'CustomField', member: `Account.Bulk_${fieldIndex}__c` };
+            });
+            const listSpy = jest.spyOn(RecipeCockpitMetadataDeploy, 'listSubfolderEntries');
+
+            const resolved = RecipeCockpitMetadataDeployPackage.resolveSourceFiles(workspaceRoot, ['force-app'], manyFields);
+
+            expect(resolved.sourceFiles).toHaveLength(300);
+            expect(listSpy.mock.calls.filter(([, subfolderName]) => subfolderName === 'fields')).toHaveLength(1);
+
+        });
+
+    });
+
     describe('planDeployMethod', () => {
+
+        it('says what changed when a deploy planned for jsforce can no longer go that way', () => {
+            expect(RecipeCockpitMetadataDeployPackage.describeChangedPlan({ method: 'cli', reason: 'replacements' })).toBe('sfdx-project.json gained "replacements" while the confirmation was open');
+            expect(RecipeCockpitMetadataDeployPackage.describeChangedPlan({ method: 'cli', reason: 'forceIgnore' })).toBe('.forceignore now covers a file being deployed');
+            expect(RecipeCockpitMetadataDeployPackage.describeChangedPlan({ method: 'cli', reason: 'missingSource' })).toBe('a component\'s source file is gone');
+            expect(RecipeCockpitMetadataDeployPackage.describeChangedPlan({ method: 'cli', reason: 'setting' })).toBe('the metadata deploy method setting changed');
+        });
 
         it('deploys through the CLI when the setting says so, and through jsforce otherwise', () => {
             expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('cli', workspaceRoot, ['force-app', 'unpackaged'], EVERY_TYPE_COMPONENTS)).toEqual({ method: 'cli', reason: 'setting' });
-            expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app', 'unpackaged'], EVERY_TYPE_COMPONENTS)).toEqual({ method: 'jsforce' });
+            expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app', 'unpackaged'], EVERY_TYPE_COMPONENTS)).toEqual({ method: 'jsforce', sourceFiles: expect.any(Array) });
         });
 
         it('falls back to the CLI for any sfdx-project.json replacements, since the CLI applies them to what it sends', () => {
@@ -148,7 +177,7 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
             expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app'], FIELD_COMPONENTS)).toEqual({ method: 'cli', reason: 'replacements' });
 
             fs.writeFileSync(sfdxProjectFilePath, JSON.stringify({ ...sfdxProject, replacements: [] }));
-            expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app'], FIELD_COMPONENTS)).toEqual({ method: 'jsforce' });
+            expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app'], FIELD_COMPONENTS)).toEqual({ method: 'jsforce', sourceFiles: expect.any(Array) });
 
         });
 
@@ -157,7 +186,7 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
             const forceIgnoreFilePath = path.join(workspaceRoot, '.forceignore');
 
             fs.writeFileSync(forceIgnoreFilePath, 'package.xml\n**/jsconfig.json\n**/.eslintrc.json\n**/__tests__/**\n');
-            expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app'], FIELD_COMPONENTS)).toEqual({ method: 'jsforce' });
+            expect(RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app'], FIELD_COMPONENTS)).toEqual({ method: 'jsforce', sourceFiles: expect.any(Array) });
 
             fs.writeFileSync(forceIgnoreFilePath, '# a team keeps this field out of every deploy\n**/Annual_Budget__c.field-meta.xml\n');
             const plan = RecipeCockpitMetadataDeployPackage.planDeployMethod('jsforce', workspaceRoot, ['force-app'], FIELD_COMPONENTS);
@@ -171,7 +200,7 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
 
         it('says in the confirmation which way the deploy goes, and why it is the CLI when the setting asked for jsforce', () => {
             expect(RecipeCockpitMetadataDeployPackage.describeDeployMethod({ method: 'cli', reason: 'setting' })).toEqual(['Only these components are deployed, through a generated package.xml.', 'Nothing else in the object folders is.']);
-            expect(RecipeCockpitMetadataDeployPackage.describeDeployMethod({ method: 'jsforce' }).join(' ')).toContain('not through the Salesforce CLI');
+            expect(RecipeCockpitMetadataDeployPackage.describeDeployMethod({ method: 'jsforce', sourceFiles: [] }).join(' ')).toContain('not through the Salesforce CLI');
             expect(RecipeCockpitMetadataDeployPackage.describeDeployMethod({ method: 'cli', reason: 'replacements' }).at(-1)).toContain('"replacements"');
             expect(RecipeCockpitMetadataDeployPackage.describeDeployMethod({ method: 'cli', reason: 'forceIgnore' }).at(-1)).toContain('.forceignore');
         });
@@ -243,6 +272,57 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
 
             fs.writeFileSync(fieldFilePath, '<CustomField><unclosed>');
             await expect(RecipeCockpitMetadataDeployPackage.buildDeployZip(RecipeCockpitMetadataDeploy.buildPackageXml(components), resolved.sourceFiles)).rejects.toThrow('could not be read as XML');
+
+        });
+
+    });
+
+    describe('buildDeployZip reading', () => {
+
+        const fieldComponent: IMetadataDeployComponent[] = [{ type: 'CustomField', member: 'Account.Rating__c' }];
+        const fieldFilePath = () => path.join(workspaceRoot, OBJECTS_PATH, 'Account', 'fields', 'Rating__c.field-meta.xml');
+        const resolveField = () => RecipeCockpitMetadataDeployPackage.resolveSourceFiles(workspaceRoot, ['force-app'], fieldComponent).sourceFiles;
+
+        it('carries a source file\'s prefixed namespaces onto the merged .object, and refuses one prefix bound to two namespaces', async () => {
+
+            fs.writeFileSync(fieldFilePath(), '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><fullName>Rating__c</fullName><defaultValue xsi:nil="true"/></CustomField>');
+            const entries = await readZip(await RecipeCockpitMetadataDeployPackage.buildDeployZip(RecipeCockpitMetadataDeploy.buildPackageXml(fieldComponent), resolveField()) as Buffer);
+            expect(entries['objects/Account.object']).toContain('<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
+            expect(entries['objects/Account.object']).toContain('xsi:nil="true"');
+
+            const components: IMetadataDeployComponent[] = [...fieldComponent, { type: 'CustomField', member: 'Account.Annual_Budget__c' }];
+            fs.writeFileSync(path.join(workspaceRoot, OBJECTS_PATH, 'Account', 'fields', 'Annual_Budget__c.field-meta.xml'), '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="urn:another"><fullName>Annual_Budget__c</fullName></CustomField>');
+            const resolved = RecipeCockpitMetadataDeployPackage.resolveSourceFiles(workspaceRoot, ['force-app'], components);
+            await expect(RecipeCockpitMetadataDeployPackage.buildDeployZip(RecipeCockpitMetadataDeploy.buildPackageXml(components), resolved.sourceFiles)).rejects.toThrow('binds xmlns:xsi to another namespace');
+
+        });
+
+        it('never reads a link planted after the file was found, and refuses a file past the size cap unread', async () => {
+
+            const sourceFiles = resolveField();
+            fs.renameSync(fieldFilePath(), path.join(temporaryRoot, 'outside.xml'));
+            fs.symlinkSync(path.join(temporaryRoot, 'outside.xml'), fieldFilePath());
+            await expect(RecipeCockpitMetadataDeployPackage.buildDeployZip('<Package/>', sourceFiles)).rejects.toThrow('The source file of CustomField Account.Rating__c could not be read, so nothing was deployed.');
+
+            fs.rmSync(fieldFilePath());
+            fs.renameSync(path.join(temporaryRoot, 'outside.xml'), fieldFilePath());
+            const readSpy = jest.spyOn(fs, 'readFileSync');
+            jest.spyOn(fs, 'fstatSync').mockReturnValueOnce({ isFile: () => true, size: METADATA_DEPLOY_SOURCE_FILE_MAX_BYTES + 1 } as fs.Stats);
+            await expect(RecipeCockpitMetadataDeployPackage.buildDeployZip('<Package/>', sourceFiles)).rejects.toThrow('The source file of CustomField Account.Rating__c is larger than 64 MB, so nothing was deployed.');
+            expect(readSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('gives the extension host its event loop back while it reads many files, and stops, building nothing, on a cancel', async () => {
+
+            const sourceFiles = Array.from({ length: METADATA_DEPLOY_ZIP_YIELD_EVERY_FILES * 2 + 1 }, () => resolveField()[0]);
+            const immediateSpy = jest.spyOn(global, 'setImmediate');
+            await RecipeCockpitMetadataDeployPackage.buildDeployZip('<Package/>', sourceFiles);
+            expect(immediateSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+            let checks = 0;
+            expect(await RecipeCockpitMetadataDeployPackage.buildDeployZip('<Package/>', sourceFiles, () => ++checks > 3)).toBeUndefined();
+            expect(checks).toBe(4);
 
         });
 
@@ -394,13 +474,13 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
             const cancelledRun = await RecipeCockpitMetadataDeployPackage.runDeploy(connection(), Buffer.from('zip'), control());
             // A CANCEL BEFORE ANYTHING WAS SENT SENDS NOTHING
             expect(deployCalls).toEqual([]);
-            expect(cancelledRun).toEqual({ kind: 'unconfirmed', failureMessage: 'The deploy was cancelled before it was sent, so nothing was deployed.', isCancelled: true });
+            expect(cancelledRun).toEqual({ kind: 'unconfirmed', failureMessage: 'The deploy was cancelled before it was sent, so nothing was deployed.', isCancelled: true, isSent: false });
 
             isCancellationRequested = false;
             const deployConnection = connection();
             (deployConnection.metadata.deploy as jest.Mock).mockImplementationOnce(async () => { isCancellationRequested = true; return { id: '0Af000000000001AAA' }; });
             const unansweredRun = await RecipeCockpitMetadataDeployPackage.runDeploy(deployConnection, Buffer.from('zip'), control());
-            expect(unansweredRun).toEqual(expect.objectContaining({ kind: 'unconfirmed', deployId: '0Af000000000001AAA', isCancelled: true }));
+            expect(unansweredRun).toEqual(expect.objectContaining({ kind: 'unconfirmed', deployId: '0Af000000000001AAA', isCancelled: true, isSent: true }));
 
             isCancellationRequested = false;
             cancelCalls = [];
@@ -412,6 +492,28 @@ describe('RecipeCockpitMetadataDeployPackage (#505)', () => {
             statusAnswers = [{ done: false, status: 'InProgress' }, { done: true, status: 'Canceled' }];
             const timedOutCancelledRun = await RecipeCockpitMetadataDeployPackage.runDeploy(connection(), Buffer.from('zip'), control({ timeoutMilliseconds: 500 }));
             expect(timedOutCancelledRun).toEqual(expect.objectContaining({ kind: 'cancelled', isTimedOut: true }));
+
+        });
+
+        it('gives up on a request that never answers: a deploy request by its own timeout, a status check by the cancel wait once cancelled', async () => {
+
+            const neverAnswers = () => new Promise<never>(() => undefined);
+
+            const hungDeploy = connection();
+            (hungDeploy.metadata.deploy as jest.Mock).mockImplementationOnce(neverAnswers);
+            expect(await RecipeCockpitMetadataDeployPackage.runDeploy(hungDeploy, Buffer.from('zip'), control({ requestTimeoutMilliseconds: 5000, requestWatchMilliseconds: 1000 })))
+                .toEqual({ kind: 'unconfirmed', failureMessage: 'The org did not answer the deploy request in time, so whether it landed is unknown.', isCancelled: false, isSent: true });
+
+            const hungCheck = connection();
+            (hungCheck.metadata.checkDeployStatus as jest.Mock).mockImplementation(() => {
+                isCancellationRequested = true;
+                return neverAnswers();
+            });
+            const hungRun = await RecipeCockpitMetadataDeployPackage.runDeploy(hungCheck, Buffer.from('zip'), control({ requestWatchMilliseconds: 1000 }));
+            expect(hungRun).toEqual(expect.objectContaining({ kind: 'unconfirmed', deployId: '0Af000000000001AAA', isCancelled: true, isSent: true }));
+            expect(cancelCalls).toEqual(['0Af000000000001AAA']);
+            // THE CANCEL WAIT, NOT THE REQUEST TIMEOUT, ENDED IT
+            expect(clock).toBeLessThan(60000);
 
         });
 

@@ -33,7 +33,7 @@ import {
     MetadataDeployOutcome,
     RecipeCockpitMetadataDeploy
 } from './RecipeCockpitMetadataDeploy';
-import { IMetadataDeployConnection, METADATA_DEPLOY_METHOD_SETTING, MetadataDeployRun, RecipeCockpitMetadataDeployPackage } from './RecipeCockpitMetadataDeployPackage';
+import { IMetadataDeployConnection, IMetadataDeploySourceFile, METADATA_DEPLOY_METHOD_SETTING, MetadataDeployRun, RecipeCockpitMetadataDeployPackage } from './RecipeCockpitMetadataDeployPackage';
 import {
     METADATA_LIST_TIMEOUT_MILLISECONDS,
     METADATA_RETRIEVE_MAX_COMPONENTS,
@@ -13432,22 +13432,28 @@ export class RecipeCockpitService {
         const operationDate = new Date();
         const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
         let deployArguments: string[] = [];
-        let deployZip: Buffer | undefined;
+        let deploySourceFiles: IMetadataDeploySourceFile[] | undefined;
+        let packageXml = '';
         let packageXmlWrittenFilePath: string | undefined;
         try {
-            const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
+            packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
             const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, operationName, operationDate) : undefined;
             packageXmlWrittenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
             if ( !packageXmlWrittenFilePath ) {
                 return refuse(`Nothing was deployed: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
             if ( deployMethodPlan.method === 'jsforce' ) {
-                // READ AGAIN NOW: A FILE CAN HAVE GONE WHILE THE CONFIRMATION WAS OPEN
-                const resolvedSourceFiles = RecipeCockpitMetadataDeployPackage.resolveSourceFiles(workspaceRoot, packageDirectoryPaths, components);
-                if ( resolvedSourceFiles.missingComponents.length > 0 ) {
-                    return refuse(`Nothing was deployed: no source file was found for ${RecipeCockpitMetadataDeploy.describeCappedList(resolvedSourceFiles.missingComponents.map(component => `${component.type} ${component.member}`))}.`);
+                // PLANNED AGAIN NOW, FOR EXACTLY WHAT WAS CONFIRMED: THE PROJECT CAN HAVE CHANGED WHILE THE CONFIRMATION WAS OPEN
+                const confirmedPlan = RecipeCockpitMetadataDeployPackage.planDeployMethod(
+                    RecipeCockpitMetadataDeployPackage.readDeployMethod(ConfigurationService.getExtensionConfigValue(METADATA_DEPLOY_METHOD_SETTING)),
+                    workspaceRoot,
+                    packageDirectoryPaths,
+                    components
+                );
+                if ( confirmedPlan.method !== 'jsforce' ) {
+                    return refuse(`Nothing was deployed: ${RecipeCockpitMetadataDeployPackage.describeChangedPlan(confirmedPlan)}. Deploy again to see how it goes now.`);
                 }
-                deployZip = await RecipeCockpitMetadataDeployPackage.buildDeployZip(packageXml, resolvedSourceFiles.sourceFiles);
+                deploySourceFiles = confirmedPlan.sourceFiles;
             } else {
                 deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlWrittenFilePath), orgDetail.username);
             }
@@ -13472,24 +13478,44 @@ export class RecipeCockpitService {
         const progressTitle = RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`);
         let deployOutcome: MetadataDeployOutcome;
 
-        if ( deployZip ) {
+        if ( deploySourceFiles ) {
 
-            const zipInput = deployZip;
-            const jsforceRun: MetadataDeployRun = await vscode.window.withProgress({
+            const sourceFiles = deploySourceFiles;
+            const metadataConnection: IMetadataDeployConnection = {
+                metadata: {
+                    deploy: (zipInput, options) => deployConnection.metadata.deploy(zipInput, options),
+                    checkDeployStatus: (asyncProcessId, includeDetails) => deployConnection.metadata.checkDeployStatus(asyncProcessId, includeDetails),
+                    cancelDeploy: asyncProcessId => deployConnection.metadata.cancelDeploy(asyncProcessId)
+                }
+            };
+            // THE ZIP IS BUILT UNDER THE SAME CANCELLABLE PROGRESS AS THE DEPLOY: A LARGE TREE'S FILES TAKE SECONDS TO READ
+            const jsforceAttempt: MetadataDeployRun | { kind: 'notBuilt'; refusalText: string } = await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: progressTitle,
                 cancellable: true
-            }, async (_progress, cancellationToken) => await RecipeCockpitMetadataDeployPackage.runDeploy(
-                deployConnection as unknown as IMetadataDeployConnection,
-                zipInput,
-                { isCancellationRequested: () => cancellationToken.isCancellationRequested, timeoutMilliseconds: METADATA_DEPLOY_TIMEOUT_MILLISECONDS }
-            ));
+            }, async (_progress, cancellationToken) => {
+                const isCancellationRequested = () => cancellationToken.isCancellationRequested;
+                let zipInput: Buffer | undefined;
+                try {
+                    zipInput = await RecipeCockpitMetadataDeployPackage.buildDeployZip(packageXml, sourceFiles, isCancellationRequested);
+                } catch (zipError) {
+                    return { kind: 'notBuilt', refusalText: this.describeThrown(zipError) };
+                }
+                return zipInput
+                    ? await RecipeCockpitMetadataDeployPackage.runDeploy(metadataConnection, zipInput, { isCancellationRequested: isCancellationRequested, timeoutMilliseconds: METADATA_DEPLOY_TIMEOUT_MILLISECONDS })
+                    : { kind: 'unconfirmed', failureMessage: 'The deploy was cancelled before it was sent, so nothing was deployed.', isCancelled: true, isSent: false };
+            });
+
+            if ( jsforceAttempt.kind === 'notBuilt' ) {
+                return refuse(jsforceAttempt.refusalText);
+            }
+            const jsforceRun = jsforceAttempt;
 
             const savedPayload = jsforceRun.kind === 'unconfirmed'
                 ? { ...( jsforceRun.payload ?? {} ), ...( jsforceRun.deployId ? { deployId: jsforceRun.deployId } : {} ), message: jsforceRun.failureMessage }
                 : { ...jsforceRun.payload, deployId: jsforceRun.deployId };
             // A CANCEL BEFORE THE REQUEST WAS SENT LEAVES NOTHING TO RECORD; A REQUEST THAT FAILED MAY STILL HAVE REACHED THE ORG
-            const wasSent = !( jsforceRun.kind === 'unconfirmed' && jsforceRun.isCancelled && jsforceRun.deployId === undefined );
+            const wasSent = jsforceRun.kind !== 'unconfirmed' || jsforceRun.isSent;
             deployOutputFilePath = wasSent && runArtifactsLocation
                 ? ScratchOrgService.writeOrgOperationPayload(workspaceRoot, orgDetail.username, operationName, savedPayload, operationDate, runArtifactsLocation)
                 : undefined;
@@ -13501,7 +13527,7 @@ export class RecipeCockpitService {
                     : `The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled in the org, so nothing was deployed.`, cliStarted);
             }
 
-            if ( jsforceRun.kind === 'unconfirmed' && jsforceRun.isCancelled && jsforceRun.deployId === undefined ) {
+            if ( jsforceRun.kind === 'unconfirmed' && !jsforceRun.isSent ) {
                 return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled before it was sent, so nothing was deployed.`);
             }
 

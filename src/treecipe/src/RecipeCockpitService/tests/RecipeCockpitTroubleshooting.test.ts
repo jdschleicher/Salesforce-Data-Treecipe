@@ -1209,6 +1209,26 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             });
 
+            it('plans again after the confirmation, and sends nothing when the project changed while it was open', async () => {
+
+                await openCockpitWithQaSelected();
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
+                    if ( options?.inPanel ) {
+                        fs.writeFileSync(path.join(workspaceRoot, '.forceignore'), '**/Rating__c.field-meta.xml\n');
+                        return RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL;
+                    }
+                    return undefined;
+                });
+
+                await deploy('deployTreeFields');
+
+                expect(modalCalls()[0][1].detail).toContain('It is sent on the connection checked above, not through the Salesforce CLI.');
+                expect(deployZips).toEqual([]);
+                expect(deployCalls()).toEqual([]);
+                expect(lastWarning()?.text).toBe('Nothing was deployed: .forceignore now covers a file being deployed. Deploy again to see how it goes now.');
+
+            });
+
             it('deploys through the CLI, and says so in the confirmation, when sfdx-project.json has replacements', async () => {
 
                 const projectFilePath = path.join(workspaceRoot, 'sfdx-project.json');

@@ -135,7 +135,7 @@
             "enum": ["cli", "jsforce"],
             "enumDescriptions": [
               "Deploy through the Salesforce CLI: sf project deploy start --manifest",
-              "Deploy on the org's connection through the Metadata API, without the Salesforce CLI. Falls back to the CLI when sfdx-project.json has replacements or .forceignore covers a file being deployed"
+              "Deploy on the org's connection through the Metadata API, without the Salesforce CLI. Falls back to the CLI when sfdx-project.json has replacements, .forceignore covers a file being deployed, or a source file is not found"
             ],
             "default": "cli",
             "description": "How the Recipe Cockpit's Troubleshooting tab deploys fields, record types, global value sets and permission sets"
