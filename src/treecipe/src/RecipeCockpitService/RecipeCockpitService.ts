@@ -9,6 +9,8 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import {
+    IPermissionSetAssignmentConnection,
+    IPermissionSetAssignmentPlan,
     IPermissionSetCandidate,
     PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS,
     PERMISSION_SET_MAX_BUFFER_BYTES,
@@ -45,6 +47,7 @@ import {
     IDataOrgDetail,
     IDataOrgListing,
     IOrgDescribeSource,
+    IOrgPermissionSet,
     IOrgQuerySource,
     IOrgDisplayDetail,
     IOrgTypeDetail,
@@ -450,6 +453,15 @@ export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+ Add friend';
 // THE DEEPEST friends: LEVEL A NESTED ROW IS INDENTED FOR (#467); A DEEPER ONE IS DRAWN AT THIS INDENT, SO A CARD NEVER RUNS OFF A NARROW PANEL
 export const RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH = 8;
 export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
+// AN OBJECT HEADER IS ITS PADDING, THE CHAIN LINK, ONE GAP, THEN THE ▸ (#494): THE FIELD CHECKBOXES START WHERE THE ▸ DOES
+export const RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM = 0.6;
+export const RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM = 2.6;
+export const RECIPE_COCKPIT_TREE_HEADER_GAP_REM = 0.5;
+export const RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM = RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM + RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM + RECIPE_COCKPIT_TREE_HEADER_GAP_REM;
+// AN OBJECT'S CONTROLS ROW AND ITS FIELDS ARE EACH A BORDERED BOX (#494), PADDED INSIDE, WITH A ROW'S OWN INSET INSIDE THAT
+export const RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM = 0.25;
+export const RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM = 0.25;
+export const RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT = `calc(${Math.round(( RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM - RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM - RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM ) * 100) / 100}rem - 1px)`;
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = 'Wire to…';
 // AN EMPTY LOOKUP'S TWO DECISIONS (#421), EACH NAMING THE PARENT BETWEEN ITS PREFIX AND SUFFIX
@@ -628,7 +640,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
-            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
+            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
@@ -2885,7 +2897,7 @@ export interface IRecipeCockpitPanelState {
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
-    // "Open in browser" (#279): ONE "sf org open" AT A TIME, SO A DOUBLE CLICK OPENS ONE TAB
+    // "Open in browser" (#279, #501): ONE OPEN AT A TIME, SO A DOUBLE CLICK OPENS ONE TAB
     isOrgOpenInFlight?: boolean;
     isGenerateTreecipeInFlight: boolean;
     pendingIsGenerateTreecipeOffered: boolean;
@@ -8938,11 +8950,11 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Open in browser" (#279): "sf org open --url-only --json" for the selected org's USERNAME,
-        and the https: URL it answers handed to the reader's browser by VS Code, which also works
-        where the CLI has no browser of its own. The URL logs the reader in -- it carries a session
-        id -- so it goes to openExternal and nowhere else: never posted, saved, logged or quoted in
-        a notification. Notifications are not awaited, so the button comes back without a click.
+        "Open in browser" (#279, #501): a ONE-TIME frontdoor address for the selected org's USERNAME,
+        asked of Salesforce over the org's own connection (no CLI), handed to the reader's browser
+        by VS Code. The address logs the reader in, so it goes to openExternal and nowhere else:
+        never posted, saved, logged or quoted in a notification, and every failure is a fixed text.
+        Notifications are not awaited, so the button comes back without a click.
 
         One open per WINDOW, like the scratch org run: a panel closed and reopened mid-open starts
         from this flag, is told the open is running when its document loads, and is the panel the
@@ -8959,7 +8971,7 @@ export class RecipeCockpitService {
 
         try {
 
-            const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username);
+            const openOutcome = await SalesforceOrgService.requestOrgFrontDoorUrl(orgDetail.username);
 
             if ( 'failureMessage' in openOutcome ) {
                 this.showOrgOpenError(`${orgLabel} was not opened: ${openOutcome.failureMessage}`);
@@ -9167,7 +9179,7 @@ export class RecipeCockpitService {
         const treeLabel = tree.customName || tree.title;
         const objectApiNames = [...new Set(tree.objects.map(treeObject => treeObject.objectApiName))];
         let closingState: IRecipeCockpitPermissionSetClosingState = {};
-        let cliStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
+        let assignStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
 
         this.setPermissionSetAssignState({ command: 'permissionSetAssignState', isRunning: true, treeKey: treeKey });
 
@@ -9178,7 +9190,7 @@ export class RecipeCockpitService {
                 treeLabel,
                 objectApiNames,
                 assignSelection ? async () => assignSelection.orgDetail : async () => this.promptForPermissionSetOrg(),
-                (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
+                (orgDetail, coveredObjectApiNames) => { assignStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
                 { restartMessage: { command: 'assignTreePermissionSets', treeKey: treeKey, orgIndex: null }, isSandboxOnly: true },
                 panelState.recipeDataMessage ? this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, panelState.recipeDataMessage.recipe, tree) : undefined
             );
@@ -9187,16 +9199,16 @@ export class RecipeCockpitService {
 
             try {
 
-                if ( cliStartedFor ) {
-                    const { orgDetail, objectApiNames: coveredObjectApiNames } = cliStartedFor;
+                if ( assignStartedFor ) {
+                    const { orgDetail, objectApiNames: coveredObjectApiNames } = assignStartedFor;
                     coveredObjectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName));
                 }
 
                 const currentPanel = this.recipeCockpitPanel;
                 const currentPanelState = this.recipeCockpitPanelState;
 
-                if ( closingState.isAssigned === true && cliStartedFor && assignSelection && currentPanel && currentPanelState.dataOrgSelection === assignSelection ) {
-                    const lowerCoveredNames = new Set(cliStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+                if ( closingState.isAssigned === true && assignStartedFor && assignSelection && currentPanel && currentPanelState.dataOrgSelection === assignSelection ) {
+                    const lowerCoveredNames = new Set(assignStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
                     await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => lowerCoveredNames.has(treeObject.objectApiName.toLowerCase())));
                 }
 
@@ -14227,13 +14239,16 @@ export class RecipeCockpitService {
         Everything is found and picked BEFORE an org is asked for, so a project with no permission
         set for the tree opens no picker; a dismissed pick or org prompt is a quiet cancel. After the
         confirmation the org is asked again whether it is a sandbox and, on the same connection,
-        which picks it holds. No CLI process starts for a pick the org does not hold.
+        which picks it holds and which user it is authorized as; the picks it holds are assigned to
+        that user by ONE PermissionSetAssignment insert on that connection (#500), and nothing is
+        sent for a pick the org does not hold. The insert has no Cancel: one request cannot be
+        taken back once sent, and a timeout reports which landed as unknown.
     */
     private static async performPermissionSetAssign(workspaceRoot: string,
                                                     treeLabel: string,
                                                     objectApiNames: string[],
                                                     resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
-                                                    onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
+                                                    onAssignStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
                                                     changeOrg?: IRecipeCockpitConfirmChangeOrg,
                                                     runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): Promise<IRecipeCockpitPermissionSetClosingState> {
 
@@ -14304,10 +14319,12 @@ export class RecipeCockpitService {
             return {};
         }
 
+        let connection: Connection;
         let querySource: IOrgQuerySource;
         let orgTypeDetail: IOrgTypeDetail | undefined;
         try {
-            querySource = SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username));
+            connection = await SalesforceOrgService.getConnection(orgDetail.username);
+            querySource = SalesforceOrgService.toQuerySource(connection);
             orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
         } catch (connectionError) {
             return refuse(`Nothing was assigned: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`);
@@ -14320,14 +14337,14 @@ export class RecipeCockpitService {
         // ONLY AN ORG THAT ANSWERED IT IS A SANDBOX BECOMES THE SELECTION, WHATEVER FOLLOWS
         const confirmed: IRecipeCockpitPermissionSetClosingState = { orgDetail: orgDetail, isConfirmed: true };
 
-        let orgPermissionSetNames: string[];
+        let orgPermissionSets: IOrgPermissionSet[];
         try {
-            orgPermissionSetNames = await SalesforceOrgService.queryPermissionSetNames(querySource, pickedPermissionSets.map(permissionSet => permissionSet.name));
+            orgPermissionSets = await SalesforceOrgService.queryPermissionSets(querySource, pickedPermissionSets.map(permissionSet => permissionSet.name));
         } catch {
             return refuse(`Nothing was assigned: ${orgLabel} could not be asked which of the permission sets it holds. Try again.`, confirmed);
         }
 
-        const { presentPermissionSets, missingPermissionSets } = RecipeCockpitPermissionSetAssign.partitionByOrgPresence(pickedPermissionSets, orgPermissionSetNames);
+        const { presentPermissionSets, missingPermissionSets } = RecipeCockpitPermissionSetAssign.partitionByOrgPresence(pickedPermissionSets, orgPermissionSets.map(orgPermissionSet => orgPermissionSet.name));
 
         if ( missingPermissionSets.length > 0 ) {
             this.showPermissionSetNotification(
@@ -14341,6 +14358,14 @@ export class RecipeCockpitService {
             return confirmed;
         }
 
+        // THE ASSIGNEE IS THE USER THE ORG IS AUTHORIZED AS, ASKED ON THE SAME CONNECTION, AND NO ONE ELSE
+        let assigneeId: string;
+        try {
+            assigneeId = await SalesforceOrgService.queryUserId(querySource, orgDetail.username);
+        } catch {
+            return refuse(`Nothing was assigned: ${orgLabel} could not be asked which user it is authorized as. Try again.`, confirmed);
+        }
+
         const permissionSetNames = presentPermissionSets.map(permissionSet => permissionSet.name);
         const permissionSetText = describePermissionSets(permissionSetNames.length);
         // EVERY OBJECT A PICK GRANTS ON, NOT ONLY THIS TREE'S: ANOTHER CARD'S DESCRIBE OF IT CHANGES TOO
@@ -14349,11 +14374,11 @@ export class RecipeCockpitService {
             ...objectApiNames,
             ...presentPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).filter(objectApiName => SalesforceApiName.isApiName(objectApiName))
         ])].filter(objectApiName => lowerGrantedNames.has(objectApiName.toLowerCase()));
-        const assignArguments = RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(permissionSetNames, orgDetail.username);
+        const assignmentPlan = RecipeCockpitPermissionSetAssign.planAssignments(assigneeId, permissionSetNames, orgPermissionSets);
 
-        onCliStarted(orgDetail, coveredObjectApiNames);
+        onAssignStarted(orgDetail, coveredObjectApiNames);
 
-        // THE HISTORY'S RECORD OF THIS ASSIGNMENT (#485), WRITTEN ONCE THE CLI HAS RUN, WHATEVER IT ANSWERED
+        // THE HISTORY'S RECORD OF THIS ASSIGNMENT (#485), WRITTEN ONCE THE INSERT WAS SENT, WHATEVER IT ANSWERED
         const stepStartedAt = new Date();
         const assigningOrgDetail = orgDetail;
         let assignOutputFilePath: string | undefined;
@@ -14368,18 +14393,24 @@ export class RecipeCockpitService {
             filePaths: [assignOutputFilePath]
         });
 
-        const assignRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`), assignArguments, PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, workspaceRoot);
+        const assignRun = await this.insertPermissionSetAssignments(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`),
+            { sobject: objectApiName => ({ create: async (records, options) => await connection.sobject(objectApiName).create(records, options) }) },
+            assignmentPlan
+        );
 
-        if ( assignRun.isCancelled ) {
-            recordStep('cancelled', { detail: 'Which permission sets were assigned is unknown.' });
-            return refuse(`The assignment of ${permissionSetText} in ${orgLabel} was cancelled, so which were assigned is unknown.`, confirmed);
-        }
+        const assignOutcome: PermissionSetAssignOutcome = assignRun.failureMessage !== undefined
+            ? { kind: 'unconfirmed', failureMessage: assignRun.failureMessage }
+            : RecipeCockpitPermissionSetAssign.readAssignmentSaveResults(assignmentPlan, assignRun.saveResults);
 
-        const assignPayload = ScratchOrgService.readCliJsonPayload(assignRun.invocation);
-        const assignOutcome: PermissionSetAssignOutcome = RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(assignRun.invocation, permissionSetNames, assignPayload);
-        assignOutputFilePath = assignRun.invocation.spawnError || assignRun.invocation.isOutputTooLarge
-            ? undefined
-            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload, runArtifactsLocation);
+        assignOutputFilePath = runArtifactsLocation && ScratchOrgService.writeOrgOperationPayload(workspaceRoot, orgDetail.username, 'permission-set-assign', {
+            assigneeUsername: orgDetail.username,
+            assigneeId: assigneeId,
+            permissionSets: assignmentPlan.sentNames.map((permissionSetName, recordIndex) => ({ name: permissionSetName, id: assignmentPlan.records[recordIndex].PermissionSetId })),
+            ...( assignmentPlan.unresolvedNames.length > 0 ? { notSent: assignmentPlan.unresolvedNames.map((permissionSetName, nameIndex) => ({ name: permissionSetName, reason: assignmentPlan.unresolvedMessages[nameIndex] })) } : {} ),
+            ...( assignRun.failureMessage !== undefined ? { failure: assignRun.failureMessage } : { saveResults: assignRun.saveResults } ),
+            outcome: assignOutcome
+        }, new Date(), runArtifactsLocation);
 
         switch ( assignOutcome.kind ) {
 
@@ -14396,10 +14427,6 @@ export class RecipeCockpitService {
                 }
                 return { ...confirmed, isAssigned: true };
             }
-
-            case 'cliNotInstalled':
-                recordStep('failed', { detail: assignOutcome.failureMessage });
-                return refuse(assignOutcome.failureMessage, confirmed);
 
             case 'unconfirmed':
                 recordStep('unknown', { detail: assignOutcome.failureMessage });
@@ -14421,6 +14448,46 @@ export class RecipeCockpitService {
             }
 
         }
+
+    }
+
+    /*
+        The one assignment insert (#500) behind a progress notification with no Cancel, raced with
+        PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS. A request that throws or is not answered in time
+        may still have been saved, so it is a failureMessage saying which landed is unknown, never
+        "none assigned". The error's own text is not quoted: it can carry a session id.
+    */
+    private static async insertPermissionSetAssignments(progressTitle: string,
+                                                        connection: IPermissionSetAssignmentConnection,
+                                                        assignmentPlan: IPermissionSetAssignmentPlan): Promise<{ saveResults?: unknown; failureMessage?: string }> {
+
+        if ( assignmentPlan.records.length === 0 ) {
+            return { saveResults: [] };
+        }
+
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: progressTitle,
+            cancellable: false
+        }, async () => {
+
+            let timeoutHandle: NodeJS.Timeout | undefined;
+            const timedOut = new Promise<'timedOut'>(resolve => {
+                timeoutHandle = setTimeout(() => resolve('timedOut'), PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS);
+            });
+
+            try {
+                const answer = await Promise.race([RecipeCockpitPermissionSetAssign.insertAssignments(connection, assignmentPlan.records), timedOut]);
+                return answer === 'timedOut'
+                    ? { failureMessage: 'The assignment did not finish in time, so which permission sets were assigned is unknown.' }
+                    : { saveResults: answer };
+            } catch {
+                return { failureMessage: 'The org did not answer the assignment, so which permission sets were assigned is unknown.' };
+            } finally {
+                clearTimeout(timeoutHandle);
+            }
+
+        });
 
     }
 
@@ -19547,7 +19614,7 @@ ${this.buildPaletteCustomProperties()}
         margin: 0.6rem 0;
         overflow: hidden;
     }
-    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: ${RECIPE_COCKPIT_TREE_HEADER_GAP_REM}rem; }
     .treeHeader {
         display: flex;
         flex-wrap: wrap;
@@ -19750,7 +19817,7 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingSubTabs.movingRight .troubleshootingSubTab::after, .troubleshootingSubTabs.movingLeft .troubleshootingSubTab.selected::after { transform-origin: right; }
     .troubleshootingSubTabs.movingLeft .troubleshootingSubTab::after, .troubleshootingSubTabs.movingRight .troubleshootingSubTab.selected::after { transform-origin: left; }
     .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
-    .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
+    .treeObjectHeader { padding: 0.35rem ${RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM}rem; align-items: center; }
     .treeObject { position: relative; }
     .treeObject.treeObjectNested { border-left: 2px solid var(--sdt-border); }
 ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, depthIndex) => `    .treeObject.treeObjectDepth${depthIndex + 1} { margin-left: ${( depthIndex + 1 ) * RECIPE_COCKPIT_NESTING_INDENT_REM}rem; }`).join('\n')}
@@ -19765,8 +19832,8 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeObjectInclude, .treeObjectIncludeSpacer {
         box-sizing: border-box;
         flex: none;
-        width: 2.6rem;
-        height: 2.6rem;
+        width: ${RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM}rem;
+        height: ${RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM}rem;
     }
     .treeObjectInclude { position: relative; z-index: 2; padding: 0.15rem; }
     .treeObjectIncludeSpacer { display: inline-block; }
@@ -19781,6 +19848,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
         content: '';
         position: absolute;
         inset: 0;
+        border-radius: inherit;
         background-color: var(--sdt-excluded-overlay);
         pointer-events: none;
         z-index: 1;
@@ -19945,8 +20013,16 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeChipEmoji { flex: none; }
     .treeObjectBody { padding-bottom: 0.25rem; }
-    .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
-    .treeFieldSelectAllRow { padding: 0.25rem 0.6rem 0.25rem 2.1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.2rem; }
+    .treeFieldSelectAllRow, .treeFieldsBox {
+        box-sizing: border-box;
+        margin: 0.35rem ${RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM}rem 0.35rem ${RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT};
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .treeFieldSelectAllRow:not(:has(> :not(.hidden))), .treeFieldsBox:not(:has(> .treeField:not(.hidden))) { display: none; }
+    .treeFieldsBox { padding: ${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM}rem; }
+    .treeField { padding: 0.25rem 0.35rem 0.25rem ${RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem; border-radius: 3px; }
+    .treeFieldSelectAllRow { padding: ${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM + RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.2rem; }
     .treeFieldSelectAllCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
     .treeFieldSelectAllLabel { cursor: pointer; }
     .treeFieldSelectAllCheck.disabled .treeFieldSelectAllLabel { color: var(--sdt-muted); cursor: not-allowed; }
@@ -24140,6 +24216,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 setShownWithMotion(editorElement, isExpanding, isAnimated);
                 fieldState.isPicklistExpanded = isExpanding;
                 picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                // WHILE THE TILES ARE OPEN THE ONLY WAYS OUT ARE SAVE OR CANCEL (#495); × AND ESCAPE STAY FOR THE LOAD
+                if (isExpanding) { picklistToggleElement.classList.add('hidden'); } else { picklistToggleElement.classList.remove('hidden'); }
+                if (isExpanding && isAnimated && typeof closeButtonElement.focus === 'function') { closeButtonElement.focus(); }
                 if (!isExpanding && wasExpanded && typeof picklistToggleElement.focus === 'function') { picklistToggleElement.focus(); }
             };
             fieldState.setPicklistExpanded = setPicklistExpanded;
@@ -24147,9 +24226,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
             picklistToggleElement.setAttribute('aria-label', PICKLIST_EDIT_VALUES_LABEL + ' of ' + field.fieldApiName);
             picklistToggleElement.setAttribute('aria-expanded', 'false');
-            // THE EDITOR ON SCREEN DECIDES, NOT THE PLACE: A SAVE MARKS THE PLACE CLOSED WHILE THE TILES ARE STILL DRAWN
+            // IT IS HIDDEN WHILE THE TILES ARE OPEN (#495), SO A CLICK ONLY EVER OPENS THEM
             picklistToggleElement.addEventListener('click', function () {
-                setPicklistExpanded(editorElement.classList.contains('hidden'), true);
+                if (!editorElement.classList.contains('hidden')) { return; }
+                setPicklistExpanded(true, true);
                 savePanelPlace();
             });
             closeButtonElement.addEventListener('click', function (event) {
@@ -24482,11 +24562,16 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (hasSelectableFields || treeObjectState.todoCount > 0) {
                 treeObjectState.bodyElement.appendChild(buildSelectAllFieldsElement(treeObjectState, hasSelectableFields));
             }
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
-                applyTreeFieldVisibility(fieldState);
-                treeObjectState.bodyElement.appendChild(fieldState.rowElement);
-            });
+            // THE FIELDS ARE ONE BORDERED BOX (#494), THEIR CHECKBOXES UNDER THE OBJECT'S ▸
+            if (treeObjectState.fieldStates.length > 0) {
+                const fieldsBoxElement = createElement('div', 'treeFieldsBox');
+                treeObjectState.fieldStates.forEach(function (fieldState) {
+                    fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
+                    applyTreeFieldVisibility(fieldState);
+                    fieldsBoxElement.appendChild(fieldState.rowElement);
+                });
+                treeObjectState.bodyElement.appendChild(fieldsBoxElement);
+            }
             treeObjectState.isBodyBuilt = true;
             if (drawObjectFieldSelection(treeObjectState)) { drawStructureMatchCount(treeObjectState.treeState); }
         }

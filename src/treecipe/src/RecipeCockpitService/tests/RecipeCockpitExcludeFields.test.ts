@@ -922,7 +922,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldAll')).toEqual([]);
             expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldNone')).toEqual([]);
             expect(panel.objectBodyOf(contact).children[0].classList.contains('treeFieldSelectAllRow')).toBeTrue();
-            expect(panel.objectBodyOf(contact).children[1].classList.contains('treeField')).toBeTrue();
+            expect(panel.objectBodyOf(contact).children[1].classList.contains('treeFieldsBox')).toBeTrue();
+            expect(panel.objectBodyOf(contact).children[1].children[0].classList.contains('treeField')).toBeTrue();
 
         });
 

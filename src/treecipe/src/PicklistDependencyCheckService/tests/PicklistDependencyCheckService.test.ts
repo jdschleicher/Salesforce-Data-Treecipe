@@ -1,6 +1,7 @@
 import { PicklistDependencyCheckService, SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE } from "../PicklistDependencyCheckService";
 
 import { OrgAuthorization } from '@salesforce/core';
+import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 
 import * as matchers from 'jest-extended';
 expect.extend(matchers);
@@ -778,9 +779,19 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
 
 describe('shouldDetectWhetherTestSuiteIsDeployedInOrg', () => {
 
+    function stubToolingConnection(toolingQuery: jest.Mock) {
+
+        const query = jest.fn();
+        const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({ query, tooling: { query: toolingQuery } } as any);
+        const execFileSpy = jest.spyOn(childProcess, 'execFile');
+
+        return { getConnectionSpy, execFileSpy, query };
+
+    }
+
     it('shouldReturnTrueWhenTheSuiteMembershipQueryReturnsARecord', async () => {
 
-        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '05F' }] } }) });
+        stubToolingConnection(jest.fn().mockResolvedValue({ totalSize: 1, done: true, records: [{ Id: '05F' }] }));
 
         await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeTrue();
 
@@ -788,15 +799,36 @@ describe('shouldDetectWhetherTestSuiteIsDeployedInOrg', () => {
 
     it('shouldReturnFalseWhenTheSuiteMembershipQueryReturnsNoRecords', async () => {
 
-        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 0, records: [] } }) });
+        stubToolingConnection(jest.fn().mockResolvedValue({ totalSize: 0, done: true, records: [] }));
 
         await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeFalse();
 
     });
 
-    it('shouldReturnFalseWhenQueryFailsRatherThanAssumingDeployed', async () => {
+    it('shouldReturnFalseWhenTheQueryRejectsRatherThanAssumingDeployed', async () => {
 
-        stubSalesforceCli({ error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
+        stubToolingConnection(jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')));
+
+        await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeFalse();
+
+    });
+
+    it('shouldReturnFalseWhenNoConnectionOpensRatherThanAssumingDeployed', async () => {
+
+        jest.spyOn(SalesforceOrgService, 'getConnection').mockRejectedValue(new Error('No authorization information found for devHub.'));
+
+        await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeFalse();
+
+    });
+
+    it.each([
+        ['no records list', { totalSize: 1 }],
+        ['records that are not a list', { totalSize: 1, records: { Id: '05F' } }],
+        ['no answer at all', undefined],
+        ['an answer that is not an object', 'deployed']
+    ])('shouldReturnFalseForAnAnswerWith %s', async (_description, answer) => {
+
+        stubToolingConnection(jest.fn().mockResolvedValue(answer));
 
         await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeFalse();
 
@@ -806,18 +838,42 @@ describe('shouldDetectWhetherTestSuiteIsDeployedInOrg', () => {
         Membership rather than mere existence: a suite whose member class was deleted still exists,
         and running it would pass having asserted nothing.
     */
-    it('shouldQueryTestSuiteMembershipThroughTheToolingApi', async () => {
+    it('shouldQueryTestSuiteMembershipThroughTheToolingApiOnTheNamedOrg', async () => {
 
-        const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '05F' }] } }) });
+        const toolingQuery = jest.fn().mockResolvedValue({ totalSize: 1, done: true, records: [{ Id: '05F' }] });
+        const { getConnectionSpy, query } = stubToolingConnection(toolingQuery);
 
         await PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub');
 
-        const invokedArguments = execFileSpy.mock.calls[0][1] as string[];
+        expect(getConnectionSpy).toHaveBeenCalledWith('devHub');
+        expect(query).not.toHaveBeenCalled();
+        expect(toolingQuery).toHaveBeenCalledTimes(1);
 
-        expect(invokedArguments).toContain('--use-tooling-api');
-        expect(invokedArguments.join(' ')).toContain('FROM TestSuiteMembership');
-        expect(invokedArguments.join(' ')).toContain("ApexTestSuite.TestSuiteName = 'SDTPicklistDependencyTests'");
-        expect(invokedArguments.join(' ')).toContain("ApexClass.Name = 'SDTPLDSpecsTest'");
+        const soql = toolingQuery.mock.calls[0][0] as string;
+
+        expect(soql).toContain('FROM TestSuiteMembership');
+        expect(soql).toContain("ApexTestSuite.TestSuiteName = 'SDTPicklistDependencyTests'");
+        expect(soql).toContain("ApexClass.Name = 'SDTPLDSpecsTest'");
+
+    });
+
+    it('shouldStartNoSalesforceCliProcess', async () => {
+
+        const { execFileSpy } = stubToolingConnection(jest.fn().mockResolvedValue({ totalSize: 1, done: true, records: [{ Id: '05F' }] }));
+
+        await PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub');
+
+        expect(execFileSpy).not.toHaveBeenCalled();
+
+    });
+
+    it('shouldRefuseAnUnusableOrgIdentifierBeforeAnyConnectionOpens', async () => {
+
+        const { getConnectionSpy } = stubToolingConnection(jest.fn());
+
+        await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('dev hub; rm')).rejects.toThrow('is not a usable Salesforce org alias or username');
+
+        expect(getConnectionSpy).not.toHaveBeenCalled();
 
     });
 

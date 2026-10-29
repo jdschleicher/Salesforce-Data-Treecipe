@@ -24,6 +24,9 @@ import {
     SalesforceOrgService,
     IOrgDescribeSource,
     NO_AUTHORIZED_ORGS_MESSAGE,
+    ORG_FRONT_DOOR_FAILURE_TEXTS,
+    ORG_FRONT_DOOR_SINGLE_ACCESS_PATH,
+    ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS,
     ORG_DESCRIBE_CANCELLED_MESSAGE,
     ORG_DESCRIBE_CONCURRENCY,
     ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE,
@@ -38,7 +41,8 @@ import {
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
     TARGET_ORG_ENVIRONMENT_VARIABLE,
     LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
-    ORG_PARENT_SEARCH_RESULT_LIMIT
+    ORG_PARENT_SEARCH_RESULT_LIMIT,
+    PERMISSION_SET_QUERY_NAME_CHUNK_SIZE
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
@@ -498,6 +502,119 @@ describe('SalesforceOrgService', () => {
 
             expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: 'devhub' });
             expect(actualConnection).toBe(fakeConnection);
+
+        });
+
+    });
+
+    describe('requestOrgFrontDoorUrl (#501)', () => {
+
+        const ACCESS_TOKEN = '00D000000000001!AQEAQaccessTokenSecret';
+        const FRONT_DOOR_URI = 'https://acme--qa.sandbox.my.salesforce.com/secur/frontdoor.jsp?otp=oneTimeCode&cshc=x';
+
+        const answerOrg = (requestGet: jest.Mock, refreshAuth: jest.Mock = jest.fn().mockResolvedValue(undefined)) => {
+            const connection = { instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com', accessToken: ACCESS_TOKEN, requestGet };
+            (Org.create as jest.Mock).mockResolvedValue({ refreshAuth, getConnection: () => connection });
+            return { connection, refreshAuth };
+        };
+
+        it('asks the single-access endpoint of the org named by USERNAME, after refreshing its authorization, and opens its https: one-time address', async () => {
+
+            const requestGet = jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI });
+            const { refreshAuth } = answerOrg(requestGet);
+
+            await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toEqual({ isOpenable: true, url: FRONT_DOOR_URI });
+
+            expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: 'qa@example.com.qa' });
+            expect(refreshAuth).toHaveBeenCalledTimes(1);
+            expect(refreshAuth.mock.invocationCallOrder[0]).toBeLessThan(requestGet.mock.invocationCallOrder[0]);
+            expect(requestGet).toHaveBeenCalledWith(`https://acme--qa.sandbox.my.salesforce.com${ORG_FRONT_DOOR_SINGLE_ACCESS_PATH}`);
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('never builds an address carrying the access token', async () => {
+
+            answerOrg(jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI }));
+
+            const frontDoorResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+
+            expect(JSON.stringify(frontDoorResult)).not.toContain(ACCESS_TOKEN);
+            expect(fs.readFileSync(path.join(__dirname, '..', 'SalesforceOrgService.ts'), 'utf-8')).not.toMatch(/getOrgFrontDoorUrl\s*\(|frontdoor\.jsp\?sid=\$\{|accessToken/);
+
+        });
+
+        it('answers a connection that cannot be made, and a request that fails, with fixed texts that quote nothing', async () => {
+
+            (Org.create as jest.Mock).mockRejectedValue(new Error(`NoAuthInfoFound ${ACCESS_TOKEN}`));
+            const connectionResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+            expect(connectionResult).toEqual({ isOpenable: false, failure: 'connectionFailed', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.connectionFailed });
+
+            answerOrg(jest.fn(), jest.fn().mockRejectedValue(new Error('expired')));
+            await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toMatchObject({ failure: 'connectionFailed' });
+
+            answerOrg(jest.fn().mockRejectedValue(new Error(`403 for https://acme.my.salesforce.com/secur/frontdoor.jsp?sid=${ACCESS_TOKEN}`)));
+            const requestResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+            expect(requestResult).toEqual({ isOpenable: false, failure: 'requestFailed', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.requestFailed });
+
+            expect(JSON.stringify([connectionResult, requestResult])).not.toContain(ACCESS_TOKEN);
+
+        });
+
+        it('gives up after its timeout with a fixed text', async () => {
+
+            jest.useFakeTimers();
+            try {
+                answerOrg(jest.fn().mockImplementation(() => new Promise(() => undefined)));
+                const pendingResult = SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+                await jest.advanceTimersByTimeAsync(ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+                await expect(pendingResult).resolves.toEqual({ isOpenable: false, failure: 'timedOut', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.timedOut });
+            } finally {
+                jest.useRealTimers();
+            }
+
+        });
+
+        it('clears its timer on success, and drops an address that arrives after the timeout', async () => {
+
+            jest.useFakeTimers();
+            try {
+                answerOrg(jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI }));
+                await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toMatchObject({ isOpenable: true });
+                expect(jest.getTimerCount()).toBe(0);
+
+                let answerLate: (response: unknown) => void = () => undefined;
+                answerOrg(jest.fn().mockImplementation(() => new Promise(resolve => { answerLate = resolve; })));
+                const pendingResult = SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+                await jest.advanceTimersByTimeAsync(ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+                answerLate({ frontdoor_uri: FRONT_DOOR_URI });
+                await expect(pendingResult).resolves.toMatchObject({ isOpenable: false, failure: 'timedOut' });
+                expect(jest.getTimerCount()).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
+
+        });
+
+        it('opens nothing but an https: frontdoor_uri string', () => {
+
+            ['http://acme.my.salesforce.com/', 'javascript:alert(1)', 'file:///etc/passwd', 'command:workbench.action.terminal.new', 'not a url'].forEach(frontdoor_uri => {
+                expect(SalesforceOrgService.readOrgFrontDoorResponse({ frontdoor_uri }))
+                    .toEqual({ isOpenable: false, failure: 'notHttps', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.notHttps });
+            });
+
+            [undefined, null, 'https://acme.my.salesforce.com/', [FRONT_DOOR_URI], {}, { frontdoor_uri: 42 }, { frontdoor_uri: '' }, { url: FRONT_DOOR_URI }].forEach(response => {
+                expect(SalesforceOrgService.readOrgFrontDoorResponse(response))
+                    .toEqual({ isOpenable: false, failure: 'noAddress', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.noAddress });
+            });
+
+        });
+
+        it('words every failure without a URL, a token or a parenthesis the notification escaper would mangle', () => {
+
+            Object.values(ORG_FRONT_DOOR_FAILURE_TEXTS).forEach(failureText => {
+                expect(failureText).not.toMatch(/https?:|sid=|otp=|[()[\]]/);
+            });
 
         });
 
@@ -1062,16 +1179,40 @@ describe('SalesforceOrgService', () => {
 
     });
 
-    describe('queryPermissionSetNames (#302)', () => {
+    describe('queryPermissionSets (#302, #500)', () => {
 
-        it('asks for the named permission sets in one query and keeps only the api names the org answers with', async () => {
+        it('asks for the named permission sets in one query and keeps only api names with a Salesforce Id, with each one\'s namespace', async () => {
 
             const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [
-                { Name: 'Account_Tree_Access' }, { Name: 'bad name' }, { Name: 7 }, null, { Id: '0PS000000000001' }
+                { Id: '0PS000000000001AAA', Name: 'Account_Tree_Access', NamespacePrefix: null },
+                { Id: '0PS000000000002AAA', Name: 'Account_Tree_Access', NamespacePrefix: 'pkg' },
+                { Id: '0PS000000000003AAA', Name: 'bad name' }, { Id: '0PS000000000004AAA', Name: 7 }, null,
+                { Id: 'not-an-id', Name: 'Contact_Reader' }, { Name: 'Contact_Reader' }, { Id: '0PS000000000005', Name: 'Gadget_Access', NamespacePrefix: '' }
             ] }) };
 
-            expect(await SalesforceOrgService.queryPermissionSetNames(querySource, ['Account_Tree_Access', 'Contact_Reader'])).toEqual(['Account_Tree_Access']);
-            expect(querySource.query).toHaveBeenCalledWith('SELECT Name FROM PermissionSet WHERE Name IN (\'Account_Tree_Access\', \'Contact_Reader\')');
+            expect(await SalesforceOrgService.queryPermissionSets(querySource, ['Account_Tree_Access', 'Contact_Reader', 'Gadget_Access'])).toEqual([
+                { id: '0PS000000000001AAA', name: 'Account_Tree_Access', namespacePrefix: undefined },
+                { id: '0PS000000000002AAA', name: 'Account_Tree_Access', namespacePrefix: 'pkg' },
+                { id: '0PS000000000005', name: 'Gadget_Access', namespacePrefix: undefined }
+            ]);
+            expect(querySource.query).toHaveBeenCalledWith('SELECT Id, Name, NamespacePrefix FROM PermissionSet WHERE Name IN (\'Account_Tree_Access\', \'Contact_Reader\', \'Gadget_Access\')');
+
+        });
+
+        it('asks for at most PERMISSION_SET_QUERY_NAME_CHUNK_SIZE names a query, so 200 long names stay under the URL limit, and joins the answers', async () => {
+
+            const names = Array.from({ length: 2 * PERMISSION_SET_QUERY_NAME_CHUNK_SIZE + 1 }, (_unused, nameIndex) => `Set_${nameIndex}`);
+            const querySource: IOrgQuerySource = { query: jest.fn().mockImplementation(async (soql: string) => ({
+                records: names.filter(name => soql.includes(`'${name}'`)).map((name, nameIndex) => ({ Id: `0PS${String(nameIndex).padStart(12, '0')}`, Name: name }))
+            })) };
+
+            expect((await SalesforceOrgService.queryPermissionSets(querySource, names)).map(permissionSet => permissionSet.name)).toEqual(names);
+            expect(querySource.query).toHaveBeenCalledTimes(3);
+            (querySource.query as jest.Mock).mock.calls.forEach(([soql]) => expect((soql.match(/'/g) ?? []).length / 2).toBeLessThanOrEqual(PERMISSION_SET_QUERY_NAME_CHUNK_SIZE));
+
+            // ONE CHUNK THAT CANNOT BE READ FAILS THE WHOLE ANSWER: NEVER "THE ORG HOLDS ONLY THE OTHERS"
+            const failingSource: IOrgQuerySource = { query: jest.fn().mockResolvedValueOnce({ records: [] }).mockResolvedValueOnce({}) };
+            await expect(SalesforceOrgService.queryPermissionSets(failingSource, names)).rejects.toThrow('could not be read');
 
         });
 
@@ -1079,17 +1220,44 @@ describe('SalesforceOrgService', () => {
 
             const querySource: IOrgQuerySource = { query: jest.fn() };
 
-            expect(await SalesforceOrgService.queryPermissionSetNames(querySource, [])).toEqual([]);
-            await expect(SalesforceOrgService.queryPermissionSetNames(querySource, ['Ok', "x') OR Name != ('"])).rejects.toThrow('is not a Salesforce api name');
+            expect(await SalesforceOrgService.queryPermissionSets(querySource, [])).toEqual([]);
+            await expect(SalesforceOrgService.queryPermissionSets(querySource, ['Ok', "x') OR Name != ('"])).rejects.toThrow('is not a Salesforce api name');
             expect(querySource.query).not.toHaveBeenCalled();
 
         });
 
         it('throws, rather than answering "none", for a failed query or an answer with no records list', async () => {
 
-            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, ['A'])).rejects.toThrow('INVALID_SESSION_ID');
-            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockResolvedValue({ records: 'x' }) }, ['A'])).rejects.toThrow('could not be read');
-            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockResolvedValue(undefined) }, ['A'])).rejects.toThrow('could not be read');
+            await expect(SalesforceOrgService.queryPermissionSets({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, ['A'])).rejects.toThrow('INVALID_SESSION_ID');
+            await expect(SalesforceOrgService.queryPermissionSets({ query: jest.fn().mockResolvedValue({ records: 'x' }) }, ['A'])).rejects.toThrow('could not be read');
+            await expect(SalesforceOrgService.queryPermissionSets({ query: jest.fn().mockResolvedValue(undefined) }, ['A'])).rejects.toThrow('could not be read');
+
+        });
+
+    });
+
+    describe('queryUserId (#500)', () => {
+
+        it('asks for the user by its username, with backslashes and quotes escaped, and answers its Id', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [{ Id: '005000000000001AAA' }] }) };
+
+            expect(await SalesforceOrgService.queryUserId(querySource, "o'brien\\x@example.com")).toBe('005000000000001AAA');
+            expect(querySource.query).toHaveBeenCalledWith("SELECT Id FROM User WHERE Username = 'o\\'brien\\\\x@example.com'");
+
+        });
+
+        it('throws for a failed query, no user, more than one, or an Id that is not a Salesforce Id', async () => {
+
+            await expect(SalesforceOrgService.queryUserId({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, 'a@b.c')).rejects.toThrow('INVALID_SESSION_ID');
+            const unsentSource: IOrgQuerySource = { query: jest.fn() };
+            for ( const username of ['a@b.c\n', 'a\u2028@b.c', 'a\u0000b@c.d'] ) {
+                await expect(SalesforceOrgService.queryUserId(unsentSource, username)).rejects.toThrow('control character');
+            }
+            expect(unsentSource.query).not.toHaveBeenCalled();
+            for ( const answer of [undefined, { records: 'x' }, { records: [] }, { records: [{ Id: '005000000000001' }, { Id: '005000000000002' }] }, { records: [{ Id: 'x' }] }, { records: [null] }] ) {
+                await expect(SalesforceOrgService.queryUserId({ query: jest.fn().mockResolvedValue(answer) }, 'a@b.c')).rejects.toThrow('could not be read');
+            }
 
         });
 
