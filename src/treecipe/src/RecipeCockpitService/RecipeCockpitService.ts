@@ -8934,7 +8934,7 @@ export class RecipeCockpitService {
         const orgText = `${alias} · ${setupOutcome.username}`;
         const selectionText = isListed
             ? 'It is selected in the Treecipe tab.'
-            : `The Salesforce CLI does not list ${orgText} as connected yet, so no org was selected in its place: press ⟳ to check again.`;
+            : `${orgText} did not answer the connection check yet, so no org was selected in its place: press ⟳ to check again.`;
         const createdText = setupOutcome.incompleteMessage
             ? `Scratch org ${orgText} was created, but setting it up stopped: ${setupOutcome.incompleteMessage}. It is kept.`
             : `Scratch org ${orgText} is ready.`;

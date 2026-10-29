@@ -702,7 +702,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(postedNamed('dataOrgSelection')).toHaveLength(selectionsBefore);
             expect(postedNamed('dataOrgList').at(-1).selectedOrgIndex).toBeNull();
             const [notListedText, notListedAction] = runNotifications(vscode.window.showWarningMessage).at(-1);
-            expect(notListedText).toContain('does not list');
+            expect(notListedText).toContain('did not answer the connection check yet');
             expect(notListedText).toContain('so no org was selected in its place');
             expect(notListedAction).toBe(RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL);
             expect(workspaceStateUpdate).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, undefined);
