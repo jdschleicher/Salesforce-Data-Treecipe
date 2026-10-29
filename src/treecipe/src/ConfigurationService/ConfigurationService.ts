@@ -24,6 +24,7 @@ export interface ExtensionConfig {
     useSnowfakeryAsDefault: boolean;
     recipeCockpitEnabled?: boolean;
     showRecipeCockpitStatusBarItem?: boolean;
+    metadataDeployMethod?: string;
 }
 
 export interface TreecipeConfigDetail {
