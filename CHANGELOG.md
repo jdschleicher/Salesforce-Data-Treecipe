@@ -1,10 +1,10 @@
 # Change Log
 
-## [3.181.0] - Recipe Cockpit: a data set row opens to its insert journey, every insert and the Troubleshooting steps between them, oldest first
+## [3.182.0] - Recipe Cockpit: a data set row opens to its insert journey, every insert and the Troubleshooting steps between them, oldest first
 
 [#471](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/471). A data set row said how its newest insert ended (#469), but nothing showed what it took to get there: whether it worked first time, or which errors and fixes came before.
 
-- **A ▸ on every data set row.** It opens a timeline under the row. A row never inserted opens to *No inserts yet* without asking the host.
+- **A ▸ on every data set row.** It leads the row, before the ☆, the ✎ and the name (#540's order). It opens a timeline under the row. A row never inserted opens to *No inserts yet* without asking the host.
 - **What the timeline lists.** Every insert attempt of the data set (every `InsertAttempts/insertAttempt-<ts>`, not only the newest) and every Troubleshooting step of its tree, from each run's `RunArtifacts` (#470). Steps count from the time the data set was made (its folder name's timestamp) to the end of its last attempt, so a deploy made just before the first insert is included. A step against an org none of the attempts went to is left off and counted in one note (a decision on the issue). Entries run oldest first; a step and an insert in the same second read step first.
 - **Each entry.** It shows its time, its kind (Insert, Deploy fields / record types / global value sets / permission set, the four retrieves, Assign permission sets, Generate permission set), the org as `alias · username`, and its outcome as ✅, ⚠️ or ❌ always with a label in words. Under that is a one-line summary: the counts, all-or-none, rolled back, cancelled or stopped.
 - **Errors.** A failed insert shows the first error in its results file that is not an all-or-none rollback (`<Object>: <statusCode> [fields] — message`). A failed deploy shows the components it names, and a failed assign shows the picks that failed (each step's own summary detail). Every excerpt is one line, cut to 300 characters.
@@ -21,6 +21,18 @@
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the ▸ under *Where your changes are stored*, and the screenshots were re-taken.
 - **Internals.** `RecipeCockpitDatasetJourney` (no vscode) builds the journey. `DatasetInsertAttemptService` gains `listAttemptTimestamps`, `readAttempt` and `readAttemptTimestamp`, and `readLatestAttempt` uses them. `readSmallFile` now sizes its buffer by the file rather than the limit. `RecipeCockpitRunHistory.toDetail` is public. No faker backend changed.
 - **Tests.** `RecipeCockpitDatasetJourney.test.ts` covers the cap read before excerpts and the per-file and per-journey limits; `RecipeCockpitRunHistory.test.ts` the time window; `DatasetInsertAttemptService.test.ts` `listAttemptTimestamps`, `readAttempt`, `readAttemptTimestamp` and `readSmallFile`. The journey suite also covers ordering, a single-attempt journey, fail → deploy → assign → success, the time window, other orgs, the old folder, unreadable summaries and results, excerpt cutting, the cap and links. `RecipeCockpitDatasetJourneyPanel.test.ts` covers the ▸, a row closed and reopened before its answer arrives, the empty answer for a gone folder, the request, drawing as text, notes, the stale `renderSequence`, the place, the router's allow-list refusals and the host's posted message and file lists.
+
+## [3.181.0] - Recipe Cockpit: one drawn pencil on every edit button, and a tree card's ☆ and ✎ before its name
+
+[#540](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/540). The cockpit drew its edit pencil two ways: the field edit, record count and Treecipe Adapter edit buttons used the drawn pencil, while a tree card's rename and a data set row's rename were a `✎` character. A tree card's ☆ and ✎ also sat at the far end of its header, away from the name they act on.
+
+- **One pencil.** `buildPencilGlyph(size)` in the panel script is the one place the pencil (`RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH`) is built, with `createElementNS` as before. The field edit, record count and Adapter edit buttons call it in place of their three copies.
+- **Sized by use.** `'default'` is the 1.1em `.fixedValueGlyph` every row button drew; `'large'` adds `fixedValueGlyph-large` (1.4em) and is the tree card's rename.
+- **The renames draw it.** A tree card's rename draws the large pencil and a data set row's rename the default one, each with no text and the same `aria-label` and title as before. Both stay outlined `secondary` buttons: the tree header is navy and the pencil is stroked in the navy accent, so it sits on the button's light surface, a pair the contrast test already holds. `RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL` is gone. A disabled `secondary` button's pencil is stroked in `--sdt-disabled-text`, which was the count button's rule alone.
+- **☆ and ✎ come first.** A tree card's header reads ☆, ✎, name, folder, count, so Tab reaches them first; `.treeHeaderActions` no longer pushes them to the end, and the group is drawn only on a card with a folder, so the ungrouped card's header starts with its name. A data set row's ✎ moved right after its ☆, before the name. The row aligns by baseline and the pencil has none, so `.treeDatasetRename` is `align-self: center` to sit level with the ☆. The action group still stops a click from reaching the header.
+- **Nothing else changes.** Rename and favorite post what they did, the host asks in its own input box, and what is stored is unchanged.
+- **Help and guide.** The ? help, the Adapter's intro and `docs/RECIPE-COCKPIT-GUIDE.md` call it the pencil, and say the rename sits before the name beside the star; two screenshots were re-taken.
+
 
 ## [3.180.0] - Recipe Cockpit: Target Org Manager's ⟳ recovers a stale or held picker without restarting VS Code
 
