@@ -215,8 +215,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)?.kind).toBe('postScratchOrgState');
             expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreePermissionSet', treeKey: ACCOUNT_TREE_KEY }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A metadata deploy') } });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toMatchObject({ kind: 'refuseDataOrgListing', hostMessage: { command: 'dataOrgListingRefused', message: expect.stringContaining('A metadata deploy') } });
             expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 0 }, panelState)).toEqual({ kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: false } });
 
         });
