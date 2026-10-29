@@ -40,6 +40,8 @@ import {
     ORG_OPERATION_RESULT_FILE_ATTEMPTS,
     SCRATCH_ORG_ALIAS_MAX_LENGTH,
     SCRATCH_ORG_DURATION_DAYS,
+    SCRATCH_ORG_MAX_DURATION_DAYS,
+    SCRATCH_ORG_MIN_DURATION_DAYS,
     ORG_OPERATION_REDACTED_VALUE,
     SCRATCH_ORG_LIBRARY_LIFECYCLE_LISTENER_ID,
     ScratchOrgService,
@@ -63,6 +65,8 @@ const CHOSEN_DEV_HUB: IDevHubOrgDetail = { targetOrgIdentifier: 'devhub', userna
 const CHOSEN_ALIAS = 'qa-accounts';
 
 const chooseChosenAlias = async (): Promise<IScratchOrgAliasChoice> => ({ alias: CHOSEN_ALIAS });
+// WHAT THE LIFETIME BOX HOLDS WHEN THE READER PRESSES ENTER ON IT (#534)
+const chooseDefaultDurationDays = async (): Promise<string> => String(SCRATCH_ORG_DURATION_DAYS);
 
 const invocation = (stdout: string, exitCode: number | null = 0, extra: Partial<ISalesforceCliInvocationResult> = {}): ISalesforceCliInvocationResult => ({ stdout, stderr: '', exitCode, ...extra });
 
@@ -121,8 +125,9 @@ describe('ScratchOrgService (#200)', () => {
     const PLAN_DATE = new Date(2026, 9, 10, 14, 22, 33);
 
     const resolvePlan = async (chooseDevHub: () => Promise<IDevHubOrgDetail | undefined> = async () => CHOSEN_DEV_HUB,
-                               chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined> = chooseChosenAlias) => (
-        await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseAlias)
+                               chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined> = chooseChosenAlias,
+                               chooseDurationDays: () => Promise<string | undefined> = chooseDefaultDurationDays) => (
+        await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseAlias, chooseDurationDays)
     ) as IScratchOrgPlan;
 
     describe('validateScratchOrgAlias (#279)', () => {
@@ -180,7 +185,69 @@ describe('ScratchOrgService (#200)', () => {
 
     });
 
+    describe('validateScratchOrgDurationDays (#534)', () => {
+
+        const DURATION_REFUSAL = `Enter a whole number of days from ${SCRATCH_ORG_MIN_DURATION_DAYS} to ${SCRATCH_ORG_MAX_DURATION_DAYS}.`;
+
+        it('accepts every whole number from 1 to 30', () => {
+
+            expect(SCRATCH_ORG_MIN_DURATION_DAYS).toBe(1);
+            expect(SCRATCH_ORG_MAX_DURATION_DAYS).toBe(30);
+            for ( let days = 1; days <= 30; days++ ) {
+                expect(ScratchOrgService.validateScratchOrgDurationDays(String(days))).toBeUndefined();
+            }
+
+        });
+
+        it('refuses 0, 31, negatives, decimals, non-numbers, an empty value, surrounding spaces and anything not a string', () => {
+
+            ['0', '31', '99', '-1', '+7', '7.5', '7.0', '07', '1e1', '0x7', 'abc', '', ' 7', '7 ', ' ', '７', '7\n'].forEach(typed => {
+                expect(ScratchOrgService.validateScratchOrgDurationDays(typed)).toBe(DURATION_REFUSAL);
+            });
+            [undefined, null, 7, {}].forEach(value => {
+                expect(ScratchOrgService.validateScratchOrgDurationDays(value)).toBe(DURATION_REFUSAL);
+            });
+
+        });
+
+    });
+
     describe('resolveScratchOrgPlan', () => {
+
+        it('asks for the lifetime after the alias, and carries the chosen days at both boundaries (#534)', async () => {
+
+            const promptOrder: string[] = [];
+            const chooseAlias = async () => { promptOrder.push('alias'); return chooseChosenAlias(); };
+
+            expect(( await resolvePlan(async () => CHOSEN_DEV_HUB, chooseAlias, async () => { promptOrder.push('duration'); return '1'; }) ).durationDays).toBe(1);
+            expect(promptOrder).toEqual(['alias', 'duration']);
+            expect(( await resolvePlan(async () => CHOSEN_DEV_HUB, chooseChosenAlias, async () => '30') ).durationDays).toBe(30);
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('is no plan when the lifetime box is dismissed, and never asks for it without an alias (#534)', async () => {
+
+            const chooseDurationDays = jest.fn(async (): Promise<string | undefined> => undefined);
+
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => CHOSEN_DEV_HUB, chooseChosenAlias, chooseDurationDays)).resolves.toBeUndefined();
+            expect(chooseDurationDays).toHaveBeenCalledTimes(1);
+
+            chooseDurationDays.mockClear();
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => CHOSEN_DEV_HUB, async () => undefined, chooseDurationDays)).resolves.toBeUndefined();
+            expect(chooseDurationDays).not.toHaveBeenCalled();
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('checks the lifetime again whatever the box said, and refuses 0, 31 and non-numbers before any process (#534)', async () => {
+
+            for ( const typed of ['0', '31', '-1', '7.5', 'abc', '', ' 7'] ) {
+                await expect(resolvePlan(async () => CHOSEN_DEV_HUB, chooseChosenAlias, async () => typed)).rejects.toThrow('No scratch org was created: Enter a whole number of days from 1 to 30.');
+            }
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
 
         it('resolves the definition file, the chosen Dev Hub, the alias and 7 days, names nothing to deploy (#358), and starts no process', async () => {
 
@@ -211,7 +278,7 @@ describe('ScratchOrgService (#200)', () => {
 
         it('is no plan when no Dev Hub is chosen, and starts no process (#243)', async () => {
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, chooseChosenAlias)).resolves.toBeUndefined();
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, chooseChosenAlias, chooseDefaultDurationDays)).resolves.toBeUndefined();
             expect(execFile).not.toHaveBeenCalled();
 
         });
@@ -224,14 +291,14 @@ describe('ScratchOrgService (#200)', () => {
             expect(chooseAlias).toHaveBeenCalledWith(CHOSEN_DEV_HUB);
 
             chooseAlias.mockClear();
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, chooseAlias)).resolves.toBeUndefined();
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, chooseAlias, chooseDefaultDurationDays)).resolves.toBeUndefined();
             expect(chooseAlias).not.toHaveBeenCalled();
 
         });
 
         it('is no plan when the alias box is dismissed, and starts no process (#279)', async () => {
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => CHOSEN_DEV_HUB, async () => undefined)).resolves.toBeUndefined();
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => CHOSEN_DEV_HUB, async () => undefined, chooseDefaultDurationDays)).resolves.toBeUndefined();
             expect(execFile).not.toHaveBeenCalled();
 
         });
@@ -259,11 +326,11 @@ describe('ScratchOrgService (#200)', () => {
             fs.rmSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'));
             const chooseDevHub = jest.fn(async () => CHOSEN_DEV_HUB);
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseChosenAlias)).rejects.toThrow('No scratch org definition file found');
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseChosenAlias, chooseDefaultDurationDays)).rejects.toThrow('No scratch org definition file found');
             expect(chooseDevHub).not.toHaveBeenCalled();
 
             fs.rmSync(path.join(workspaceRoot, 'sfdx-project.json'));
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseChosenAlias)).rejects.toThrow('No "sfdx-project.json" found at');
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseChosenAlias, chooseDefaultDurationDays)).rejects.toThrow('No "sfdx-project.json" found at');
             expect(chooseDevHub).not.toHaveBeenCalled();
 
         });
@@ -330,6 +397,13 @@ describe('ScratchOrgService (#200)', () => {
                 '--target-dev-hub', 'hub@example.com',
                 '--json'
             ]);
+
+        });
+
+        it('passes the chosen lifetime at both boundaries (#534)', () => {
+
+            expect(ScratchOrgService.buildScratchOrgCreateArguments({ ...PLAN, durationDays: 1 })).toEqual(expect.arrayContaining(['--duration-days', '1']));
+            expect(ScratchOrgService.buildScratchOrgCreateArguments({ ...PLAN, durationDays: 30 })).toEqual(expect.arrayContaining(['--duration-days', '30']));
 
         });
 
@@ -621,8 +695,8 @@ describe('ScratchOrgService (#200)', () => {
             });
         };
 
-        const runSetup = async (cancellation: { requestedAtPhase?: ScratchOrgSetupPhase } = {}) => {
-            const scratchOrgPlan = await resolvePlan();
+        const runSetup = async (cancellation: { requestedAtPhase?: ScratchOrgSetupPhase } = {}, typedDurationDays = String(SCRATCH_ORG_DURATION_DAYS)) => {
+            const scratchOrgPlan = await resolvePlan(async () => CHOSEN_DEV_HUB, chooseChosenAlias, async () => typedDurationDays);
             const reportedPhases: ScratchOrgSetupPhase[] = [];
             let isCancelled = false;
             let killCurrentProcess: () => void;
@@ -671,6 +745,23 @@ describe('ScratchOrgService (#200)', () => {
             expect(savedCreate).not.toContain('00D000000000077!REDACTED');
             expect(JSON.parse(savedCreate).result.username).toBe(NEW_SCRATCH_USERNAME);
             expect(fs.readFileSync(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, '.gitignore'), 'utf-8')).toBe('*\n');
+
+        });
+
+        it('creates with the lifetime the reader chose and records it in the result file, on success and on failure (#534)', async () => {
+
+            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }]);
+            const { outcome } = await runSetup({}, '30');
+
+            expect(cliCalls[0].argumentList).toEqual(expect.arrayContaining(['--duration-days', '30']));
+            expect(JSON.parse(fs.readFileSync(( outcome as { outputFilePath: string } ).outputFilePath, 'utf-8')).durationDays).toBe(30);
+
+            cliCalls = [];
+            answerCliCalls([{ stdout: 'not json', error: exitError(1) }]);
+            const { outcome: failedOutcome } = await runSetup({}, '1');
+
+            expect(cliCalls[0].argumentList).toEqual(expect.arrayContaining(['--duration-days', '1']));
+            expect(JSON.parse(fs.readFileSync(( failedOutcome as { outputFilePath: string } ).outputFilePath, 'utf-8'))).toMatchObject({ durationDays: 1, exitCode: 1 });
 
         });
 
@@ -928,9 +1019,10 @@ describe('ScratchOrgService (#200)', () => {
                 (ScratchOrgCache.create as jest.Mock).mockReset().mockImplementation(async () => ({ get: (key: string) => cachedRequests[key] }));
             });
 
-            const runWithLibrary = async (createScratchOrg: jest.Mock) => {
+            const runWithLibrary = async (createScratchOrg: jest.Mock, typedDurationDays = String(SCRATCH_ORG_DURATION_DAYS)) => {
                 const phases: ScratchOrgSetupPhase[] = [];
-                const outcome = await ScratchOrgService.runScratchOrgSetupWithLibrary(await resolvePlan(), { onPhase: phase => phases.push(phase), now: () => PLAN_DATE }, createScratchOrg);
+                const scratchOrgPlan = await resolvePlan(async () => CHOSEN_DEV_HUB, chooseChosenAlias, async () => typedDurationDays);
+                const outcome = await ScratchOrgService.runScratchOrgSetupWithLibrary(scratchOrgPlan, { onPhase: phase => phases.push(phase), now: () => PLAN_DATE }, createScratchOrg);
                 return { outcome, phases };
             };
 
@@ -951,6 +1043,21 @@ describe('ScratchOrgService (#200)', () => {
                 });
                 expect(outcome).toMatchObject({ kind: 'created', username: NEW_SCRATCH_USERNAME });
                 expect(outcome).not.toHaveProperty('incompleteMessage');
+            });
+
+            it('creates with the lifetime the reader chose and records it in the result file, on success and on failure (#534)', async () => {
+                const createScratchOrg = jest.fn().mockResolvedValue({ username: NEW_SCRATCH_USERNAME, warnings: [] });
+
+                const { outcome } = await runWithLibrary(createScratchOrg, '30');
+
+                expect(createScratchOrg).toHaveBeenCalledWith(expect.objectContaining({ durationDays: 30 }));
+                expect(JSON.parse(fs.readFileSync(( outcome as { outputFilePath: string } ).outputFilePath, 'utf-8')).durationDays).toBe(30);
+
+                const failingCreate = jest.fn().mockRejectedValue(new Error('limit reached'));
+                const { outcome: failedOutcome } = await runWithLibrary(failingCreate, '1');
+
+                expect(failingCreate).toHaveBeenCalledWith(expect.objectContaining({ durationDays: 1 }));
+                expect(JSON.parse(fs.readFileSync(( failedOutcome as { outputFilePath: string } ).outputFilePath, 'utf-8'))).toMatchObject({ status: 1, durationDays: 1 });
             });
 
             it('writes the result through redactSecrets: no authFields, access token or auth code', async () => {

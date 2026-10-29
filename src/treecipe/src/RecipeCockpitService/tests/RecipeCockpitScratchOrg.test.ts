@@ -53,6 +53,7 @@ import {
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
     RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
+    RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT,
     RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT,
@@ -82,6 +83,13 @@ const SCRATCH_CREATE_LIMIT_REACHED = fs.readFileSync(path.join(SCRATCH_ORG_MOCKS
 
 const NEW_SCRATCH_USERNAME = 'test-newscratch@example.com';
 const CHOSEN_ALIAS = 'qa-accounts';
+
+// THE ALIAS BOX AND THE LIFETIME BOX (#534) ARE BOTH showInputBox: EACH IS ANSWERED BY ITS OWN PROMPT
+const answerScratchOrgInputBoxes = (alias: string | undefined, durationDays = '7') => {
+    (vscode.window.showInputBox as jest.Mock).mockImplementation(async (inputBoxOptions: { prompt?: string }) => (
+        inputBoxOptions?.prompt === RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT ? durationDays : alias
+    ));
+};
 const DEV_HUB_AUTHORIZATION = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, instanceUrl: 'https://acme.my.salesforce.com' };
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
@@ -337,7 +345,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
             (vscode.window.showInputBox as jest.Mock).mockReset();
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(CHOSEN_ALIAS);
+            answerScratchOrgInputBoxes(CHOSEN_ALIAS);
 
             (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => ({
                 reveal: jest.fn(),
@@ -504,13 +512,17 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             const promptOrder: string[] = [];
             devHubPromptSpy.mockImplementation(async (orgListing: Promise<any>) => { promptOrder.push('devHub'); return (await orgListing).orgDetails[0]; });
-            (vscode.window.showInputBox as jest.Mock).mockImplementation(async () => { promptOrder.push('alias'); return CHOSEN_ALIAS; });
+            (vscode.window.showInputBox as jest.Mock).mockImplementation(async (inputBoxOptions: { prompt?: string }) => {
+                const isDurationBox = inputBoxOptions.prompt === RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT;
+                promptOrder.push(isDurationBox ? 'duration' : 'alias');
+                return isDurationBox ? '7' : CHOSEN_ALIAS;
+            });
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => { promptOrder.push('modal'); return undefined; });
             await openRenderedCockpit();
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(promptOrder).toEqual(['devHub', 'alias', 'modal']);
+            expect(promptOrder).toEqual(['devHub', 'alias', 'duration', 'modal']);
             const [inputBoxOptions] = (vscode.window.showInputBox as jest.Mock).mock.calls[0];
             expect(inputBoxOptions).toMatchObject({ prompt: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT, placeHolder: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER, ignoreFocusOut: true });
             expect(inputBoxOptions.value).toBeUndefined();
@@ -518,9 +530,58 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         });
 
+        it('asks for the lifetime after the alias, stating the 1 to 30 day range, with 7 filled in (#534)', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const [durationBoxOptions] = (vscode.window.showInputBox as jest.Mock).mock.calls[1];
+            expect(RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT).toContain('1 to 30 days (Salesforce\'s maximum is 30)');
+            expect(durationBoxOptions).toMatchObject({ prompt: RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT, value: '7', ignoreFocusOut: true });
+            const { validateInput } = durationBoxOptions;
+            ['1', '7', '30'].forEach(typed => expect(validateInput(typed)).toBeUndefined());
+            ['0', '31', '-1', '7.5', 'abc', '', ' 7', '7 '].forEach(typed => expect(validateInput(typed)).toBe('Enter a whole number of days from 1 to 30.'));
+
+        });
+
+        it('names the chosen lifetime in the confirmation and creates with it (#534)', async () => {
+
+            answerScratchOrgInputBoxes(CHOSEN_ALIAS, '30');
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const [, modalOptions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            expect(modalOptions.detail).toContain('Duration: 30 days');
+            expect(modalOptions.detail).not.toContain('Duration: 7 days');
+            const createArguments = cliCalls.find(argumentList => argumentList[1] === 'create');
+            expect(createArguments).toEqual(expect.arrayContaining(['--duration-days', '30']));
+
+        });
+
+        it('runs nothing and says nothing when the lifetime box is dismissed (#534)', async () => {
+
+            (vscode.window.showInputBox as jest.Mock).mockImplementation(async (inputBoxOptions: { prompt?: string }) => (
+                inputBoxOptions.prompt === RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT ? undefined : CHOSEN_ALIAS
+            ));
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(vscode.window.showInputBox).toHaveBeenCalledTimes(2);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(notificationWarningSpy).not.toHaveBeenCalled();
+            expect(execFile).not.toHaveBeenCalled();
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME))).toBe(false);
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
+
+        });
+
         it('runs nothing and says nothing when the alias box is dismissed (#279)', async () => {
 
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+            answerScratchOrgInputBoxes(undefined);
             await openRenderedCockpit();
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
@@ -555,7 +616,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('lets the reader move an alias another org holds, saying so in the modal, and creates with it (#279)', async () => {
 
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(' uat ');
+            answerScratchOrgInputBoxes(' uat ');
             await openRenderedCockpit();
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
@@ -569,7 +630,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('refuses an alias the box should not have let through, before the modal and any process (#279)', async () => {
 
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue('--json');
+            answerScratchOrgInputBoxes('--json');
             await openRenderedCockpit();
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
