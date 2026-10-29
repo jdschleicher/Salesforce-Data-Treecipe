@@ -39,7 +39,7 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo } from '@salesforce/core';
+import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import { RECIPE_COCKPIT_DATA_ORG_STATE_KEY, RECIPE_COCKPIT_HIDDEN_ORGS_NOTE, RecipeCockpitService } from '../RecipeCockpitService';
@@ -47,15 +47,15 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 
 /*
-    One "sf org list --json --verbose" answer, read by all three org pickers through the real
-    SalesforceOrgService: the Treecipe tab's org dropdown, Insert Data Set by Directory and Run
-    Picklist Dependency Check (Compare with an org… went with the Compare tab, #266). Only execFile and the authorization
-    files are stood in for.
+    One connection check (#502: each authorization pinged in process), read by all three org pickers
+    through the real SalesforceOrgService: the Treecipe tab's org dropdown, Insert Data Set by
+    Directory and Run Picklist Dependency Check (Compare with an org… went with the Compare tab, #266).
+    Only the pings and the authorization files are stood in for; no process may start.
 */
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
-const SF_ORG_LIST_STDOUT = fs.readFileSync(path.join(SALESFORCE_ORG_MOCKS_PATH, 'sfOrgListVerbose.json'), 'utf-8');
 const ORG_AUTHORIZATIONS = JSON.parse(fs.readFileSync(path.join(SALESFORCE_ORG_MOCKS_PATH, 'orgAuthorizations.json'), 'utf-8'));
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
@@ -67,11 +67,12 @@ beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readScratchOrgDetail').mockResolvedValue(undefined);
 });
 
-describe('RecipeCockpitService, every org picker lists only the orgs the Salesforce CLI reports connected', () => {
+describe('RecipeCockpitService, every org picker lists only the orgs that answer their ping (#502)', () => {
 
     let receivedMessageHandler: (panelMessage: any) => Promise<void>;
     let postedPanelMessages: any[];
     let offeredQuickPickLabels: string[][];
+    let checkSpy: jest.SpyInstance;
 
     const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
     const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
@@ -89,10 +90,8 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
         offeredQuickPickLabels = [];
 
         (execFile as unknown as jest.Mock).mockReset();
-        (execFile as unknown as jest.Mock).mockImplementation((_command: string, _args: string[], _options: unknown, callback: any) => {
-            setImmediate(() => callback(null, SF_ORG_LIST_STDOUT, ''));
-            return { kill: jest.fn() };
-        });
+        answerOrgConnectionPings(Org.create as jest.Mock);
+        checkSpy = jest.spyOn(SalesforceOrgService, 'checkOrgConnections');
         (AuthInfo.listAllAuthorizations as jest.Mock).mockClear();
         (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS);
 
@@ -139,7 +138,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
 
     });
 
-    it('leaves out RefreshTokenAuthError, Unknown, expired and deleted orgs in all three pickers, and runs "sf org list" once for all of them', async () => {
+    it('leaves out a failed refresh, an unreachable org, an expired and a deleted scratch org in all three pickers, and checks once for all of them', async () => {
 
         await openRenderedCockpit();
 
@@ -152,36 +151,29 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
             hiddenOrgNote: RECIPE_COCKPIT_HIDDEN_ORGS_NOTE
         });
         expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
-        expect(execFile).toHaveBeenCalledTimes(1);
-        expect((execFile as unknown as jest.Mock).mock.calls[0][1]).toEqual(['org', 'list', '--json', '--verbose']);
+        expect(checkSpy).toHaveBeenCalledTimes(1);
+        expect(execFile).not.toHaveBeenCalled();
 
     });
 
-    it('runs "sf org list" again on the Treecipe tab\'s ⟳, and every picker after it reads the new answer', async () => {
+    it('checks again on the Treecipe tab\'s ⟳, and every picker after it reads the new answer', async () => {
 
         await openRenderedCockpit();
         await receivedMessageHandler({ command: 'loadDataOrgs' });
 
-        (execFile as unknown as jest.Mock).mockImplementation((_command: string, _args: string[], _options: unknown, callback: any) => {
-            const reconnectedOrgList = JSON.parse(SF_ORG_LIST_STDOUT);
-            // THE CLI REPEATS A SANDBOX UNDER "sandboxes", AND EVERY ENTRY FOR AN ORG HAS TO SAY CONNECTED
-            [reconnectedOrgList.result.nonScratchOrgs[1], reconnectedOrgList.result.sandboxes[1]].forEach(orgListEntry => { orgListEntry.connectedStatus = 'Connected'; });
-            setImmediate(() => callback(null, JSON.stringify(reconnectedOrgList), ''));
-            return { kill: jest.fn() };
-        });
+        answerOrgConnectionPings(Org.create as jest.Mock, username => [...CONNECTED_ORG_USERNAMES, 'uat@example.com.uat'].includes(username));
 
         await receivedMessageHandler({ command: 'refreshDataOrgs' });
         await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
 
-        expect(execFile).toHaveBeenCalledTimes(2);
+        expect(checkSpy).toHaveBeenCalledTimes(2);
         expect(postedNamed('dataOrgList').map(dataOrgList => dataOrgList.orgLabels)).toEqual([CONNECTED_ORG_LABELS, ['qa', 'uat', 'activeScratch']]);
         expect(offeredQuickPickLabels).toEqual([['qa', 'uat', 'activeScratch']]);
 
     });
 
-    it('labels each org by the alias "sf org list" answers when the authorizations carry none, while the selection and the remembered org stay the username (#286)', async () => {
+    it('lists an org with no alias by its username, while the selection and the remembered org stay the username (#286)', async () => {
 
-        // A StateAggregator READ BEFORE THE ALIASES WERE SET: EVERY AUTHORIZATION COMES BACK WITH NONE
         (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS.map((authorization: any) => ({ ...authorization, aliases: [] })));
         const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockRejectedValue(new Error('no connection in this test'));
         const workspaceStateUpdate = jest.fn().mockResolvedValue(undefined);
@@ -190,59 +182,48 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
         await receivedMessageHandler({ command: 'ready' });
         await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
         await receivedMessageHandler({ command: 'loadDataOrgs' });
-        await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
-        await (new ExtensionCommandService() as any).promptForPicklistDependencyTargetOrg();
 
-        expect(postedNamed('dataOrgList')[0]).toMatchObject({
-            orgLabels: CONNECTED_ORG_LABELS,
-            hiddenOrgNote: RECIPE_COCKPIT_HIDDEN_ORGS_NOTE
-        });
-        expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
-        expect(JSON.stringify(postedNamed('dataOrgList'))).not.toContain('@example.com');
+        expect(postedNamed('dataOrgList')[0].orgLabels).toEqual(['qa@example.com.qa', 'test-active@example.com']);
 
         await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
         const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
-        expect(panelState.dataOrgSelection.orgDetail).toEqual({ targetOrgIdentifier: 'qa@example.com.qa', username: 'qa@example.com.qa', alias: 'qa' });
+        expect(panelState.dataOrgSelection.orgDetail).toEqual({ targetOrgIdentifier: 'qa@example.com.qa', username: 'qa@example.com.qa', alias: undefined });
         expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'qa@example.com.qa');
         expect(getConnectionSpy).toHaveBeenCalledWith('qa@example.com.qa');
-        expect(postedNamed('dataOrgSelection')[0]).toMatchObject({ orgIndex: 0, orgLabel: 'qa' });
 
     });
 
-    it('lists an org with no alias anywhere by its username (#286)', async () => {
+    it('lists no org anywhere when the authorizations cannot be read, and never falls back to every authorization', async () => {
 
-        (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS.map((authorization: any) => ({ ...authorization, aliases: [] })));
-        (execFile as unknown as jest.Mock).mockImplementation((_command: string, _args: string[], _options: unknown, callback: any) => {
-            const unaliasedOrgList = JSON.parse(SF_ORG_LIST_STDOUT);
-            Object.values(unaliasedOrgList.result).forEach((orgListEntries: any) => orgListEntries.forEach((orgListEntry: any) => { delete orgListEntry.alias; }));
-            setImmediate(() => callback(null, JSON.stringify(unaliasedOrgList), ''));
-            return { kill: jest.fn() };
-        });
-
-        await openRenderedCockpit();
-        await receivedMessageHandler({ command: 'loadDataOrgs' });
-
-        expect(postedNamed('dataOrgList')[0].orgLabels).toEqual(['qa@example.com.qa', 'test-active@example.com']);
-
-    });
-
-    it('lists no org anywhere when the Salesforce CLI is missing, and never falls back to every authorization', async () => {
-
-        (execFile as unknown as jest.Mock).mockImplementation((_command: string, _args: string[], _options: unknown, callback: any) => {
-            setImmediate(() => callback(Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }), '', ''));
-            return { kill: jest.fn() };
-        });
+        (AuthInfo.listAllAuthorizations as jest.Mock).mockRejectedValue(new Error('auth files unreadable'));
 
         await openRenderedCockpit();
         await receivedMessageHandler({ command: 'loadDataOrgs' });
         await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
 
-        expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: expect.stringContaining('Salesforce CLI') });
+        expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: 'The authorized Salesforce orgs could not be read, so no org is listed. auth files unreadable' });
         expect(offeredQuickPickLabels).toEqual([]);
-        expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('could not report which authorized orgs are connected'));
-        // A FAILURE IS NOT CACHED: THE SECOND PICKER ASKED THE CLI AGAIN
-        expect(execFile).toHaveBeenCalledTimes(2);
+        expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('could not be read, so no org is listed'));
+        expect(execFile).not.toHaveBeenCalled();
+
+    });
+
+    it('lists the orgs that answered when one org never answers, rather than nothing (#502)', async () => {
+
+        (Org.create as jest.Mock).mockImplementation(async ({ aliasOrUsername }: { aliasOrUsername: string }) => ({
+            getUsername: () => aliasOrUsername,
+            refreshAuth: () => aliasOrUsername === 'stale@example.com.dev' ? new Promise(() => undefined) : Promise.resolve()
+        }));
+        // THE REAL CHECK, WITH TIMES SHORT ENOUGH FOR A TEST
+        checkSpy.mockRestore();
+        const checkOrgConnections = SalesforceOrgService.checkOrgConnections.bind(SalesforceOrgService);
+        jest.spyOn(SalesforceOrgService, 'checkOrgConnections').mockImplementation(authorizations => checkOrgConnections(authorizations, 1000, 10));
+
+        await openRenderedCockpit();
+        await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+        expect(postedNamed('dataOrgList')[0].orgLabels).toEqual(['qa', 'uat', 'deletedScratch', 'activeScratch']);
 
     });
 

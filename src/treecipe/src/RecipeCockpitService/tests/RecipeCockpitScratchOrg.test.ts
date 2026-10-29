@@ -43,7 +43,7 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo } from '@salesforce/core';
+import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
@@ -63,6 +63,7 @@ import {
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
+import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { ORG_OPERATIONS_FOLDER_NAME, ScratchOrgService } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
@@ -75,7 +76,6 @@ const SCRATCH_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'ScratchOrgServi
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
 
 const readJson = (filePath: string) => JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-const SF_ORG_LIST = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'sfOrgListVerbose.json'));
 const ORG_AUTHORIZATIONS = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'orgAuthorizations.json'));
 const SCRATCH_CREATE_SUCCESS = fs.readFileSync(path.join(SCRATCH_ORG_MOCKS_PATH, 'scratchCreateSuccess.json'), 'utf-8');
 const SCRATCH_CREATE_LIMIT_REACHED = fs.readFileSync(path.join(SCRATCH_ORG_MOCKS_PATH, 'scratchCreateLimitReached.json'), 'utf-8');
@@ -231,7 +231,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
         const DEFAULT_DEV_HUB = { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' as const };
         const OTHER_DEV_HUB = { targetOrgIdentifier: 'otherHub', username: 'other-hub@example.com', alias: 'otherHub' };
         let cliHandlers: Partial<Record<'create', CliHandler>>;
-        let isNewOrgListedByCli: boolean;
+        let isNewOrgConnected: boolean;
         let isNewOrgAuthorized: boolean;
         let heldCliCallbacks: Array<() => void>;
         let cancellationListeners: Array<() => void>;
@@ -242,7 +242,9 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
-        const cliCallKinds = () => cliCalls.map(argumentList => argumentList.slice(0, 2).join(' '));
+        // EVERY CLI CALL AND EVERY CONNECTION CHECK (#502), IN THE ORDER THEY STARTED
+        let runSteps: string[];
+        const cliCallKinds = () => runSteps;
         const lastScratchOrgState = () => postedNamed('scratchOrgState').at(-1);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         // HOW A RUN ENDED (#301): EVERY NOTIFICATION THAT IS NOT A MODAL, AS [text, ...buttons]
@@ -251,13 +253,6 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             .flatMap(notify => runNotifications(notify).map(notificationCall => notificationCall[0]));
         const aliasOf = (createArguments: string[]) => createArguments[createArguments.indexOf('--alias') + 1];
 
-        const buildOrgListStdout = () => {
-            const orgList = JSON.parse(JSON.stringify(SF_ORG_LIST));
-            if ( isNewOrgListedByCli && isNewOrgAuthorized ) {
-                orgList.result.scratchOrgs.push({ username: NEW_SCRATCH_USERNAME, alias: 'new', isScratch: true, status: 'Active', isExpired: false });
-            }
-            return JSON.stringify(orgList);
-        };
 
         const openRenderedCockpit = async () => {
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, { get: jest.fn(), update: workspaceStateUpdate });
@@ -291,7 +286,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             cliCalls = [];
             heldCliCallbacks = [];
             cancellationListeners = [];
-            isNewOrgListedByCli = true;
+            isNewOrgConnected = true;
+            runSteps = [];
             isNewOrgAuthorized = false;
             cliHandlers = {
                 create: () => ({ stdout: SCRATCH_CREATE_SUCCESS })
@@ -301,11 +297,10 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             (execFile as unknown as jest.Mock).mockReset();
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], _options: unknown, callback: any) => {
                 cliCalls.push(argumentList);
+                runSteps.push(argumentList.slice(0, 2).join(' '));
                 const answerWith = (cliAnswer: { stdout: string; error?: unknown }) => setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
-                if ( argumentList[0] === 'org' && argumentList[1] === 'list' ) {
-                    answerWith({ stdout: buildOrgListStdout() });
-                } else if ( argumentList[0] !== 'org' ) {
-                    // #358: THE RUN STARTS NO PROCESS BUT THE CREATE AND THE LISTING
+                if ( argumentList[0] !== 'org' ) {
+                    // #358: THE RUN STARTS NO PROCESS BUT THE CREATE
                     answerWith({ stdout: '', error: new Error(`The scratch org run started a process it should not have: ${argumentList.join(' ')}`) });
                 } else {
                     const cliAnswer = cliHandlers.create(argumentList);
@@ -326,6 +321,12 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
                 DEV_HUB_AUTHORIZATION,
                 ...( isNewOrgAuthorized ? [{ username: NEW_SCRATCH_USERNAME, aliases: ['new'], isScratchOrg: true, isExpired: false, instanceUrl: 'https://ability-new-7.scratch.my.salesforce.com' }] : [] )
             ]);
+            answerOrgConnectionPings(Org.create as jest.Mock, username => CONNECTED_ORG_USERNAMES.includes(username) || ( isNewOrgConnected && username === NEW_SCRATCH_USERNAME ));
+            const checkOrgConnections = SalesforceOrgService.checkOrgConnections.bind(SalesforceOrgService);
+            jest.spyOn(SalesforceOrgService, 'checkOrgConnections').mockImplementation(authorizations => {
+                runSteps.push('connection check');
+                return checkOrgConnections(authorizations);
+            });
 
             cancellationToken = { isCancellationRequested: false, onCancellationRequested: (listener: () => void) => { cancellationListeners.push(listener); } };
             (vscode.window.withProgress as jest.Mock).mockReset();
@@ -600,7 +601,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'loadDataOrgs' });
             await flushAsyncWork();
 
-            expect(cliCallKinds()).toEqual(['org list']);
+            expect(cliCallKinds()).toEqual(['connection check']);
 
             const progressMessages: string[] = [];
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: (progressReport: { message: string }) => progressMessages.push(progressReport.message) }, cancellationToken));
@@ -609,8 +610,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
             await flushAsyncWork();
 
-            expect(cliCallKinds()).toEqual(['org list', 'org create', 'org list']);
-            const createArguments = cliCalls[1];
+            expect(cliCallKinds()).toEqual(['connection check', 'org create', 'connection check']);
+            const createArguments = cliCalls[0];
             const alias = createArguments[createArguments.indexOf('--alias') + 1];
             expect(alias).toBe(CHOSEN_ALIAS);
             expect(createArguments).toEqual([
@@ -660,7 +661,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await flushAsyncWork();
 
             expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith(`sf project deploy start --target-org ${NEW_SCRATCH_USERNAME}`);
-            expect(cliCallKinds()).toEqual(['org create', 'org list']);
+            expect(cliCallKinds()).toEqual(['org create', 'connection check']);
             expect(openFileSpy).not.toHaveBeenCalled();
 
             // THE PANEL HAS NO MESSAGE THAT OPENS A RESULT FILE
@@ -688,7 +689,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('selects no other org in its place when the refreshed list does not include the new org, and says it is not listed yet', async () => {
 
-            isNewOrgListedByCli = false;
+            isNewOrgConnected = false;
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
@@ -697,11 +698,11 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(cliCallKinds().indexOf('org create')).toBeLessThan(cliCallKinds().lastIndexOf('org list'));
+            expect(cliCallKinds().indexOf('org create')).toBeLessThan(cliCallKinds().lastIndexOf('connection check'));
             expect(postedNamed('dataOrgSelection')).toHaveLength(selectionsBefore);
             expect(postedNamed('dataOrgList').at(-1).selectedOrgIndex).toBeNull();
             const [notListedText, notListedAction] = runNotifications(vscode.window.showWarningMessage).at(-1);
-            expect(notListedText).toContain('does not list');
+            expect(notListedText).toContain('did not answer the connection check yet');
             expect(notListedText).toContain('so no org was selected in its place');
             expect(notListedAction).toBe(RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL);
             expect(workspaceStateUpdate).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, undefined);
@@ -943,7 +944,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(cliCallKinds()).toEqual(['org create', 'org list']);
+            expect(cliCallKinds()).toEqual(['org create', 'connection check']);
             expect(runNotificationTexts()).toEqual([expect.stringContaining('is ready. Nothing was deployed to it.')]);
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
 
@@ -973,7 +974,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             heldCliCallbacks.forEach(releaseCliCallback => releaseCliCallback());
             await firstRun;
 
-            expect(cliCallKinds()).toEqual(['org create', 'org list']);
+            expect(cliCallKinds()).toEqual(['org create', 'connection check']);
             expect(lastScratchOrgState()).toMatchObject({ isRunning: false });
 
         });

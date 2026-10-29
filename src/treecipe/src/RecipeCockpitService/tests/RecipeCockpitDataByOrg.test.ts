@@ -297,12 +297,12 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
-            (SalesforceOrgService.listDataOrgDetails as jest.Mock).mockRejectedValue(new OrgConnectionStatusUnavailableError('The Salesforce CLI did not answer.'));
+            (SalesforceOrgService.listDataOrgDetails as jest.Mock).mockRejectedValue(new OrgConnectionStatusUnavailableError('The org connections could not be checked.'));
 
             await receivedMessageHandler({ command: 'refreshDataOrgs' });
 
             expect(clearForOrgSpy).not.toHaveBeenCalled();
-            expect(postedNamed('dataOrgList').slice(-1)[0]).toMatchObject({ orgLabels: [], noOrgsMessage: expect.stringContaining('The Salesforce CLI did not answer.') });
+            expect(postedNamed('dataOrgList').slice(-1)[0]).toMatchObject({ orgLabels: [], noOrgsMessage: expect.stringContaining('The org connections could not be checked.') });
 
         });
 
@@ -637,7 +637,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('lists only the orgs the CLI knows are not production and reports connected, and says only that it lists sandboxes, with no count of what it left out', async () => {
+        it('lists only the orgs the CLI knows are not production and that answer when checked, and says only that it lists sandboxes, with no count of what it left out', async () => {
 
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([SANDBOX_ORG], [
                 { username: 'prod@example.com', label: 'prod', reason: 'production' },
@@ -652,7 +652,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(postedNamed('dataOrgList')[0]).toMatchObject({
                 orgLabels: ['qa'],
-                hiddenOrgNote: 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, plus the CLI\'s default org, and inserts only into a sandbox or scratch org.',
+                hiddenOrgNote: 'The Treecipe tab lists only sandboxes and scratch orgs that answer when checked, plus the CLI\'s default org, and inserts only into a sandbox or scratch org.',
                 forgottenOrgNotice: '',
                 noOrgsMessage: ''
             });
@@ -687,15 +687,15 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('lists no org when the CLI could not say which are connected, and says why', async () => {
+        it('lists no org when the authorized orgs could not be read, and says why', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new OrgConnectionStatusUnavailableError('The Salesforce CLI ("sf") is not installed or not on PATH.'));
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new OrgConnectionStatusUnavailableError('auth files unreadable'));
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
             expect(postedNamed('dataOrgList')[0].orgLabels).toEqual([]);
-            expect(postedNamed('dataOrgList')[0].noOrgsMessage).toBe('The Salesforce CLI could not report which authorized orgs are connected, so no org is listed. The Salesforce CLI ("sf") is not installed or not on PATH.');
+            expect(postedNamed('dataOrgList')[0].noOrgsMessage).toBe('The authorized Salesforce orgs could not be read, so no org is listed. auth files unreadable');
 
         });
 
@@ -1155,7 +1155,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         const optionsOf = (selectElement: any) => selectElement.children.map((optionElement: any) => [optionElement.value, optionElement.textContent]);
 
-        // #305: THE PICKER NEVER VANISHES WHILE "sf org list" CHECKS THE CONNECTIONS
+        // #305: THE PICKER NEVER VANISHES WHILE THE CONNECTIONS ARE CHECKED
         it('keeps the dropdown, ⟳ and "+ New scratch org" drawn and enabled while the check runs, with a spinner to the right of the dropdown and "Checking org connections…" below', () => {
 
             const { panel } = renderDataOrgPanel();
@@ -1226,11 +1226,11 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: 'The Salesforce CLI could not report which authorized orgs are connected, so no org is listed.', renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: 'The authorized Salesforce orgs could not be read, so no org is listed.', renderSequence: 1 });
 
             expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgSpinner').every((element: any) => panel.isHidden(element))).toBe(true);
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(false);
-            expect(viewOf(panel, 'dataOrgStatus').textContent).toContain('could not report');
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toContain('could not be read');
             expect(insertReasonsOf(panel)[0]).toBe(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE);
 
         });
@@ -1505,7 +1505,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        // #305: THE HOST JOINS A CHECK ALREADY IN FLIGHT, SO A SECOND CLICK STARTS NO SECOND "sf org list"
+        // #305: THE HOST JOINS A CHECK ALREADY IN FLIGHT, SO A SECOND CLICK STARTS NO SECOND CHECK
         it('keeps ⟳ enabled while the check is out, so a second click asks again', () => {
 
             const { panel } = renderDataOrgPanel();

@@ -1,5 +1,5 @@
 import { AuthInfo, Connection, Org, OrgAuthorization, StateAggregator } from '@salesforce/core';
-import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
@@ -195,9 +195,9 @@ export interface INonProductionAuthorizationFields {
 }
 
 /*
-    Why the Salesforce CLI's answer leaves an authorized org out of every picker. "notConnected"
-    covers everything that is not a clear yes: an auth error code, "Unknown", a missing or mistyped
-    field, and an org the answer does not mention at all.
+    Why the connection check leaves an authorized org out of every picker. "notConnected" covers
+    everything that is not a clear yes: a ping that failed or did not answer in time, and an
+    authorization @salesforce/core could not read.
 */
 export type OrgConnectionUnusableReason = 'expired' | 'deleted' | 'notConnected';
 
@@ -220,15 +220,20 @@ export interface IHiddenAuthorizedOrg {
 }
 
 /*
-    What one "sf org list" answered, by username, and which authorizations existed when it was asked.
-    An authorization added since -- "sf org login web" in a terminal, or a scratch org created --
-    is one the answer cannot speak for, so it is asked again rather than reported not connected.
+    What one connection check answered, by username, and which authorizations it checked. An
+    authorization added since -- "sf org login web" in a terminal, or a scratch org created -- is
+    one the answer cannot speak for, so it is checked again rather than reported not connected.
 */
 export interface IConnectedOrgStatusListing {
     connectionStatesByUsername: Map<string, OrgConnectionState>;
-    aliasesByUsername?: Map<string, string>;
     checkedAuthorizationUsernames?: Set<string>;
-    checkedAuthorizationAliasesByUsername?: Map<string, string>;
+    // false when the listing's own time ran out first: answered, but never cached
+    isComplete?: boolean;
+}
+
+export interface IOrgConnectionCheck {
+    connectionStatesByUsername: Map<string, OrgConnectionState>;
+    isComplete: boolean;
 }
 
 /*
@@ -246,27 +251,23 @@ export interface IDataOrgListing extends IConnectedOrgListing {
     hiddenOrgCount: number;
 }
 
-// THE CLI COULD NOT SAY WHICH ORGS ARE CONNECTED, SO NO ORG IS LISTED -- NEVER AN UNCHECKED FALLBACK
+// THE AUTHORIZED ORGS COULD NOT BE READ, SO NO ORG IS LISTED -- NEVER AN UNCHECKED FALLBACK
 export class OrgConnectionStatusUnavailableError extends Error {
 
     constructor(reason: string) {
-        super(`The Salesforce CLI could not report which authorized orgs are connected, so no org is listed. ${reason}`);
+        super(`The authorized Salesforce orgs could not be read, so no org is listed. ${reason}`);
         this.name = 'OrgConnectionStatusUnavailableError';
     }
 
 }
 
-/*
-    "--verbose" for the scratch orgs' status from their Dev Hub, and never "--skip-connection-status",
-    which is the whole answer this asks for. Without "--all" the CLI already leaves out a scratch org
-    that is not Active; such an org is then simply not in the answer, and is left out here too.
-*/
-export const SALESFORCE_CLI_ORG_LIST_ARGUMENTS: readonly string[] = ['org', 'list', '--json', '--verbose'];
+// ONE PING PER ORG, SO A SLOW OR UNREACHABLE ORG HOLDS ONLY ITSELF BACK
+export const ORG_CONNECTION_CHECK_CONCURRENCY = 5;
 
-// THE CLI PINGS EVERY AUTHORIZED ORG'S TOKEN, SO THE CHECK IS GIVEN TIME -- BUT NOT FOREVER
-export const SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS = 60000;
+export const ORG_CONNECTION_CHECK_TIMEOUT_MILLISECONDS = 20000;
 
-const SALESFORCE_CLI_ORG_LIST_GROUPS = ['nonScratchOrgs', 'other', 'sandboxes', 'devHubs', 'scratchOrgs'];
+// THE WHOLE LISTING: AN ORG STILL UNANSWERED THEN IS LEFT OUT, NEVER THE LIST
+export const ORG_CONNECTION_LISTING_TIMEOUT_MILLISECONDS = 60000;
 
 export const REAUTHORIZE_ORG_INSTRUCTION = 'Re-authorize one with "sf org login web" and try again.';
 
@@ -814,8 +815,8 @@ export class SalesforceOrgService {
     }
 
     /*
-        The session cache of the CLI's answer, and the one check in flight. Two pickers opened during
-        a check share its process. A failure is never cached, so the next picker asks again; a
+        The session cache of the connection check's answer, and the one check in flight. Two pickers
+        opened during a check share it. A failure is never cached, so the next picker asks again; a
         generation bump on clear means a check started before the clear cannot write an answer the
         reader has asked to replace.
     */
@@ -901,9 +902,9 @@ export class SalesforceOrgService {
     }
 
     /*
-        Which authorized orgs the Salesforce CLI reports as connected, asked once per session --
-        "sf org list" pings every authorized org's token, which is slow. Nothing here connects to an
-        org itself, and nothing logs out of, deletes or changes one.
+        Which authorized orgs answer a ping, asked once per session -- every authorized org is pinged,
+        which is slow. Nothing here logs out of, deletes or changes an org; a ping may only refresh
+        its access token, as any connection does.
     */
     static async listConnectedOrgAuthorizations(): Promise<IConnectedOrgStatusListing> {
 
@@ -916,10 +917,13 @@ export class SalesforceOrgService {
             const requestGeneration = this.connectedOrgStatusGeneration;
             const isRequestCurrent = () => requestGeneration === this.connectedOrgStatusGeneration;
 
-            this.connectedOrgStatusRequest = this.runOrgListCommand().then(
+            this.connectedOrgStatusRequest = this.runOrgConnectionCheck().then(
                 connectedOrgStatusListing => {
                     if ( isRequestCurrent() ) {
-                        this.connectedOrgStatusCache = connectedOrgStatusListing;
+                        // A LISTING CUT OFF BY ITS OWN TIME LEFT ORGS UNPINGED, SO THE NEXT PICKER CHECKS AGAIN
+                        if ( connectedOrgStatusListing.isComplete !== false ) {
+                            this.connectedOrgStatusCache = connectedOrgStatusListing;
+                        }
                         this.connectedOrgStatusRequest = undefined;
                     }
                     return connectedOrgStatusListing;
@@ -939,10 +943,9 @@ export class SalesforceOrgService {
     }
 
     /*
-        Data-by-Org's ⟳, and an org the extension just created: ask the CLI again and replace the
-        cached answer. A check already in flight IS a fresh answer, so it is shared rather than
-        joined by a second process -- repeated clicks would otherwise each start an "sf org list"
-        that pings every authorized org, none of them killed.
+        Data-by-Org's ⟳, and an org the extension just created: check again and replace the cached
+        answer. A check already in flight IS a fresh answer, so it is shared rather than joined by a
+        second -- repeated clicks would otherwise each ping every authorized org again.
     */
     static async refreshConnectedOrgAuthorizations(): Promise<IConnectedOrgStatusListing> {
 
@@ -974,31 +977,123 @@ export class SalesforceOrgService {
 
     }
 
-    // THE AUTHORIZATIONS ARE READ BEFORE THE CLI RUNS, SO ONE ADDED DURING THE CHECK IS NEVER COUNTED AS CHECKED
-    private static async runOrgListCommand(): Promise<IConnectedOrgStatusListing> {
+    // THE AUTHORIZATIONS ARE READ BEFORE THE CHECK, SO ONE ADDED DURING IT IS NEVER COUNTED AS CHECKED
+    private static async runOrgConnectionCheck(): Promise<IConnectedOrgStatusListing> {
 
+        const authorizations = await this.readFreshAuthorizations();
         const checkedAuthorizationUsernames = new Set<string>();
-        const checkedAuthorizationAliasesByUsername = new Map<string, string>();
 
-        (await this.readFreshAuthorizations()).forEach(authorization => {
+        authorizations.forEach(authorization => {
             const username = authorization?.username;
             if ( typeof username === 'string' && username ) {
                 checkedAuthorizationUsernames.add(username);
-                checkedAuthorizationAliasesByUsername.set(username, PicklistDependencyCheckService.readFirstAuthorizationAlias(authorization) ?? '');
             }
         });
 
-        const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(
-            [...SALESFORCE_CLI_ORG_LIST_ARGUMENTS],
-            undefined,
-            SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS
-        );
+        const orgConnectionCheck = await this.checkOrgConnections(authorizations);
 
         return {
-            ...this.parseOrgListInvocation(invocationResult),
+            connectionStatesByUsername: orgConnectionCheck.connectionStatesByUsername,
             checkedAuthorizationUsernames: checkedAuthorizationUsernames,
-            checkedAuthorizationAliasesByUsername: checkedAuthorizationAliasesByUsername
+            isComplete: orgConnectionCheck.isComplete
         };
+
+    }
+
+    /*
+        Every authorization checked in process (#502, replacing "sf org list --json --verbose"),
+        at most ORG_CONNECTION_CHECK_CONCURRENCY at a time. An org with no answer when the listing's
+        own time runs out is "notConnected": one unreachable org is left out, never the whole list,
+        and the check says it is not complete.
+    */
+    static async checkOrgConnections(authorizations: OrgAuthorization[],
+                                        listingTimeoutMilliseconds: number = ORG_CONNECTION_LISTING_TIMEOUT_MILLISECONDS,
+                                        checkTimeoutMilliseconds: number = ORG_CONNECTION_CHECK_TIMEOUT_MILLISECONDS): Promise<IOrgConnectionCheck> {
+
+        const connectionStatesByUsername = new Map<string, OrgConnectionState>();
+        const pendingAuthorizations = this.readAuthorizations(authorizations).filter(authorization => (
+            typeof authorization?.username === 'string' && !!authorization.username
+        ));
+
+        pendingAuthorizations.forEach(authorization => connectionStatesByUsername.set(authorization.username, 'notConnected'));
+
+        let isListingOver = false;
+        let isComplete = false;
+        let nextAuthorizationIndex = 0;
+
+        const checkNext = async (): Promise<void> => {
+            while ( !isListingOver && nextAuthorizationIndex < pendingAuthorizations.length ) {
+                const authorization = pendingAuthorizations[nextAuthorizationIndex++];
+                const connectionState = await this.checkOrgConnection(authorization, checkTimeoutMilliseconds);
+                if ( !isListingOver ) {
+                    connectionStatesByUsername.set(authorization.username, connectionState);
+                }
+            }
+        };
+
+        let listingTimeoutHandle: NodeJS.Timeout | undefined;
+        const listingTimedOut = new Promise<void>(resolve => {
+            listingTimeoutHandle = setTimeout(resolve, listingTimeoutMilliseconds);
+        });
+
+        try {
+            await Promise.race([
+                Promise.all(Array.from({ length: Math.min(ORG_CONNECTION_CHECK_CONCURRENCY, pendingAuthorizations.length) }, () => checkNext()))
+                    .then(() => { isComplete = !isListingOver; }),
+                listingTimedOut
+            ]);
+        } finally {
+            isListingOver = true;
+            clearTimeout(listingTimeoutHandle);
+        }
+
+        return { connectionStatesByUsername: connectionStatesByUsername, isComplete: isComplete };
+
+    }
+
+    /*
+        One org: a scratch org past its expiration date is "expired" with no request, and an
+        authorization @salesforce/core could not read is not pinged. Anything else is opened by
+        USERNAME and asked Org.refreshAuth() -- the HEAD request "sf org list" pings with -- whose
+        connection refreshes an expired access token and saves it where the CLI reads it. Org.create
+        resolves its argument as an alias first, so an org that opens under another username (an
+        alias spelled like this username) is not pinged and reads "notConnected". NEVER
+        THROWS: a failure, a throw or no answer in time is "notConnected", and the error is not kept.
+    */
+    static async checkOrgConnection(authorization: OrgAuthorization,
+                                        checkTimeoutMilliseconds: number = ORG_CONNECTION_CHECK_TIMEOUT_MILLISECONDS): Promise<OrgConnectionState> {
+
+        if ( authorization.isExpired === true ) {
+            return 'expired';
+        }
+
+        const username = authorization.username;
+
+        if ( authorization.error !== undefined
+                || typeof username !== 'string'
+                || !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
+            return 'notConnected';
+        }
+
+        let checkTimeoutHandle: NodeJS.Timeout | undefined;
+        const checkTimedOut = new Promise<OrgConnectionState>(resolve => {
+            checkTimeoutHandle = setTimeout(() => resolve('notConnected'), checkTimeoutMilliseconds);
+        });
+
+        const ping = (async (): Promise<OrgConnectionState> => {
+            const authorizedOrg = await Org.create({ aliasOrUsername: username });
+            if ( authorizedOrg.getUsername() !== username ) {
+                return 'notConnected';
+            }
+            await authorizedOrg.refreshAuth();
+            return 'connected';
+        })().catch((): OrgConnectionState => 'notConnected');
+
+        try {
+            return await Promise.race([ping, checkTimedOut]);
+        } finally {
+            clearTimeout(checkTimeoutHandle);
+        }
 
     }
 
@@ -1007,12 +1102,16 @@ export class SalesforceOrgService {
         extension host an alias set after the extension loaded -- "sf alias set", "sf org login
         --alias", a scratch org this extension created -- never appeared, and the org was listed by
         username (#286). Dropping the instance makes every listing read the alias file again.
+        Authorizations that cannot be read at all list nothing: no org is offered unchecked.
     */
     private static async readFreshAuthorizations(): Promise<OrgAuthorization[]> {
 
-        StateAggregator.clearInstance();
-
-        return this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        try {
+            StateAggregator.clearInstance();
+            return this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        } catch (readError) {
+            throw new OrgConnectionStatusUnavailableError(readError instanceof Error ? readError.message : String(readError));
+        }
 
     }
 
@@ -1023,145 +1122,7 @@ export class SalesforceOrgService {
     }
 
     /*
-        The CLI's answer, read as untrusted: a spawn failure, a timeout, a non-zero exit or output
-        that is not an org list throws, so nothing is listed and nothing is cached.
-    */
-    static parseOrgListInvocation(invocationResult: ISalesforceCliInvocationResult): IConnectedOrgStatusListing {
-
-        if ( invocationResult.spawnError ) {
-            try {
-                PicklistDependencyCheckService.parseSalesforceCliJsonOutput(invocationResult);
-            } catch (spawnFailure) {
-                throw new OrgConnectionStatusUnavailableError((spawnFailure as Error).message);
-            }
-        }
-
-        if ( invocationResult.timedOut || invocationResult.exitCode === null ) {
-            throw new OrgConnectionStatusUnavailableError(`"sf org list" did not answer within ${SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS / 1000} seconds.`);
-        }
-
-        let orgListPayload: unknown;
-
-        try {
-            orgListPayload = JSON.parse(invocationResult.stdout);
-        } catch {
-            throw new OrgConnectionStatusUnavailableError(`"sf org list" did not return usable JSON (exit code ${invocationResult.exitCode}).`);
-        }
-
-        if ( invocationResult.exitCode !== 0 ) {
-            const failureMessage = this.asString(this.asRecord(orgListPayload)?.message) || invocationResult.stderr.trim();
-            throw new OrgConnectionStatusUnavailableError(`"sf org list" failed (exit code ${invocationResult.exitCode})${failureMessage ? `: ${failureMessage}` : '.'}`);
-        }
-
-        return this.normalizeOrgListResult(this.asRecord(orgListPayload)?.result);
-
-    }
-
-    /*
-        Every org the answer names, by username. An org named more than once (the CLI repeats a
-        non-scratch org under its group) keeps the first reason it is NOT usable, so one entry that
-        says Connected can never outvote one that says otherwise.
-    */
-    static normalizeOrgListResult(orgListResult: unknown): IConnectedOrgStatusListing {
-
-        const orgListRecord = this.asRecord(orgListResult);
-
-        if ( !orgListRecord ) {
-            throw new OrgConnectionStatusUnavailableError('"sf org list" returned no org list.');
-        }
-
-        const connectionStatesByUsername = new Map<string, OrgConnectionState>();
-        const aliasesByUsername = new Map<string, string>();
-
-        SALESFORCE_CLI_ORG_LIST_GROUPS.forEach(orgListGroup => {
-
-            const orgListEntries = orgListRecord[orgListGroup];
-
-            if ( !Array.isArray(orgListEntries) ) {
-                return;
-            }
-
-            orgListEntries.forEach(orgListEntry => {
-
-                const orgListEntryRecord = this.asRecord(orgListEntry);
-                const username = orgListEntryRecord?.username;
-
-                if ( typeof username !== 'string' || !username ) {
-                    return;
-                }
-
-                const connectionState = this.classifyOrgListEntry(orgListEntryRecord, orgListGroup === 'scratchOrgs');
-                const knownConnectionState = connectionStatesByUsername.get(username);
-
-                if ( knownConnectionState === undefined || knownConnectionState === 'connected' ) {
-                    connectionStatesByUsername.set(username, connectionState);
-                }
-
-                const alias = this.readOrgListEntryAlias(orgListEntryRecord);
-
-                if ( alias && !aliasesByUsername.has(username) ) {
-                    aliasesByUsername.set(username, alias);
-                }
-
-            });
-
-        });
-
-        return { connectionStatesByUsername: connectionStatesByUsername, aliasesByUsername: aliasesByUsername };
-
-    }
-
-    /*
-        An entry's alias, as untrusted as the rest of the answer: "alias" when it is a string, else
-        the first string of "aliases". It is only ever a label, but one that could not be an org
-        identifier is not one this extension offers either, so the org keeps its username.
-    */
-    static readOrgListEntryAlias(orgListEntry: Record<string, unknown>): string | undefined {
-
-        const { alias, aliases } = orgListEntry;
-        const candidateAlias = typeof alias === 'string' && alias
-            ? alias
-            : ( Array.isArray(aliases) ? aliases.find((listedAlias: unknown): listedAlias is string => typeof listedAlias === 'string' && !!listedAlias) : undefined );
-
-        return candidateAlias !== undefined && PicklistDependencyCheckService.isValidTargetOrgIdentifier(candidateAlias) ? candidateAlias : undefined;
-
-    }
-
-    /*
-        Usable only on a clear yes. A non-scratch org must say connectedStatus "Connected" exactly.
-        The CLI never pings a scratch org -- it asks the Dev Hub instead -- so a scratch org must say
-        status "Active", and isExpired must not be true; were it ever to carry a connectedStatus,
-        that must be "Connected" too. Every other value, a missing one and a mistyped one included,
-        is not usable.
-    */
-    static classifyOrgListEntry(orgListEntry: Record<string, unknown>, isScratchOrg: boolean): OrgConnectionState {
-
-        const { connectedStatus, isExpired, status } = orgListEntry;
-
-        if ( ( connectedStatus !== undefined && typeof connectedStatus !== 'string' )
-                || ( isExpired !== undefined && typeof isExpired !== 'boolean' )
-                || ( status !== undefined && typeof status !== 'string' ) ) {
-            return 'notConnected';
-        }
-
-        if ( status === 'Deleted' ) {
-            return 'deleted';
-        }
-
-        if ( isExpired === true || status === 'Expired' ) {
-            return 'expired';
-        }
-
-        if ( isScratchOrg ) {
-            return status === 'Active' && ( connectedStatus === undefined || connectedStatus === 'Connected' ) ? 'connected' : 'notConnected';
-        }
-
-        return connectedStatus === 'Connected' && ( status === undefined || status === 'Active' ) ? 'connected' : 'notConnected';
-
-    }
-
-    /*
-        The CLI's answer matched against the authorization files: an org the answer does not name
+        The check's answer matched against the authorization files: an org the answer does not name
         is not listed, and neither is a username the answer names with no authorization file. An
         unusable alias or username is dropped by buildAuthenticatedOrgDetails, as it always was.
     */
@@ -1171,7 +1132,6 @@ export class SalesforceOrgService {
 
         const hiddenOrgs: IHiddenAuthorizedOrg[] = [];
         const usableAuthorizations: OrgAuthorization[] = [];
-        const labelAliasesByUsername = this.buildLabelAliasesByUsername(this.readAuthorizations(authorizations), connectedOrgStatusListing);
 
         this.readAuthorizations(authorizations).forEach(authorization => {
 
@@ -1184,7 +1144,7 @@ export class SalesforceOrgService {
             const hiddenReason = this.findHiddenOrgReason(authorization, connectedOrgStatusListing, isProductionExcluded);
 
             if ( hiddenReason ) {
-                const label = PicklistDependencyCheckService.readFirstAuthorizationAlias(authorization) || labelAliasesByUsername.get(username) || username;
+                const label = PicklistDependencyCheckService.readFirstAuthorizationAlias(authorization) || username;
                 hiddenOrgs.push({ username: username, label: label, reason: hiddenReason });
                 return;
             }
@@ -1194,43 +1154,10 @@ export class SalesforceOrgService {
         });
 
         return {
-            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(usableAuthorizations, labelAliasesByUsername),
+            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(usableAuthorizations),
             hiddenOrgs: hiddenOrgs,
             hiddenOrgReasonCounts: this.countHiddenOrgReasons(hiddenOrgs)
         };
-
-    }
-
-    /*
-        The CLI's alias for each authorization that carries none of its own. The authorizations are
-        read fresh on every listing while the CLI's answer is cached until ⟳, so an alias the fresh
-        read already gives another org has moved, and is not put back on this one; and an org whose
-        authorization DID carry an alias when the CLI ran has had it removed since ("sf alias
-        unset"), so the CLI's copy of it is stale too.
-    */
-    private static buildLabelAliasesByUsername(authorizations: OrgAuthorization[],
-                                                connectedOrgStatusListing: IConnectedOrgStatusListing): Map<string, string> {
-
-        const labelAliasesByUsername = new Map<string, string>();
-        const cliAliasesByUsername = connectedOrgStatusListing.aliasesByUsername;
-
-        if ( !( cliAliasesByUsername instanceof Map ) ) {
-            return labelAliasesByUsername;
-        }
-
-        const heldAliases = new Set(authorizations.flatMap(authorization => (
-            Array.isArray(authorization?.aliases) ? authorization.aliases.filter((alias: unknown) => typeof alias === 'string') : []
-        )));
-
-        const checkedAliasesByUsername = connectedOrgStatusListing.checkedAuthorizationAliasesByUsername;
-
-        cliAliasesByUsername.forEach((alias, username) => {
-            if ( !heldAliases.has(alias) && !checkedAliasesByUsername?.get(username) ) {
-                labelAliasesByUsername.set(username, alias);
-            }
-        });
-
-        return labelAliasesByUsername;
 
     }
 
@@ -1285,7 +1212,7 @@ export class SalesforceOrgService {
     /*
         The orgs Data-by-Org lists: only those known not to be production and reported connected,
         with why the rest are not. Given the workspace, the CLI's default org is listed FIRST and
-        marked isDefault (#305) whenever the CLI reports it connected -- production included, since
+        marked isDefault (#305) whenever it answers its ping -- production included, since
         selecting it asks its Organization row and refuses every insert unless it answers IsSandbox.
     */
     static async listDataOrgDetails(workspaceRoot?: string,
@@ -1323,7 +1250,7 @@ export class SalesforceOrgService {
 
     /*
         An org named by username or alias, from the LOCAL authorization files alone -- no CLI, no
-        connection -- so the picker can show it while "sf org list" is still checking (#305).
+        connection -- so the picker can show it while the connections are still being checked (#305).
         isDefault says whether it is the CLI's default org. Nothing here says it is connected.
     */
     static async readLocalDataOrgDetail(identifier: string | undefined,
@@ -1418,7 +1345,7 @@ export class SalesforceOrgService {
 
     /*
         What a quick pick says when it has nothing to offer: that no org is authorized, or how many
-        were left out and why, or why the CLI could not be asked at all. It never throws -- the
+        were left out and why, or why the authorizations could not be read at all. It never throws -- the
         picker shows the message instead of an empty list.
     */
     static async listAuthorizedOrgDetailsForPicker(): Promise<IAuthenticatedOrgListingForPicker> {
@@ -1444,8 +1371,7 @@ export class SalesforceOrgService {
     }
 
     /*
-        The reason is the CLI's own text -- its JSON message, stderr or a spawn error -- and a
-        notification renders [label](command:...) as a link that RUNS the command, so it is escaped
+        The reason can quote an error's own text, and a notification renders [label](command:...) as a link that RUNS the command, so it is escaped
         like any other text this extension does not author.
     */
     private static describeOrgListingFailure(listError: unknown): string {
@@ -1457,8 +1383,8 @@ export class SalesforceOrgService {
     }
 
     /*
-        The connected orgs as a quick pick, which opens busy at once and fills only when the CLI
-        has answered. Insert Data Set by Directory and Run Picklist Dependency Check both come
+        The connected orgs as a quick pick, which opens busy at once and fills only when the connection
+        check has answered. Insert Data Set by Directory and Run Picklist Dependency Check both come
         through here.
     */
     static async promptForAuthorizedOrg(placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
@@ -1482,7 +1408,7 @@ export class SalesforceOrgService {
 
     }
 
-    // THE CLI'S DEFAULT TARGET ORG (#305), READ IN PROCESS THE SAME WAY, SO THE PICKER CAN NAME IT BEFORE "sf org list" ANSWERS
+    // THE CLI'S DEFAULT TARGET ORG (#305), READ IN PROCESS THE SAME WAY, SO THE PICKER CAN NAME IT BEFORE THE CONNECTION CHECK ANSWERS
     static readDefaultTargetOrgIdentifier(workspaceRoot: string,
                                             homeDirectoryPath: string = os.homedir(),
                                             environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: DevHubConfigSource } | undefined {
@@ -1554,7 +1480,7 @@ export class SalesforceOrgService {
 
     /*
         Every Dev Hub the reader can create a scratch org through: authorizations whose isDevHub is
-        exactly true, of those only the ones the CLI reports connected (#243). The CLI's default is
+        exactly true, of those only the ones that answer their ping (#243). The CLI's default is
         listed first and carries where it was set, but it is never chosen for the reader -- even a
         lone Dev Hub is picked, so the reader always knows whose scratch org limits a run spends.
     */

@@ -583,7 +583,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in Select Generate Treecipe runs by date, the first line of the Treecipes section (or under the toolbar, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
-            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs asks the CLI again which orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -664,7 +664,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under RunArtifacts in the tree folder. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under RunArtifacts in the tree folder, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org that answer when checked (Treecipe pings each authorized org once per session or per ⟳, which may renew its access token, and otherwise connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under RunArtifacts in the tree folder. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under RunArtifacts in the tree folder, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1517,7 +1517,7 @@ export interface IRecipeCockpitDataOrgListMessage {
     renderSequence: number;
 }
 
-export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = "The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, plus the CLI's default org, and inserts only into a sandbox or scratch org.";
+export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = "The Treecipe tab lists only sandboxes and scratch orgs that answer when checked, plus the CLI's default org, and inserts only into a sandbox or scratch org.";
 
 export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: authorize one with "sf org login web --instance-url https://test.salesforce.com" and try again.';
 
@@ -1539,7 +1539,7 @@ export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = COCKPIT_SPINNER_ROTA
 export const RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = 'No org listed';
 
 /*
-    The org the dropdown shows while "sf org list" checks the connections (#305): the org chosen
+    The org the dropdown shows while the connections are checked (#305): the org chosen
     last, else the CLI's default, read from the local authorization files and config alone. It is
     a LABEL and nothing else -- the panel cannot select it, and nothing is inserted until the list
     answers and the selection's own Organization row says sandbox. requestSequence names the check
@@ -1552,7 +1552,7 @@ export interface IRecipeCockpitDataOrgProvisionalMessage {
     renderSequence: number;
 }
 
-export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. The Treecipe tab lists only orgs the Salesforce CLI reports as connected: re-authorize one with "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
+export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. The Treecipe tab lists only orgs that answer when checked: re-authorize one with "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
 
 /*
     The org Data-by-Org has selected. orgTypeLabel is '' while the Organization query is still
@@ -8721,7 +8721,7 @@ export class RecipeCockpitService {
         }
 
         /*
-            ⟳ forgets what was described in each org it listed (#537), once the CLI has answered:
+            ⟳ forgets what was described in each org it listed (#537), once the listing has answered:
             a describe taken before a permission change, a deploy made elsewhere or a re-login would
             otherwise outlive it. A listing that failed lists nothing, so it forgets nothing.
         */
@@ -8776,7 +8776,7 @@ export class RecipeCockpitService {
         when the reader picks "Create with @salesforce/core" (#507, offered only where it would make
         the same org), in the extension host under a notification with no Cancel -- and how
         the run ended is a notification with a "View output" button (#301). Once a username exists the org is kept whatever followed, and the
-        connected-org cache is dropped BEFORE re-listing -- the session's cached "sf org list"
+        connected-org cache is dropped BEFORE re-listing -- the session's cached connection check
         predates the org -- so it is selected by username from a fresh answer, or reported not
         listed yet with nothing selected in its place.
 
@@ -8936,7 +8936,7 @@ export class RecipeCockpitService {
         const orgText = `${alias} · ${setupOutcome.username}`;
         const selectionText = isListed
             ? 'It is selected in the Treecipe tab.'
-            : `The Salesforce CLI does not list ${orgText} as connected yet, so no org was selected in its place: press ⟳ to check again.`;
+            : `${orgText} did not answer the connection check yet, so no org was selected in its place: press ⟳ to check again.`;
         const createdText = setupOutcome.incompleteMessage
             ? `Scratch org ${orgText} was created, but setting it up stopped: ${setupOutcome.incompleteMessage}. It is kept.`
             : `Scratch org ${orgText} is ready.`;
@@ -20832,7 +20832,7 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     let isDataOrgSelectShown = false;
     let isDataOrgRefreshShown = false;
     /*
-        WHILE "sf org list" CHECKS THE CONNECTIONS (#305) THE PICKER STAYS DRAWN: THE DROPDOWN HOLDS ONE
+        WHILE THE CONNECTIONS ARE CHECKED (#305) THE PICKER STAYS DRAWN: THE DROPDOWN HOLDS ONE
         OPTION -- THE HOST'S PROVISIONAL LABEL, ELSE "Loading orgs…" -- THAT NOTHING CAN SELECT, AND A
         SPINNER SITS TO ITS RIGHT. A NEW ARRAY PER CHANGE, SO EACH VIEW REDRAWS ITS OPTIONS ONCE
     */
@@ -30423,7 +30423,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     /*
         The dropdown STAYS until the CLI answers (#305), holding only the check's own option, so
         nothing can be selected from a list being replaced. ⟳ stays usable: the host joins a check
-        already in flight rather than starting a second "sf org list".
+        already in flight rather than starting a second.
     */
     function showDataOrgConnectionCheck() {
 

@@ -41,7 +41,7 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
-import { AuthInfo } from '@salesforce/core';
+import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
@@ -65,6 +65,7 @@ import {
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { answerOrgConnectionPings } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../RecipeCockpitRunArtifacts';
 import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from '../../ScratchOrgService/ScratchOrgService';
@@ -91,7 +92,6 @@ const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDe
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
 
 const readJson = (filePath: string) => JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-const SF_ORG_LIST = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'sfOrgListVerbose.json'));
 const ORG_AUTHORIZATIONS = readJson(path.join(SALESFORCE_ORG_MOCKS_PATH, 'orgAuthorizations.json'));
 
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
@@ -384,10 +384,6 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], execOptions: any, callback: any) => {
                 cliCalls.push(argumentList);
                 const answerWith = (cliAnswer: { stdout: string; error?: unknown }) => setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
-                if ( argumentList[0] === 'org' && argumentList[1] === 'list' ) {
-                    answerWith({ stdout: JSON.stringify(SF_ORG_LIST) });
-                    return { kill: childKill };
-                }
                 const manifestIndex = argumentList.indexOf('--manifest');
                 if ( manifestIndex !== -1 ) {
                     deployedManifests.push(fs.readFileSync(path.join(execOptions.cwd, argumentList[manifestIndex + 1]), 'utf-8'));
@@ -402,6 +398,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             });
 
             (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => ORG_AUTHORIZATIONS);
+            answerOrgConnectionPings(Org.create as jest.Mock);
 
             cancellationToken = { isCancellationRequested: false, onCancellationRequested: (listener: () => void) => { cancellationListeners.push(listener); } };
             (vscode.window.withProgress as jest.Mock).mockReset();
@@ -883,7 +880,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 unreadableCustomObjectCount: 0,
                 validationRuleCount: 2
             }]);
-            expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
+            expect(cliCalls).toEqual([]);
 
             // ASKED AGAIN, IT IS ANSWERED FROM WHAT WAS READ: THE PROJECT IS NOT READ A SECOND TIME
             const summarizeSpy = jest.spyOn(RecipeCockpitMetadataDeploy, 'summarizeTreeMetadata');
