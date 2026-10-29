@@ -69,6 +69,9 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+// jszip COMES WITH @salesforce/core AND IS ONLY EVER USED IN TESTS: HERE, TO BUILD THE ZIP A FAKED ORG ANSWERS A RETRIEVE WITH
+import JSZip = require('jszip');
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
@@ -678,6 +681,84 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             await send(retrieveRequest(lastRenderSequence()));
 
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)).toEqual([expect.stringContaining('The Salesforce CLI, sf, could not be run')]);
+
+        });
+
+        describe('with the metadataRetrieveMethod setting at jsforce (#506)', () => {
+
+            const RETRIEVE_ID = '09S000000000002AAA';
+            let retrieveRequests: Array<Record<string, unknown>>;
+
+            const objectXml = (fieldXmls: string[]) => [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">',
+                ...fieldXmls,
+                '    <label>Account</label>',
+                '</CustomObject>'
+            ].join('\n');
+
+            beforeEach(async () => {
+
+                retrieveRequests = [];
+                const zip = new JSZip();
+                zip.file('objects/Account.object', objectXml([
+                    '    <fields>\n        <fullName>Legacy_Code__c</fullName>\n        <label>Legacy_Code__c</label>\n        <length>255</length>\n        <type>Text</type>\n    </fields>',
+                    '    <fields>\n        <fullName>Is_Priority__c</fullName>\n        <label>Is_Priority__c</label>\n        <type>Checkbox</type>\n    </fields>'
+                ]));
+                zip.file('objects/Contact.object', '<?xml version="1.0" encoding="UTF-8"?>\n<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata"/>');
+                const zipFile = ( await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) ).toString('base64');
+
+                jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockImplementation(((settingKey: string) => settingKey === 'metadataRetrieveMethod' ? 'jsforce' : undefined) as any);
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
+                    getApiVersion: () => '62.0',
+                    metadata: {
+                        retrieve: jest.fn().mockImplementation(async (request: Record<string, unknown>) => { retrieveRequests.push(request); return { id: RETRIEVE_ID }; }),
+                        checkRetrieveStatus: jest.fn().mockResolvedValue({ id: RETRIEVE_ID, done: true, success: true, status: 'Succeeded', zipFile: zipFile })
+                    }
+                }) as any);
+
+            });
+
+            it('retrieves the objects on a connection into the staging folder only, starting no CLI, and marks the same changes the CLI retrieve does', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                const packageDirectoryBefore = packageDirectoryFiles();
+
+                await send(retrieveRequest(lastRenderSequence()));
+
+                expect(cliCalls).toEqual([]);
+                expect(retrieveRequests).toEqual([{ apiVersion: 62, singlePackage: true, unpackaged: { types: [{ members: ['Account', 'Contact', 'OtherChildObject__c'], name: 'CustomObject' }], version: '62.0' } }]);
+
+                const stagingFolderPath = panelState().adapterRetrieveStagingFolderPath as string;
+                expect(path.relative(workspaceRoot, stagingFolderPath).split(path.sep).join('/')).toMatch(new RegExp(`^treecipe/GeneratedRecipes/${TREE_RUN_FOLDER_NAME}/${ACCOUNT_TREE_KEY.replace(/[.]/g, '\\.')}/RunArtifacts/OrgOperations/qa@example\\.com\\.qa/\\d{8}-\\d{6}-adapter-retrieve$`));
+                expect(fs.readdirSync(path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'fields')).sort()).toEqual(['Is_Priority__c.field-meta.xml', 'Legacy_Code__c.field-meta.xml']);
+                expect(fs.existsSync(path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'Account.object-meta.xml'))).toBe(true);
+                expect(packageDirectoryFiles()).toEqual(packageDirectoryBefore);
+
+                const [changes] = postedNamed('adapterMetadataChanges');
+                expect(changes.objects.map((objectChanges: any) => [objectChanges.objectApiName, objectChanges.isRetrieved, objectChanges.fieldChanges.map((fieldChange: any) => [fieldChange.fieldApiName, fieldChange.status])])).toEqual([
+                    ['Account', true, [['Is_Priority__c', 'new'], ['Legacy_Code__c', 'changed']]],
+                    ['Contact', true, []],
+                    ['OtherChildObject__c', false, []]
+                ]);
+                expect(warnings()[0]).toContain('1 field is new and 1 field changed in the org against this project');
+
+            });
+
+            it('changes nothing, and writes nothing to the staging folder, when the reader cancels', async () => {
+
+                cancellationToken.isCancellationRequested = true;
+                await openCockpit();
+                selectSandbox();
+
+                await send(retrieveRequest(lastRenderSequence()));
+
+                expect(retrieveRequests).toEqual([]);
+                expect(postedNamed('adapterMetadataChanges')).toEqual([]);
+                expect(warnings()).toEqual([expect.stringContaining('was cancelled. Nothing in the project changed.')]);
+
+            });
 
         });
 
