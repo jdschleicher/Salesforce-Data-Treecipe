@@ -63,6 +63,7 @@ import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL
 } from '../RecipeCockpitService';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
+import { RecipeCockpitRunHistory } from '../RecipeCockpitRunHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerOrgConnectionPings } from '../../SalesforceOrgService/tests/OrgConnectionPings';
@@ -575,9 +576,12 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 expect(fs.readFileSync(otherChildObjectFilePath(), 'utf-8')).toBe(projectObjectXml);
                 expect(informationCalls()).toContainEqual([`Deployed 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
 
-                // THE HISTORY'S SUMMARY NAMES THE ZIP WITH THE STEP'S OTHER FILES (#485)
+                // THE HISTORY'S SUMMARY READS BACK (#485): IT NAMES THE PACKAGE.XML AND THE RESULT, NEVER THE ZIP, WHICH A ROW COULD NOT OPEN
                 const summaryFileName = operationFiles().find(fileName => fileName.endsWith('-field-deploy-summary.json')) as string;
-                expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8')).fileNames).toContain(zipFileNames[0]);
+                const summary = RecipeCockpitRunHistory.parseSummary(fs.readFileSync(path.join(operationsFolderPath(), summaryFileName), 'utf-8'));
+                expect(summary?.outcome).toBe('succeeded');
+                expect(summary?.fileNames).not.toContain(zipFileNames[0]);
+                expect(summary?.fileNames.some(fileName => fileName.endsWith('-field-deploy-package.xml'))).toBe(true);
 
             });
 

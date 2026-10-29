@@ -451,15 +451,18 @@ export class RecipeCockpitMetadataDeployPackage {
         }
 
         // AN OBJECT'S OWN XML KEEPS ONLY THE PAGES AND COMPACT LAYOUTS THIS ZIP CARRIES (#547); THE REST ARE SET BACK, BY THE RULE THE CONFIRMATION LISTED THEM BY
-        const shippedFlexiPageLowerNames = new Set(sourceFiles.filter(sourceFile => sourceFile.component.type === 'FlexiPage').map(sourceFile => sourceFile.component.member.toLowerCase()));
-        const shippedCompactLayoutLowerNames = new Set(sourceFiles.filter(sourceFile => sourceFile.component.type === 'CompactLayout').map(sourceFile => sourceFile.component.member.toLowerCase()));
+        const shippedMembersByLowerName = (type: IMetadataDeployComponent['type']) => new Map(sourceFiles
+            .filter(sourceFile => sourceFile.component.type === type)
+            .map(sourceFile => [sourceFile.component.member.toLowerCase(), sourceFile.component.member]));
+        const shippedFlexiPages = shippedMembersByLowerName('FlexiPage');
+        const shippedCompactLayouts = shippedMembersByLowerName('CompactLayout');
 
         [...objectEntriesByLowerName.values()].forEach(objectEntry => {
             const objectContent = objectEntry.objectContent && RecipeCockpitMetadataDeploy.resolveObjectReferences(
                 objectEntry.objectApiName,
                 objectEntry.objectContent,
-                flexiPageName => shippedFlexiPageLowerNames.has(flexiPageName.toLowerCase()),
-                compactLayoutName => shippedCompactLayoutLowerNames.has(`${objectEntry.objectApiName}.${compactLayoutName}`.toLowerCase())
+                flexiPageName => shippedFlexiPages.get(flexiPageName.toLowerCase()),
+                compactLayoutName => shippedCompactLayouts.get(`${objectEntry.objectApiName}.${compactLayoutName}`.toLowerCase())?.split('.')[1]
             ).objectContent;
             entries.push({ name: `objects/${objectEntry.objectApiName}.object`, content: Buffer.from(this.buildObjectXml(objectContent, objectEntry.children, objectEntry.namespaceAttributes), 'utf-8') });
         });

@@ -197,7 +197,7 @@ describe('RecipeCockpitMetadataDeploy: what a deployed object names (#547)', () 
 
         it('keeps a shipped page, resets every other page and component override to Default with no content, and keeps every other element', () => {
 
-            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', objectContent, name => name === 'Shipped', () => false);
+            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', objectContent, name => name === 'Shipped' ? name : undefined, () => undefined);
 
             expect(resolved.objectContent.actionOverrides).toEqual([
                 { actionName: ['View'], content: ['Shipped'], formFactor: ['Large'], skipRecordTypeSelect: ['false'], type: ['Flexipage'] },
@@ -219,11 +219,11 @@ describe('RecipeCockpitMetadataDeploy: what a deployed object names (#547)', () 
         it('never changes the object it was handed, and hands back the same object when nothing is reset', () => {
 
             const before = JSON.stringify(objectContent);
-            RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', objectContent, () => false, () => false);
+            RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', objectContent, () => undefined, () => undefined);
             expect(JSON.stringify(objectContent)).toBe(before);
 
             const untouched = { actionOverrides: [{ actionName: ['View'], type: ['Default'] }], compactLayoutAssignment: ['SYSTEM'] };
-            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', untouched, () => false, () => false);
+            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', untouched, () => undefined, () => undefined);
             expect(resolved.objectContent).toBe(untouched);
             expect(resolved.resets).toEqual([]);
 
@@ -231,11 +231,26 @@ describe('RecipeCockpitMetadataDeploy: what a deployed object names (#547)', () 
 
         it('sets a compact layout that does not ship to SYSTEM, keeps one that does, and refuses a name that is not an api name', () => {
 
-            expect(RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { compactLayoutAssignment: ['Compact'] }, () => false, name => name === 'Compact').objectContent.compactLayoutAssignment).toEqual(['Compact']);
-            expect(RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { compactLayoutAssignment: ['Compact'] }, () => false, () => false).objectContent.compactLayoutAssignment).toEqual(['SYSTEM']);
-            const forged = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { compactLayoutAssignment: ['a b'] }, () => false, () => true);
+            expect(RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { compactLayoutAssignment: ['Compact'] }, () => undefined, name => name === 'Compact' ? name : undefined).objectContent.compactLayoutAssignment).toEqual(['Compact']);
+            expect(RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { compactLayoutAssignment: ['Compact'] }, () => undefined, () => undefined).objectContent.compactLayoutAssignment).toEqual(['SYSTEM']);
+            const forged = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { compactLayoutAssignment: ['a b'] }, () => undefined, name => name);
             expect(forged.objectContent.compactLayoutAssignment).toEqual(['SYSTEM']);
             expect(forged.resets[0].reason).toBe('its name is not a Salesforce api name');
+
+        });
+
+        it('writes a kept reference in the shipped file\'s spelling, since the two are matched ignoring case', () => {
+
+            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences(
+                'Order__c',
+                { actionOverrides: [{ actionName: ['View'], content: ['order_record_page'], type: ['Flexipage'] }], compactLayoutAssignment: ['order_compact'] },
+                name => name.toLowerCase() === 'order_record_page' ? 'Order_Record_Page' : undefined,
+                name => name.toLowerCase() === 'order_compact' ? 'Order_Compact' : undefined
+            );
+
+            expect(resolved.resets).toEqual([]);
+            expect(resolved.objectContent.actionOverrides).toEqual([{ actionName: ['View'], content: ['Order_Record_Page'], type: ['Flexipage'] }]);
+            expect(resolved.objectContent.compactLayoutAssignment).toEqual(['Order_Compact']);
 
         });
 
@@ -243,7 +258,7 @@ describe('RecipeCockpitMetadataDeploy: what a deployed object names (#547)', () 
 
             const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', {
                 actionOverrides: [{ actionName: ['View\nInjected'], content: ['c:page\u2028x'], type: ['LightningComponent'] }]
-            }, () => false, () => false);
+            }, () => undefined, () => undefined);
 
             expect(resolved.resets[0].reference).toBe('View Injected override, LightningComponent c:page x');
 
@@ -251,7 +266,7 @@ describe('RecipeCockpitMetadataDeploy: what a deployed object names (#547)', () 
 
         it('passes over an override that is not an element', () => {
 
-            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { actionOverrides: ['text', null] }, () => false, () => false);
+            const resolved = RecipeCockpitMetadataDeploy.resolveObjectReferences('Order__c', { actionOverrides: ['text', null] }, () => undefined, () => undefined);
 
             expect(resolved.resets).toEqual([]);
             expect(resolved.objectContent.actionOverrides).toEqual(['text', null]);
@@ -456,6 +471,23 @@ describe('RecipeCockpitMetadataDeployPackage: what a deployed object names (#547
         expect(( await xml2js.parseStringPromise(entries['objects/Shipment__c.object']) ).CustomObject.compactLayoutAssignment).toEqual(['SYSTEM']);
 
         expect(fs.readFileSync(path.join(workspaceRoot, ORDER_FILE_PATH)).equals(projectObjectXml)).toBe(true);
+
+    });
+
+    it('writes the object\'s references in the spelling of the files it ships', async () => {
+
+        const objectFilePath = path.join(workspaceRoot, ORDER_FILE_PATH);
+        fs.writeFileSync(objectFilePath, fs.readFileSync(objectFilePath, 'utf-8')
+            .replace('<content>Order_Record_Page</content>', '<content>order_record_page</content>')
+            .replace('<compactLayoutAssignment>Order_Compact</compactLayoutAssignment>', '<compactLayoutAssignment>ORDER_COMPACT</compactLayoutAssignment>'));
+        const components = await fieldComponents();
+        const resolved = RecipeCockpitMetadataDeployPackage.resolveSourceFiles(workspaceRoot, ['force-app'], components);
+
+        const entries = await readZip(await RecipeCockpitMetadataDeployPackage.buildDeployZip(RecipeCockpitMetadataDeploy.buildPackageXml(components, '64.0', undefined, METADATA_FIELDS_DEPLOY_PACKAGE_XML_TYPES), resolved.sourceFiles) as Buffer);
+        const order = ( await xml2js.parseStringPromise(entries['objects/Order__c.object']) ).CustomObject;
+
+        expect(( await readActionOverrides(entries['objects/Order__c.object']) ).find(actionOverride => actionOverride.type === 'Flexipage')?.content).toBe('Order_Record_Page');
+        expect(order.compactLayoutAssignment).toEqual(['Order_Compact']);
 
     });
 

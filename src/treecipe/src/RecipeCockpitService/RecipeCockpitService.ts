@@ -13566,7 +13566,8 @@ export class RecipeCockpitService {
             startedAt: operationDate,
             finishedAt: new Date(),
             ...counts,
-            filePaths: [packageXmlWrittenFilePath, metadataZipWrittenFilePath, deployOutputFilePath]
+            // THE ZIP IS NOT ONE OF THE HISTORY'S FILES: A ROW OPENS ITS FILES AS TEXT, AND parseRunFileName NAMES NO ZIP (#547)
+            filePaths: [packageXmlWrittenFilePath, deployOutputFilePath]
         });
 
         const progressTitle = RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`);

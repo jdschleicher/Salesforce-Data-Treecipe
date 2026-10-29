@@ -357,23 +357,25 @@ export class RecipeCockpitMetadataDeploy {
     /*
         The one rule for what a deployed custom object's file may still name (#547), shared by the
         summary the confirmation is built from and the copy the zip carries, so the two agree:
-        - an <actionOverrides> of type Flexipage keeps its page only when isFlexiPageShipped says the
-          page goes in the same deploy; one naming no page, or a name that is not an api name, is reset
+        - an <actionOverrides> of type Flexipage keeps its page only when findShippedFlexiPage names the
+          page going in the same deploy; one naming no page, or a name that is not an api name, is reset
         - an override of type LightningComponent, Visualforce or Scontrol is always reset
-        - a <compactLayoutAssignment> other than SYSTEM is kept only when isCompactLayoutShipped says
-          the layout goes in the same deploy, else it is set to SYSTEM
-        A reset override keeps its action, form factor and the rest, and becomes <type>Default</type>
+        - a <compactLayoutAssignment> other than SYSTEM is kept only when findShippedCompactLayout
+          names the layout going in the same deploy, else it is set to SYSTEM
+        A kept reference takes the shipped file's spelling, since the two are matched ignoring case. A
+        reset override keeps its action, form factor and the rest, and becomes <type>Default</type>
         with no <content>. The object passed in is never changed.
     */
     static resolveObjectReferences(objectApiName: string,
                                     objectContent: Readonly<Record<string, unknown>>,
-                                    isFlexiPageShipped: (flexiPageName: string) => boolean,
-                                    isCompactLayoutShipped: (compactLayoutName: string) => boolean,
+                                    findShippedFlexiPage: (flexiPageName: string) => string | undefined,
+                                    findShippedCompactLayout: (compactLayoutName: string) => string | undefined,
                                     describeNotShipped: (kind: 'FlexiPage' | 'CompactLayout', name: string) => string = () => 'not in this project'): IResolvedObjectReferences {
 
         const resets: IObjectReferenceReset[] = [];
         const resolved: Record<string, unknown> = { ...objectContent };
         const toSingleLine = (text: string) => text.replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
+        let isChanged = false;
 
         if ( Array.isArray(objectContent.actionOverrides) ) {
 
@@ -387,14 +389,21 @@ export class RecipeCockpitMetadataDeploy {
                 const overrideType = this.readText(overrideElements.type);
                 const target = this.readText(overrideElements.content);
                 let reason: string | undefined;
+                let shippedName: string | undefined;
 
                 if ( overrideType === 'Flexipage' ) {
+                    shippedName = target !== '' && SalesforceApiName.isApiName(target) ? findShippedFlexiPage(target) : undefined;
                     reason = target === '' ? 'it names no page'
                         : !SalesforceApiName.isApiName(target) ? 'its page name is not a Salesforce api name'
-                        : isFlexiPageShipped(target) ? undefined
+                        : shippedName !== undefined ? undefined
                         : describeNotShipped('FlexiPage', target);
                 } else if ( COMPONENT_OVERRIDE_TYPES.includes(overrideType) ) {
                     reason = `a ${overrideType} override is never deployed with the fields`;
+                }
+
+                if ( reason === undefined && shippedName !== undefined && shippedName !== target ) {
+                    isChanged = true;
+                    return { ...overrideElements, content: [shippedName] };
                 }
 
                 if ( reason === undefined ) {
@@ -409,6 +418,7 @@ export class RecipeCockpitMetadataDeploy {
                     reason: toSingleLine(reason)
                 });
 
+                isChanged = true;
                 const { content, ...keptElements } = overrideElements;
                 return { ...keptElements, type: ['Default'] };
 
@@ -419,18 +429,23 @@ export class RecipeCockpitMetadataDeploy {
         const compactLayoutName = this.readText(objectContent.compactLayoutAssignment);
         if ( compactLayoutName !== '' && compactLayoutName !== SYSTEM_COMPACT_LAYOUT ) {
 
+            const shippedName = SalesforceApiName.isApiName(compactLayoutName) ? findShippedCompactLayout(compactLayoutName) : undefined;
             const reason = !SalesforceApiName.isApiName(compactLayoutName) ? 'its name is not a Salesforce api name'
-                : isCompactLayoutShipped(compactLayoutName) ? undefined
+                : shippedName !== undefined ? undefined
                 : describeNotShipped('CompactLayout', compactLayoutName);
 
             if ( reason !== undefined ) {
                 resets.push({ objectApiName: objectApiName, reference: toSingleLine(`compact layout ${compactLayoutName}`), reason: toSingleLine(reason) });
                 resolved.compactLayoutAssignment = [SYSTEM_COMPACT_LAYOUT];
+                isChanged = true;
+            } else if ( shippedName !== undefined && shippedName !== compactLayoutName ) {
+                resolved.compactLayoutAssignment = [shippedName];
+                isChanged = true;
             }
 
         }
 
-        return { objectContent: resets.length > 0 ? resolved : objectContent as Record<string, unknown>, resets: resets };
+        return { objectContent: isChanged ? resolved : objectContent as Record<string, unknown>, resets: resets };
 
     }
 
@@ -601,8 +616,8 @@ export class RecipeCockpitMetadataDeploy {
                     const resolved = this.resolveObjectReferences(
                         objectApiName,
                         objectContent,
-                        flexiPageName => heldStatusOf('FlexiPage', flexiPageName)?.heldName !== undefined,
-                        compactLayoutName => heldStatusOf('CompactLayout', compactLayoutName)?.heldName !== undefined,
+                        flexiPageName => heldStatusOf('FlexiPage', flexiPageName)?.heldName,
+                        compactLayoutName => heldStatusOf('CompactLayout', compactLayoutName)?.heldName,
                         (kind, name) => heldStatusOf(kind, name)?.isUnreadable ? `its ${kind} file could not be read` : `${kind} ${name} is not in this project`
                     );
                     summary.objectReferenceResets.push(...resolved.resets);
