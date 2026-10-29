@@ -1,8 +1,8 @@
 # Change Log
 
-## [3.177.1] - Cockpit kit, first cut: the palette, button kinds, in-panel confirmation and org picker styles are shared, and the Recipe Cockpit is unchanged
+## [3.178.1] - Cockpit kit, first cut: the palette, button kinds, in-panel confirmation and org picker styles are shared, and the Recipe Cockpit is unchanged
 
-[#524](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/524), slice A of the Picklist Cockpit epic [#523](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/523). No behaviour change: the Recipe Cockpit's document is byte for byte what 3.177.0 built (the shell for a fixed nonce, 668,970 bytes, sha256 `d4c0f0d0…202893` before and after).
+[#524](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/524), slice A of the Picklist Cockpit epic [#523](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/523). No behaviour change: the Recipe Cockpit's document is byte for byte what 3.178.0 built (the shell for a fixed nonce, 670,535 bytes, sha256 `c2a64712…a066b6` before and after).
 
 - **`src/treecipe/src/CockpitKit/`**, which imports nothing but `crypto`, so a second cockpit can take it without the Recipe Cockpit:
   - `CockpitPalette`: the `--sdt-*` palette (`COCKPIT_PALETTE`, frozen) and the builders of its custom properties.
@@ -11,6 +11,18 @@
   - `CockpitConfirmDialog`: the dialog's styles, host markup, panel state, labels and script (drawing, answering, closing), `COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES` (every free name that script reads, which a cockpit must declare beside it) and `COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES` (the classes it draws with that its own styles leave to the cockpit: the section chevron, the reveal, and what its required helpers set), and the host's `buildConfirmationId()` and `readAnswer()`, which `settlePendingConfirmation` now calls. Which panel is asked, whether it is visible, and Change org… stay the Recipe Cockpit's.
 - **The old names stay.** `RECIPE_COCKPIT_PALETTE`, `RecipeCockpitPaletteToken`, `RECIPE_COCKPIT_BUTTON_KINDS`, `RecipeCockpitButtonKind`, `RECIPE_COCKPIT_ACTION_CARD_HEIGHT`, `RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS`, `RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING` and the two confirmation labels are the kit's values under their old names, and `buildWebviewShellHtml` still takes only a nonce.
 - **Tests.** `CockpitKit/tests/CockpitKit.test.ts` holds every kit piece to appearing in the Recipe Cockpit's document verbatim and exactly once, which is also what keeps the contrast, button-kind and dialog suites covering the kit's code. It also checks the custom properties, the order the kind rules join in, one kind class per state rule, the pinned section, the dialog script's required names (every free identifier of the script, strings, comments and regex literals stripped, matched exactly and each declared by the Recipe Cockpit) and required classes (each styled by the Recipe Cockpit outside the kit's dialog styles), `readAnswer` (only an offered index, a box only when drawn and boolean) and that the kit imports no vscode and no service.
+## [3.178.0] - Recipe Cockpit: the Generate Treecipe run list moves into the Treecipes section, labelled "Select Generate Treecipe runs by date"
+
+[#533](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/533). The run list sat alone in the top toolbar with no visible label, away from the trees it changes, with the pinned Target Org Manager in between.
+
+- **First in the Treecipes section.** `buildRunPicker` draws a `runPicker` row (a `<label for="runSelect">` reading **Select Generate Treecipe runs by date**, `RECIPE_COCKPIT_RUN_PICKER_LABEL`, then the `runSelect` dropdown) as the first child of `treecipesControls`, above the section search, its results, the Treecipe dropdown and the insert order line. The label names the dropdown, so it no longer carries its own `aria-label`.
+- **Not in the toolbar.** `renderToolbar` draws only Favorites only now.
+- **Still there when there is no card.** A run with objects and no trees, or a run that could not be read, draws the row right under the toolbar, above its notice or empty state, so another run can still be chosen. With no run at all there is no row, as before.
+- **Narrow panels.** The row wraps: the label, then the dropdown taking what is left (`flex: 1 1 12rem; min-width: 0`). Its colours are the search box's, so the contrast pair list did not change.
+- **Unchanged.** A change still posts `selectRun {runFolderName}` and nothing else; the run-switch confirmation (#399), its Cancel putting the dropdown back, the saved place and the restore are as they were. No faker backend changed.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the run list where it now is, and the screenshots were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts`: the row's place in the section and its absence from the toolbar, the label's text and `for`, the wrapping CSS, the row above a no-trees notice and above an unreadable run's empty state. `RecipeCockpitTreecipePicker.test.ts`: the section's control order.
+
 ## [3.177.0] - Recipe Cockpit: retrieves can run without the Salesforce CLI, and listing validation rules and record types never uses it
 
 [#506](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/506), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The four Troubleshooting retrieves and the Treecipe Adapter's two retrieves always ran `sf project retrieve start --manifest`. The spike on `@salesforce/source-deploy-retrieve` ([#504](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/504)) is still open, so, as for deploys (#505), this release offers both ways and adds no runtime dependency.
