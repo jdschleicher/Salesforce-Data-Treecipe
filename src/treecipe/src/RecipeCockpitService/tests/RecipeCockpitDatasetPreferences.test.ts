@@ -478,6 +478,8 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(glyph.children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
             expect(rename.textContent).not.toContain('✎');
             expect(rename.attributes['aria-label']).toBe('Rename Before the fix');
+            // THE ROW ALIGNS BY BASELINE AND AN SVG HAS NONE, SO THE PENCIL BUTTON IS CENTRED OR IT SITS ABOVE THE ☆
+            expect(RecipeCockpitService.buildWebviewShellHtml('testNonce')).toContain('.treeDatasetRename { align-self: center; }');
 
         });
 

@@ -20265,6 +20265,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeDatasetName { font-weight: 600; }
     .treeDatasetFavorite, .treeDatasetRename { font-size: 1.1em; line-height: 1; }
     .treeRename, .treeDatasetRename { display: inline-flex; align-items: center; justify-content: center; }
+    .treeDatasetRename { align-self: center; }
     .treeDataset { padding: 0.3rem 0.6rem; }
     .treeDataset:hover { background-color: var(--sdt-row-hover); }
     .treeDatasetDate { font-weight: 600; }
