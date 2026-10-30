@@ -573,7 +573,8 @@ export class PicklistDependencyCheckService {
         registerCancellation hands the caller a function that cancels the run. A cancel ABORTS the
         test job in the org (its ApexTestQueueItems are set to Aborted, as "sf apex run test"'s own
         abort does) rather than only stopping the wait, and ends in a
-        PicklistDependencyTestRunCancelledError saying whether the abort landed.
+        PicklistDependencyTestRunCancelledError saying whether the abort landed. Every request,
+        the connection and the start included, is bounded by the cancel and the wait.
     */
     static async runPicklistDependencyTests(targetOrgIdentifier: string,
                                             registerCancellation?: (cancelTestRun: () => void) => void): Promise<IPicklistDependencyCheckOutcome> {
@@ -596,22 +597,42 @@ export class PicklistDependencyCheckService {
             deadlineTimer = setTimeout(() => resolve('timedOut'), this.apexTestRunWaitMilliseconds);
         });
 
+        // jsforce SETS NO REQUEST TIMEOUT, SO EVERY REQUEST IS RACED: A HUNG ONE MUST NOT OUTLIVE A CANCEL OR THE WAIT
+        const raceWithStop = <T>(request: Promise<T>): Promise<T | 'cancelled' | 'timedOut'> => {
+            request.catch(() => undefined);
+            return Promise.race([request, whenCancelled, whenTimedOut]);
+        };
+
         try {
 
-            const connection = await SalesforceOrgService.getConnection(targetOrgIdentifier);
+            const connection = await raceWithStop(SalesforceOrgService.getConnection(targetOrgIdentifier));
 
-            if ( isCancellationRequested ) {
+            if ( connection === 'cancelled' || isCancellationRequested ) {
                 throw new PicklistDependencyTestRunCancelledError(`Picklist dependency check cancelled before the test run started. Nothing was run in "${targetOrgIdentifier}".`);
             }
 
-            // NOT RACED: A RUN THE ORG STARTED AFTER A CANCEL STILL HAS TO BE ABORTED, SO ITS ID IS WAITED FOR
-            const startAnswer: unknown = await connection.tooling.runTestsAsynchronous({ suiteNames: this.getSpecsTestSuiteName() });
-            const testRunId = this.readTestRunId(startAnswer);
+            if ( connection === 'timedOut' ) {
+                throw new Error(`No connection to "${targetOrgIdentifier}" opened within ${this.formatWaitMinutes()} minutes, so nothing was run. Check the org's authorization and network, then run the command again.`);
+            }
 
-            const raceWithStop = <T>(request: Promise<T>, isDeadlineApplied: boolean): Promise<T | 'cancelled' | 'timedOut'> => {
-                request.catch(() => undefined);
-                return Promise.race([request, whenCancelled, ...( isDeadlineApplied ? [whenTimedOut] : [] )]);
-            };
+            const startRequest: Promise<unknown> = connection.tooling.runTestsAsynchronous({ suiteNames: this.getSpecsTestSuiteName() });
+            const startAnswer = await raceWithStop(startRequest);
+
+            /*
+                A start the command stopped waiting for may still reach the org. It is aborted once
+                the org answers with its id, in the background, so a hung request never holds the
+                command open but a run the org did start is still stopped.
+            */
+            if ( startAnswer === 'cancelled' || startAnswer === 'timedOut' ) {
+                void startRequest
+                    .then(lateStartAnswer => this.abortTestRun(connection, this.readTestRunId(lateStartAnswer), targetOrgIdentifier))
+                    .catch(() => undefined);
+                throw startAnswer === 'cancelled'
+                    ? new PicklistDependencyTestRunCancelledError(`Picklist dependency check cancelled while the test run was starting in "${targetOrgIdentifier}". If the org starts it, it is aborted as soon as the org answers.`)
+                    : new Error(`"${targetOrgIdentifier}" did not answer the request to start the ${this.getSpecsTestSuiteName()} test suite within ${this.formatWaitMinutes()} minutes. If the org starts it, it is aborted as soon as the org answers.`);
+            }
+
+            const testRunId = this.readTestRunId(startAnswer);
 
             let finishedStatus: ITestRunStatus | undefined;
 
@@ -621,7 +642,13 @@ export class PicklistDependencyCheckService {
                     break;
                 }
 
-                const status = await raceWithStop(this.readTestRunStatus(connection, testRunId), true);
+                let status: ITestRunStatus | undefined | 'cancelled' | 'timedOut';
+
+                try {
+                    status = await raceWithStop(this.readTestRunStatus(connection, testRunId));
+                } catch (statusError) {
+                    throw new Error(`The status of the picklist dependency test run ${testRunId} could not be read from "${targetOrgIdentifier}", so the check stopped waiting; the run may still be going there. ${(statusError as Error)?.message ?? ''}`.trim());
+                }
 
                 if ( status === 'cancelled' ) {
                     break;
@@ -636,7 +663,11 @@ export class PicklistDependencyCheckService {
                     break;
                 }
 
-                const pause = await raceWithStop(new Promise<'paused'>(resolve => setTimeout(() => resolve('paused'), this.apexTestRunPollIntervalMilliseconds)), true);
+                let pauseTimer: ReturnType<typeof setTimeout> | undefined;
+                const pause = await raceWithStop(new Promise<'paused'>(resolve => {
+                    pauseTimer = setTimeout(() => resolve('paused'), this.apexTestRunPollIntervalMilliseconds);
+                }));
+                clearTimeout(pauseTimer);
 
                 if ( pause === 'timedOut' ) {
                     throw new Error(this.buildTestRunTimedOutMessage(targetOrgIdentifier, testRunId));
@@ -652,10 +683,14 @@ export class PicklistDependencyCheckService {
                 throw new Error(`The picklist dependency test run ${testRunId} was aborted in "${targetOrgIdentifier}" before it finished, so nothing was checked. Run the command again.`);
             }
 
-            const testResults = await raceWithStop(this.readTestResults(connection, testRunId), false);
+            const testResults = await raceWithStop(this.readTestResults(connection, testRunId));
 
-            if ( testResults === 'cancelled' || testResults === 'timedOut' ) {
+            if ( testResults === 'cancelled' ) {
                 throw new PicklistDependencyTestRunCancelledError(`Picklist dependency check cancelled. The test run ${testRunId} had already finished in "${targetOrgIdentifier}", so there was nothing to abort; its results were not read.`);
+            }
+
+            if ( testResults === 'timedOut' ) {
+                throw new Error(`The picklist dependency test run ${testRunId} finished in "${targetOrgIdentifier}", but its results could not be read within ${this.formatWaitMinutes()} minutes, so no results were written. See Setup > Apex Test Execution, or run the command again.`);
             }
 
             // A FAILED JOB WITH NO ROWS SAYS WHY ONLY IN ITS ExtendedStatus
@@ -689,11 +724,13 @@ export class PicklistDependencyCheckService {
 
     }
 
+    private static formatWaitMinutes(): string {
+        return String(this.apexTestRunWaitMilliseconds / 60000);
+    }
+
     static buildTestRunTimedOutMessage(targetOrgIdentifier: string, testRunId: string): string {
 
-        const waitMinutes = this.apexTestRunWaitMilliseconds / 60000;
-
-        return `The picklist dependency test run ${testRunId} did not finish within ${waitMinutes} minutes in "${targetOrgIdentifier}", so no results were written. It is still running there; see Setup > Apex Test Execution, or run the command again once it has finished.`;
+        return `The picklist dependency test run ${testRunId} did not finish within ${this.formatWaitMinutes()} minutes in "${targetOrgIdentifier}", so no results were written. It is still running there; see Setup > Apex Test Execution, or run the command again once it has finished.`;
 
     }
 

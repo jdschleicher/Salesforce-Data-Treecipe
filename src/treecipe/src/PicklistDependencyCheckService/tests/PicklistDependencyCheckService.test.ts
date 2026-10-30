@@ -804,6 +804,62 @@ describe('shouldRunThePicklistDependencySuiteThroughTheToolingApi', () => {
 
     });
 
+    describe('the wait bounds every request', () => {
+
+        beforeEach(() => {
+            jest.replaceProperty(PicklistDependencyCheckService, 'apexTestRunWaitMilliseconds', 20);
+        });
+
+        it('shouldGiveUpOnAConnectionThatNeverOpens', async () => {
+
+            const { getConnectionSpy } = stubTestRunConnection({});
+            getConnectionSpy.mockReturnValue(new Promise(() => undefined));
+
+            await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+                .rejects.toThrow('No connection to "devHub" opened within');
+
+        });
+
+        it('shouldGiveUpOnAStartTheOrgNeverAnswersAndAbortItIfItLaterStarts', async () => {
+
+            let answerStart: ((testRunIdAnswer: string) => void) | undefined;
+            const { runTestsAsynchronous, update } = stubTestRunConnection({ queueItems: [{ Id: '7090000000000AAAAA' }] });
+            runTestsAsynchronous.mockReturnValue(new Promise<string>(resolve => { answerStart = resolve; }));
+
+            await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+                .rejects.toThrow('"devHub" did not answer the request to start the SDTPicklistDependencyTests test suite within');
+
+            answerStart(testRunId);
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(update).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('shouldGiveUpOnResultsThatNeverArrive', async () => {
+
+            const { toolingQuery } = stubTestRunConnection({});
+            toolingQuery.mockReturnValue(new Promise(() => undefined));
+
+            await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+                .rejects.toThrow(`The picklist dependency test run ${testRunId} finished in "devHub", but its results could not be read within`);
+
+        });
+
+    });
+
+    it('shouldNameTheRunAndSayItMayStillBeGoingWhenAStatusPollFails', async () => {
+
+        const { query, update } = stubTestRunConnection({});
+        query.mockRejectedValue(new Error('INVALID_SESSION_ID: Session expired or invalid'));
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow(`The status of the picklist dependency test run ${testRunId} could not be read from "devHub", so the check stopped waiting; the run may still be going there. INVALID_SESSION_ID: Session expired or invalid`);
+
+        expect(update).not.toHaveBeenCalled();
+
+    });
+
     it('shouldWordTheTimeoutWithTheTenMinuteWait', () => {
 
         expect(PicklistDependencyCheckService.buildTestRunTimedOutMessage('devHub', testRunId))
@@ -896,20 +952,78 @@ describe('shouldRunThePicklistDependencySuiteThroughTheToolingApi', () => {
 
         });
 
-        it('shouldStillAbortARunTheOrgStartedAfterTheCancel', async () => {
+        it('shouldStopWaitingForAStartThatHangsAndAbortTheRunOnceTheOrgAnswers', async () => {
 
             let cancelTestRun: (() => void) | undefined;
+            let answerStart: ((testRunIdAnswer: string) => void) | undefined;
             const { runTestsAsynchronous, update, query } = stubTestRunConnection({ queueItems: [{ Id: '7090000000000AAAAA' }] });
-            runTestsAsynchronous.mockImplementation(async () => {
+            runTestsAsynchronous.mockImplementation(() => new Promise<string>(resolve => {
+                answerStart = resolve;
                 cancelTestRun();
-                return testRunId;
+            }));
+
+            const cancelError = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub', registeredCancel => { cancelTestRun = registeredCancel; })
+                .then(() => undefined, (error: Error) => error);
+
+            expect(cancelError).toBeInstanceOf(PicklistDependencyTestRunCancelledError);
+            expect(cancelError.message).toBe('Picklist dependency check cancelled while the test run was starting in "devHub". If the org starts it, it is aborted as soon as the org answers.');
+            expect(update).not.toHaveBeenCalled();
+
+            answerStart(testRunId);
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(update).toHaveBeenCalledWith('ApexTestQueueItem', { Id: '7090000000000AAAAA', Status: 'Aborted' });
+            expect(query).not.toHaveBeenCalled();
+
+        });
+
+        it('shouldAbortNothingWhenALateStartAnswerIsNotARunId', async () => {
+
+            let cancelTestRun: (() => void) | undefined;
+            let answerStart: ((startAnswer: unknown) => void) | undefined;
+            const { runTestsAsynchronous, toolingQuery, update } = stubTestRunConnection({});
+            runTestsAsynchronous.mockImplementation(() => new Promise<unknown>(resolve => {
+                answerStart = resolve;
+                cancelTestRun();
+            }));
+
+            await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub', registeredCancel => { cancelTestRun = registeredCancel; }))
+                .rejects.toThrow('while the test run was starting');
+
+            answerStart({ id: testRunId });
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(toolingQuery).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+
+        });
+
+        it('shouldStopWaitingForAConnectionThatHangs', async () => {
+
+            let cancelTestRun: (() => void) | undefined;
+            const { getConnectionSpy, runTestsAsynchronous } = stubTestRunConnection({});
+            getConnectionSpy.mockImplementation(() => {
+                cancelTestRun();
+                return new Promise(() => undefined);
             });
 
             await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub', registeredCancel => { cancelTestRun = registeredCancel; }))
-                .rejects.toThrow('was aborted in "devHub"');
+                .rejects.toThrow('cancelled before the test run started. Nothing was run in "devHub".');
 
-            expect(update).toHaveBeenCalledTimes(1);
-            expect(query).not.toHaveBeenCalled();
+            expect(runTestsAsynchronous).not.toHaveBeenCalled();
+
+        });
+
+        it('shouldSayTheRunMayStillBeRunningWhenTheAbortNeverAnswers', async () => {
+
+            jest.replaceProperty(PicklistDependencyCheckService, 'apexTestRunAbortTimeoutMilliseconds', 10);
+
+            const { runPromise } = startCancellableRun({
+                queueItems: [{ Id: '7090000000000AAAAA' }],
+                updateAnswer: () => new Promise(() => undefined)
+            });
+
+            await expect(runPromise).rejects.toThrow(`the test run ${testRunId} could not be aborted in "devHub" and may still be running there`);
 
         });
 
