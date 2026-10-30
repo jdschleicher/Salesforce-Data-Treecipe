@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.188.0] - Run Picklist Dependency Check runs the test suite through the Tooling API, and Cancel aborts it in the org
+## [3.189.0] - Run Picklist Dependency Check runs the test suite through the Tooling API, and Cancel aborts it in the org
 
 [#503](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/503), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The check ran `sf apex run test --suite-names SDTPicklistDependencyTests --wait 10 --json` and read the CLI's payload. Cancel killed the process, which left the test job running in the org and reported an unreadable CLI answer as an error.
 
@@ -13,6 +13,17 @@
 - **Call sites.** `runPicklistDependencyTests` leaves `SalesforceCliCallSites.test.ts`'s list of remaining `sf` call sites. The deploys still use the CLI.
 - **Docs.** README, `docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md` and CLAUDE.md describe the run.
 - **Tests.** `PicklistDependencyCheckService.test.ts` drives the run against a fake connection: suite name only and no process, polling to the end, failures, paging, zero tests, compile failures, a failed or aborted job, unusable start and status answers, the timeout and the 10-minute wait, every cancel path (aborted, nothing to abort, an out-of-shape queue item, a refused or failed abort, a cancel during the start request and before the connection) and `results.json`/`report.md` for all pass and some fail. `ExtensionCommandService.test.ts` covers the cancel notification and that the progress cancel reaches the run.
+
+## [3.188.0] - Recipe Cockpit: + New scratch org asks how many days the org lives, 1 to 30
+
+[#534](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/534). Every scratch org the cockpit created lived 7 days (`SCRATCH_ORG_DURATION_DAYS`), so a longer test cycle or a one-day throwaway meant leaving for `sf org create scratch --duration-days N`.
+
+- **A lifetime step after the alias.** `ScratchOrgService.resolveScratchOrgPlan` takes a `chooseDurationDays` callback and asks it after the alias. The cockpit answers it with a host `showInputBox` whose prompt says "1 to 30 days (Salesforce's maximum is 30)" and which starts on `7`, so Enter keeps the lifetime every org had. Escape cancels quietly, like the Dev Hub and alias steps: nothing is created.
+- **One rule, checked twice.** `ScratchOrgService.validateScratchOrgDurationDays` accepts only a whole number from 1 to 30 typed as digits: `0`, `31`, `-1`, `+7`, `7.5`, `07`, `abc`, an empty value and surrounding spaces are refused. The box's validation uses it, and the plan checks the value again and throws before any process starts. `SCRATCH_ORG_DURATION_DAYS` is now the box's default, beside `SCRATCH_ORG_MIN_DURATION_DAYS` (1) and `SCRATCH_ORG_MAX_DURATION_DAYS` (30).
+- **The chosen value goes everywhere the 7 did.** `--duration-days <N>` in the CLI argv, `durationDays: N` in `scratchOrgCreate` (#507), and the confirmation's `Duration: N days` line (`Duration: 1 day` for one).
+- **The result file records it.** Both create paths add `durationDays` to the result saved under `treecipe/OrgOperations/`, on success and on failure, since the CLI's answer does not always name it.
+- **Help.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the README say the org lives the days you choose.
+- **Tests.** `ScratchOrgService.test.ts`: every value from 1 to 30 accepted, `0`, `31` and non-numbers refused, the lifetime asked after the alias and never without one, a dismissed box as no plan, the plan refusing a bad value before any process, and both create paths (argv and `scratchOrgCreate`) receiving 1 or 30 and recording it in the result file. `RecipeCockpitScratchOrg.test.ts`: the box's prompt, default and validation, the order Dev Hub → alias → lifetime → confirmation, `Duration: 30 days` in the confirmation with `--duration-days 30` in the create, `Duration: 1 day` in the singular, and a dismissed lifetime box creating nothing.
 
 ## [3.187.0] - Recipe Cockpit: a card's and a data set row's ✎ renames them in place, not in a VS Code input box
 
