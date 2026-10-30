@@ -642,7 +642,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
-            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of a row opens its insert journey: every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, oldest first, for the orgs it was inserted into. Each entry shows its time, org, outcome in words, the first error of a failure, and where its files are, with View file. A data set never inserted opens to No inserts yet.',
+            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row is two lines: the star, the pencil, its name, its last insert and its buttons first, then the ▸ with when, how and from which version it was made. A row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of the second line opens its insert journey: a table of every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, newest first, for the orgs it was inserted into. Each row shows its time, step, org, outcome in words, the first error of a failure, and where its files are, with View file; click a column heading to sort by it. A data set never inserted opens to No inserts yet.',
             'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset Selections, right of a card\'s Generate fake data and insert button, clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
@@ -2435,6 +2435,19 @@ export const RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY: Readonly<Record<RunH
     unreadable: { emoji: '⚠️', label: 'Unreadable' },
     unrecorded: { emoji: '⚠️', label: 'Not recorded' }
 };
+/*
+    The journey's table (#558), drawn by the History table's builder. The host posts entries oldest
+    first and no time value, so Time sorts by that place; every column but Files sorts.
+*/
+export const RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS = [
+    { key: 'time', label: 'Time' },
+    { key: 'step', label: 'Step' },
+    { key: 'org', label: 'Org' },
+    { key: 'status', label: 'Status' },
+    { key: 'detail', label: 'Detail' },
+    { key: 'files', label: 'Files' }
+] as const;
+export const RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS = ['time', 'step', 'org', 'status'] as const;
 export const RECIPE_COCKPIT_DATASET_JOURNEY_INSERT_LABEL = 'Insert';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL = 'Insert journey';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE = 'Reading this data set\'s inserts…';
@@ -21154,7 +21167,8 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
         background-color: var(--sdt-chip-bg);
         border-radius: 0.6rem;
     }
-    .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .sdtRowHeader { display: flex; flex-direction: column; gap: 0.2rem; }
+    .sdtRowHeaderPrimary, .sdtRowHeaderDetail { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeDatasetName { font-weight: 600; }
     .nameEditor { display: inline-flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
     .nameEditorInput {
@@ -21190,10 +21204,10 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
         border-radius: 0.6rem;
     }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
-    .treeDatasetJourney { margin: 0.4rem 0 0.2rem 2.1rem; }
-    .treeDatasetJourneyList { list-style: none; margin: 0; padding: 0 0 0 0.8rem; border-left: 2px solid var(--sdt-border); }
-    .treeDatasetJourneyEntry { margin: 0 0 0.5rem 0; }
-    .treeDatasetJourneyEntryHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDatasetJourney { margin: 0.4rem 0 0.2rem 0; }
+    .treeDatasetJourneyTableWrap { max-height: 24rem; }
+    .treeDatasetJourneyTable { width: 100%; }
+    .treeDatasetJourneyTime { white-space: nowrap; }
     .treeDatasetJourneyKind { font-weight: 600; }
     .treeDatasetJourneyStatus {
         display: inline-flex;
@@ -21207,7 +21221,8 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
     }
     .treeDatasetJourneySummary, .treeDatasetJourneyError { margin: 0.1rem 0 0 0; word-break: break-word; }
     .treeDatasetJourneyError { color: var(--sdt-removed); }
-    .treeDatasetJourneyFile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.1rem 0 0 0; }
+    .treeDatasetJourneyFile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDatasetJourneyFile + .treeDatasetJourneyFile { margin: 0.2rem 0 0 0; }
     .treeDatasetJourneyPath { font-family: var(--vscode-editor-font-family, monospace); font-size: 0.85em; word-break: break-all; }
     .treeDatasetJourneyNote { margin: 0.2rem 0; }
 ${COCKPIT_KIT_ORG_PICKER_STYLES}
@@ -21348,11 +21363,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
     .treeQueryText:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
     .treeQueryResult { margin-top: 0.4rem; }
-    .treeQueryTableWrap { overflow: auto; max-height: 24rem; margin-top: 0.2rem; }
-    .historyTableWrap { overflow: auto; max-height: 28rem; margin-top: 0.2rem; }
-    .historyTable { border-collapse: collapse; font-size: 0.9em; width: 100%; }
-    .historyTable th, .historyTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; }
-    .historyTable th { white-space: nowrap; }
+    .sdtRowTableWrap { overflow: auto; max-width: 100%; margin-top: 0.2rem; }
+    .sdtRowTable { border-collapse: collapse; font-size: 0.9em; }
+    .sdtRowTable th, .sdtRowTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; }
+    .sdtRowTable th { white-space: nowrap; }
+    .treeQueryTableWrap { max-height: 24rem; }
+    .historyTableWrap { max-height: 28rem; }
+    .historyTable { width: 100%; }
     .historyStatus {
         display: inline-flex;
         align-items: baseline;
@@ -21366,9 +21383,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .historyDetail { display: block; margin-top: 0.1rem; word-break: break-word; }
     .historyFiles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
     .historyHiddenNote { margin-top: 0.3rem; }
-    .treeQueryTable { border-collapse: collapse; font-size: 0.9em; }
     .treeQueryTable td .treeQueryRecordLink { font: inherit; padding: 0; }
-    .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
+    .treeQueryTable td { white-space: pre-wrap; }
     /*
         A TODO or validation rule group is a card (#383): the action cards' surface, border and
         radius around a header that is the card kind's button. Closed, the header button fills the
@@ -21599,6 +21615,8 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const VALIDATION_RULES_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE)};
     const HISTORY_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_COLUMNS)};
     const HISTORY_SORT_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_SORT_COLUMNS)};
+    const DATASET_JOURNEY_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS)};
+    const DATASET_JOURNEY_SORT_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS)};
     const HISTORY_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY)};
     const HISTORY_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_LOADING_NOTE)};
     const HISTORY_EMPTY_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_EMPTY_NOTE)};
@@ -26297,26 +26315,26 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     function buildDatasetRowState(treeState, dataset) {
 
         const datasetElement = createElement('div', 'treeDataset');
-        const datasetHeaderElement = createElement('div', 'treeDatasetHeader');
+        const datasetHeaderElement = createElement('div', 'treeDatasetHeader sdtRowHeader');
+        // #558: WHAT A READER DECIDES ON (NAME, STATUS, ACTIONS) IS LINE ONE; WHEN AND HOW IT WAS MADE IS LINE TWO, LED BY THE ▸
+        const primaryLineElement = createElement('div', 'sdtRowHeaderPrimary');
+        const detailLineElement = createElement('div', 'sdtRowHeaderDetail');
         const countsElement = createElement('div', 'treeDatasetCounts muted');
         const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: 'datasets' };
         const rowState = { element: datasetElement, dataset: dataset, searchText: '', nameElement: null, favoriteElement: null, renameElement: null };
-
-        rowState.journeyToggleElement = buildDatasetJourneyToggle(treeState, rowState);
-        datasetHeaderElement.appendChild(rowState.journeyToggleElement);
 
         rowState.favoriteElement = createButton('secondary', 'historyAction treeDatasetFavorite');
         rowState.favoriteElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'toggleFavoriteDataset', datasetFolderName: dataset.datasetFolderName });
         });
-        datasetHeaderElement.appendChild(rowState.favoriteElement);
+        primaryLineElement.appendChild(rowState.favoriteElement);
 
         rowState.renameElement = createButton('secondary', 'historyAction treeDatasetRename');
         rowState.renameElement.appendChild(buildPencilGlyph('default'));
-        datasetHeaderElement.appendChild(rowState.renameElement);
+        primaryLineElement.appendChild(rowState.renameElement);
 
         rowState.nameElement = createElement('span', 'treeDatasetName');
-        datasetHeaderElement.appendChild(rowState.nameElement);
+        primaryLineElement.appendChild(rowState.nameElement);
 
         rowState.nameEditor = buildNameEditor({
             nameTarget: 'dataset',
@@ -26332,24 +26350,12 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         // SLOTS DRAW NO BOX OF THEIR OWN, SO A ROW NEVER INSERTED LOOKS AS IT ALWAYS DID; A LATER INSERT REFILLS THEM IN PLACE
         rowState.lastInsertSlotElement = createElement('span', 'treeDatasetInsertSlot');
-        datasetHeaderElement.appendChild(rowState.lastInsertSlotElement);
+        primaryLineElement.appendChild(rowState.lastInsertSlotElement);
 
-        datasetHeaderElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
-        datasetHeaderElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
-
-        // A DATA SET THE TREECIPE ADAPTER WROTE (#448), SAID IN TEXT SO THE LABEL IS NEVER COLOUR ALONE
-        if (dataset.isAdapted === true) {
-            datasetHeaderElement.appendChild(createElement('span', 'treeDatasetAdapted muted', DATASET_ADAPTED_LABEL));
-        }
-
-        datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
-
-        datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
-
-        datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
+        primaryLineElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
             Object.assign({ command: 'openDataset' }, actionMessage)));
         rowState.lastInsertResultsSlotElement = createElement('span', 'treeDatasetInsertSlot');
-        datasetHeaderElement.appendChild(rowState.lastInsertResultsSlotElement);
+        primaryLineElement.appendChild(rowState.lastInsertResultsSlotElement);
         // THE TARGET ORG MANAGER'S SELECTION IS POSTED BY INDEX AT THE CLICK (#541); WITH NONE THE HOST ASKS FOR THE ORG
         rowState.insertElement = createButton('secondary', 'historyAction treeDatasetInsert', 'Insert…');
         rowState.insertElement.addEventListener('click', function () {
@@ -26357,8 +26363,25 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             if (dataOrgSelectedIndex !== null) { insertMessage.orgIndex = dataOrgSelectedIndex; }
             vscodeApi.postMessage(insertMessage);
         });
-        datasetHeaderElement.appendChild(rowState.insertElement);
+        primaryLineElement.appendChild(rowState.insertElement);
 
+        rowState.journeyToggleElement = buildDatasetJourneyToggle(treeState, rowState);
+        detailLineElement.appendChild(rowState.journeyToggleElement);
+
+        detailLineElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
+        detailLineElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
+
+        // A DATA SET THE TREECIPE ADAPTER WROTE (#448), SAID IN TEXT SO THE LABEL IS NEVER COLOUR ALONE
+        if (dataset.isAdapted === true) {
+            detailLineElement.appendChild(createElement('span', 'treeDatasetAdapted muted', DATASET_ADAPTED_LABEL));
+        }
+
+        detailLineElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
+
+        detailLineElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
+
+        datasetHeaderElement.appendChild(primaryLineElement);
+        datasetHeaderElement.appendChild(detailLineElement);
         datasetElement.appendChild(datasetHeaderElement);
         datasetElement.appendChild(countsElement);
         datasetElement.appendChild(rowState.journeyElement);
@@ -26499,9 +26522,20 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
                 pluralize(journeyMessage.hiddenEntryCount, 'earlier entry is', 'earlier entries are') + ' not shown.'));
         }
 
-        const listElement = createElement('ol', 'treeDatasetJourneyList');
-        entries.forEach(function (entry) { listElement.appendChild(buildDatasetJourneyEntry(rowState, journeyMessage, entry)); });
-        journeyElement.appendChild(listElement);
+        if (!rowState.journeySort) { rowState.journeySort = { column: 'time', isDescending: true }; }
+        const rowTable = buildRowTable({
+            className: 'treeDatasetJourneyTable',
+            columnClassName: 'treeDatasetJourney',
+            columns: DATASET_JOURNEY_COLUMNS,
+            sortColumns: DATASET_JOURNEY_SORT_COLUMNS,
+            sort: rowState.journeySort,
+            onSort: function (column) { sortDatasetJourney(rowState, column); }
+        });
+        rowState.journeySortButtons = rowTable.sortButtons;
+        sortDatasetJourneyEntries(rowState.journeySort, entries).forEach(function (placedEntry) {
+            rowTable.bodyElement.appendChild(buildDatasetJourneyEntry(rowState, journeyMessage, placedEntry.entry));
+        });
+        journeyElement.appendChild(rowTable.wrapElement);
 
         if (entries.length === 1 && entries[0].kind === 'insert' && entries[0].status === 'succeeded' && !(journeyMessage.hiddenEntryCount > 0)) {
             journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_FIRST_TIME_NOTE));
@@ -26517,32 +26551,75 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
+    function datasetJourneyStatusOf(entry) {
+
+        return hasOwnKey(DATASET_JOURNEY_STATUS_DISPLAY, entry.status) ? DATASET_JOURNEY_STATUS_DISPLAY[entry.status] : { emoji: '', label: String(entry.status) };
+
+    }
+
+    // ENTRIES COME OLDEST FIRST WITH NO TIME VALUE, SO TIME SORTS BY THAT PLACE, WHICH ALSO BREAKS EVERY TIE, NEWEST FIRST
+    function sortDatasetJourneyEntries(sort, entries) {
+
+        const sortValueOf = function (placedEntry) {
+            if (sort.column === 'time') { return placedEntry.place; }
+            if (sort.column === 'step') { return String(placedEntry.entry.kindLabel).toLowerCase(); }
+            if (sort.column === 'org') { return typeof placedEntry.entry.orgLabel === 'string' ? placedEntry.entry.orgLabel.toLowerCase() : ''; }
+            return datasetJourneyStatusOf(placedEntry.entry).label.toLowerCase();
+        };
+
+        return entries
+            .map(function (entry, place) { return { entry: entry, place: place }; })
+            .sort(function (first, second) {
+                const firstValue = sortValueOf(first);
+                const secondValue = sortValueOf(second);
+                const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
+                if (order !== 0) { return sort.isDescending ? -order : order; }
+                return second.place - first.place;
+            });
+
+    }
+
+    // A HEADER CLICK SORTS BY ITS COLUMN; THE SAME COLUMN AGAIN TURNS THE ORDER. TIME STARTS NEWEST FIRST, THE REST A TO Z
+    function sortDatasetJourney(rowState, column) {
+
+        rowState.journeySort = rowState.journeySort.column === column
+            ? { column: column, isDescending: !rowState.journeySort.isDescending }
+            : { column: column, isDescending: column === 'time' };
+        drawDatasetJourney(rowState);
+        // THE HEADERS ARE DRAWN AGAIN, SO FOCUS MOVES TO THE NEW BUTTON OF THE COLUMN CLICKED
+        const sortButton = rowState.journeySortButtons && rowState.journeySortButtons[column];
+        if (sortButton && typeof sortButton.focus === 'function') { sortButton.focus(); }
+
+    }
+
     function buildDatasetJourneyEntry(rowState, journeyMessage, entry) {
 
-        const entryElement = createElement('li', 'treeDatasetJourneyEntry');
-        const headerElement = createElement('div', 'treeDatasetJourneyEntryHeader');
-        const statusDisplay = hasOwnKey(DATASET_JOURNEY_STATUS_DISPLAY, entry.status) ? DATASET_JOURNEY_STATUS_DISPLAY[entry.status] : { emoji: '', label: String(entry.status) };
+        const entryElement = createElement('tr', 'treeDatasetJourneyEntry treeDatasetJourneyEntry-' + String(entry.status));
+        const statusDisplay = datasetJourneyStatusOf(entry);
 
-        headerElement.appendChild(createElement('span', 'treeDatasetJourneyTime', String(entry.timeLabel)));
-        headerElement.appendChild(createElement('span', 'treeDatasetJourneyKind', String(entry.kindLabel)));
-        if (typeof entry.orgLabel === 'string') {
-            headerElement.appendChild(createElement('span', 'treeDatasetJourneyOrg muted', entry.orgLabel));
-        }
+        entryElement.appendChild(createElement('td', 'treeDatasetJourneyTime', String(entry.timeLabel)));
+        entryElement.appendChild(createElement('td', 'treeDatasetJourneyKind', String(entry.kindLabel)));
+        entryElement.appendChild(createElement('td', 'treeDatasetJourneyOrg', typeof entry.orgLabel === 'string' ? entry.orgLabel : ''));
+
+        const statusCell = createElement('td', 'treeDatasetJourneyStatusCell');
         const statusElement = createElement('span', 'treeDatasetJourneyStatus treeDatasetJourneyStatus-' + entry.status);
         const emojiElement = createElement('span', 'treeDatasetJourneyStatusEmoji', statusDisplay.emoji);
         emojiElement.setAttribute('aria-hidden', 'true');
         statusElement.appendChild(emojiElement);
         statusElement.appendChild(createElement('span', 'treeDatasetJourneyStatusLabel', statusDisplay.label));
-        headerElement.appendChild(statusElement);
-        entryElement.appendChild(headerElement);
+        statusCell.appendChild(statusElement);
+        entryElement.appendChild(statusCell);
 
+        const detailCell = createElement('td', 'treeDatasetJourneyDetail');
         if (typeof entry.summaryText === 'string' && entry.summaryText) {
-            entryElement.appendChild(createElement('div', 'treeDatasetJourneySummary muted', entry.summaryText));
+            detailCell.appendChild(createElement('div', 'treeDatasetJourneySummary muted', entry.summaryText));
         }
         if (typeof entry.errorExcerpt === 'string' && entry.errorExcerpt) {
-            entryElement.appendChild(createElement('div', 'treeDatasetJourneyError', entry.errorExcerpt));
+            detailCell.appendChild(createElement('div', 'treeDatasetJourneyError', entry.errorExcerpt));
         }
+        entryElement.appendChild(detailCell);
 
+        const filesCell = createElement('td', 'treeDatasetJourneyFiles');
         (Array.isArray(entry.files) ? entry.files : []).forEach(function (file) {
             const fileElement = createElement('div', 'treeDatasetJourneyFile');
             fileElement.appendChild(createElement('span', 'treeDatasetJourneyPath', String(file.relativePath)));
@@ -26552,8 +26629,9 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
                 vscodeApi.postMessage({ command: 'openDatasetJourneyFile', renderSequence: renderedSequence, datasetFolderName: rowState.dataset.datasetFolderName, journeySequence: journeyMessage.journeySequence, fileIndex: file.fileIndex });
             });
             fileElement.appendChild(viewElement);
-            entryElement.appendChild(fileElement);
+            filesCell.appendChild(fileElement);
         });
+        entryElement.appendChild(filesCell);
 
         return entryElement;
 
@@ -28904,14 +28982,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const linkColumnIndex = recordLinks && typeof recordLinkSequence === 'number' && Number.isInteger(recordLinks.columnIndex) ? recordLinks.columnIndex : -1;
         const linkedRowIndexes = new Set(linkColumnIndex !== -1 && Array.isArray(recordLinks.rowIndexes) ? recordLinks.rowIndexes : []);
 
-        const tableWrapElement = createElement('div', 'treeQueryTableWrap');
-        const tableElement = createElement('table', 'treeQueryTable');
-        const headElement = createElement('thead', '');
-        const headRowElement = createElement('tr', '');
-        columns.forEach(function (column) { headRowElement.appendChild(createElement('th', '', column)); });
-        headElement.appendChild(headRowElement);
-        tableElement.appendChild(headElement);
-        const bodyElement = createElement('tbody', '');
+        const rowTable = buildRowTable({
+            className: 'treeQueryTable',
+            columns: columns.map(function (column, columnIndex) { return { key: String(columnIndex), label: String(column) }; })
+        });
         rows.forEach(function (row, rowIndex) {
             const rowElement = createElement('tr', 'treeQueryRow');
             columns.forEach(function (_column, columnIndex) {
@@ -28932,12 +29006,53 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
                 cellElement.appendChild(recordLinkElement);
                 rowElement.appendChild(cellElement);
             });
-            bodyElement.appendChild(rowElement);
+            rowTable.bodyElement.appendChild(rowElement);
         });
-        tableElement.appendChild(bodyElement);
-        tableWrapElement.appendChild(tableElement);
 
-        return tableWrapElement;
+        return rowTable.wrapElement;
+
+    }
+
+    /*
+        The cockpit's ONE column table (#558): the History sub-tab, a data set's insert journey and a
+        record preview. Every table is made here and styled by sdtRowTable, so a new table needs no
+        rules of its own for its borders and cells. A column in sortColumns heads with a link button
+        and aria-sort; the caller draws the rows into bodyElement and keeps the sort.
+    */
+    function buildRowTable(tableOptions) {
+
+        const wrapElement = createElement('div', 'sdtRowTableWrap ' + tableOptions.className + 'Wrap');
+        const tableElement = createElement('table', 'sdtRowTable ' + tableOptions.className);
+        const headElement = createElement('thead', '');
+        const headRowElement = createElement('tr', '');
+        const bodyElement = createElement('tbody', '');
+        const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
+        const sortButtons = Object.create(null);
+        const columnClassName = typeof tableOptions.columnClassName === 'string' ? tableOptions.columnClassName : '';
+
+        tableOptions.columns.forEach(function (column) {
+            const headerElement = createElement('th', columnClassName ? columnClassName + 'Header ' + columnClassName + 'Header-' + column.key : '');
+            headerElement.setAttribute('scope', 'col');
+            if (!tableOptions.sort || sortColumns.indexOf(column.key) === -1) {
+                headerElement.textContent = column.label;
+            } else {
+                const isSorted = tableOptions.sort.column === column.key;
+                const sortArrow = isSorted ? (tableOptions.sort.isDescending ? ' ↓' : ' ↑') : '';
+                headerElement.setAttribute('aria-sort', isSorted ? (tableOptions.sort.isDescending ? 'descending' : 'ascending') : 'none');
+                const sortButton = createButton('link', columnClassName + 'Sort ' + columnClassName + 'Sort-' + column.key, column.label + sortArrow);
+                sortButton.addEventListener('click', function () { tableOptions.onSort(column.key); });
+                sortButtons[column.key] = sortButton;
+                headerElement.appendChild(sortButton);
+            }
+            headRowElement.appendChild(headerElement);
+        });
+
+        headElement.appendChild(headRowElement);
+        tableElement.appendChild(headElement);
+        tableElement.appendChild(bodyElement);
+        wrapElement.appendChild(tableElement);
+
+        return { wrapElement: wrapElement, bodyElement: bodyElement, sortButtons: sortButtons };
 
     }
 
@@ -31011,41 +31126,24 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             return;
         }
 
-        const wrapElement = createElement('div', 'historyTableWrap');
-        const tableElement = createElement('table', 'historyTable');
-        const headElement = createElement('thead');
-        const headRowElement = createElement('tr');
-        const bodyElement = createElement('tbody');
-        treeState.historySortButtons = Object.create(null);
-
-        HISTORY_COLUMNS.forEach(function (column) {
-            const headerElement = createElement('th', 'historyHeader historyHeader-' + column.key);
-            headerElement.setAttribute('scope', 'col');
-            if (HISTORY_SORT_COLUMNS.indexOf(column.key) === -1) {
-                headerElement.textContent = column.label;
-            } else {
-                const isSorted = treeState.historySort.column === column.key;
-                headerElement.setAttribute('aria-sort', isSorted ? (treeState.historySort.isDescending ? 'descending' : 'ascending') : 'none');
-                const sortButton = createButton('link', 'historySort historySort-' + column.key, column.label + (isSorted ? (treeState.historySort.isDescending ? ' ↓' : ' ↑') : ''));
-                sortButton.addEventListener('click', function () { sortTroubleshootingHistory(treeState, column.key); });
-                treeState.historySortButtons[column.key] = sortButton;
-                headerElement.appendChild(sortButton);
-            }
-            headRowElement.appendChild(headerElement);
+        const rowTable = buildRowTable({
+            className: 'historyTable',
+            columnClassName: 'history',
+            columns: HISTORY_COLUMNS,
+            sortColumns: HISTORY_SORT_COLUMNS,
+            sort: treeState.historySort,
+            onSort: function (column) { sortTroubleshootingHistory(treeState, column); }
         });
+        treeState.historySortButtons = rowTable.sortButtons;
 
         rows.forEach(function (row) {
             subTabState.historyRows.push(buildHistoryRow(treeState, historyMessage, row));
         });
 
-        sortHistoryRowStates(treeState, subTabState.historyRows).forEach(function (rowState) { bodyElement.appendChild(rowState.element); });
+        sortHistoryRowStates(treeState, subTabState.historyRows).forEach(function (rowState) { rowTable.bodyElement.appendChild(rowState.element); });
 
-        headElement.appendChild(headRowElement);
-        tableElement.appendChild(headElement);
-        tableElement.appendChild(bodyElement);
-        wrapElement.appendChild(tableElement);
-        listElement.appendChild(wrapElement);
-        treeState.historyBodyElement = bodyElement;
+        listElement.appendChild(rowTable.wrapElement);
+        treeState.historyBodyElement = rowTable.bodyElement;
 
         if (historyMessage.hiddenRowCount > 0) {
             listElement.appendChild(createElement('div', 'historyHiddenNote muted', pluralize(historyMessage.hiddenRowCount, 'older step is', 'older steps are') + ' not shown.'));
