@@ -368,6 +368,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             expect(contactRecords.rows).toHaveLength(RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
             expect(contactRecords.rows[0]).toEqual([fakeRecordId('Contact', 0), 'Contact 0']);
             expect(JSON.stringify(recordsMessage)).not.toContain('attributes');
+            // EACH SHOWN ROW'S OWN Id OPENS ITS RECORD (#556), POSTED AS POSITIONS ONLY
+            expect(contactRecords.recordLinks).toEqual({ columnIndex: 0, rowIndexes: Array.from({ length: RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT }, (_unused, rowIndex) => rowIndex) });
+            expect(recordsMessage.recordLinkSequence).toEqual(expect.any(Number));
+            expect(panelState().pendingOpenableRecordPreviews.get(recordsMessage.recordLinkSequence)?.recordIdsByObjectApiName.get('Contact')?.[0]).toBe(fakeRecordId('Contact', 0));
 
             expect(postedNamed('updaterLoadState').map(stateMessage => stateMessage.isRunning)).toEqual([true, false]);
             expect(informations()).toEqual(['Loaded 29 records of Account-thru-OtherChildObject__c from qa · qa@example.com.qa.']);

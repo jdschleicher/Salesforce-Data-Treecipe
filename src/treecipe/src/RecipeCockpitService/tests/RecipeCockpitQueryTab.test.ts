@@ -408,7 +408,10 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
                 isTruncated: false,
                 columns: ['Id', 'LastName', 'AccountId'],
                 rows: [['003000000000001AAA', 'Smith', ''], ['003000000000002AAA', '=cmd', '001000000000001AAA']],
-                hiddenColumnCount: 0
+                hiddenColumnCount: 0,
+                // EACH ROW'S OWN Id OPENS ITS RECORD (#556): POSITIONS ONLY, THE LOOKUP COLUMN NOT
+                recordLinkSequence: expect.any(Number),
+                recordLinks: { columnIndex: 0, rowIndexes: [0, 1] }
             });
             expect(postedNamed('treeQueryState').slice(0, 2)).toEqual([
                 { command: 'treeQueryState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0' },

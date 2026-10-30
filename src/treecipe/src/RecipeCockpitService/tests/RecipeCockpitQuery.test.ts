@@ -346,3 +346,64 @@ describe('RecipeCockpitQuery values the org answers as arrays or objects (#367)'
     });
 
 });
+
+describe('RecipeCockpitQuery.buildPreview record links (#556)', () => {
+
+    it('links each row whose own Id is a record Id, by column and row only, and keeps the Ids apart for the host', () => {
+
+        const records = [
+            { attributes: { type: 'Account' }, Name: 'First', Id: '001DK000017d3k5YAA' },
+            { attributes: { type: 'Account' }, Name: 'Second', Id: '001DK000017d3k5' },
+            { attributes: { type: 'Account' }, Name: 'No Id', Id: null },
+            { attributes: { type: 'Account' }, Name: 'Lookalike', Id: '001DK000017d3k5Y' },
+            { attributes: { type: 'Account' }, Name: 'Not text', Id: 1234567890123456 }
+        ];
+
+        const preview = RecipeCockpitQuery.buildPreview(records);
+
+        expect(preview.columns).toEqual(['Name', 'Id']);
+        expect(preview.recordLinks).toEqual({ columnIndex: 1, rowIndexes: [0, 1] });
+        expect(preview.recordIds).toEqual(['001DK000017d3k5YAA', '001DK000017d3k5', undefined, undefined, undefined]);
+
+    });
+
+    it('links only a record\'s OWN Id: never a parent\'s, a lookup\'s or one inside a subquery', () => {
+
+        const records = [{
+            attributes: { type: 'Contact' },
+            AccountId: '001DK000017d3k5YAA',
+            Account: { attributes: { type: 'Account' }, Id: '001DK000017d3k5YAA' },
+            Cases: { totalSize: 1, done: true, records: [{ attributes: { type: 'Case' }, Id: '500DK000017d3k5YAA' }] }
+        }];
+
+        const preview = RecipeCockpitQuery.buildPreview(records);
+
+        expect(preview.columns).toEqual(['AccountId', 'Account.Id', 'Cases']);
+        expect(preview.recordLinks).toBeUndefined();
+        expect(preview.recordIds).toBeUndefined();
+
+    });
+
+    it('links no cell whose text the preview cut, and adds nothing to a preview with no linkable row', () => {
+
+        const longId = '001DK000017d3k5YAA'.repeat(20);
+        const preview = RecipeCockpitQuery.buildPreview([{ Id: longId }]);
+
+        expect(preview.rows[0][0].length).toBeLessThanOrEqual(RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH + 1);
+        expect(Object.keys(preview)).toEqual(['columns', 'hiddenColumnCount', 'rows']);
+
+    });
+
+    it('counts row indexes within the preview rows, after the row limit', () => {
+
+        const records = Array.from({ length: 5 }, (_unused, recordIndex) => ({ Id: `001DK000017d3k${recordIndex}` }));
+
+        const preview = RecipeCockpitQuery.buildPreview(records, 3);
+
+        expect(preview.rows).toHaveLength(3);
+        expect(preview.recordLinks).toEqual({ columnIndex: 0, rowIndexes: [0, 1, 2] });
+        expect(preview.recordIds).toEqual(['001DK000017d3k0', '001DK000017d3k1', '001DK000017d3k2']);
+
+    });
+
+});

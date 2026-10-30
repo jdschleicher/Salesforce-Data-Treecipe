@@ -25,6 +25,7 @@ import {
     IOrgDescribeSource,
     NO_AUTHORIZED_ORGS_MESSAGE,
     ORG_FRONT_DOOR_FAILURE_TEXTS,
+    ORG_FRONT_DOOR_RETURN_PARAMETER,
     ORG_FRONT_DOOR_SINGLE_ACCESS_PATH,
     ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS,
     ORG_DESCRIBE_CANCELLED_MESSAGE,
@@ -640,6 +641,50 @@ describe('SalesforceOrgService', () => {
             Object.values(ORG_FRONT_DOOR_FAILURE_TEXTS).forEach(failureText => {
                 expect(failureText).not.toMatch(/https?:|sid=|otp=|[()[\]]/);
             });
+
+        });
+
+        it('opens a record (#556) by adding retURL=/<Id> to the one-time address, keeping its own parameters', async () => {
+
+            const requestGet = jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI });
+            answerOrg(requestGet);
+
+            const frontDoorResult = await SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa', '001DK000017d3k5YAA');
+
+            expect(frontDoorResult).toEqual({ isOpenable: true, url: `${FRONT_DOOR_URI}&${ORG_FRONT_DOOR_RETURN_PARAMETER}=%2F001DK000017d3k5YAA` });
+            expect(requestGet).toHaveBeenCalledWith(`https://acme--qa.sandbox.my.salesforce.com${ORG_FRONT_DOOR_SINGLE_ACCESS_PATH}`);
+            const openedUrl = new URL((frontDoorResult as { url: string }).url);
+            expect(openedUrl.searchParams.get('otp')).toBe('oneTimeCode');
+            expect(openedUrl.searchParams.get(ORG_FRONT_DOOR_RETURN_PARAMETER)).toBe('/001DK000017d3k5YAA');
+            expect(JSON.stringify(frontDoorResult)).not.toContain(ACCESS_TOKEN);
+            expect(JSON.stringify(frontDoorResult)).not.toContain('sid=');
+
+        });
+
+        it('accepts a 15-character Id, and refuses anything else before the org is asked', async () => {
+
+            const requestGet = jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI });
+            answerOrg(requestGet);
+
+            await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa', '001DK000017d3k5')).resolves.toMatchObject({ isOpenable: true });
+
+            (Org.create as jest.Mock).mockClear();
+            requestGet.mockClear();
+            for (const notAnId of ['', '001DK000017d3k5Y', '001DK000017d3k5YAA/edit', '../001DK000017d3k5', 'https://evil.example.com', '001DK000017d3k5…', ' 001DK000017d3k5YAA']) {
+                await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa', notAnId))
+                    .resolves.toEqual({ isOpenable: false, failure: 'notRecordId', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.notRecordId });
+            }
+            expect(Org.create).not.toHaveBeenCalled();
+            expect(requestGet).not.toHaveBeenCalled();
+
+        });
+
+        it('adds no retURL to an address that could not be had', async () => {
+
+            answerOrg(jest.fn().mockResolvedValue({ frontdoor_uri: 'http://acme.my.salesforce.com/' }));
+
+            await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa', '001DK000017d3k5YAA'))
+                .resolves.toEqual({ isOpenable: false, failure: 'notHttps', failureMessage: ORG_FRONT_DOOR_FAILURE_TEXTS.notHttps });
 
         });
 

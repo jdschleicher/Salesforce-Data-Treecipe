@@ -37,7 +37,12 @@ export const ORG_FRONT_DOOR_URL_PROTOCOL = 'https:';
 
 export const ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS = 60000;
 
-export type OrgFrontDoorFailure = 'connectionFailed' | 'requestFailed' | 'noAddress' | 'notHttps' | 'timedOut';
+// A RECORD OPENED FROM A PREVIEW (#556): frontdoor.jsp SENDS THE BROWSER HERE ONCE IT HAS LOGGED IN
+export const ORG_FRONT_DOOR_RETURN_PARAMETER = 'retURL';
+
+export const ORG_FRONT_DOOR_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
+
+export type OrgFrontDoorFailure = 'connectionFailed' | 'requestFailed' | 'noAddress' | 'notHttps' | 'timedOut' | 'notRecordId';
 
 /*
     Every failure is one of these FIXED texts: an error from the org or jsforce can quote the
@@ -48,7 +53,8 @@ export const ORG_FRONT_DOOR_FAILURE_TEXTS: Readonly<Record<OrgFrontDoorFailure, 
     requestFailed: 'Salesforce did not give a one-time login address for it.',
     noAddress: 'Salesforce answered without an address to open.',
     notHttps: 'Salesforce answered with an address that is not https, so it was not opened.',
-    timedOut: 'Salesforce did not answer in time.'
+    timedOut: 'Salesforce did not answer in time.',
+    notRecordId: 'the value is not a Salesforce record Id, so nothing was asked of the org.'
 };
 
 export type OrgFrontDoorResult =
@@ -710,8 +716,15 @@ export class SalesforceOrgService {
         frontdoor.jsp?sid=<access token>, which would leave the long-lived token in the browser's
         history. The endpoint answers 403 to an expired token and jsforce refreshes only on a 401,
         so the authorization is refreshed first. The address is only ever handed to the browser.
+        With a record Id (#556) the address opens that record once logged in: the Id is checked
+        before the org is asked anything, and goes on the one-time address as retURL, never on a
+        frontdoor.jsp?sid= one.
     */
-    static async requestOrgFrontDoorUrl(username: string): Promise<OrgFrontDoorResult> {
+    static async requestOrgFrontDoorUrl(username: string, recordId?: string): Promise<OrgFrontDoorResult> {
+
+        if ( recordId !== undefined && !ORG_FRONT_DOOR_RECORD_ID_PATTERN.test(recordId) ) {
+            return this.buildOrgFrontDoorFailure('notRecordId');
+        }
 
         let timeoutHandle: NodeJS.Timeout | undefined;
         const timedOut = new Promise<OrgFrontDoorResult>(resolve => {
@@ -720,7 +733,10 @@ export class SalesforceOrgService {
 
         // A FETCH THE TIMEOUT BEAT IS LEFT TO SETTLE ON ITS OWN: IT CATCHES EVERYTHING, AND ITS ADDRESS GOES NOWHERE
         try {
-            return await Promise.race([this.fetchOrgFrontDoorUrl(username), timedOut]);
+            const frontDoorResult = await Promise.race([this.fetchOrgFrontDoorUrl(username), timedOut]);
+            return recordId === undefined || !frontDoorResult.isOpenable
+                ? frontDoorResult
+                : { isOpenable: true, url: this.addFrontDoorReturnPath(frontDoorResult.url, recordId) };
         } finally {
             clearTimeout(timeoutHandle);
         }
@@ -773,6 +789,15 @@ export class SalesforceOrgService {
         return parsedUrl && parsedUrl.protocol === ORG_FRONT_DOOR_URL_PROTOCOL
             ? { isOpenable: true, url: parsedUrl.toString() }
             : this.buildOrgFrontDoorFailure('notHttps');
+
+    }
+
+    static addFrontDoorReturnPath(frontDoorUrl: string, recordId: string): string {
+
+        const returnUrl = new URL(frontDoorUrl);
+        returnUrl.searchParams.set(ORG_FRONT_DOOR_RETURN_PARAMETER, `/${recordId}`);
+
+        return returnUrl.toString();
 
     }
 
