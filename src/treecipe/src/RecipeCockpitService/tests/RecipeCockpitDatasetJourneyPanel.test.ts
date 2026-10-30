@@ -255,6 +255,13 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
                 '1 step in treecipe/OrgOperations, which records no tree, ran in this time and is not placed on this timeline.'
             ]);
 
+            // #558: THE TABLE OPENS NEWEST FIRST, SO THE DROPPED OLDEST ENTRIES ARE SAID UNDER IT, NEVER ABOVE
+            const journeyChildren = journeyOf(panel, rows[0]).children;
+            const tableWrapPlace = journeyChildren.findIndex((childElement: any) => childElement.className.split(' ').includes('sdtRowTableWrap'));
+            const hiddenNotePlace = journeyChildren.findIndex((childElement: any) => childElement.textContent === '12 earlier entries are not shown.');
+            expect(tableWrapPlace).toBe(0);
+            expect(hiddenNotePlace).toBe(1);
+
         });
 
         it('drops a journey for another model, and draws an unknown status by its own name', () => {

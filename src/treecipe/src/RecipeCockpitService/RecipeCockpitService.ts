@@ -21384,7 +21384,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .historyFiles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
     .historyHiddenNote { margin-top: 0.3rem; }
     .treeQueryTable td .treeQueryRecordLink { font: inherit; padding: 0; }
-    .treeQueryTable td { white-space: pre-wrap; }
+    .treeQueryTable th, .treeQueryTable td { white-space: pre-wrap; }
     /*
         A TODO or validation rule group is a card (#383): the action cards' surface, border and
         radius around a header that is the card kind's button. Closed, the header button fills the
@@ -26517,11 +26517,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             return;
         }
 
-        if (journeyMessage.hiddenEntryCount > 0) {
-            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
-                pluralize(journeyMessage.hiddenEntryCount, 'earlier entry is', 'earlier entries are') + ' not shown.'));
-        }
-
         if (!rowState.journeySort) { rowState.journeySort = { column: 'time', isDescending: true }; }
         const rowTable = buildRowTable({
             className: 'treeDatasetJourneyTable',
@@ -26536,6 +26531,12 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             rowTable.bodyElement.appendChild(buildDatasetJourneyEntry(rowState, journeyMessage, placedEntry.entry));
         });
         journeyElement.appendChild(rowTable.wrapElement);
+
+        // THE TABLE OPENS NEWEST FIRST, SO THE OLDEST ENTRIES THE CAP DROPPED ARE SAID UNDER IT, AS HISTORY DOES
+        if (journeyMessage.hiddenEntryCount > 0) {
+            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
+                pluralize(journeyMessage.hiddenEntryCount, 'earlier entry is', 'earlier entries are') + ' not shown.'));
+        }
 
         if (entries.length === 1 && entries[0].kind === 'insert' && entries[0].status === 'succeeded' && !(journeyMessage.hiddenEntryCount > 0)) {
             journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_FIRST_TIME_NOTE));

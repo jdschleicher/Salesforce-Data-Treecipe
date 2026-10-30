@@ -131,6 +131,18 @@ describe('RecipeCockpitService, row presentation (#558)', () => {
 
         });
 
+        // A RECORD PREVIEW'S DOTTED COLUMN NAMES (Owner.Manager.Name) WRAPPED BEFORE #558, AND STILL DO: ITS RULE COMES AFTER .sdtRowTable th
+        it('keeps a record preview\'s header and cells wrapping, overriding the shared no-wrap header rule', () => {
+
+            const styleSheet = styleSheetOf(shellHtml());
+            const sharedHeaderRule = styleSheet.indexOf('.sdtRowTable th { white-space: nowrap; }');
+            const previewRule = styleSheet.indexOf('.treeQueryTable th, .treeQueryTable td { white-space: pre-wrap; }');
+
+            expect(sharedHeaderRule).toBeGreaterThan(-1);
+            expect(previewRule).toBeGreaterThan(sharedHeaderRule);
+
+        });
+
     });
 
     describe('a Previously Used Data Sets row', () => {
