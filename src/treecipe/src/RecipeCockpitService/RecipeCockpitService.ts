@@ -129,7 +129,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
-import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
+import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, SCRATCH_ORG_DURATION_DAYS, SCRATCH_ORG_MAX_DURATION_DAYS, SCRATCH_ORG_MIN_DURATION_DAYS, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { INotificationCommandAction, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
     RECIPE_COCKPIT_QUERY_EXPORT_FORMATS,
@@ -589,7 +589,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in Select Generated Treecipe runs by date:, the first line of the Treecipes section (or at the top of the panel, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
-            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field\'s row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -2648,6 +2648,8 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hu
 export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT = 'Alias for the new scratch org: the name the Salesforce CLI, the org picker and later commands will know it by.';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER = 'for example qa-accounts';
+
+export const RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT = `How many days the new scratch org lives: ${SCRATCH_ORG_MIN_DURATION_DAYS} to ${SCRATCH_ORG_MAX_DURATION_DAYS} days (Salesforce's maximum is ${SCRATCH_ORG_MAX_DURATION_DAYS}).`;
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL = 'View output';
 
@@ -9081,7 +9083,8 @@ export class RecipeCockpitService {
                     SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot),
                     RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER
                 ),
-                () => this.promptForScratchOrgAlias()
+                () => this.promptForScratchOrgAlias(),
+                () => this.promptForScratchOrgDurationDays()
             );
         } catch (planError) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(String(planError?.message ?? planError)));
@@ -9363,6 +9366,19 @@ export class RecipeCockpitService {
 
     }
 
+    // AFTER THE ALIAS (#534): STARTS ON TODAY'S 7 SO ENTER KEEPS IT, AND ESCAPE IS A CANCEL. THE TEXT IS PASSED AS TYPED; THE PLAN CHECKS IT AGAIN
+    private static async promptForScratchOrgDurationDays(): Promise<string | undefined> {
+
+        return vscode.window.showInputBox({
+            title: 'New scratch org',
+            prompt: RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT,
+            value: String(SCRATCH_ORG_DURATION_DAYS),
+            ignoreFocusOut: true,
+            validateInput: (typedDurationDays: string) => ScratchOrgService.validateScratchOrgDurationDays(typedDurationDays)
+        });
+
+    }
+
     // AN INPUT BOX'S MESSAGE RENDERS [label](command:...) AS A NOTIFICATION DOES, SO THE HOLDER'S USERNAME IS ESCAPED
     static validateScratchOrgAliasInput(typedAlias: string, aliasHolders: Map<string, string>): string | vscode.InputBoxValidationMessage | undefined {
 
@@ -9429,7 +9445,7 @@ export class RecipeCockpitService {
                 scratchOrgPlan.aliasHolderUsername
                     ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
                     : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
-                `Duration: ${scratchOrgPlan.durationDays} days`,
+                `Duration: ${scratchOrgPlan.durationDays} ${scratchOrgPlan.durationDays === 1 ? 'day' : 'days'}`,
                 // WHAT THE REPOSITORY DECIDES STAYS ON SCREEN
                 `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
                 ...definitionLines

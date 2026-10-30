@@ -14,7 +14,6 @@ expect.extend(matchers);
 const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deployPicklistDependencyClasses',
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deploySourcePaths',
-    'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#runPicklistDependencyTests',
     'RecipeCockpitService/RecipeCockpitService.ts#performMetadataDeploy',
     'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
     // EVERY RETRIEVE, THE ADAPTER'S INCLUDED, WITH metadataRetrieveMethod AT cli (#506)
