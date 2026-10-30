@@ -127,7 +127,7 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
 
         });
 
-        it('draws the entries oldest first as text, with status words, errors and file paths, and acknowledges them', () => {
+        it('draws the entries newest first as table rows of text, with status words, errors and file paths, and acknowledges them', () => {
 
             const panel = drawRecipe();
             const rows = openLeadDatasets(panel);
@@ -135,20 +135,93 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
             panel.postToPanel(journeyMessage());
 
             const entries = panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyEntry');
+            const failedEntry = entries[2];
+            expect(entries.map((entryElement: any) => entryElement.tagName)).toEqual(['tr', 'tr', 'tr']);
+            expect(entries.map((entryElement: any) => panel.findAll(entryElement, 'treeDatasetJourneyTime')[0].textContent)).toEqual(['2026-10-26 10:20:00', '2026-10-26 10:05:00', '2026-10-26 10:00:00']);
             expect(entries.map((entryElement: any) => panel.findAll(entryElement, 'treeDatasetJourneyKind')[0].textContent)).toEqual(['Insert', 'Deploy fields & dependencies', 'Insert']);
-            expect(panel.findAll(entries[0], 'treeDatasetJourneyStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY.failed.label);
-            expect(panel.findAll(entries[0], 'treeDatasetJourneyStatusEmoji')[0].textContent).toBe('❌');
-            expect(panel.findAll(entries[0], 'treeDatasetJourneyStatusEmoji')[0].attributes['aria-hidden']).toBe('true');
-            expect(panel.findAll(entries[0], 'treeDatasetJourneyOrg')[0].textContent).toBe('qa · qa@example.com.sandbox');
-            expect(panel.findAll(entries[0], 'treeDatasetJourneyError')[0].textContent).toBe('Lead: INVALID_FIELD [Rating__c] — <b>No</b> such column');
-            expect(panel.findAll(entries[0], 'b')).toEqual([]);
-            expect(panel.findAll(entries[0], 'treeDatasetJourneyPath')[0].textContent).toBe('treecipe/FakeDataSets/x/InsertAttempts/insertAttempt-a/insertAttemptResults-a.json');
-            expect(panel.findAll(entries[2], 'treeDatasetJourneyView')).toEqual([]);
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneyStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY.failed.label);
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneyStatusEmoji')[0].textContent).toBe('❌');
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneyStatusEmoji')[0].attributes['aria-hidden']).toBe('true');
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneyOrg')[0].textContent).toBe('qa · qa@example.com.sandbox');
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneySummary')[0].textContent).toBe('0 records saved · 4 records failed');
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneyError')[0].textContent).toBe('Lead: INVALID_FIELD [Rating__c] — <b>No</b> such column');
+            expect(panel.findAll(failedEntry, 'b')).toEqual([]);
+            expect(panel.findAll(failedEntry, 'treeDatasetJourneyPath')[0].textContent).toBe('treecipe/FakeDataSets/x/InsertAttempts/insertAttempt-a/insertAttemptResults-a.json');
+            expect(panel.findAll(entries[0], 'treeDatasetJourneyView')).toEqual([]);
             expect(notesOf(panel, rows[0])).toEqual([]);
             expect(postedNamed(panel, 'datasetJourneyRendered')).toEqual([{ command: 'datasetJourneyRendered', renderSequence: 3, datasetFolderName: LEAD_DATASETS[0], journeySequence: 7 }]);
 
             panel.findAll(entries[1], 'treeDatasetJourneyView')[0].dispatch('click');
             expect(postedNamed(panel, 'openDatasetJourneyFile')).toEqual([{ command: 'openDatasetJourneyFile', renderSequence: 3, datasetFolderName: LEAD_DATASETS[0], journeySequence: 7, fileIndex: 1 }]);
+
+        });
+
+        // #558: THE JOURNEY IS THE HISTORY SUB-TAB'S TABLE, BUILT BY THE SAME BUILDER
+        it('heads the table with Time, Step, Org, Status, Detail and Files, every column but Files a sort, Time newest first', () => {
+
+            const panel = drawRecipe();
+            const rows = openLeadDatasets(panel);
+            toggleOf(panel, rows[0]).dispatch('click');
+            panel.postToPanel(journeyMessage());
+
+            const tables = panel.findAll(journeyOf(panel, rows[0]), 'sdtRowTable');
+            expect(tables).toHaveLength(1);
+            expect(tables[0].className.split(' ')).toContain('treeDatasetJourneyTable');
+            const headers = panel.findAll(tables[0], 'treeDatasetJourneyHeader');
+            expect(headers.map((headerElement: any) => headerElement.textContent || headerElement.children[0].textContent)).toEqual(['Time ↓', 'Step', 'Org', 'Status', 'Detail', 'Files']);
+            expect(headers.map((headerElement: any) => headerElement.attributes.scope)).toEqual(['col', 'col', 'col', 'col', 'col', 'col']);
+            expect(headers.map((headerElement: any) => headerElement.attributes['aria-sort'])).toEqual(['descending', 'none', 'none', 'none', undefined, undefined]);
+            expect(panel.findAll(tables[0], 'treeDatasetJourneySort').map((sortButton: any) => sortButton.className.split(' ')).every((classNames: string[]) => classNames.includes('sdtButton-link'))).toBe(true);
+
+        });
+
+        it('sorts by a column, turns the order on a second click, keeps focus on the clicked column, and saves no sort in the place', () => {
+
+            const panel = drawRecipe();
+            const rows = openLeadDatasets(panel);
+            toggleOf(panel, rows[0]).dispatch('click');
+            panel.postToPanel(journeyMessage());
+            const kindsOf = () => panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyEntry').map((entryElement: any) => panel.findAll(entryElement, 'treeDatasetJourneyKind')[0].textContent);
+            const timesOf = () => panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyEntry').map((entryElement: any) => panel.findAll(entryElement, 'treeDatasetJourneyTime')[0].textContent);
+            const sortButtonOf = (column: string) => panel.findAll(journeyOf(panel, rows[0]), `treeDatasetJourneySort-${column}`)[0];
+            const headerOf = (column: string) => panel.findAll(journeyOf(panel, rows[0]), `treeDatasetJourneyHeader-${column}`)[0];
+
+            sortButtonOf('step').dispatch('click');
+            expect(kindsOf()).toEqual(['Deploy fields & dependencies', 'Insert', 'Insert']);
+            // A TIE KEEPS TIME, NEWEST FIRST
+            expect(timesOf()).toEqual(['2026-10-26 10:05:00', '2026-10-26 10:20:00', '2026-10-26 10:00:00']);
+            expect(headerOf('step').attributes['aria-sort']).toBe('ascending');
+            expect(headerOf('time').attributes['aria-sort']).toBe('none');
+            expect(panel.activeElement()).toBe(sortButtonOf('step'));
+
+            sortButtonOf('step').dispatch('click');
+            expect(kindsOf()).toEqual(['Insert', 'Insert', 'Deploy fields & dependencies']);
+            expect(headerOf('step').attributes['aria-sort']).toBe('descending');
+
+            sortButtonOf('time').dispatch('click');
+            expect(timesOf()).toEqual(['2026-10-26 10:20:00', '2026-10-26 10:05:00', '2026-10-26 10:00:00']);
+            sortButtonOf('time').dispatch('click');
+            expect(timesOf()).toEqual(['2026-10-26 10:00:00', '2026-10-26 10:05:00', '2026-10-26 10:20:00']);
+
+            sortButtonOf('status').dispatch('click');
+            expect(panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyStatusLabel').map((labelElement: any) => labelElement.textContent)).toEqual(['Failed', 'Succeeded', 'Succeeded']);
+
+            expect(JSON.stringify(panel.savedState() ?? {})).not.toContain('journeySort');
+
+        });
+
+        it('draws a whole row, six cells, for an entry with no org, no files and no detail', () => {
+
+            const panel = drawRecipe();
+            const rows = openLeadDatasets(panel);
+            toggleOf(panel, rows[0]).dispatch('click');
+            panel.postToPanel(journeyMessage({ entries: [{ kind: 'insert', kindLabel: 'Insert', status: 'unknown', timeLabel: '2026-10-26 10:20:00', summaryText: '', files: [] }] }));
+
+            const [entryElement] = panel.findAll(journeyOf(panel, rows[0]), 'treeDatasetJourneyEntry');
+            expect(entryElement.children.map((cellElement: any) => cellElement.tagName)).toEqual(['td', 'td', 'td', 'td', 'td', 'td']);
+            expect(panel.findAll(entryElement, 'treeDatasetJourneyOrg')[0].textContent).toBe('');
+            expect(panel.findAll(entryElement, 'treeDatasetJourneyDetail')[0].children).toEqual([]);
+            expect(panel.findAll(entryElement, 'treeDatasetJourneyFiles')[0].children).toEqual([]);
 
         });
 
@@ -181,6 +254,13 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
                 '2 Troubleshooting steps of this tree in this time ran against another org, so they are not shown.',
                 '1 step in treecipe/OrgOperations, which records no tree, ran in this time and is not placed on this timeline.'
             ]);
+
+            // #558: THE TABLE OPENS NEWEST FIRST, SO THE DROPPED OLDEST ENTRIES ARE SAID UNDER IT, NEVER ABOVE
+            const journeyChildren = journeyOf(panel, rows[0]).children;
+            const tableWrapPlace = journeyChildren.findIndex((childElement: any) => childElement.className.split(' ').includes('sdtRowTableWrap'));
+            const hiddenNotePlace = journeyChildren.findIndex((childElement: any) => childElement.textContent === '12 earlier entries are not shown.');
+            expect(tableWrapPlace).toBe(0);
+            expect(hiddenNotePlace).toBe(1);
 
         });
 

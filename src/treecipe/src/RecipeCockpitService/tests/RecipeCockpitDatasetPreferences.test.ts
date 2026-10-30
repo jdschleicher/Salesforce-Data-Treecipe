@@ -482,13 +482,13 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const panel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[0].customName = 'Before the fix'; });
             const [firstRow] = rowsOf(panel, openLeadDatasets(panel));
             const header = panel.findAll(firstRow, 'treeDatasetHeader')[0];
-            const classNames = header.children.map((childElement: any) => childElement.className.split(' ').pop());
+            const primaryLine = panel.findAll(header, 'sdtRowHeaderPrimary')[0];
+            const classNames = primaryLine.children.map((childElement: any) => childElement.className.split(' ').pop());
             const rename = panel.findAll(header, 'treeDatasetRename')[0];
             const glyph = rename.children[0];
 
-            // THE INSERT JOURNEY'S ▸ (#471) LEADS THE ROW, AS ON EVERY EXPANDABLE ROW; ☆, ✎ AND THE NAME FOLLOW IT
-            expect(header.children[0].className.split(' ')).toContain('treeDatasetJourneyToggle');
-            expect(classNames.slice(1, 4)).toEqual(['treeDatasetFavorite', 'treeDatasetRename', 'treeDatasetName']);
+            // #558: ☆, ✎ AND THE NAME LEAD THE ROW'S FIRST LINE; THE INSERT JOURNEY'S ▸ (#471) LEADS ITS SECOND
+            expect(classNames.slice(0, 3)).toEqual(['treeDatasetFavorite', 'treeDatasetRename', 'treeDatasetName']);
             expect(rename.children).toHaveLength(1);
             expect(glyph.attributes.class).toBe('fixedValueGlyph');
             expect(glyph.children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
@@ -529,7 +529,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
                 expect(partOf(panel, row, 'datasetNameEditor')).toBeUndefined();
                 rename.dispatch('click');
 
-                const header = partOf(panel, row, 'treeDatasetHeader');
+                const header = partOf(panel, row, 'sdtRowHeaderPrimary');
                 const classNames = header.children.map((childElement: any) => childElement.className.split(' ')[0]);
                 expect(classNames.indexOf('nameEditor')).toBe(classNames.indexOf('treeDatasetName') - 1);
                 const input = partOf(panel, row, 'nameEditorInput');
