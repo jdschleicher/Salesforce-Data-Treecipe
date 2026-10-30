@@ -613,8 +613,8 @@ export class ScratchOrgService {
 
     }
 
-    // THE CLI'S ANSWER DOES NOT ALWAYS NAME THE LIFETIME ASKED FOR, SO THE RESULT FILE RECORDS IT BESIDE THAT ANSWER (#534)
-    static withDurationDays(scratchOrgPlan: IScratchOrgPlan,
+    // THE CLI'S ANSWER DOES NOT ALWAYS NAME THE LIFETIME ASKED FOR, SO THE RESULT FILE RECORDS IT BESIDE THAT ANSWER, OVER ANY IT DOES NAME (#534)
+    private static withDurationDays(scratchOrgPlan: IScratchOrgPlan,
                             invocationResult: ISalesforceCliInvocationResult,
                             payload: Record<string, unknown> | undefined): Record<string, unknown> {
 

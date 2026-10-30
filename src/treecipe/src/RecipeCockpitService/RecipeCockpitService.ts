@@ -9303,7 +9303,7 @@ export class RecipeCockpitService {
                 scratchOrgPlan.aliasHolderUsername
                     ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
                     : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
-                `Duration: ${scratchOrgPlan.durationDays} days`,
+                `Duration: ${scratchOrgPlan.durationDays} ${scratchOrgPlan.durationDays === 1 ? 'day' : 'days'}`,
                 // WHAT THE REPOSITORY DECIDES STAYS ON SCREEN
                 `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
                 ...definitionLines

@@ -561,6 +561,19 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         });
 
+        it('names a one-day lifetime in the singular (#534)', async () => {
+
+            answerScratchOrgInputBoxes(CHOSEN_ALIAS, '1');
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const [, modalOptions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            expect(modalOptions.detail).toContain('Duration: 1 day\n');
+            expect(modalOptions.detail).not.toContain('Duration: 1 days');
+
+        });
+
         it('runs nothing and says nothing when the lifetime box is dismissed (#534)', async () => {
 
             (vscode.window.showInputBox as jest.Mock).mockImplementation(async (inputBoxOptions: { prompt?: string }) => (
