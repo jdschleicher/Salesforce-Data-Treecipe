@@ -137,6 +137,7 @@ import {
     RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT,
     RECIPE_COCKPIT_QUERY_RECORD_CAP,
     RECIPE_COCKPIT_QUERY_VALUE_BUDGET,
+    IRecipeCockpitPreviewRecordLinks,
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
@@ -632,6 +633,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields & dependencies (Fields: custom fields, the custom objects that hold them and the record pages and compact layouts those objects open, any such page or layout not in your project set back to the standard one in what is sent, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
+            'In the Query tab\'s results and the Treecipe Adapter\'s loaded records and new values, each row\'s own Id is a link: click it to open that record in your browser, signed in to the org it was read from. A lookup\'s Id is not a link, and nothing is opened once a newer query, load or update has replaced the rows.',
             'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the pencil edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
@@ -1302,6 +1304,9 @@ export interface IRecipeCockpitPanelMessage {
     fields?: unknown;
     // "updaterValuesRendered" (#418): THE GENERATED VALUES THE PANEL DREW
     valuesSequence?: unknown;
+    // A RECORD Id OPENED FROM A PREVIEW (#556): WHICH PREVIEW, AND WHICH OF ITS ROWS
+    recordLinkSequence?: unknown;
+    rowIndex?: unknown;
     // THE UPDATER'S RESTORE (#419): A SNAPSHOT'S FILE NAME, AND THE LIST THE PANEL DREW IT FROM
     snapshotName?: unknown;
     snapshotsSequence?: unknown;
@@ -1807,6 +1812,9 @@ export interface IRecipeCockpitTreeQueryResultMessage {
     columns: string[];
     rows: string[][];
     hiddenColumnCount: number;
+    // THE ROWS WHOSE Id OPENS THE RECORD (#556), AND THE SEQUENCE A CLICK AND THE PANEL'S ACK NAME THEM BY; ABSENT WHEN NO ROW HAS ONE
+    recordLinkSequence?: number;
+    recordLinks?: IRecipeCockpitPreviewRecordLinks;
 }
 
 /*
@@ -1854,6 +1862,8 @@ export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
     failureMessage?: string;
     // NOT QUERIED: THE LOAD HAD SPENT ITS RECORD CAP OR VALUE BUDGET ON THE OBJECTS BEFORE IT
     skippedReason?: string;
+    // THE ROWS WHOSE Id OPENS THE RECORD (#556)
+    recordLinks?: IRecipeCockpitPreviewRecordLinks;
 }
 
 /*
@@ -1866,6 +1876,8 @@ export interface IRecipeCockpitUpdaterRecordsMessage {
     treeKey: string;
     orgLabel: string;
     objects: IRecipeCockpitUpdaterObjectRecordsViewModel[];
+    // SET ONLY WHEN AN OBJECT'S PREVIEW LINKS A RECORD (#556)
+    recordLinkSequence?: number;
 }
 
 /*
@@ -1952,6 +1964,8 @@ export interface IRecipeCockpitUpdaterObjectValuesViewModel {
     columns: string[];
     rows: string[][];
     hiddenColumnCount: number;
+    // THE ROWS WHOSE Id OPENS THE RECORD (#556)
+    recordLinks?: IRecipeCockpitPreviewRecordLinks;
 }
 
 /*
@@ -2080,6 +2094,25 @@ export interface IRecipeCockpitUpdaterValuesMessage {
     objects: IRecipeCockpitUpdaterObjectValuesViewModel[];
     // ECHOED BY THE PANEL'S "updaterValuesRendered" (#418): ONLY THAT ACK OFFERS "Update records" ON THESE VALUES
     valuesSequence: number;
+    // SET ONLY WHEN AN OBJECT'S PREVIEW LINKS A RECORD (#556)
+    recordLinkSequence?: number;
+}
+
+/*
+    A preview whose rows link their record (#556), as the host keeps it: the Ids by object ('' for
+    the Query tab's one result) and row, the org they were read from, and the held data they came
+    from, which a click must still find held. The panel is sent only positions.
+*/
+export type RecipeCockpitRecordLinkPreviewKind = 'query' | 'updaterRecords' | 'updaterValues';
+
+export interface IRecipeCockpitOpenableRecordPreview {
+    previewKind: RecipeCockpitRecordLinkPreviewKind;
+    recordLinkSequence: number;
+    renderSequence: number;
+    treeKey: string;
+    orgUsername: string;
+    heldSource: object;
+    recordIdsByObjectApiName: Map<string, (string | undefined)[]>;
 }
 
 /*
@@ -2568,6 +2601,20 @@ export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for 
 
 export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Select the org to run the query against; it becomes the Target Org Manager selection';
 
+/*
+    A record Id opened from a preview (#556): every refusal is one of these FIXED texts, worded with no
+    parentheses since a notification escapes them, and none names the org's address.
+*/
+export const RECIPE_COCKPIT_RECORD_LINK_TITLE = 'Open this record in the org it was read from';
+
+export const RECIPE_COCKPIT_RECORD_LINK_BUSY_REFUSAL = 'The record was not opened: another run is using the org selection. Try again when it ends.';
+
+export const RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL = 'The record was not opened: that preview is no longer the one on screen. Run the query or load the records again.';
+
+export const RECIPE_COCKPIT_RECORD_LINK_ORG_GONE_REFUSAL = 'The record was not opened: the org it was read from is no longer in the org list. Choose it in Target Org Manager, then run the query or load the records again.';
+
+export const RECIPE_COCKPIT_RECORD_LINK_OPEN_RUNNING_REFUSAL = 'The record was not opened: an org is already being opened in the browser. Try again when it has opened.';
+
 export const RECIPE_COCKPIT_QUERY_BUSY_REFUSAL = 'The query was not run: another run is using the org selection. Choose an org in Target Org Manager, or try again when it ends.';
 
 export const RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL = 'Open file';
@@ -2962,6 +3009,10 @@ export type RecipeCockpitPanelAction =
     | { kind: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
     // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
     | { kind: 'activateUpdaterValues' }
+    // A RECORD Id OPENED FROM A PREVIEW (#556): THE PREVIEW THE PANEL DREW, THEN ONE OF ITS ROWS
+    | { kind: 'activateRecordLinks'; recordLinkSequence: number }
+    | { kind: 'openPreviewRecord'; preview: IRecipeCockpitOpenableRecordPreview; recordId: string; orgDetail: IAuthenticatedOrgDetail }
+    | { kind: 'refuseOpenPreviewRecord'; refusalText: string }
     | { kind: 'updateUpdaterRecords'; treeKey: string }
     // THE UPDATER'S RESTORE (#419): A SNAPSHOT NAMED BY FILE NAME, LISTED, DRAWN, THEN WRITTEN BACK
     | { kind: 'loadUpdaterSnapshots'; treeKey: string }
@@ -3088,6 +3139,14 @@ export interface IRecipeCockpitPanelState {
     */
     pendingUpdatableTreeKeys: Set<string>;
     updatableTreeKeys: Set<string>;
+    /*
+        A record Id opened from a preview (#556): the previews whose rows link a record, by
+        recordLinkSequence, a pending/active pair holding at most one preview of each kind. PENDING is
+        set with the preview; only the panel's "recordLinksRendered" echoing its sequence makes it
+        ACTIVE. A ready empties ACTIVE, and a new model and a failure to draw empty both.
+    */
+    pendingOpenableRecordPreviews: Map<number, IRecipeCockpitOpenableRecordPreview>;
+    openableRecordPreviews: Map<number, IRecipeCockpitOpenableRecordPreview>;
     /*
         "Restore previous values…" (#419): per card, the snapshot FILE NAMES last posted and the
         host-only path each resolves to, a pending/active pair. PENDING is set with the list; only
@@ -6668,6 +6727,8 @@ export class RecipeCockpitService {
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             pendingUpdatableTreeKeys: new Set(),
             updatableTreeKeys: new Set(),
+            pendingOpenableRecordPreviews: new Map(),
+            openableRecordPreviews: new Map(),
             pendingRestorableSnapshots: new Map(),
             restorableSnapshots: new Map(),
             pendingHistoryFiles: new Map(),
@@ -7176,6 +7237,9 @@ export class RecipeCockpitService {
         panelState.adapterOrgOnlyFields = undefined;
         this.setUpdaterValuesMessage(panelState, undefined);
         this.clearHeldUpdaterRecords();
+        // AND EVERY PREVIEW'S RECORD LINKS (#556), WHOSE RECORDS WENT WITH THEM
+        panelState.pendingOpenableRecordPreviews = new Map();
+        panelState.openableRecordPreviews = new Map();
         // AND A SNAPSHOT LIST (#419): THE NEW MODEL'S CARDS ASK FOR THEIR OWN
         panelState.pendingRestorableSnapshots = new Map();
         panelState.restorableSnapshots = new Map();
@@ -7418,6 +7482,7 @@ export class RecipeCockpitService {
                 panelState.orgRecordLookupTargets = new Map();
                 panelState.acknowledgedRenderSequence = null;
                 panelState.updatableTreeKeys = new Set();
+                panelState.openableRecordPreviews = new Map();
                 panelState.pendingRestorableSnapshots = new Map();
                 panelState.restorableSnapshots = new Map();
                 panelState.pendingHistoryFiles = new Map();
@@ -7479,6 +7544,8 @@ export class RecipeCockpitService {
                     panelState.orgRecordLookupTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
                     panelState.updatableTreeKeys = new Set();
+                    panelState.pendingOpenableRecordPreviews = new Map();
+                    panelState.openableRecordPreviews = new Map();
                     panelState.pendingRestorableSnapshots = new Map();
                     panelState.restorableSnapshots = new Map();
                     panelState.pendingHistoryFiles = new Map();
@@ -7909,6 +7976,26 @@ export class RecipeCockpitService {
             case 'activateUpdaterValues':
 
                 panelState.updatableTreeKeys = panelState.pendingUpdatableTreeKeys;
+                return;
+
+            case 'activateRecordLinks': {
+
+                const drawnPreview = panelState.pendingOpenableRecordPreviews.get(panelAction.recordLinkSequence);
+                if ( drawnPreview ) {
+                    panelState.openableRecordPreviews.set(panelAction.recordLinkSequence, drawnPreview);
+                }
+                return;
+
+            }
+
+            case 'openPreviewRecord':
+
+                await this.openPreviewRecordInBrowser(panelState, panelAction.preview, panelAction.recordId, panelAction.orgDetail);
+                return;
+
+            case 'refuseOpenPreviewRecord':
+
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
                 return;
 
             case 'updateUpdaterRecords':
@@ -9138,30 +9225,32 @@ export class RecipeCockpitService {
     */
     private static isOrgOpenInFlightForWindow = false;
 
-    private static async openDataOrgInBrowser(panelState: IRecipeCockpitPanelState, orgDetail: IAuthenticatedOrgDetail) {
+    // WITH A RECORD Id (#556) THE SAME ONE-TIME ADDRESS OPENS THAT RECORD, AND SHARES THE ONE OPEN PER WINDOW
+    private static async openDataOrgInBrowser(panelState: IRecipeCockpitPanelState, orgDetail: IAuthenticatedOrgDetail, recordId?: string) {
 
         this.isOrgOpenInFlightForWindow = true;
         panelState.isOrgOpenInFlight = true;
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const openedLabel = recordId === undefined ? orgLabel : `Record ${recordId} in ${orgLabel}`;
 
         try {
 
-            const openOutcome = await SalesforceOrgService.requestOrgFrontDoorUrl(orgDetail.username);
+            const openOutcome = await SalesforceOrgService.requestOrgFrontDoorUrl(orgDetail.username, recordId);
 
             if ( 'failureMessage' in openOutcome ) {
-                this.showOrgOpenError(`${orgLabel} was not opened: ${openOutcome.failureMessage}`);
+                this.showOrgOpenError(`${openedLabel} was not opened: ${openOutcome.failureMessage}`);
                 return;
             }
 
             const isOpened = await vscode.env.openExternal(vscode.Uri.parse(openOutcome.url, true));
 
             if ( !isOpened ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${orgLabel} was not opened: the browser did not accept the address.`));
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${openedLabel} was not opened: the browser did not accept the address.`));
             }
 
         } catch {
 
-            this.showOrgOpenError(`${orgLabel} was not opened: the browser could not be started.`);
+            this.showOrgOpenError(`${openedLabel} was not opened: the browser could not be started.`);
 
         } finally {
 
@@ -9174,6 +9263,59 @@ export class RecipeCockpitService {
             }
 
         }
+
+    }
+
+    /*
+        A record Id opened from a preview (#556): only while the data its preview was drawn from is
+        still held, so a record the host let go -- a newer query, records an update spent, values a
+        new generation replaced -- is never opened from an older row.
+    */
+    private static async openPreviewRecordInBrowser(panelState: IRecipeCockpitPanelState,
+                                                    preview: IRecipeCockpitOpenableRecordPreview,
+                                                    recordId: string,
+                                                    orgDetail: IAuthenticatedOrgDetail) {
+
+        const heldSource = preview.previewKind === 'query' ? this.heldTreeQueryResult
+            : preview.previewKind === 'updaterRecords' ? this.heldUpdaterRecords
+            : this.heldUpdaterValues;
+
+        if ( heldSource === undefined || heldSource !== preview.heldSource ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL));
+            return;
+        }
+
+        await this.openDataOrgInBrowser(panelState, orgDetail, recordId);
+
+    }
+
+    private static recordLinkSequence = 0;
+
+    /*
+        Keeps a preview's record links PENDING (#556), replacing any earlier preview of its kind, and
+        answers the sequence to post with it -- or undefined when no row links a record, so a preview
+        with none posts exactly what it did.
+    */
+    static registerRecordLinkPreview(panelState: IRecipeCockpitPanelState,
+                                     previewDetail: Omit<IRecipeCockpitOpenableRecordPreview, 'recordLinkSequence'>): number | undefined {
+
+        [panelState.pendingOpenableRecordPreviews, panelState.openableRecordPreviews].forEach(previews => {
+            [...previews.entries()].forEach(([recordLinkSequence, preview]) => {
+                if ( preview.previewKind === previewDetail.previewKind ) {
+                    previews.delete(recordLinkSequence);
+                }
+            });
+        });
+
+        const hasRecordId = [...previewDetail.recordIdsByObjectApiName.values()].some(recordIds => recordIds.some(recordId => recordId !== undefined));
+        if ( !hasRecordId ) {
+            return undefined;
+        }
+
+        const recordLinkSequence = ++this.recordLinkSequence;
+        panelState.pendingOpenableRecordPreviews.set(recordLinkSequence, { ...previewDetail, recordLinkSequence: recordLinkSequence });
+
+        return recordLinkSequence;
 
     }
 
@@ -10045,7 +10187,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        this.heldTreeQueryResult = {
+        const heldTreeQueryResult = {
             resultKey: JSON.stringify([workspaceRoot, renderSequence, folderName, treeQuery.queryKey]),
             folderName: folderName,
             objectApiName: treeQuery.objectApiName,
@@ -10053,6 +10195,7 @@ export class RecipeCockpitService {
             orgLabel: orgLabel,
             records: queryResult.records
         };
+        this.heldTreeQueryResult = heldTreeQueryResult;
 
         const preview = RecipeCockpitQuery.buildPreview(queryResult.records, RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT);
         const recordCount = queryResult.records.length;
@@ -10073,6 +10216,18 @@ export class RecipeCockpitService {
                 rows: preview.rows,
                 hiddenColumnCount: preview.hiddenColumnCount
             };
+            const recordLinkSequence = this.registerRecordLinkPreview(this.recipeCockpitPanelState, {
+                previewKind: 'query',
+                renderSequence: renderSequence,
+                treeKey: treeKey,
+                orgUsername: orgUsername,
+                heldSource: heldTreeQueryResult,
+                recordIdsByObjectApiName: new Map([['', preview.recordIds ?? []]])
+            });
+            if ( recordLinkSequence !== undefined && preview.recordLinks ) {
+                resultMessage.recordLinkSequence = recordLinkSequence;
+                resultMessage.recordLinks = preview.recordLinks;
+            }
             this.recipeCockpitPanelState.treeQueryResultMessage = resultMessage;
             if ( this.recipeCockpitPanel ) {
                 this.postToPanel(this.recipeCockpitPanel, resultMessage);
@@ -10655,6 +10810,7 @@ export class RecipeCockpitService {
 
         const recordsByObjectApiName = new Map<string, Record<string, unknown>[]>();
         const objectViewModels: IRecipeCockpitUpdaterObjectRecordsViewModel[] = [];
+        const previewRecordIdsByObjectApiName = new Map<string, (string | undefined)[]>();
         let isConnectionFailed = false;
         let isCancelled = false;
         let isTruncated = false;
@@ -10800,8 +10956,12 @@ export class RecipeCockpitService {
                         isTruncated: isObjectTruncated,
                         columns: preview.columns,
                         rows: preview.rows,
-                        hiddenColumnCount: preview.hiddenColumnCount
+                        hiddenColumnCount: preview.hiddenColumnCount,
+                        ...( preview.recordLinks ? { recordLinks: preview.recordLinks } : {} )
                     });
+                    if ( preview.recordIds ) {
+                        previewRecordIdsByObjectApiName.set(request.objectApiName, preview.recordIds);
+                    }
                 } catch (queryError) {
                     // ONE OBJECT THE ORG REFUSES (A FIELD IT LACKS, A WHERE IT CANNOT READ) IS THAT OBJECT'S, NOT THE LOAD'S
                     objectViewModels.push({
@@ -10837,7 +10997,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        this.heldUpdaterRecords = {
+        const heldUpdaterRecords: NonNullable<typeof RecipeCockpitService.heldUpdaterRecords> = {
             resultKey: JSON.stringify([panelState.workspaceRoot, renderSequence, tree.folderName, orgUsername]),
             workspaceRoot: panelState.workspaceRoot,
             renderSequence: renderSequence,
@@ -10849,6 +11009,7 @@ export class RecipeCockpitService {
             parentObjectApiName: requests[0].objectApiName,
             whereClausesByObjectApiName: new Map(requests.map(request => [request.objectApiName, request.whereClause] as const))
         };
+        this.heldUpdaterRecords = heldUpdaterRecords;
 
         const recordsMessage: IRecipeCockpitUpdaterRecordsMessage = {
             command: 'updaterRecords',
@@ -10857,6 +11018,17 @@ export class RecipeCockpitService {
             orgLabel: orgLabel,
             objects: objectViewModels
         };
+        const recordLinkSequence = this.registerRecordLinkPreview(panelState, {
+            previewKind: 'updaterRecords',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            orgUsername: orgUsername,
+            heldSource: heldUpdaterRecords,
+            recordIdsByObjectApiName: previewRecordIdsByObjectApiName
+        });
+        if ( recordLinkSequence !== undefined ) {
+            recordsMessage.recordLinkSequence = recordLinkSequence;
+        }
         panelState.updaterRecordsMessage = recordsMessage;
         this.postToPanel(cockpitPanel, recordsMessage);
 
@@ -12186,7 +12358,9 @@ export class RecipeCockpitService {
             ...( plannedField.source === 'recipe' || plannedField.source === 'recipeEdit' || plannedField.source === 'recipeFixed' ? { isRecipeValue: true as const } : {} ),
             ...( plannedField.isOrgOnly ? { isOrgOnly: true as const } : {} )
         }));
-        this.heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName, orgOnlyFieldApiNamesByObjectApiName: orgOnlyFieldApiNamesByObjectApiName, adaptedRecipeFields: adaptedRecipeFields };
+        const heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName, orgOnlyFieldApiNamesByObjectApiName: orgOnlyFieldApiNamesByObjectApiName, adaptedRecipeFields: adaptedRecipeFields };
+        this.heldUpdaterValues = heldUpdaterValues;
+        const previewRecordIdsByObjectApiName = new Map<string, (string | undefined)[]>();
 
         const objectViewModels: IRecipeCockpitUpdaterObjectValuesViewModel[] = objectApiNames.map(objectApiName => {
             const fieldApiNames = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).map(plannedField => plannedField.fieldApiName);
@@ -12202,13 +12376,17 @@ export class RecipeCockpitService {
                 return previewRecord;
             });
             const preview = RecipeCockpitQuery.buildPreview(previewRecords, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
+            if ( preview.recordIds ) {
+                previewRecordIdsByObjectApiName.set(objectApiName, preview.recordIds);
+            }
             return {
                 objectApiName: objectApiName,
                 recordCount: recordValues.length,
                 fieldApiNames: fieldApiNames,
                 columns: preview.columns,
                 rows: preview.rows,
-                hiddenColumnCount: preview.hiddenColumnCount
+                hiddenColumnCount: preview.hiddenColumnCount,
+                ...( preview.recordLinks ? { recordLinks: preview.recordLinks } : {} )
             };
         });
 
@@ -12219,6 +12397,17 @@ export class RecipeCockpitService {
             objects: objectViewModels,
             valuesSequence: ++this.updaterValuesSequence
         };
+        const recordLinkSequence = this.registerRecordLinkPreview(panelState, {
+            previewKind: 'updaterValues',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            orgUsername: heldRecords.orgUsername,
+            heldSource: heldUpdaterValues,
+            recordIdsByObjectApiName: previewRecordIdsByObjectApiName
+        });
+        if ( recordLinkSequence !== undefined ) {
+            valuesMessage.recordLinkSequence = recordLinkSequence;
+        }
         this.setUpdaterValuesMessage(panelState, valuesMessage);
         this.postToPanel(cockpitPanel, valuesMessage);
 
@@ -18582,6 +18771,82 @@ export class RecipeCockpitService {
 
             }
 
+            // THE PANEL DREW A PREVIEW'S RECORD LINKS (#556), ON THE MODEL IT ACKNOWLEDGED: ITS ROWS OPEN FROM HERE
+            case 'recordLinksRendered': {
+
+                const { recordLinkSequence } = panelMessage;
+                const pendingPreview = typeof recordLinkSequence === 'number' ? panelState.pendingOpenableRecordPreviews.get(recordLinkSequence) : undefined;
+
+                if ( typeof recordLinkSequence !== 'number'
+                        || !pendingPreview
+                        || !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
+                        || pendingPreview.renderSequence !== panelState.recipeDataMessage.renderSequence ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateRecordLinks', recordLinkSequence: recordLinkSequence };
+
+            }
+
+            /*
+                A record Id clicked in a preview (#556) names its PREVIEW and ROW, never an Id, a URL or
+                an org: the Id is the one the host keeps for that row, and the org the one it was read
+                from. A message out of shape is dropped without a word; a preview no longer on screen,
+                a run holding the selection, or an org gone from the list is a fixed warning.
+            */
+            case 'openPreviewRecord': {
+
+                const { recordLinkSequence, objectApiName, rowIndex } = panelMessage;
+
+                if ( typeof recordLinkSequence !== 'number'
+                        || !Number.isInteger(recordLinkSequence)
+                        || typeof rowIndex !== 'number'
+                        || !Number.isInteger(rowIndex)
+                        || rowIndex < 0
+                        || ( objectApiName !== undefined && typeof objectApiName !== 'string' ) ) {
+                    return undefined;
+                }
+
+                const preview = panelState.openableRecordPreviews.get(recordLinkSequence);
+
+                if ( !preview
+                        || !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
+                        || preview.renderSequence !== panelState.recipeDataMessage.renderSequence ) {
+                    return { kind: 'refuseOpenPreviewRecord', refusalText: RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL };
+                }
+
+                const recordIds = preview.recordIdsByObjectApiName.get(typeof objectApiName === 'string' ? objectApiName : '');
+                const recordId = recordIds && rowIndex < recordIds.length ? recordIds[rowIndex] : undefined;
+
+                if ( recordId === undefined ) {
+                    return undefined;
+                }
+
+                if ( panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning
+                        || RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState) ) {
+                    return { kind: 'refuseOpenPreviewRecord', refusalText: RECIPE_COCKPIT_RECORD_LINK_BUSY_REFUSAL };
+                }
+
+                if ( panelState.isOrgOpenInFlight ) {
+                    return { kind: 'refuseOpenPreviewRecord', refusalText: RECIPE_COCKPIT_RECORD_LINK_OPEN_RUNNING_REFUSAL };
+                }
+
+                const orgDetail = panelState.dataOrgDetails.find(candidateOrgDetail => candidateOrgDetail.username === preview.orgUsername);
+
+                if ( !orgDetail ) {
+                    return { kind: 'refuseOpenPreviewRecord', refusalText: RECIPE_COCKPIT_RECORD_LINK_ORG_GONE_REFUSAL };
+                }
+
+                return { kind: 'openPreviewRecord', preview: preview, recordId: recordId, orgDetail: orgDetail };
+
+            }
+
             /*
                 The CHANGELOG link (#333) is routed whatever is on screen, even before a model: it
                 opens one constant address, so nothing the message carries is read and there is no
@@ -21071,6 +21336,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .historyFiles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
     .historyHiddenNote { margin-top: 0.3rem; }
     .treeQueryTable { border-collapse: collapse; font-size: 0.9em; }
+    .treeQueryTable td .treeQueryRecordLink { font: inherit; padding: 0; }
     .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
     /*
         A TODO or validation rule group is a card (#383): the action cards' surface, border and
@@ -21325,6 +21591,7 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const UPDATER_NEXT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NEXT_LABEL)};
     const UPDATER_STRUCTURE_STEP_HEADING_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX)};
     const UPDATER_CHANGE_PARENT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL)};
+    const RECORD_LINK_TITLE = ${JSON.stringify(RECIPE_COCKPIT_RECORD_LINK_TITLE)};
     const UPDATER_PARENT_WHERE_NOTE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX)};
     const UPDATER_NO_RECORDS_LOADED_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON)};
     const UPDATER_PARENT_WHERE_NONE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE)};
@@ -28586,7 +28853,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         queryState.resultElement.appendChild(createElement('div', 'treeQueryResultSummary muted', summaryText));
 
         if (columns.length > 0) {
-            queryState.resultElement.appendChild(buildRecordTable(columns, rows));
+            queryState.resultElement.appendChild(buildRecordTable(columns, rows, resultMessage.recordLinks, resultMessage.recordLinkSequence, undefined));
         }
 
         queryState.hasResult = true;
@@ -28596,7 +28863,15 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     // A PREVIEW OF RECORDS AS TEXT: THE QUERY TAB'S (#367) AND THE TREECIPE UPDATER'S (#416)
-    function buildRecordTable(columns, rows) {
+    /*
+        A row whose own Id opens its record (#556) draws that cell as a link. The click posts the
+        preview's sequence and the row's position -- never the Id, a URL or an org -- and the host
+        opens the Id it keeps for that row, in the org it was read from.
+    */
+    function buildRecordTable(columns, rows, recordLinks, recordLinkSequence, objectApiName) {
+
+        const linkColumnIndex = recordLinks && typeof recordLinkSequence === 'number' && Number.isInteger(recordLinks.columnIndex) ? recordLinks.columnIndex : -1;
+        const linkedRowIndexes = new Set(linkColumnIndex !== -1 && Array.isArray(recordLinks.rowIndexes) ? recordLinks.rowIndexes : []);
 
         const tableWrapElement = createElement('div', 'treeQueryTableWrap');
         const tableElement = createElement('table', 'treeQueryTable');
@@ -28606,10 +28881,25 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         headElement.appendChild(headRowElement);
         tableElement.appendChild(headElement);
         const bodyElement = createElement('tbody', '');
-        rows.forEach(function (row) {
+        rows.forEach(function (row, rowIndex) {
             const rowElement = createElement('tr', 'treeQueryRow');
             columns.forEach(function (_column, columnIndex) {
-                rowElement.appendChild(createElement('td', '', Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : ''));
+                const cellText = Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : '';
+                if (columnIndex !== linkColumnIndex || !linkedRowIndexes.has(rowIndex) || cellText === '') {
+                    rowElement.appendChild(createElement('td', '', cellText));
+                    return;
+                }
+                const cellElement = createElement('td', '');
+                const recordLinkElement = createButton('link', 'treeQueryRecordLink', cellText);
+                recordLinkElement.setAttribute('title', RECORD_LINK_TITLE);
+                recordLinkElement.addEventListener('click', function () {
+                    if (renderedSequence === null) { return; }
+                    const openMessage = { command: 'openPreviewRecord', renderSequence: renderedSequence, recordLinkSequence: recordLinkSequence, rowIndex: rowIndex };
+                    if (typeof objectApiName === 'string') { openMessage.objectApiName = objectApiName; }
+                    vscodeApi.postMessage(openMessage);
+                });
+                cellElement.appendChild(recordLinkElement);
+                rowElement.appendChild(cellElement);
             });
             bodyElement.appendChild(rowElement);
         });
@@ -28617,6 +28907,15 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         tableWrapElement.appendChild(tableElement);
 
         return tableWrapElement;
+
+    }
+
+    // ONLY THIS ACK LETS A PREVIEW'S ROWS OPEN THEIR RECORD (#556), AND ONLY FOR THE MODEL ON SCREEN
+    function acknowledgeRecordLinks(previewMessage) {
+
+        if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence || typeof previewMessage.recordLinkSequence !== 'number') { return; }
+
+        vscodeApi.postMessage({ command: 'recordLinksRendered', renderSequence: renderedSequence, recordLinkSequence: previewMessage.recordLinkSequence });
 
     }
 
@@ -29535,6 +29834,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
             updaterObjectState.generatedValues = generatedObjects.find(function (generatedObject) { return generatedObject && generatedObject.objectApiName === updaterObjectState.object.objectApiName; }) || null;
+            updaterObjectState.generatedValuesLinkSequence = valuesMessage.recordLinkSequence;
             drawUpdaterObjectValues(updaterObjectState);
         });
 
@@ -29578,7 +29878,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (hiddenColumnCount > 0) { summaryText += (rows.length < recordCount ? ', ' : '. Showing ') + pluralize(columns.length, 'column', 'columns') + ', ' + hiddenColumnCount + ' more not shown'; }
 
         valuesElement.appendChild(createElement('div', 'updaterValuesSummary muted', summaryText));
-        if (columns.length > 0 && rows.length > 0) { valuesElement.appendChild(buildRecordTable(columns, rows)); }
+        if (columns.length > 0 && rows.length > 0) { valuesElement.appendChild(buildRecordTable(columns, rows, generatedValues.recordLinks, updaterObjectState.generatedValuesLinkSequence, updaterObjectState.object.objectApiName)); }
         valuesElement.classList.remove('hidden');
 
     }
@@ -29666,6 +29966,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
             const loadedRecords = loadedObjects.find(function (loadedObject) { return loadedObject && loadedObject.objectApiName === updaterObjectState.object.objectApiName; }) || null;
             updaterObjectState.loadedRecords = loadedRecords;
+            updaterObjectState.loadedRecordsLinkSequence = recordsMessage.recordLinkSequence;
             if (loadedRecords && !loadedRecords.failureMessage && !loadedRecords.skippedReason) { recordCount += Number(loadedRecords.recordCount) || 0; }
             drawUpdaterObjectCount(updaterObjectState);
             drawUpdaterObjectRecords(updaterObjectState);
@@ -29720,7 +30021,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             if (rows.length < recordCount) { summaryText += '. Showing the first ' + rows.length; }
             if (hiddenColumnCount > 0) { summaryText += (rows.length < recordCount ? ', ' : '. Showing ') + pluralize(columns.length, 'column', 'columns') + ', ' + hiddenColumnCount + ' more not shown'; }
             recordsElement.appendChild(createElement('div', 'updaterRecordsSummary muted', summaryText));
-            if (columns.length > 0) { recordsElement.appendChild(buildRecordTable(columns, rows)); }
+            if (columns.length > 0) { recordsElement.appendChild(buildRecordTable(columns, rows, loadedRecords.recordLinks, updaterObjectState.loadedRecordsLinkSequence, updaterObjectState.object.objectApiName)); }
         }
 
         recordsElement.classList.remove('hidden');
@@ -32677,6 +32978,7 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'treeQueryResult') {
             renderTreeQueryResult(hostMessage);
+            acknowledgeRecordLinks(hostMessage);
             return;
         }
 
@@ -32706,6 +33008,7 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'updaterRecords') {
             renderUpdaterRecords(hostMessage);
+            acknowledgeRecordLinks(hostMessage);
             return;
         }
 
@@ -32731,6 +33034,7 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'updaterValues') {
             renderUpdaterValues(hostMessage);
+            acknowledgeRecordLinks(hostMessage);
             return;
         }
 

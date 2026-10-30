@@ -624,8 +624,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 fieldApiNames: ['Legacy_Code__c'],
                 columns: ['Id', 'Legacy_Code__c (current)', 'Legacy_Code__c (new)'],
                 rows: [[fakeRecordId('Account', 0), 'OLD-0', 'Legacy_Code__c-new-0'], [fakeRecordId('Account', 1), 'OLD-1', 'Legacy_Code__c-new-1'], [fakeRecordId('Account', 2), 'OLD-2', 'Legacy_Code__c-new-2']],
-                hiddenColumnCount: 0
+                hiddenColumnCount: 0,
+                recordLinks: { columnIndex: 0, rowIndexes: [0, 1, 2] }
             });
+            expect(valuesMessage.recordLinkSequence).toEqual(expect.any(Number));
             expect(valuesMessage.objects[1].rows[0]).toEqual([fakeRecordId('Contact', 0), 'Old 0', 'LastName-new-0']);
 
             // NOTHING WRITTEN: NOT THE RECIPE, AND NOTHING SENT TO THE ORG BUT THE LOAD'S READS

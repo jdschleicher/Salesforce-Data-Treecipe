@@ -76,7 +76,22 @@ export interface IRecipeCockpitQueryPreview {
     rows: string[][];
     // COLUMNS THE PREVIEW LEFT OUT, WHICH AN EXPORT STILL WRITES
     hiddenColumnCount: number;
+    // THE ROWS WHOSE OWN Id IS A SALESFORCE RECORD ID, AND ITS COLUMN (#556); ABSENT WHEN NONE IS
+    recordLinks?: IRecipeCockpitPreviewRecordLinks;
+    // EACH ROW'S OWN Id WHEN IT IS ONE, FOR THE HOST ONLY: NEVER POSTED
+    recordIds?: (string | undefined)[];
 }
+
+// WHICH CELLS OF A PREVIEW THE PANEL DRAWS AS A LINK THAT OPENS THE RECORD (#556): POSITIONS ONLY, NEVER THE Id
+export interface IRecipeCockpitPreviewRecordLinks {
+    columnIndex: number;
+    rowIndexes: number[];
+}
+
+// THE COLUMN A RECORD'S OWN Id IS FLATTENED INTO: A PARENT'S IS "Account.Id", A SUBQUERY'S IS IN ITS JSON
+export const RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN = 'Id';
+
+export const RECIPE_COCKPIT_PREVIEW_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 export class RecipeCockpitQuery {
 
@@ -324,17 +339,34 @@ export class RecipeCockpitQuery {
 
         const { columns: allColumns, flattenedRecords } = this.flattenRecords(records.slice(0, rowLimit));
         const columns = allColumns.slice(0, RECIPE_COCKPIT_QUERY_PREVIEW_COLUMN_LIMIT);
-
-        return {
+        const rows = flattenedRecords.map(flattenedRecord => columns.map(column => {
+            const cellText = this.toCellText(flattenedRecord.get(column));
+            return cellText.length > RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH
+                ? cellText.slice(0, RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH) + '…'
+                : cellText;
+        }));
+        const preview: IRecipeCockpitQueryPreview = {
             columns: columns,
             hiddenColumnCount: allColumns.length - columns.length,
-            rows: flattenedRecords.map(flattenedRecord => columns.map(column => {
-                const cellText = this.toCellText(flattenedRecord.get(column));
-                return cellText.length > RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH
-                    ? cellText.slice(0, RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH) + '…'
-                    : cellText;
-            }))
+            rows: rows
         };
+
+        // A ROW IS LINKED ONLY WHEN ITS CELL SHOWS EXACTLY THE Id THE RECORD HOLDS, SO WHAT IS CLICKED IS WHAT OPENS
+        const columnIndex = columns.indexOf(RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN);
+        if ( columnIndex === -1 ) {
+            return preview;
+        }
+        const recordIds = flattenedRecords.map((flattenedRecord, rowIndex) => {
+            const recordId = flattenedRecord.get(RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN);
+            return typeof recordId === 'string' && RECIPE_COCKPIT_PREVIEW_RECORD_ID_PATTERN.test(recordId) && rows[rowIndex][columnIndex] === recordId
+                ? recordId
+                : undefined;
+        });
+        const rowIndexes = recordIds.flatMap((recordId, rowIndex) => recordId === undefined ? [] : [rowIndex]);
+
+        return rowIndexes.length === 0
+            ? preview
+            : { ...preview, recordLinks: { columnIndex: columnIndex, rowIndexes: rowIndexes }, recordIds: recordIds };
 
     }
 
