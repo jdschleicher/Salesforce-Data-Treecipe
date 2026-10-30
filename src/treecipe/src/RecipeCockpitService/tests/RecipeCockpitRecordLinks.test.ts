@@ -198,9 +198,10 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
         });
 
-        it('refuses while a run holds the org selection, while an open is running, and for an org gone from the list', () => {
+        it('refuses while a run holds the org selection (an insert included), while an open is running, and for an org gone from the list', () => {
 
             const busyStates: ((panelState: IRecipeCockpitPanelState) => void)[] = [
+                panelState => { panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: 'x' } as any; },
                 panelState => { panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true }; },
                 panelState => { panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: 'x' }; },
                 panelState => { panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: 'x', deployKind: 'fields' } as any; },

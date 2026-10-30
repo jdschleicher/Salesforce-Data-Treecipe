@@ -18856,7 +18856,8 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( panelState.scratchOrgStateMessage?.isRunning
+                if ( panelState.insertStateMessage
+                        || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning
                         || RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState) ) {
