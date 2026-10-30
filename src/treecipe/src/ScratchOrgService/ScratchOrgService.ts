@@ -14,7 +14,13 @@ export const SCRATCH_ORG_ALIAS_MAX_LENGTH = 80;
 // WINDOWS RESERVES THESE AS DEVICE NAMES, WITH OR WITHOUT AN EXTENSION: A FOLDER BY THAT NAME CANNOT BE MADE
 export const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
+// WHAT THE LIFETIME BOX STARTS WITH (#534), SO ENTER KEEPS THE LIFETIME EVERY ORG HAD BEFORE IT WAS ASKED
 export const SCRATCH_ORG_DURATION_DAYS = 7;
+
+export const SCRATCH_ORG_MIN_DURATION_DAYS = 1;
+
+// SALESFORCE'S OWN MAXIMUM: A SCRATCH ORG CANNOT LIVE LONGER, OR BE EXTENDED AFTER IT IS CREATED
+export const SCRATCH_ORG_MAX_DURATION_DAYS = 30;
 
 export const SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH = path.join('config', 'project-scratch-def.json');
 
@@ -173,6 +179,25 @@ export class ScratchOrgService {
     }
 
     /*
+        How many days a new scratch org lives (#534): a whole number from 1 to 30, typed exactly --
+        no sign, no decimal point, no leading zero, no surrounding space. The box and the plan
+        both hold the TEXT to this, so what the confirmation shows is what was typed.
+    */
+    static validateScratchOrgDurationDays(durationDays: unknown): string | undefined {
+
+        const refusal = `Enter a whole number of days from ${SCRATCH_ORG_MIN_DURATION_DAYS} to ${SCRATCH_ORG_MAX_DURATION_DAYS}.`;
+
+        if ( typeof durationDays !== 'string' || !/^[1-9][0-9]?$/.test(durationDays) ) {
+            return refusal;
+        }
+
+        const days = Number(durationDays);
+
+        return days >= SCRATCH_ORG_MIN_DURATION_DAYS && days <= SCRATCH_ORG_MAX_DURATION_DAYS ? undefined : refusal;
+
+    }
+
+    /*
         Refuses, before any process, every input the setup cannot run with: the project file, then
         the definition file. Both are checked BEFORE the Dev Hub is asked for, so an unusable
         project refuses without a picker. No Dev Hub chosen is no plan: undefined, and
@@ -181,7 +206,8 @@ export class ScratchOrgService {
     */
     static async resolveScratchOrgPlan(workspaceRoot: string,
                                         chooseDevHub: () => Promise<IDevHubOrgDetail | undefined>,
-                                        chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined>): Promise<IScratchOrgPlan | undefined> {
+                                        chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined>,
+                                        chooseDurationDays: () => Promise<string | undefined>): Promise<IScratchOrgPlan | undefined> {
 
         // THE STRICT READ STAYS A CHECK (#358): THE CLI RUNS IN PROJECT MODE FROM THIS WORKSPACE
         SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
@@ -216,6 +242,19 @@ export class ScratchOrgService {
             throw new Error(`No scratch org was created: ${aliasRefusal}`);
         }
 
+        // NO LIFETIME IS NO PLAN EITHER (#534): ESCAPE IN THE BOX IS A CANCEL
+        const enteredDurationDays = await chooseDurationDays();
+
+        if ( enteredDurationDays === undefined ) {
+            return undefined;
+        }
+
+        const durationDaysRefusal = this.validateScratchOrgDurationDays(enteredDurationDays);
+
+        if ( durationDaysRefusal ) {
+            throw new Error(`No scratch org was created: ${durationDaysRefusal}`);
+        }
+
         return {
             workspaceRoot: resolvedWorkspaceRoot,
             definitionFilePath: definitionFilePath,
@@ -223,7 +262,7 @@ export class ScratchOrgService {
             devHub: devHub,
             alias: aliasChoice.alias,
             ...( aliasChoice.aliasHolderUsername ? { aliasHolderUsername: aliasChoice.aliasHolderUsername } : {} ),
-            durationDays: SCRATCH_ORG_DURATION_DAYS,
+            durationDays: Number(enteredDurationDays),
             definitionSummary: this.readDefinitionSummary(definitionFilePath)
         };
 
@@ -561,7 +600,7 @@ export class ScratchOrgService {
                 failureMessage: createResult.failureMessage,
                 outputFilePath: createInvocation.spawnError || createInvocation.isOutputTooLarge
                     ? undefined
-                    : this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, scratchOrgPlan.alias, 'scratch-create', createInvocation, now(), createPayload)
+                    : this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, scratchOrgPlan.alias, 'scratch-create', createInvocation, now(), this.withDurationDays(scratchOrgPlan, createInvocation, createPayload))
             };
 
         }
@@ -569,7 +608,19 @@ export class ScratchOrgService {
         return {
             kind: 'created',
             username: createResult.username,
-            outputFilePath: this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, createResult.username, 'scratch-create', createInvocation, now(), createPayload)
+            outputFilePath: this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, createResult.username, 'scratch-create', createInvocation, now(), this.withDurationDays(scratchOrgPlan, createInvocation, createPayload))
+        };
+
+    }
+
+    // THE CLI'S ANSWER DOES NOT ALWAYS NAME THE LIFETIME ASKED FOR, SO THE RESULT FILE RECORDS IT BESIDE THAT ANSWER, OVER ANY IT DOES NAME (#534)
+    private static withDurationDays(scratchOrgPlan: IScratchOrgPlan,
+                            invocationResult: ISalesforceCliInvocationResult,
+                            payload: Record<string, unknown> | undefined): Record<string, unknown> {
+
+        return {
+            ...( payload ?? { stdout: this.redactSecretText(invocationResult.stdout), stderr: this.redactSecretText(invocationResult.stderr), exitCode: invocationResult.exitCode } ),
+            durationDays: scratchOrgPlan.durationDays
         };
 
     }
@@ -808,6 +859,7 @@ export class ScratchOrgService {
                 outputFilePath: this.writeOrgOperationPayload(scratchOrgPlan.workspaceRoot, username, 'scratch-create', {
                     status: 0,
                     createdWith: '@salesforce/core',
+                    durationDays: scratchOrgPlan.durationDays,
                     result: {
                         username: username,
                         orgId: createResult.authFields?.orgId,
@@ -827,6 +879,7 @@ export class ScratchOrgService {
             const failurePayload = {
                 status: 1,
                 createdWith: '@salesforce/core',
+                durationDays: scratchOrgPlan.durationDays,
                 name: createError instanceof Error ? createError.name : undefined,
                 message: failureMessage,
                 ...( keptUsername ? { result: { username: keptUsername } } : {} )
