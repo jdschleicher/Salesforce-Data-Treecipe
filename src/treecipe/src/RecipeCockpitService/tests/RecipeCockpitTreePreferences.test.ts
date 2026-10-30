@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
-    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn(), showInputBox: jest.fn() },
+    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn() },
     commands: { executeCommand: jest.fn() },
     ViewColumn: { One: 1 },
     ProgressLocation: { Notification: 15 },
@@ -24,15 +24,17 @@ import {
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_NO_FAVORITES_MESSAGE,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
+    RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
     A tree card's own name and favorite, and the Favorites only filter (#235). The host keeps both
-    by tree FOLDER NAME in workspaceState and asks for a name in its own input box; the panel posts
-    only a card's key, and redraws the header in place when the host says what changed.
+    by tree FOLDER NAME in workspaceState. The name is typed in the card's own inline box (#551) and
+    checked again by the host, which answers nameEditResult; the panel redraws the header in place
+    when the host says what changed.
 */
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -253,10 +255,33 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             return panelState;
         };
 
-        it.each(['renameTree', 'toggleFavoriteTree'])('given %s for a drawn card, names its folder', (command) => {
+        it('given toggleFavoriteTree for a drawn card, names its folder', () => {
 
-            expect(RecipeCockpitService.routePanelMessage({ command: command, treeKey: LEAD_TREE_KEY }, buildDrawnPanelState()))
-                .toEqual({ kind: command, folderName: LEAD_TREE_KEY });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'toggleFavoriteTree', treeKey: LEAD_TREE_KEY }, buildDrawnPanelState()))
+                .toEqual({ kind: 'toggleFavoriteTree', folderName: LEAD_TREE_KEY });
+
+        });
+
+        it('given renameTree for a drawn card, carries the typed name as it was typed, to be checked by the executor', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: '  Sales leads ', renderSequence: 4 }, buildDrawnPanelState()))
+                .toEqual({ kind: 'renameTree', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, name: '  Sales leads ', renderSequence: 4 });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: 'x'.repeat(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH), renderSequence: 4 }, buildDrawnPanelState()))
+                .toMatchObject({ kind: 'renameTree' });
+
+        });
+
+        it('given renameTree with no name, a name that is not text or too long, or for another model, does nothing', () => {
+
+            const route = (renameMessage: Record<string, unknown>) => RecipeCockpitService.routePanelMessage({ command: 'renameTree', treeKey: LEAD_TREE_KEY, ...renameMessage }, buildDrawnPanelState());
+
+            expect(route({ renderSequence: 4 })).toBeUndefined();
+            expect(route({ name: 7, renderSequence: 4 })).toBeUndefined();
+            expect(route({ name: ['Leads'], renderSequence: 4 })).toBeUndefined();
+            expect(route({ name: 'x'.repeat(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH + 1), renderSequence: 4 })).toBeUndefined();
+            expect(route({ name: 'Leads' })).toBeUndefined();
+            expect(route({ name: 'Leads', renderSequence: 3 })).toBeUndefined();
+            expect(route({ name: 'Leads', renderSequence: '4' })).toBeUndefined();
 
         });
 
@@ -269,7 +294,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         it.each(['renameTree', 'toggleFavoriteTree'])('given %s for anything else, does nothing', (command) => {
 
-            const route = (treeKey: unknown, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: command, treeKey: treeKey }, panelState);
+            const route = (treeKey: unknown, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: command, treeKey: treeKey, name: 'Leads', renderSequence: 4 }, panelState);
 
             expect(route('')).toBeUndefined();
             expect(route('Opportunity-ONLY')).toBeUndefined();
@@ -296,7 +321,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
         let postedPanelMessages: any[];
 
         const lastPosted = (command: string) => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === command);
-        const showInputBox = vscode.window.showInputBox as jest.Mock;
+        const renameTo = (recipeDataMessage: any, name: string) => receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: name, renderSequence: recipeDataMessage.renderSequence });
 
         const buildWebviewPanel = () => ({
             reveal: jest.fn(),
@@ -325,7 +350,6 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         beforeEach(() => {
             postedPanelMessages = [];
-            showInputBox.mockReset();
             (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => buildWebviewPanel());
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation((initialMessage: string) => ({ text: initialMessage, dispose: jest.fn() }) as any);
         });
@@ -346,26 +370,23 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         });
 
-        it('renames a card through the host\'s input box, keeps the name, and redraws the card in place', async () => {
+        it('renames a card from the name typed in the panel, keeps it trimmed, redraws the card in place, then closes the box', async () => {
 
             const workspaceState = buildWorkspaceState();
             const recipeDataMessage = await openAndDraw(workspaceState);
-            showInputBox.mockResolvedValue('  Sales leads ');
+            postedPanelMessages = [];
 
-            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
-
-            const inputBoxOptions = showInputBox.mock.calls[0][0];
-            expect(inputBoxOptions.value).toBe('');
-            expect(inputBoxOptions.placeHolder).toBe('Lead-ONLY');
-            expect(inputBoxOptions.validateInput('Account-thru-OtherChildObject__c')).toContain('already has that name');
-            expect(inputBoxOptions.validateInput('Anything else')).toBeUndefined();
+            await renameTo(recipeDataMessage, '  Sales leads ');
 
             expect(storedOf(workspaceState)).toEqual(storedPreferences({ [LEAD_TREE_KEY]: 'Sales leads' }));
+            // THE NAME IS REDRAWN FIRST, SO THE BOX CLOSES ONTO IT
+            expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['treePreferences', 'nameEditResult']);
             expect(lastPosted('treePreferences')).toEqual({
                 command: 'treePreferences',
                 renderSequence: recipeDataMessage.renderSequence,
                 trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Sales leads', isFavorite: false }]
             });
+            expect(lastPosted('nameEditResult')).toEqual({ command: 'nameEditResult', renderSequence: recipeDataMessage.renderSequence, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: '  Sales leads ' });
 
             // A REVEAL REPLAYS THE STORED MODEL, WHICH HAS TO CARRY THE NAME TOO
             postedPanelMessages = [];
@@ -374,79 +395,119 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         });
 
-        it('escapes a folder name in the prompt, which the input box would draw as a link that runs a command', async () => {
-
-            await openAndDraw(buildWorkspaceState());
-            const forgedFolderName = '[Click](command:workbench.action.terminal.new)';
-            const leadTree = treeOf((RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage, LEAD_TREE_KEY);
-            leadTree.folderName = forgedFolderName;
-            showInputBox.mockResolvedValue(undefined);
-
-            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
-
-            const prompt = showInputBox.mock.calls[0][0].prompt;
-            expect(prompt).not.toContain(forgedFolderName);
-            expect(prompt).not.toMatch(/[[\]()]/);
-
-        });
-
-        it('pre-fills the card\'s own name, and an emptied box clears it', async () => {
+        it('clears a card\'s name given an empty box, and given the card\'s own folder name (#389)', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [LEAD_TREE_KEY]) });
-            await openAndDraw(workspaceState);
-            showInputBox.mockResolvedValue('');
+            const recipeDataMessage = await openAndDraw(workspaceState);
 
-            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
+            await renameTo(recipeDataMessage, '  ');
 
-            expect(showInputBox.mock.calls[0][0].value).toBe('Leads');
             expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [LEAD_TREE_KEY]));
             expect(lastPosted('treePreferences').trees).toEqual([{ treeKey: LEAD_TREE_KEY, isFavorite: true }]);
 
-        });
+            await renameTo(recipeDataMessage, 'Leads');
+            await renameTo(recipeDataMessage, ` ${LEAD_TREE_KEY} `);
 
-        // #389: THE DEFAULT TITLE IS THE FOLDER, SO THE PROMPT DOES NOT NAME IT TWICE, AND A NAME EQUAL TO IT IS NO NAME
-        it('says an emptied box goes back to the folder name, and clears a name equal to the card\'s own folder', async () => {
-
-            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }) });
-            await openAndDraw(workspaceState);
-            showInputBox.mockResolvedValue(` ${LEAD_TREE_KEY} `);
-
-            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
-
-            expect(showInputBox.mock.calls[0][0].prompt).toBe(`A name for the tree in "${LEAD_TREE_KEY}", unique in this workspace. Leave it empty to go back to its folder name.`);
-            expect(storedOf(workspaceState)).toEqual(storedPreferences({}));
-            expect(lastPosted('treePreferences').trees).toEqual([{ treeKey: LEAD_TREE_KEY, isFavorite: false }]);
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [LEAD_TREE_KEY]));
+            expect(lastPosted('nameEditResult').refusal).toBeUndefined();
 
         });
 
-        it('given the box is cancelled, changes nothing', async () => {
+        it.each([
+            ['another card\'s name, without case', 'account-thru-otherchildobject__c', 'already has that name'],
+            ['more than one line', 'Sales\nleads', 'one line'],
+            ['a line separator', 'Sales\u2028leads', 'one line']
+        ])('refuses %s under the box, writes nothing and redraws nothing', async (_description, typedName, refusalText) => {
 
             const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            showInputBox.mockResolvedValue(undefined);
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
-            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
+            await renameTo(recipeDataMessage, typedName);
 
             expect(workspaceState.update).not.toHaveBeenCalledWith(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, expect.anything());
             expect(lastPosted('treePreferences')).toBeUndefined();
+            expect(lastPosted('nameEditResult')).toMatchObject({ nameTarget: 'tree', nameKey: LEAD_TREE_KEY, renderSequence: recipeDataMessage.renderSequence });
+            expect(lastPosted('nameEditResult').refusal).toContain(refusalText);
+            // THE REASON IS UNDER THE BOX, NOT IN A NOTIFICATION
+            expect(warningSpy).not.toHaveBeenCalled();
 
         });
 
-        it('given another window took the name while the box was open, refuses it and says why', async () => {
+        it('checks the name against the names stored when it runs, which another window can have changed', async () => {
 
             const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
-            showInputBox.mockImplementation(async () => {
-                workspaceState.storedValues.set(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, storedPreferences({ 'Opportunity-ONLY': 'Pipeline' }));
-                return 'pipeline';
-            });
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            workspaceState.storedValues.set(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, storedPreferences({ 'Opportunity-ONLY': 'Pipeline' }));
 
-            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
+            await renameTo(recipeDataMessage, 'pipeline');
 
             expect(storedOf(workspaceState)).toEqual(storedPreferences({ 'Opportunity-ONLY': 'Pipeline' }));
+            expect(lastPosted('nameEditResult').refusal).toContain('already has that name');
+
+        });
+
+        it('given a write that fails, keeps the old name on screen, warns, and says so under the box', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            workspaceState.update.mockImplementation(() => Promise.reject(new Error('read-only')));
+
+            await renameTo(recipeDataMessage, 'Sales leads');
+
             expect(lastPosted('treePreferences')).toBeUndefined();
-            expect(warningSpy.mock.calls[0][0]).toContain('already has that name');
+            expect(lastPosted('nameEditResult').refusal).toBe(RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL);
+            expect(warningSpy.mock.calls[0][0]).toContain('read-only');
+            expect(treeOf((RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage, LEAD_TREE_KEY).customName).toBeUndefined();
+
+        });
+
+        it('answers with the model the name was typed over, even when a new model is drawn while the name is written', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            let finishWrite: () => void = () => undefined;
+            workspaceState.update.mockImplementation((key: string, value: unknown) => new Promise<void>(resolve => {
+                finishWrite = () => { workspaceState.storedValues.set(key, JSON.parse(JSON.stringify(value))); resolve(); };
+            }));
+
+            const renaming = renameTo(recipeDataMessage, 'Sales leads');
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: CURRENT_RUN_FOLDER_NAME });
+            const newRecipeDataMessage = lastPosted('recipeData');
+            await receivedMessageHandler({ command: 'rendered', renderSequence: newRecipeDataMessage.renderSequence });
+            finishWrite();
+            await renaming;
+
+            expect(newRecipeDataMessage.renderSequence).not.toBe(recipeDataMessage.renderSequence);
+            expect(lastPosted('nameEditResult')).toMatchObject({ renderSequence: recipeDataMessage.renderSequence, name: 'Sales leads' });
+
+        });
+
+        it('given a rename typed over a model no longer on screen, writes nothing', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+
+            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: 'Sales leads', renderSequence: recipeDataMessage.renderSequence - 1 });
+
+            expect(workspaceState.update).not.toHaveBeenCalledWith(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, expect.anything());
+            expect(lastPosted('nameEditResult')).toBeUndefined();
+
+        });
+
+        it('asks for no name in a VS Code input box: the box is the panel\'s (#551)', () => {
+
+            const serviceSource = require('fs').readFileSync(path.join(__dirname, '..', 'RecipeCockpitService.ts'), 'utf8') as string;
+            const methodSourceOf = (methodName: string) => {
+                const methodStart = serviceSource.indexOf(`private static async ${methodName}(`);
+                return serviceSource.slice(methodStart, serviceSource.indexOf('\n    }\n', methodStart));
+            };
+
+            ['renameTree', 'renameDataset'].forEach(methodName => {
+                expect(methodSourceOf(methodName)).toContain('validate');
+                expect(methodSourceOf(methodName)).not.toContain('showInputBox');
+            });
 
         });
 
@@ -589,7 +650,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         });
 
-        it('posts only the card\'s key, and neither click opens or closes the card', () => {
+        it('posts only the card\'s key for ☆, and ✎ posts nothing and changes no card on screen', () => {
 
             const panel = drawRecipe();
             const leadCard = cardOf(panel, LEAD_TREE_KEY);
@@ -598,11 +659,243 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             panel.findAll(leadCard, 'treeRename')[0].dispatch('click');
 
             expect(panel.postedHostMessages.filter((hostMessage: any) => ['toggleFavoriteTree', 'renameTree'].includes(hostMessage.command))).toEqual([
-                { command: 'toggleFavoriteTree', treeKey: LEAD_TREE_KEY },
-                { command: 'renameTree', treeKey: LEAD_TREE_KEY }
+                { command: 'toggleFavoriteTree', treeKey: LEAD_TREE_KEY }
             ]);
             // THE CARD ON SCREEN IS STILL THE FIRST
             expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
+
+        });
+
+        describe('the inline rename box (#551)', () => {
+
+            const drawAndAcknowledge = (recipeChanges: (recipe: IRecipeCockpitRecipeViewModel) => void = () => undefined) => {
+                return drawRecipe(recipeChanges);
+            };
+            const renameOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeRename')[0];
+            const editorOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeNameEditor')[0];
+            const inputOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'nameEditorInput')[0];
+            const refusalOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'nameEditorRefusal')[0];
+            const leadTitleElementOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeTitle')[0];
+            const renamesPosted = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'renameTree');
+            const openBox = (panel: ReturnType<typeof runPanelScript>) => renameOf(panel).dispatch('click');
+            const type = (panel: ReturnType<typeof runPanelScript>, typedName: string) => { inputOf(panel).value = typedName; };
+
+            it('builds no box until ✎ is clicked, then puts a box with the card\'s own name, selected, where the name was', () => {
+
+                const panel = drawAndAcknowledge(recipe => { recipe.trees[1].customName = 'Leads'; });
+
+                expect(editorOf(panel)).toBeUndefined();
+                expect(renameOf(panel).attributes['aria-expanded']).toBe('false');
+
+                openBox(panel);
+
+                const header = cardOf(panel, LEAD_TREE_KEY).children[0];
+                expect(header.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual(['treeHeaderActions', 'nameEditor', 'treeTitle', 'treeFolder', 'treeCount']);
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+                expect(panel.isHidden(leadTitleElementOf(panel))).toBe(true);
+                expect(editorOf(panel).attributes.role).toBe('group');
+                expect(editorOf(panel).attributes['aria-label']).toBe('Rename Leads');
+                expect(inputOf(panel).value).toBe('Leads');
+                expect(inputOf(panel).attributes.placeholder).toBe(LEAD_TREE_KEY);
+                expect(inputOf(panel).attributes.maxlength).toBe(String(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH));
+                expect(inputOf(panel).attributes['aria-label']).toBe(`New name for Leads. Leave it empty to show ${LEAD_TREE_KEY}.`);
+                expect(inputOf(panel).selectedCount).toBe(1);
+                expect(panel.activeElement()).toBe(inputOf(panel));
+                expect(renameOf(panel).attributes['aria-expanded']).toBe('true');
+                expect(refusalOf(panel).attributes.role).toBe('alert');
+                expect(panel.isHidden(refusalOf(panel))).toBe(true);
+
+            });
+
+            it('starts empty for a card with no name of its own', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+
+                expect(inputOf(panel).value).toBe('');
+
+            });
+
+            it('posts the typed name, the card and the model on Enter, and the blur that follows posts nothing more', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, ' Sales leads ');
+
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+                inputOf(panel).dispatch('blur');
+
+                expect(renamesPosted(panel)).toEqual([{ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: ' Sales leads ', renderSequence: 3 }]);
+                // THE BOX WAITS FOR THE HOST
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+
+            });
+
+            it('posts the typed name when the box is left', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'Sales leads');
+
+                inputOf(panel).dispatch('blur');
+
+                expect(renamesPosted(panel)).toEqual([{ command: 'renameTree', treeKey: LEAD_TREE_KEY, name: 'Sales leads', renderSequence: 3 }]);
+
+            });
+
+            it('given Escape, posts nothing, puts the name back and gives focus to ✎, and the blur that follows posts nothing', () => {
+
+                const panel = drawAndAcknowledge(recipe => { recipe.trees[1].customName = 'Leads'; });
+                openBox(panel);
+                type(panel, 'Sales leads');
+
+                inputOf(panel).dispatch('keydown', { key: 'Escape', preventDefault: () => undefined });
+                inputOf(panel).dispatch('blur');
+
+                expect(renamesPosted(panel)).toEqual([]);
+                expect(panel.isHidden(editorOf(panel))).toBe(true);
+                expect(panel.isHidden(leadTitleElementOf(panel))).toBe(false);
+                expect(leadTitleElementOf(panel).textContent).toBe('Leads');
+                expect(renameOf(panel).attributes['aria-expanded']).toBe('false');
+                expect(panel.activeElement()).toBe(renameOf(panel));
+
+            });
+
+            it('given ✎ again while the box is open, closes it with nothing posted, as a cancel', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'Sales leads');
+
+                let isDefaultPrevented = false;
+                renameOf(panel).dispatch('mousedown', { preventDefault: () => { isDefaultPrevented = true; } });
+                openBox(panel);
+
+                // A BROWSER WOULD NOT MOVE FOCUS ON A PREVENTED mousedown, SO THE BOX'S blur NEVER SAVES
+                expect(isDefaultPrevented).toBe(true);
+                expect(renamesPosted(panel)).toEqual([]);
+                expect(panel.isHidden(editorOf(panel))).toBe(true);
+
+            });
+
+            it('closes with nothing posted when the name is the one the card already has', () => {
+
+                const panel = drawAndAcknowledge(recipe => { recipe.trees[1].customName = 'Leads'; });
+                openBox(panel);
+                type(panel, ' Leads ');
+
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+
+                expect(renamesPosted(panel)).toEqual([]);
+                expect(panel.isHidden(editorOf(panel))).toBe(true);
+
+            });
+
+            it('writes the host\'s refusal under the box and keeps it open with what was typed, and posts the same name only once', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'account-thru-otherchildobject__c');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'account-thru-otherchildobject__c', refusal: '<b>Another tree</b> already has that name.' });
+
+                expect(refusalOf(panel).textContent).toBe('<b>Another tree</b> already has that name.');
+                expect(refusalOf(panel).children).toEqual([]);
+                expect(inputOf(panel).attributes['aria-invalid']).toBe('true');
+                expect(inputOf(panel).attributes['aria-describedby']).toBe(refusalOf(panel).attributes.id);
+                expect(panel.isHidden(refusalOf(panel))).toBe(false);
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+                expect(inputOf(panel).value).toBe('account-thru-otherchildobject__c');
+
+                inputOf(panel).dispatch('blur');
+                expect(renamesPosted(panel)).toHaveLength(1);
+
+                type(panel, 'Sales leads');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+                expect(renamesPosted(panel)).toHaveLength(2);
+
+            });
+
+            it('settles only the answer to the name posted last, whatever order the answers arrive in', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'Foo');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+                type(panel, 'Bar');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Foo' });
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Bar', refusal: 'Another tree already has that name.' });
+                expect(refusalOf(panel).textContent).toBe('Another tree already has that name.');
+                expect(inputOf(panel).value).toBe('Bar');
+
+            });
+
+            it('does not save on the Enter that ends an input method\'s composition', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, '名前');
+
+                inputOf(panel).dispatch('keydown', { key: 'Enter', isComposing: true, preventDefault: () => undefined });
+
+                expect(renamesPosted(panel)).toEqual([]);
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+
+            });
+
+            it('closes once the host has saved and redrawn the name', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'Sales leads');
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+
+                panel.postToPanel({ command: 'treePreferences', renderSequence: 3, trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Sales leads', isFavorite: false }] });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Sales leads' });
+
+                expect(panel.isHidden(editorOf(panel))).toBe(true);
+                expect(panel.isHidden(leadTitleElementOf(panel))).toBe(false);
+                expect(leadTitleElementOf(panel).textContent).toBe('Sales leads');
+                expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeFolder')[0])).toBe(false);
+                expect(renameOf(panel).attributes['aria-expanded']).toBe('false');
+
+            });
+
+            it('ignores an answer for another model, another card or a box that posted nothing', () => {
+
+                const panel = drawAndAcknowledge();
+                openBox(panel);
+                type(panel, 'Sales leads');
+
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Sales leads', refusal: 'Not posted yet.' });
+                expect(panel.isHidden(refusalOf(panel))).toBe(true);
+
+                inputOf(panel).dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 2, nameTarget: 'tree', nameKey: LEAD_TREE_KEY, name: 'Sales leads' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: ACCOUNT_TREE_KEY, name: 'Sales leads' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'dataset', nameKey: LEAD_TREE_KEY, name: 'Sales leads' });
+                panel.postToPanel({ command: 'nameEditResult', renderSequence: 3, nameTarget: 'tree', nameKey: LEAD_TREE_KEY });
+
+                expect(panel.isHidden(editorOf(panel))).toBe(false);
+
+            });
+
+            it('draws the box in the panel\'s own colours, its reason in the header\'s light text', () => {
+
+                const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+
+                expect(shellHtml).toMatch(/\.nameEditorInput \{[^}]*color: var\(--sdt-text\);[^}]*background-color: var\(--sdt-surface\);/);
+                expect(shellHtml).toContain('.treeNameEditor .nameEditorRefusal { font-weight: 600; color: var(--sdt-on-header); }');
+                // A NAVY RING VANISHES ON THE NAVY HEADER, SO THE BOX RINGS IN TEAL THERE, AS EVERY HEADER CONTROL DOES
+                expect(shellHtml).toContain('.treeHeader .nameEditorInput:focus { outline-color: var(--sdt-action); }');
+                expect(shellHtml).toContain('.nameEditorRefusal { font-size: 0.9em; color: var(--sdt-removed); }');
+
+            });
 
         });
 

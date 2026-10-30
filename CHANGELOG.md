@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.187.0] - Run Picklist Dependency Check runs the test suite through the Tooling API, and Cancel aborts it in the org
+## [3.188.0] - Run Picklist Dependency Check runs the test suite through the Tooling API, and Cancel aborts it in the org
 
 [#503](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/503), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). The check ran `sf apex run test --suite-names SDTPicklistDependencyTests --wait 10 --json` and read the CLI's payload. Cancel killed the process, which left the test job running in the org and reported an unreadable CLI answer as an error.
 
@@ -13,6 +13,16 @@
 - **Docs.** README, `docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md` and CLAUDE.md describe the run.
 - **Tests.** `PicklistDependencyCheckService.test.ts` drives the run against a fake connection: suite name only and no process, polling to the end, failures, paging, zero tests, compile failures, a failed or aborted job, unusable start and status answers, the timeout and the 10-minute wait, every cancel path (aborted, nothing to abort, an out-of-shape queue item, a refused or failed abort, a cancel during the start request and before the connection) and `results.json`/`report.md` for all pass and some fail. `ExtensionCommandService.test.ts` covers the cancel notification and that the progress cancel reaches the run.
 
+## [3.187.0] - Recipe Cockpit: a card's and a data set row's ✎ renames them in place, not in a VS Code input box
+
+[#551](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/551). The ✎ on a Treecipe card header and on a Previously Used Data Sets row opened VS Code's input box at the top of the window, far from the name being changed.
+
+- **A box where the name is.** ✎ puts a text box in the name's place, holding the current name (empty when there is none) selected, with the folder name as its placeholder; ✎ carries `aria-expanded`. **Enter** or leaving the box saves; **Escape**, or ✎ again, keeps the old name and gives focus back to ✎. A name is posted once: the blur after Enter, or a name the host just refused, posts nothing more, and the unchanged name closes the box with nothing posted. An empty name, or a card's own folder name, goes back to the folder name.
+- **The host still decides.** The panel posts `renameTree {treeKey, name, renderSequence}` or `renameDataset {datasetFolderName, name, renderSequence}`. The router matches the card or row against `nameableTreeKeys`/`nameableDatasetFolderNames` as before, and refuses a name that is not a string of at most 80 characters and a model no longer on screen. The executor checks the name with `validateTreeName`/`validateDatasetName` on the names stored when it runs, saves, redraws in place through `treePreferences`/`datasetPreferences`, and answers the new `nameEditResult`. A refusal (another card's or data set's name, a line break, a failed write: `RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL`, beside the warning that says why) is written under the box with `textContent` and the box stays open with what was typed. No `showInputBox` is opened.
+- **An answer settles only its own post.** `nameEditResult` echoes the name as posted and the model it was typed over (carried on the routed action, never read after the write), so an answer to an earlier name, or one finished after a new model was drawn, never closes or marks a later box. An Enter that ends an input method's composition does not save. The box is named (`Rename <name>`), its input is `aria-describedby` the refusal line and `aria-invalid` while refused, and in a card's navy header it rings in teal like every other header control.
+- **Unchanged.** Names and favorites are stored where and as they were, the naming rules are the same, ☆ posts what it did, ✎ and ☆ keep their place before the name (#540), and no folder is renamed. The box's colours are pairs the contrast test already holds.
+- **Docs.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say how the box saves and cancels.
+- **Tests.** `RecipeCockpitTreePreferences.test.ts` and `RecipeCockpitDatasetPreferences.test.ts`: the router's new shape and refusals, the executor's save, clear, refusal, a name another window stored since, a failed write and a stale model, a scan for `showInputBox`, and the panel's box (built on first open, Enter, blur, Escape, ✎ as a cancel, the refusal line, a close once the name is redrawn, an answer for another model or card ignored).
 ## [3.186.0] - Recipe Cockpit: Favorites only sits beside the Treecipe dropdown, and the run list reads "Select Generated Treecipe runs by date:"
 
 [#548](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/548). **Favorites only** was the last thing in the toolbar row just above the pinned Target Org Manager, so it read as an org control, though it narrows the Treecipes section's dropdown.
