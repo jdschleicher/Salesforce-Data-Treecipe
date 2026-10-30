@@ -118,7 +118,7 @@ import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingSe
 import { RecipeYamlScalar } from "../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField, IFrameworkScaffoldResult } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
-import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyTestRunCancelledError } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 import {
     PicklistDependencyExplorerService,
@@ -3747,6 +3747,43 @@ describe('ExtensionCommandService', () => {
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('not installed or not on PATH');
             expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('runPicklistDependencyCheck');
+
+        });
+
+        test('given a cancelled test run, says whether the job was aborted in the org and writes nothing (#503)', async () => {
+
+            const abortedMessage = 'Picklist dependency check cancelled. The test run 7070000000000AAAAA was aborted in "devHub" (1 queued test class(es) stopped).';
+            runPicklistDependencyTestsSpy.mockRejectedValue(new PicklistDependencyTestRunCancelledError(abortedMessage));
+            const writeCheckResultArtifactsSpy = jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts');
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(abortedMessage);
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(showReportSpy).not.toHaveBeenCalled();
+            expect(writeCheckResultArtifactsSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a cancel, hands the test run a function the progress cancel calls (#503)', async () => {
+
+            const cancelTestRun = jest.fn();
+            runPicklistDependencyTestsSpy.mockImplementation(async (_targetOrgIdentifier: string, registerCancellation: (cancel: () => void) => void) => {
+                registerCancellation(cancelTestRun);
+                return passingCheckOutcome;
+            });
+
+            let cancellationListener: (() => void) | undefined;
+            (vscode.window.withProgress as jest.Mock).mockImplementationOnce(async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+                task({ report: jest.fn() }, {
+                    isCancellationRequested: false,
+                    onCancellationRequested: (listener: () => void) => { cancellationListener = listener; }
+                }));
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            cancellationListener();
+            expect(cancelTestRun).toHaveBeenCalledTimes(1);
 
         });
 

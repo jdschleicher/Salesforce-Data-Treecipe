@@ -16,7 +16,7 @@ import { RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RecipeCockpitRunArtifacts } f
 import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
-import { PicklistDependencyCheckService, PicklistDependencyDeployReason, IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyDeployReason, PicklistDependencyTestRunCancelledError, IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
     PicklistDependencyExplorerService,
     IPicklistDependencyExplorerViewModel,
@@ -1403,8 +1403,8 @@ export class ExtensionCommandService {
             cancellable: true
         }, async (progress, cancellationToken) => {
 
-            const registerCancellation = (killChildProcess: () => void) => {
-                cancellationToken.onCancellationRequested(() => killChildProcess());
+            const registerCancellation = (cancelRun: () => void) => {
+                cancellationToken.onCancellationRequested(() => cancelRun());
             };
 
             let deployRequired = alwaysDeploy;
@@ -1463,7 +1463,19 @@ export class ExtensionCommandService {
 
             progress.report({ message: `Running ${PicklistDependencyCheckService.getSpecsTestClassName()} against ${targetOrgIdentifier}...` });
 
-            return await PicklistDependencyCheckService.runPicklistDependencyTests(targetOrgIdentifier, registerCancellation);
+            try {
+                return await PicklistDependencyCheckService.runPicklistDependencyTests(targetOrgIdentifier, registerCancellation);
+            } catch (testRunError) {
+
+                // A CANCEL IS NOT AN ERROR: ITS MESSAGE SAYS WHETHER THE TEST JOB WAS ABORTED IN THE ORG
+                if ( testRunError instanceof PicklistDependencyTestRunCancelledError ) {
+                    vscode.window.showInformationMessage(testRunError.message);
+                    return undefined;
+                }
+
+                throw testRunError;
+
+            }
 
         });
 

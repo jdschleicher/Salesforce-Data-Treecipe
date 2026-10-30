@@ -123,10 +123,10 @@ flowchart TB
     CORE -->|"Tooling API query<br/>TestSuiteMembership"| DEPLOY
     DISK -.->|"--source-dir, explicit file list"| CLI
     CLI -->|"authenticated session"| DEPLOY
-    CLI -->|"sf apex run test"| TEST
+    CORE -->|"Tooling API runTestsAsynchronous<br/>by suite, then ApexTestResult"| TEST
     TEST --> DESC
-    TEST -->|"JSON test results"| CLI
-    CLI --> CHK
+    TEST -->|"ApexTestResult rows"| CORE
+    CORE --> CHK
     CHK -->|"results.json + report.md"| DISK
 
     style LOCAL fill:#eef2ff,stroke:#4338ca
@@ -571,7 +571,7 @@ Three consequences follow, and each is handled explicitly in `SDTSchemaPicklistD
 
 ### Execution path
 
-One entry point exists: the generated, **deployed** Apex test. Every run — the extension command, the demo harness, CI — deploys `SDTPLDSpecsTest` and the `SDTPicklistDependencyTests` suite alongside the specs and executes the suite with `sf apex run test --suite-names`. There is deliberately no anonymous-Apex variant: a check that runs from deployed Apex always executes in system context, so its result cannot vary with the running user ([§9](#9-permissions-and-access-model)).
+One entry point exists: the generated, **deployed** Apex test. Every run — the extension command, the demo harness, CI — deploys `SDTPLDSpecsTest` and the `SDTPicklistDependencyTests` suite alongside the specs and executes the suite by name: the extension command through the Tooling API's `runTestsAsynchronous` (#503), the demo harness and CI with `sf apex run test --suite-names`. There is deliberately no anonymous-Apex variant: a check that runs from deployed Apex always executes in system context, so its result cannot vary with the running user ([§9](#9-permissions-and-access-model)).
 
 ```mermaid
 flowchart TB
@@ -772,7 +772,7 @@ flowchart TB
     end
 
     subgraph exec["Execution zone — read-only against metadata"]
-        R["<b>Run test step</b><br/>sf apex run test"]
+        R["<b>Run test step</b><br/>Tooling API runTestsAsynchronous"]
         RP["Required: authorised org + test execution rights<br/><i>Reads describe. Creates no records.</i>"]
         R --- RP
     end
@@ -796,7 +796,7 @@ flowchart TB
 | List authorised orgs | `sf` CLI | None — reads the local CLI auth store | The extension surfaces only orgs the user has already authorised |
 | Query `TestSuiteMembership` (deploy-needed check) | Extension, Tooling API over a `@salesforce/core` connection | **API Enabled**; read access to the `TestSuiteMembership` tooling object, which in practice accompanies **View Setup and Configuration** **[verify-in-org]** | A failure is treated as "not deployed" — the design prefers a redundant prompt over a skipped deploy |
 | Deploy the classes | `sf project deploy start` | **API Enabled** + **Author Apex** **[verify-in-org]** | Author Apex is the governing permission for creating/updating `ApexClass` via the Metadata API |
-| Run the test class | `sf apex run test` | **API Enabled** + Apex test execution rights, conventionally granted with **Author Apex** **[verify-in-org]** | Creates no records; reads describe only |
+| Run the test suite | Extension, Tooling API `runTestsAsynchronous` over a `@salesforce/core` connection; a cancel sets its `ApexTestQueueItem`s to `Aborted` | **API Enabled** + Apex test execution rights, conventionally granted with **Author Apex** **[verify-in-org]** | Creates no records; reads describe only |
 
 > **[verify-in-org]** The precise permission names above reflect standard Salesforce practice, but permission-to-operation mappings change between releases and are affected by org-specific permission sets. Confirm each against your own org and your current API version before writing them into a policy document. [§12](#12-verification-checklist) gives a procedure.
 

@@ -381,7 +381,7 @@ The command:
 
 1. Lists your connected orgs and prompts you to pick the target (see [Which orgs the pickers list](#which-orgs-the-pickers-list))
 2. Checks whether the `SDTPicklistDependencyTests` suite in that org still contains `SDTPLDSpecsTest`, and offers to deploy if it does not — nothing is deployed without explicit confirmation. Membership is what is checked rather than the suite's existence: a suite whose member class was deleted still exists, and running it would pass having asserted nothing
-3. Runs the suite with `sf apex run test --suite-names SDTPicklistDependencyTests`
+3. Runs the `SDTPicklistDependencyTests` suite through the Tooling API (no `sf` process) and waits up to 10 minutes for it to finish. **Cancel** aborts the test job in the org and says whether it was aborted; a run still going after 10 minutes is left running there and nothing is written
 4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
 5. Saves the results into `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/` as `results.json` and `report.md`
 
