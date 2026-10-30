@@ -404,6 +404,20 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
         });
 
+        it('keeps only a token for the held data, so a preview never holds a released result, load or set of values in memory', async () => {
+
+            await openCockpit();
+            const heldRecords = { records: [{ Id: ACCOUNT_ID }] };
+            (RecipeCockpitService as any).heldUpdaterRecords = heldRecords;
+            const recordLinkSequence = RecipeCockpitService.registerRecordLinkPreview(panelState(), previewDetail('updaterRecords', heldRecords, lastRenderSequence(), new Map([['Account', [ACCOUNT_ID]]])))!;
+
+            const storedPreview = panelState().pendingOpenableRecordPreviews.get(recordLinkSequence)!;
+            expect(Object.values(storedPreview)).not.toContain(heldRecords);
+            expect(storedPreview).not.toHaveProperty('heldSource');
+            expect(storedPreview.heldSourceToken).toEqual(expect.any(Number));
+
+        });
+
         it('contacts no org for a forged row index', async () => {
 
             answerOrgOpen(async () => ({ frontdoor_uri: FRONT_DOOR_URI }));

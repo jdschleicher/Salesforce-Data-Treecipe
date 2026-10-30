@@ -2100,8 +2100,10 @@ export interface IRecipeCockpitUpdaterValuesMessage {
 
 /*
     A preview whose rows link their record (#556), as the host keeps it: the Ids by object ('' for
-    the Query tab's one result) and row, the org they were read from, and the held data they came
-    from, which a click must still find held. The panel is sent only positions.
+    the Query tab's one result) and row, the org they were read from, and a TOKEN for the held data
+    they came from, which a click must still find held. A token and never the data itself, so a
+    preview does not keep a released result, load or set of values in memory. The panel is sent only
+    positions.
 */
 export type RecipeCockpitRecordLinkPreviewKind = 'query' | 'updaterRecords' | 'updaterValues';
 
@@ -2111,7 +2113,7 @@ export interface IRecipeCockpitOpenableRecordPreview {
     renderSequence: number;
     treeKey: string;
     orgUsername: string;
-    heldSource: object;
+    heldSourceToken: number;
     recordIdsByObjectApiName: Map<string, (string | undefined)[]>;
 }
 
@@ -9283,7 +9285,7 @@ export class RecipeCockpitService {
             : preview.previewKind === 'updaterRecords' ? this.heldUpdaterRecords
             : this.heldUpdaterValues;
 
-        if ( heldSource === undefined || heldSource !== preview.heldSource ) {
+        if ( heldSource === undefined || this.heldSourceTokens.get(heldSource) !== preview.heldSourceToken ) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL));
             return;
         }
@@ -9294,13 +9296,18 @@ export class RecipeCockpitService {
 
     private static recordLinkSequence = 0;
 
+    // HELD DATA → THE TOKEN ITS PREVIEW CARRIES: A WeakMap, SO A TOKEN NEVER KEEPS RELEASED DATA ALIVE
+    private static heldSourceTokens = new WeakMap<object, number>();
+
+    private static heldSourceTokenSequence = 0;
+
     /*
         Keeps a preview's record links PENDING (#556), replacing any earlier preview of its kind, and
         answers the sequence to post with it -- or undefined when no row links a record, so a preview
         with none posts exactly what it did.
     */
     static registerRecordLinkPreview(panelState: IRecipeCockpitPanelState,
-                                     previewDetail: Omit<IRecipeCockpitOpenableRecordPreview, 'recordLinkSequence'>): number | undefined {
+                                     previewDetail: Omit<IRecipeCockpitOpenableRecordPreview, 'recordLinkSequence' | 'heldSourceToken'> & { heldSource: object }): number | undefined {
 
         [panelState.pendingOpenableRecordPreviews, panelState.openableRecordPreviews].forEach(previews => {
             [...previews.entries()].forEach(([recordLinkSequence, preview]) => {
@@ -9315,8 +9322,15 @@ export class RecipeCockpitService {
             return undefined;
         }
 
+        const { heldSource, ...previewFields } = previewDetail;
+        let heldSourceToken = this.heldSourceTokens.get(heldSource);
+        if ( heldSourceToken === undefined ) {
+            heldSourceToken = ++this.heldSourceTokenSequence;
+            this.heldSourceTokens.set(heldSource, heldSourceToken);
+        }
+
         const recordLinkSequence = ++this.recordLinkSequence;
-        panelState.pendingOpenableRecordPreviews.set(recordLinkSequence, { ...previewDetail, recordLinkSequence: recordLinkSequence });
+        panelState.pendingOpenableRecordPreviews.set(recordLinkSequence, { ...previewFields, heldSourceToken: heldSourceToken, recordLinkSequence: recordLinkSequence });
 
         return recordLinkSequence;
 
