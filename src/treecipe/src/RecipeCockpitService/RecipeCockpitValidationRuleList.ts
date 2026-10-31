@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as xml2js from 'xml2js';
 
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VALIDATION_RULE_FILE_SUFFIX, VALIDATION_RULES_DIRECTORY_NAME, ValidationRuleAnalyzerService } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 
 /*
@@ -400,6 +401,112 @@ export class RecipeCockpitValidationRuleList {
         }
 
         return objects;
+
+    }
+
+    // ONE RULE OF ONE OBJECT, AS THE PANEL NAMES IT TO OPEN ITS FILE (#560)
+    static buildRuleSourceKey(objectApiName: string, ruleName: string): string {
+        return `${objectApiName}\n${ruleName}`;
+    }
+
+    /*
+        The file of each named rule (#560), keyed by buildRuleSourceKey. A file is matched by the name
+        generation recorded it under (<fullName>, else its file name), read here without xml2js so a
+        model load stays synchronous. Only a regular file (a Dirent of a link is not a file) inside
+        the workspace is kept, only an object and rule that ARE api names are looked for, and a name
+        two files claim is left out: neither can be called the rule.
+    */
+    static resolveRuleSourceFilePaths(objectsDirectoryPath: string,
+                                        workspaceRoot: string,
+                                        ruleNamesByObject: ReadonlyMap<string, readonly string[]>): Map<string, string> {
+
+        const sourceFilePaths = new Map<string, string>();
+        const wantedRuleNamesByObject = new Map<string, Set<string>>();
+
+        ruleNamesByObject.forEach((ruleNames, objectApiName) => {
+            const wantedRuleNames = new Set(ruleNames.filter(ruleName => SalesforceApiName.isApiName(ruleName)));
+            if ( SalesforceApiName.isApiName(objectApiName) && wantedRuleNames.size > 0 ) {
+                wantedRuleNamesByObject.set(objectApiName, wantedRuleNames);
+            }
+        });
+
+        if ( wantedRuleNamesByObject.size === 0 ) {
+            return sourceFilePaths;
+        }
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const objectDirectoryPaths = this.findObjectDirectoryPaths(objectsDirectoryPath, [...wantedRuleNamesByObject.keys()]);
+
+        wantedRuleNamesByObject.forEach((wantedRuleNames, objectApiName) => {
+
+            const objectDirectoryPath = objectDirectoryPaths.get(objectApiName);
+            if ( !objectDirectoryPath ) {
+                return;
+            }
+
+            const rulesDirectoryPath = path.join(objectDirectoryPath, VALIDATION_RULES_DIRECTORY_NAME);
+            let ruleFileNames: string[];
+            try {
+                if ( !fs.lstatSync(rulesDirectoryPath).isDirectory() ) {
+                    return;
+                }
+                ruleFileNames = fs.readdirSync(rulesDirectoryPath, { withFileTypes: true })
+                    .filter(ruleEntry => ruleEntry.isFile() && ValidationRuleAnalyzerService.isValidationRuleFileName(ruleEntry.name))
+                    .map(ruleEntry => ruleEntry.name)
+                    .sort()
+                    .slice(0, VALIDATION_RULE_LIST_MAX_RULES_PER_OBJECT);
+            } catch {
+                return;
+            }
+
+            const filePathsByRuleName = new Map<string, string[]>();
+            ruleFileNames.forEach(ruleFileName => {
+                const ruleFilePath = path.join(rulesDirectoryPath, ruleFileName);
+                const recordedName = this.readRecordedRuleName(ruleFilePath, ruleFileName.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length));
+                if ( recordedName !== undefined && wantedRuleNames.has(recordedName) ) {
+                    filePathsByRuleName.set(recordedName, [...( filePathsByRuleName.get(recordedName) ?? [] ), ruleFilePath]);
+                }
+            });
+
+            filePathsByRuleName.forEach((ruleFilePaths, ruleName) => {
+                if ( ruleFilePaths.length === 1 && SfdxProjectService.isPathContainedInWorkspace(path.resolve(ruleFilePaths[0]), resolvedWorkspaceRoot) ) {
+                    sourceFilePaths.set(this.buildRuleSourceKey(objectApiName, ruleName), ruleFilePaths[0]);
+                }
+            });
+
+        });
+
+        return sourceFilePaths;
+
+    }
+
+    // THE NAME A RULE FILE IS RECORDED UNDER, AS readValidationRuleXml READS IT; undefined FOR A FILE THAT CANNOT BE READ
+    static readRecordedRuleName(ruleFilePath: string, fileRuleName: string): string | undefined {
+
+        let ruleXml: string;
+        try {
+            if ( fs.lstatSync(ruleFilePath).size > VALIDATION_RULE_LIST_MAX_FILE_BYTES ) {
+                return undefined;
+            }
+            ruleXml = fs.readFileSync(ruleFilePath, 'utf-8');
+        } catch {
+            return undefined;
+        }
+
+        const fullNameMatches = [...ruleXml.matchAll(/<fullName>([^<]*)<\/fullName>/g)];
+        if ( fullNameMatches.length > 1 ) {
+            return undefined;
+        }
+
+        return fullNameMatches.length === 1 ? fullNameMatches[0][1] : fileRuleName;
+
+    }
+
+    // THE 1-BASED LINE A RULE FILE IS OPENED AT: ITS <errorConditionFormula>, ELSE ITS FIRST LINE
+    static findFormulaLineNumber(ruleXml: string): number {
+
+        const formulaLineIndex = ruleXml.split(/\r\n|\r|\n/).findIndex(ruleLine => ruleLine.includes('<errorConditionFormula>'));
+        return formulaLineIndex >= 0 ? formulaLineIndex + 1 : 1;
 
     }
 

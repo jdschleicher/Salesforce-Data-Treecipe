@@ -42,7 +42,7 @@ Each action there is a card you click anywhere on, saying when you would need it
 Click a column's header to sort by it, and again to turn the order; it starts newest first.
 A step from before this was recorded shows *Not recorded*, since only its time and files are known.
 **Validation Rules** lists each object's validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did (such as *2 applied · 1 not applied*): whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not.
-**Show formula** opens a rule's formula.
+**Show formula** opens a rule's formula, and **↗ xml** opens its `.validationRule-meta.xml` file.
 
 ![The cockpit's title row with the GitHub icon and the ? button at its right, above the Target Org Manager section and the Treecipes section's run list labelled Select Generated Treecipe runs by date:, its search box, its Treecipe dropdown with Favorites only beside it, the line naming the card's objects in insert order, and the one card it shows](images/recipe-cockpit/where-recipes-come-from.png)
 
@@ -53,7 +53,7 @@ These settings change what is generated, but the recipe file stays exactly as Ge
 - **Excluded objects** (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.
 - **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all, and **Standard fields** beside it does the same for the fields whose name does not end in `__c`, leaving your custom fields as they are. **Hide unselected** beside them hides that object's unticked fields so you see only what is generated, and is remembered when you come back. Before an insert, the confirmation's **Left out, per object** section lists each excluded object and, under each object, the fields left out: the ones you unticked and any lookup cut because its parent is excluded.
 - **Record counts**: each object's row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend's count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.
-- **The rules box**: a field generated without the limits its validation rules set.
+- **The rules box**: a field generated without the limits its validation rules set. Beside it, **↗** and a rule's name open that rule's `.validationRule-meta.xml` file at its formula, for each rule the field names, applied or not.
 - **Nested copies**: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.
 
 ![A card with one object excluded, a field unticked and a count changed](images/recipe-cockpit/changes-without-editing-the-yaml.png)

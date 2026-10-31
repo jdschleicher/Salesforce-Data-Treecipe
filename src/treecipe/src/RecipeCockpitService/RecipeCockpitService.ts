@@ -598,7 +598,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card\'s Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'History lists every Troubleshooting step taken for the tree, from every run of it, in one table: when it ran, the step (a deploy, a retrieve, Assign permission sets or Generate permission set), the org, how it ended and what it counted, the run, and its files, each a link that opens it. Click a column\'s header to sort by it, and again to turn the order; it starts newest first. A step from before this was recorded shows Not recorded, since only its time and files are known.',
-            'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
+            'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula, and ↗ xml opens its .validationRule-meta.xml file.'
         ]
     },
     {
@@ -610,7 +610,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
             'Record counts: each object\'s row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend\'s count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
-            'The rules box: a field generated without the limits its validation rules set.',
+            'The rules box: a field generated without the limits its validation rules set. Beside it, ↗ and a rule\'s name open that rule\'s .validationRule-meta.xml file at its formula, for each rule the field names, applied or not.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
         ]
     },
@@ -771,6 +771,8 @@ export interface IRecipeCockpitFieldValidationRulesViewModel {
     recipeValue?: string;
     unconstrainedRecipeValue?: string;
     unconstrainedExpression?: string;
+    // THE RULES, APPLIED OR NOT, WHOSE FILE THE PROJECT HOLDS (#560): SET ONLY WHEN ONE IS, SO A ROW DRAWS A LINK TO EACH
+    sourceRuleNames?: string[];
 }
 
 export interface IRecipeCockpitValidationRuleNotAppliedViewModel {
@@ -1289,6 +1291,8 @@ export interface IRecipeRecordTypeBlocks {
 */
 export interface IRecipeCockpitPanelMessage {
     command?: string;
+    // A RULE'S FILE (#560): THE RULE A DRAWN ROW NAMES
+    ruleName?: unknown;
     // THE QUERY TAB (#367): WHICH GENERATED QUERY, THE READER'S TEXT FOR IT, AND AN EXPORT'S FORMAT
     queryKey?: unknown;
     queryText?: unknown;
@@ -1748,7 +1752,14 @@ export interface IRecipeCockpitTreeValidationRulesMessage {
     renderSequence: number;
     treeKey: string;
     objects: IValidationRuleListObject[];
+    // THE RULES WHOSE FILE A ROW LINKS TO (#560), SET ONLY WHEN ONE DOES
+    openableRules?: IRecipeCockpitValidationRuleSourceViewModel[];
     failureMessage?: string;
+}
+
+export interface IRecipeCockpitValidationRuleSourceViewModel {
+    objectApiName: string;
+    ruleName: string;
 }
 
 /*
@@ -2496,7 +2507,13 @@ export const RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE = 'Reading this projec
 export const RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE = 'This project holds no validation rule files for this tree\'s objects. Retrieve validation rules… brings them from an org; run Generate Treecipe afterwards so they shape the recipe.';
 export const RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE = 'No validation rules.';
 export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE = 'Added or activated since Generate Treecipe ran. Run Generate Treecipe to apply it.';
-export const RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE = 'This run recorded the rule, and its file is no longer in this project.';
+// A RULE'S FILE LINK (#560): ON A FIELD ROW IT NAMES THE RULE, SINCE A FIELD CAN HAVE SEVERAL; A LIST ROW ALREADY DOES
+export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = '↗ ';
+export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = '↗ xml';
+export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX = 'Open the validation rule file of';
+export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX = 'The validation rule file was not found for';
+export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_ADVICE = 'It may have been moved, renamed, replaced by a link, claimed by a second file or left the workspace. Re-open the Recipe Cockpit to load the project as it is now.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE ='This run recorded the rule, and its file is no longer in this project.';
 export const RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE = 'Constrains no field this run read.';
 // WHAT A TODO's ENTRY SAYS FOR A FIELD TODO WHOSE TEXT THE PANEL COULD NOT FIND IN THE FIELD'S VALUE
 export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s value';
@@ -2956,6 +2973,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'activateDatasetActions' }
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
+    | { kind: 'openValidationRuleSource'; objectApiName: string; ruleName: string }
+    | { kind: 'activateValidationRuleList'; treeKey: string }
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'generateTreecipe' }
     | { kind: 'openHelpGuide' }
@@ -3069,6 +3088,10 @@ export interface IRecipeCockpitPanelState {
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     loadFailedMessage?: IRecipeCockpitLoadFailedMessage;
     pendingOpenableSourceKeys: Set<string>;
+    // A RULE'S FILE (#560), BY RecipeCockpitValidationRuleList.buildRuleSourceKey: THE FIELD ROWS' AT POST, EACH VALIDATION RULES LIST'S UNTIL IT IS DRAWN
+    pendingOpenableValidationRuleKeys: Set<string>;
+    pendingValidationRuleListKeys: Map<string, { renderSequence: number; ruleKeys: string[] }>;
+    openableValidationRuleKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
     pendingLoadablePicklistKeys: Set<string>;
     openableSourceKeys: Set<string>;
@@ -6734,6 +6757,9 @@ export class RecipeCockpitService {
             loadPhaseMessage: '',
             picklistDisplayValuesByObjectApiName: new Map(),
             pendingOpenableSourceKeys: new Set(),
+            pendingOpenableValidationRuleKeys: new Set(),
+            pendingValidationRuleListKeys: new Map(),
+            openableValidationRuleKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
             pendingLoadablePicklistKeys: new Set(),
             openableSourceKeys: new Set(),
@@ -7268,6 +7294,9 @@ export class RecipeCockpitService {
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
+        panelState.pendingOpenableValidationRuleKeys = new Set(this.collectOpenableValidationRuleKeys(recipeViewModel));
+        panelState.pendingValidationRuleListKeys = new Map();
+        panelState.openableValidationRuleKeys = new Set();
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
         panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel, loadedRecipe.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
@@ -7485,6 +7514,8 @@ export class RecipeCockpitService {
                 // A RELOADED DOCUMENT DREW NO DIALOG, AND ONE IS NEVER REPLAYED: THE ACTION IS CANCELLED
                 this.cancelPendingConfirmation();
                 panelState.openableSourceKeys = new Set();
+                panelState.openableValidationRuleKeys = new Set();
+                panelState.pendingValidationRuleListKeys = new Map();
                 panelState.selectableRunFolderNames = new Set();
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
@@ -7517,6 +7548,7 @@ export class RecipeCockpitService {
                 panelState.restorePlace = undefined;
                 panelState.openFocusTree = undefined;
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
+                panelState.openableValidationRuleKeys = new Set(panelState.pendingOpenableValidationRuleKeys);
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
@@ -7548,6 +7580,8 @@ export class RecipeCockpitService {
                 if ( panelAction.invalidatesPanel ) {
                     this.cancelPendingConfirmation();
                     panelState.openableSourceKeys = new Set();
+                    panelState.openableValidationRuleKeys = new Set();
+                    panelState.pendingValidationRuleListKeys = new Map();
                     panelState.selectableRunFolderNames = new Set();
                     panelState.loadablePicklistKeys = new Set();
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
@@ -7602,6 +7636,20 @@ export class RecipeCockpitService {
 
                 await VSCodeWorkspaceService.openFileInEditor(panelAction.filePath, panelAction.lineNumber);
                 return;
+
+            case 'openValidationRuleSource':
+
+                await this.openValidationRuleSource(panelState.workspaceRoot, panelAction.objectApiName, panelAction.ruleName);
+                return;
+
+            case 'activateValidationRuleList': {
+
+                const pendingList = panelState.pendingValidationRuleListKeys.get(panelAction.treeKey);
+                pendingList?.ruleKeys.forEach(ruleKey => panelState.openableValidationRuleKeys.add(ruleKey));
+                panelState.pendingValidationRuleListKeys.delete(panelAction.treeKey);
+                return;
+
+            }
 
             case 'selectRun':
 
@@ -9825,6 +9873,10 @@ export class RecipeCockpitService {
         }
 
         if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            this.recipeCockpitPanelState.pendingValidationRuleListKeys.set(treeKey, {
+                renderSequence: renderSequence,
+                ruleKeys: ( rulesMessage.openableRules ?? [] ).map(openableRule => RecipeCockpitValidationRuleList.buildRuleSourceKey(openableRule.objectApiName, openableRule.ruleName))
+            });
             this.postToPanel(cockpitPanel, rulesMessage);
         }
 
@@ -9856,6 +9908,22 @@ export class RecipeCockpitService {
         }
 
         rulesMessage.objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsDirectoryPath, objectApiNames, this.validationRuleRunRecordsRead.runRulesByObject);
+
+        const listedRuleNamesByObject = new Map(rulesMessage.objects.map(listObject => [
+            listObject.objectApiName,
+            listObject.rules.filter(rule => !rule.isFileMissing).map(rule => rule.ruleName)
+        ]));
+        const sourceFilePaths = RecipeCockpitValidationRuleList.resolveRuleSourceFilePaths(objectsDirectoryPath, workspaceRoot, listedRuleNamesByObject);
+        const openableRules: IRecipeCockpitValidationRuleSourceViewModel[] = [];
+        listedRuleNamesByObject.forEach((ruleNames, objectApiName) => new Set(ruleNames).forEach(ruleName => {
+            if ( sourceFilePaths.has(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectApiName, ruleName)) ) {
+                openableRules.push({ objectApiName: objectApiName, ruleName: ruleName });
+            }
+        }));
+        if ( openableRules.length > 0 ) {
+            rulesMessage.openableRules = openableRules;
+        }
+
         return rulesMessage;
 
     }
@@ -17034,6 +17102,38 @@ export class RecipeCockpitService {
 
             }
 
+            // A RULE'S FILE (#560): NAMES ONLY, MATCHED AGAINST THE RULES A DRAWN ROW LINKS TO; THE HOST FINDS THE FILE AGAIN
+            case 'openValidationRuleSource': {
+
+                const { objectApiName, ruleName } = panelMessage;
+
+                if ( typeof objectApiName !== 'string'
+                        || typeof ruleName !== 'string'
+                        || !panelState.openableValidationRuleKeys.has(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectApiName, ruleName)) ) {
+                    return undefined;
+                }
+
+                return { kind: 'openValidationRuleSource', objectApiName: objectApiName, ruleName: ruleName };
+
+            }
+
+            // A VALIDATION RULES LIST WAS DRAWN (#560): ITS LINKS ARE HONOURED FROM HERE, AND ONLY FOR THE MODEL THEY WERE READ FOR
+            case 'validationRulesRendered': {
+
+                const { treeKey, renderSequence } = panelMessage;
+                const pendingList = typeof treeKey === 'string' ? panelState.pendingValidationRuleListKeys.get(treeKey) : undefined;
+
+                if ( !pendingList
+                        || panelState.acknowledgedRenderSequence === null
+                        || renderSequence !== panelState.acknowledgedRenderSequence
+                        || pendingList.renderSequence !== renderSequence ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateValidationRuleList', treeKey: treeKey as string };
+
+            }
+
             /*
                 No payload to check: the button is drawn only in the empty state of a model with no
                 run, so it is honoured only once THAT model's "rendered" has arrived, and never while
@@ -19282,6 +19382,98 @@ export class RecipeCockpitService {
     }
 
     // EVERY FILE AND LINE THE RENDERED MODEL OFFERS TO OPEN, AND NOTHING ELSE
+    /*
+        Each rule a field row names (#560) gets sourceRuleNames for the ones whose file the project
+        holds, found once per load from the configured objects path. Only a field with rules is
+        looked at, so a run without them reads no configuration and posts the model it did; a path
+        that cannot be resolved costs the links, never the load.
+    */
+    static attachValidationRuleSources(objects: IRecipeCockpitObjectViewModel[], workspaceRoot: string) {
+
+        const ruleNamesOf = (validationRules: IRecipeCockpitFieldValidationRulesViewModel) =>
+            [...new Set([...validationRules.appliedRuleNames, ...validationRules.notAppliedRules.map(notAppliedRule => notAppliedRule.ruleName)])];
+
+        const ruleNamesByObject = new Map<string, string[]>();
+        objects.forEach(objectViewModel => objectViewModel.fields.forEach(fieldViewModel => {
+            if ( fieldViewModel.validationRules ) {
+                ruleNamesByObject.set(objectViewModel.objectApiName, [...( ruleNamesByObject.get(objectViewModel.objectApiName) ?? [] ), ...ruleNamesOf(fieldViewModel.validationRules)]);
+            }
+        }));
+
+        if ( ruleNamesByObject.size === 0 ) {
+            return;
+        }
+
+        let objectsDirectoryPath: string;
+        try {
+            objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
+        } catch {
+            return;
+        }
+
+        const sourceFilePaths = RecipeCockpitValidationRuleList.resolveRuleSourceFilePaths(objectsDirectoryPath, workspaceRoot, ruleNamesByObject);
+
+        objects.forEach(objectViewModel => objectViewModel.fields.forEach(fieldViewModel => {
+            if ( !fieldViewModel.validationRules ) {
+                return;
+            }
+            const sourceRuleNames = ruleNamesOf(fieldViewModel.validationRules)
+                .filter(ruleName => sourceFilePaths.has(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectViewModel.objectApiName, ruleName)));
+            if ( sourceRuleNames.length > 0 ) {
+                fieldViewModel.validationRules.sourceRuleNames = sourceRuleNames;
+            }
+        }));
+
+    }
+
+    static collectOpenableValidationRuleKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
+
+        const ruleKeys = new Set<string>();
+        const collect = (objectApiName: string, fieldViewModels: IRecipeCockpitFieldViewModel[]) => fieldViewModels.forEach(fieldViewModel =>
+            ( fieldViewModel.validationRules?.sourceRuleNames ?? [] ).forEach(ruleName => ruleKeys.add(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectApiName, ruleName))));
+
+        recipeViewModel.objects.forEach(objectViewModel => collect(objectViewModel.objectApiName, objectViewModel.fields));
+
+        return [...ruleKeys];
+
+    }
+
+    /*
+        A rule's file is found AGAIN at the click (#560): the allow-list says a drawn row named the
+        rule, not where its file is now, and a file replaced by a link, moved out of the workspace or
+        claimed by a second file since is not opened. It opens at the rule's formula.
+    */
+    static async openValidationRuleSource(workspaceRoot: string, objectApiName: string, ruleName: string) {
+
+        const ruleLabel = RecipeYamlScalar.escapeForNotification(`${objectApiName}.${ruleName}`);
+        let ruleFilePath: string | undefined;
+
+        try {
+            ruleFilePath = RecipeCockpitValidationRuleList.resolveRuleSourceFilePaths(
+                ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot),
+                workspaceRoot,
+                new Map([[objectApiName, [ruleName]]])
+            ).get(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectApiName, ruleName));
+        } catch {
+            ruleFilePath = undefined;
+        }
+
+        let ruleXml: string | undefined;
+        try {
+            ruleXml = ruleFilePath ? fs.readFileSync(ruleFilePath, 'utf-8') : undefined;
+        } catch {
+            ruleXml = undefined;
+        }
+
+        if ( !ruleFilePath || ruleXml === undefined ) {
+            VSCodeWorkspaceService.showWarningMessage(`${RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX} ${ruleLabel}. ${RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_ADVICE}`);
+            return;
+        }
+
+        await VSCodeWorkspaceService.openFileInEditor(ruleFilePath, RecipeCockpitValidationRuleList.findFormulaLineNumber(ruleXml));
+
+    }
+
     static collectOpenableSourceKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
 
         const openableSourceKeys: string[] = [];
@@ -19478,6 +19670,7 @@ export class RecipeCockpitService {
             .filter(objectViewModel => !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName)
                                         || !!objectViewModel.recipeFilePath);
         this.applyGeneratedRecordTypes(recipeViewModel.objects, recipeSourceRead.recordTypeBlocks);
+        this.attachValidationRuleSources(recipeViewModel.objects, workspaceRoot);
 
         const recipeTreeBuild = this.buildRecipeTreeViewModels(
             normalizedObjectsWrapper,
@@ -21792,6 +21985,9 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     const FIXED_VALUE_LOOKUP_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES)};
     const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
     const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
+    const VALIDATION_RULE_SOURCE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX)};
+    const VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL)};
+    const VALIDATION_RULE_SOURCE_TITLE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX)};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const SELECT_ALL_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL)};
     const STANDARD_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_LABEL)};
@@ -22078,6 +22274,21 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         sourceLinkElement.setAttribute('title', 'Open in the recipe file');
         sourceLinkElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'openSource', filePath: filePath, lineNumber: lineNumber });
+        });
+
+        return sourceLinkElement;
+
+    }
+
+    // A RULE'S FILE (#560): NAMES ONLY ARE POSTED, AND THE HOST OPENS THE FILE IT FINDS FOR THEM
+    function buildValidationRuleSourceLink(className, labelText, objectApiName, ruleName) {
+
+        const sourceLinkElement = createButton('link', className + ' sourceLink', labelText);
+        const description = VALIDATION_RULE_SOURCE_TITLE_PREFIX + ' ' + objectApiName + '.' + ruleName;
+        sourceLinkElement.setAttribute('title', description);
+        sourceLinkElement.setAttribute('aria-label', description);
+        sourceLinkElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'openValidationRuleSource', objectApiName: objectApiName, ruleName: ruleName });
         });
 
         return sourceLinkElement;
@@ -25340,6 +25551,13 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         } else if (field.validationRules && Array.isArray(field.validationRules.notAppliedRules) && field.validationRules.notAppliedRules.length > 0
                     && !( Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0 )) {
             fieldHeaderElement.appendChild(buildValidationRuleNotAppliedElement(field));
+        }
+
+        // ONE LINK PER RULE WHOSE FILE THE HOST FOUND (#560), APPLIED OR NOT, AFTER THE BOX OR NOTE
+        if (field.validationRules && Array.isArray(field.validationRules.sourceRuleNames)) {
+            field.validationRules.sourceRuleNames.forEach(function (ruleName) {
+                fieldHeaderElement.appendChild(buildValidationRuleSourceLink('treeFieldRuleSource', VALIDATION_RULE_SOURCE_LINK_PREFIX + String(ruleName), treeObjectState.object.objectApiName, String(ruleName)));
+            });
         }
 
         fieldRowElement.appendChild(fieldHeaderElement);
@@ -31270,6 +31488,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         }
 
         const objects = Array.isArray(rulesMessage.objects) ? rulesMessage.objects : [];
+        const openableRuleKeys = Object.create(null);
+        (Array.isArray(rulesMessage.openableRules) ? rulesMessage.openableRules : []).forEach(function (openableRule) {
+            openableRuleKeys[String(openableRule.objectApiName) + '\\n' + String(openableRule.ruleName)] = true;
+        });
         const hasLocalRules = objects.some(function (object) {
             return (Array.isArray(object.rules) && object.rules.some(function (rule) { return !rule.isFileMissing; })) || object.unreadRuleCount > 0;
         });
@@ -31288,7 +31510,11 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
                 toggleElement: null,
                 countElement: createElement('span', 'validationRuleCount muted'),
                 bodyElement: createElement('div', 'validationRuleRows hidden'),
-                entries: rules.map(function (rule) { return buildValidationRuleEntryState(objectApiName, rule); }),
+                entries: rules.map(function (rule) {
+                    const entry = buildValidationRuleEntryState(objectApiName, rule);
+                    entry.isSourceOpenable = !rule.isFileMissing && hasOwnKey(openableRuleKeys, objectApiName + '\\n' + entry.ruleName);
+                    return entry;
+                }),
                 matchingCount: 0,
                 isBuilt: false,
                 isExpanded: false,
@@ -31322,6 +31548,11 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         });
 
         applyTroubleshootingFilter(treeState, 'validationRules');
+
+        // ITS LINKS ARE HONOURED ONCE THE LIST IS ON SCREEN (#560)
+        if (Object.keys(openableRuleKeys).length > 0) {
+            vscodeApi.postMessage({ command: 'validationRulesRendered', treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence });
+        }
 
     }
 
@@ -31405,6 +31636,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         headerElement.appendChild(createElement('span', 'validationRuleName', entry.ruleName));
         headerElement.appendChild(createElement('span', 'validationRuleStatus', entry.statusLabel));
         if (entry.activeLabel) { headerElement.appendChild(createElement('span', 'validationRuleActive muted', entry.activeLabel)); }
+        if (entry.isSourceOpenable) { headerElement.appendChild(buildValidationRuleSourceLink('validationRuleSource', VALIDATION_RULE_SOURCE_LIST_LINK_LABEL, groupState.objectApiName, entry.ruleName)); }
         ruleElement.appendChild(headerElement);
 
         if (entry.messageText) { ruleElement.appendChild(createElement('div', 'validationRuleMessage', entry.messageText)); }
