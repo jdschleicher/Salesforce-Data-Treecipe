@@ -112,12 +112,36 @@ describe('RecipeCockpitValidationRuleList.resolveRuleSourceFilePaths (#560)', ()
 
     });
 
-    it('links neither file when two claim one rule name', () => {
+    it('takes the file named after the rule over another file claiming it, and links neither of two other files claiming it', () => {
 
-        fs.copyFileSync(path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml'), path.join(gadgetRulesPath, 'Score_High_Copy.validationRule-meta.xml'));
+        const scoreHighPath = path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml');
+        fs.copyFileSync(scoreHighPath, path.join(gadgetRulesPath, 'Score_High_Copy.validationRule-meta.xml'));
+        expect(resolve({ Gadget__c: ['Score_High'] }).get(ruleKey('Gadget__c', 'Score_High'))).toBe(scoreHighPath);
 
+        fs.renameSync(scoreHighPath, path.join(gadgetRulesPath, 'Score_High_Other.validationRule-meta.xml'));
         expect(resolve({ Gadget__c: ['Score_High', 'Score_Low'] }).has(ruleKey('Gadget__c', 'Score_High'))).toBeFalse();
         expect(resolve({ Gadget__c: ['Score_High', 'Score_Low'] }).has(ruleKey('Gadget__c', 'Score_Low'))).toBeTrue();
+
+    });
+
+    it('reads only the named rules\' own files when each is recorded under its file name', () => {
+
+        const readSpy = jest.spyOn(RecipeCockpitValidationRuleList, 'readRuleFileText');
+
+        expect(resolve({ Gadget__c: AMOUNT_RULES }).size).toBe(2);
+        expect(readSpy.mock.calls.map(readCall => path.basename(readCall[0])).sort()).toEqual(AMOUNT_RULES.map(ruleName => `${ruleName}.validationRule-meta.xml`));
+
+    });
+
+    it('reads <fullName> as generation does: a CDATA name is the rule it names, so its own file is not taken for it', () => {
+
+        fs.writeFileSync(path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml'), '<ValidationRule><fullName><![CDATA[Score_Low]]></fullName></ValidationRule>');
+
+        const sourceFilePaths = resolve({ Gadget__c: ['Score_High', 'Score_Low'] });
+
+        expect(sourceFilePaths.has(ruleKey('Gadget__c', 'Score_High'))).toBeFalse();
+        expect(sourceFilePaths.get(ruleKey('Gadget__c', 'Score_Low'))).toBe(path.join(gadgetRulesPath, 'Score_Low.validationRule-meta.xml'));
+        expect(RecipeCockpitValidationRuleList.readRecordedRuleName(path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml'), 'Score_High')).toBe('Score_Low');
 
     });
 
@@ -146,16 +170,19 @@ describe('RecipeCockpitValidationRuleList.resolveRuleSourceFilePaths (#560)', ()
 
     });
 
-    it('reads no recorded name from a file it cannot read, one past the size limit, or one with two <fullName>s', () => {
+    it('links no file whose text cannot be read, and records a file that does not parse, or names two <fullName>s, under its file name', () => {
 
-        const readSpy = jest.spyOn(fs, 'readFileSync').mockImplementationOnce(() => { throw new Error('EACCES'); });
-        expect(RecipeCockpitValidationRuleList.readRecordedRuleName(path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml'), 'Score_High')).toBeUndefined();
-        readSpy.mockRestore();
+        const scoreHighPath = path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml');
+        jest.spyOn(fs, 'readFileSync').mockImplementationOnce(() => { throw new Error('EACCES'); });
+        expect(RecipeCockpitValidationRuleList.readRecordedRuleName(scoreHighPath, 'Score_High')).toBeUndefined();
 
-        fs.writeFileSync(path.join(gadgetRulesPath, 'Score_High.validationRule-meta.xml'), 'x'.repeat(VALIDATION_RULE_LIST_MAX_FILE_BYTES + 1));
+        fs.writeFileSync(scoreHighPath, 'x'.repeat(VALIDATION_RULE_LIST_MAX_FILE_BYTES + 1));
         fs.writeFileSync(path.join(gadgetRulesPath, 'Score_Low.validationRule-meta.xml'), '<ValidationRule><fullName>Score_Low</fullName><fullName>Other</fullName></ValidationRule>');
+        fs.writeFileSync(path.join(gadgetRulesPath, 'Code_Format.validationRule-meta.xml'), '<ValidationRule><fullName>Code_Format');
 
-        expect(resolve({ Gadget__c: ['Score_High', 'Score_Low', 'Other'] }).size).toBe(0);
+        const sourceFilePaths = resolve({ Gadget__c: ['Score_High', 'Score_Low', 'Other', 'Code_Format'] });
+
+        expect([...sourceFilePaths.keys()].sort()).toEqual([ruleKey('Gadget__c', 'Code_Format'), ruleKey('Gadget__c', 'Score_Low')]);
 
     });
 
@@ -188,18 +215,21 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
         it('activates a list\'s links only for the acknowledged model it was read for', () => {
 
             const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
-            panelState.pendingValidationRuleListKeys.set(GADGET_TREE_KEY, { renderSequence: 3, ruleKeys: [ruleKey('Gadget__c', 'Inactive_Rule')] });
+            panelState.pendingValidationRuleListKeys.set(GADGET_TREE_KEY, { renderSequence: 3, listSequence: 5, ruleKeys: [ruleKey('Gadget__c', 'Inactive_Rule')] });
+            const ack = (overrides: Record<string, unknown> = {}) => RecipeCockpitService.routePanelMessage({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 3, listSequence: 5, ...overrides } as any, panelState);
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 3 } as any, panelState)).toBeUndefined();
+            expect(ack()).toBeUndefined();
 
             panelState.acknowledgedRenderSequence = 3;
-            expect(RecipeCockpitService.routePanelMessage({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 3 } as any, panelState))
-                .toEqual({ kind: 'activateValidationRuleList', treeKey: GADGET_TREE_KEY });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 2 } as any, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'validationRulesRendered', treeKey: 'Other', renderSequence: 3 } as any, panelState)).toBeUndefined();
+            expect(ack()).toEqual({ kind: 'activateValidationRuleList', treeKey: GADGET_TREE_KEY });
+            expect(ack({ renderSequence: 2 })).toBeUndefined();
+            expect(ack({ treeKey: 'Other' })).toBeUndefined();
+            // THE ACK OF A LIST A RETRIEVE HAS SINCE REPLACED
+            expect(ack({ listSequence: 4 })).toBeUndefined();
+            expect(ack({ listSequence: undefined })).toBeUndefined();
 
             panelState.acknowledgedRenderSequence = 4;
-            expect(RecipeCockpitService.routePanelMessage({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 3 } as any, panelState)).toBeUndefined();
+            expect(ack()).toBeUndefined();
 
         });
 
@@ -345,22 +375,63 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
 
             await openCockpit();
             const renderSequence = lastRecipeData()?.renderSequence;
+            const recordedNameSpy = jest.spyOn(RecipeCockpitValidationRuleList, 'readRecordedRuleName');
 
             await receivedMessageHandler({ command: 'loadValidationRules', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence });
             await flushAsyncWork();
 
+            // THE LIST'S LINKS COME FROM ITS OWN READ: NO RULE FILE IS READ A SECOND TIME FOR THEM
+            expect(recordedNameSpy).not.toHaveBeenCalled();
+
             const rulesMessage = postedPanelMessages.filter(hostMessage => hostMessage.command === 'treeValidationRules').at(-1);
             expect(rulesMessage.openableRules).toContainEqual({ objectApiName: 'Gadget__c', ruleName: 'Inactive_Rule' });
             expect(rulesMessage.openableRules).toContainEqual({ objectApiName: 'Gadget__c', ruleName: 'Complex_Formula' });
+            expect(rulesMessage.listSequence).toEqual(expect.any(Number));
             expect(JSON.stringify(rulesMessage)).not.toContain(workspaceRoot);
 
             await clickRule('Gadget__c', 'Inactive_Rule');
             expect(openFileInEditorSpy).not.toHaveBeenCalled();
 
-            await receivedMessageHandler({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence });
+            await receivedMessageHandler({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence, listSequence: rulesMessage.listSequence });
             await clickRule('Gadget__c', 'Inactive_Rule');
             expect(openFileInEditorSpy).toHaveBeenCalledWith(gadgetRulePath('Inactive_Rule'), expect.any(Number));
             expect(panelState().pendingValidationRuleListKeys.has(GADGET_TREE_KEY)).toBeFalse();
+
+        });
+
+        it('lets the ack of a list a retrieve replaced activate nothing, and empties the lists on a failure to draw and a new model', async () => {
+
+            await openCockpit();
+            const renderSequence = lastRecipeData()?.renderSequence;
+            const lastList = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'treeValidationRules').at(-1);
+
+            await receivedMessageHandler({ command: 'loadValidationRules', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence });
+            await flushAsyncWork();
+            const firstList = lastList();
+
+            await (RecipeCockpitService as any).refreshTreeValidationRules(GADGET_TREE_KEY);
+            await flushAsyncWork();
+            expect(lastList().listSequence).toBeGreaterThan(firstList.listSequence);
+
+            await receivedMessageHandler({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence, listSequence: firstList.listSequence });
+            expect(panelState().openableValidationRuleKeys.has(ruleKey('Gadget__c', 'Inactive_Rule'))).toBeFalse();
+
+            await receivedMessageHandler({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence, listSequence: lastList().listSequence });
+            expect(panelState().openableValidationRuleKeys.has(ruleKey('Gadget__c', 'Inactive_Rule'))).toBeTrue();
+
+            ( vscode.window.showErrorMessage as jest.Mock ).mockResolvedValue(undefined);
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom', stack: '' });
+            expect(panelState().openableValidationRuleKeys.size).toBe(0);
+
+            await receivedMessageHandler({ command: 'loadValidationRules', treeKey: GADGET_TREE_KEY, renderSequence: renderSequence });
+            await flushAsyncWork();
+            expect(panelState().pendingValidationRuleListKeys.size).toBe(0);
+
+            (RecipeCockpitService as any).renderRecipeModel((RecipeCockpitService as any).recipeCockpitPanel, RecipeCockpitService.loadRecipeRunByRuns(
+                RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, FAKERJS_RUN_FOLDER_NAME
+            ));
+            expect(panelState().openableValidationRuleKeys.size).toBe(0);
+            expect(panelState().pendingOpenableValidationRuleKeys.has(ruleKey('Gadget__c', 'Require_Amount_Maximum'))).toBeTrue();
 
         });
 
@@ -436,7 +507,8 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
             panel.postToPanel({
                 command: 'treeValidationRules', renderSequence: 3, treeKey: GADGET_TREE_KEY,
                 objects: [{ objectApiName: 'Gadget__c', rules: rules }],
-                openableRules: [{ objectApiName: 'Gadget__c', ruleName: 'Inactive_Rule' }, { objectApiName: 'Gadget__c', ruleName: 'Code_Format' }]
+                openableRules: [{ objectApiName: 'Gadget__c', ruleName: 'Inactive_Rule' }, { objectApiName: 'Gadget__c', ruleName: 'Code_Format' }],
+                listSequence: 9
             });
 
             const subPanel = panel.findAll(gadgetCard, 'troubleshootingSubPanel-validationRules')[0];
@@ -445,7 +517,7 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
             const listLinks = linksOf(panel, subPanel, 'validationRuleSource');
             expect(listLinks.map((link: any) => link.textContent)).toEqual([RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL]);
             expect(listLinks[0].attributes.title).toBe(`${RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX} Gadget__c.Inactive_Rule`);
-            expect(panel.postedHostMessages).toContainEqual({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 3 });
+            expect(panel.postedHostMessages).toContainEqual({ command: 'validationRulesRendered', treeKey: GADGET_TREE_KEY, renderSequence: 3, listSequence: 9 });
 
             listLinks[0].dispatch('click');
             expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'openValidationRuleSource', objectApiName: 'Gadget__c', ruleName: 'Inactive_Rule' });

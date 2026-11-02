@@ -1291,8 +1291,9 @@ export interface IRecipeRecordTypeBlocks {
 */
 export interface IRecipeCockpitPanelMessage {
     command?: string;
-    // A RULE'S FILE (#560): THE RULE A DRAWN ROW NAMES
+    // A RULE'S FILE (#560): THE RULE A DRAWN ROW NAMES, AND THE VALIDATION RULES LIST AN ACK SAYS WAS DRAWN
     ruleName?: unknown;
+    listSequence?: unknown;
     // THE QUERY TAB (#367): WHICH GENERATED QUERY, THE READER'S TEXT FOR IT, AND AN EXPORT'S FORMAT
     queryKey?: unknown;
     queryText?: unknown;
@@ -1752,8 +1753,9 @@ export interface IRecipeCockpitTreeValidationRulesMessage {
     renderSequence: number;
     treeKey: string;
     objects: IValidationRuleListObject[];
-    // THE RULES WHOSE FILE A ROW LINKS TO (#560), SET ONLY WHEN ONE DOES
+    // THE RULES WHOSE FILE A ROW LINKS TO (#560), SET ONLY WHEN ONE DOES, WITH THE SEQUENCE ITS ACK ECHOES
     openableRules?: IRecipeCockpitValidationRuleSourceViewModel[];
+    listSequence?: number;
     failureMessage?: string;
 }
 
@@ -2513,7 +2515,7 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = '↗ xml';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX = 'Open the validation rule file of';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX = 'The validation rule file was not found for';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_ADVICE = 'It may have been moved, renamed, replaced by a link, claimed by a second file or left the workspace. Re-open the Recipe Cockpit to load the project as it is now.';
-export const RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE ='This run recorded the rule, and its file is no longer in this project.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE = 'This run recorded the rule, and its file is no longer in this project.';
 export const RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE = 'Constrains no field this run read.';
 // WHAT A TODO's ENTRY SAYS FOR A FIELD TODO WHOSE TEXT THE PANEL COULD NOT FIND IN THE FIELD'S VALUE
 export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s value';
@@ -3090,7 +3092,8 @@ export interface IRecipeCockpitPanelState {
     pendingOpenableSourceKeys: Set<string>;
     // A RULE'S FILE (#560), BY RecipeCockpitValidationRuleList.buildRuleSourceKey: THE FIELD ROWS' AT POST, EACH VALIDATION RULES LIST'S UNTIL IT IS DRAWN
     pendingOpenableValidationRuleKeys: Set<string>;
-    pendingValidationRuleListKeys: Map<string, { renderSequence: number; ruleKeys: string[] }>;
+    pendingValidationRuleListKeys: Map<string, { renderSequence: number; listSequence: number; ruleKeys: string[] }>;
+    validationRuleListSequence: number;
     openableValidationRuleKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
     pendingLoadablePicklistKeys: Set<string>;
@@ -6759,6 +6762,7 @@ export class RecipeCockpitService {
             pendingOpenableSourceKeys: new Set(),
             pendingOpenableValidationRuleKeys: new Set(),
             pendingValidationRuleListKeys: new Map(),
+            validationRuleListSequence: 0,
             openableValidationRuleKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
             pendingLoadablePicklistKeys: new Set(),
@@ -9873,11 +9877,14 @@ export class RecipeCockpitService {
         }
 
         if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            // A SEQUENCE PER POSTED LIST, SO THE ACK OF A LIST A RETRIEVE HAS SINCE REPLACED ACTIVATES NOTHING
+            const listSequence = ++this.recipeCockpitPanelState.validationRuleListSequence;
             this.recipeCockpitPanelState.pendingValidationRuleListKeys.set(treeKey, {
                 renderSequence: renderSequence,
+                listSequence: listSequence,
                 ruleKeys: ( rulesMessage.openableRules ?? [] ).map(openableRule => RecipeCockpitValidationRuleList.buildRuleSourceKey(openableRule.objectApiName, openableRule.ruleName))
             });
-            this.postToPanel(cockpitPanel, rulesMessage);
+            this.postToPanel(cockpitPanel, rulesMessage.openableRules ? { ...rulesMessage, listSequence: listSequence } : rulesMessage);
         }
 
     }
@@ -9907,17 +9914,17 @@ export class RecipeCockpitService {
             }
         }
 
-        rulesMessage.objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsDirectoryPath, objectApiNames, this.validationRuleRunRecordsRead.runRulesByObject);
+        const filePathsByRuleKey = new Map<string, string>();
+        rulesMessage.objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsDirectoryPath, objectApiNames, this.validationRuleRunRecordsRead.runRulesByObject, {
+            workspaceRoot: workspaceRoot,
+            filePathsByRuleKey: filePathsByRuleKey
+        });
 
-        const listedRuleNamesByObject = new Map(rulesMessage.objects.map(listObject => [
-            listObject.objectApiName,
-            listObject.rules.filter(rule => !rule.isFileMissing).map(rule => rule.ruleName)
-        ]));
-        const sourceFilePaths = RecipeCockpitValidationRuleList.resolveRuleSourceFilePaths(objectsDirectoryPath, workspaceRoot, listedRuleNamesByObject);
+        // THE LINKS COME FROM WHAT THIS READ ALREADY LISTED AND RECORDED, SO NO FILE IS READ A SECOND TIME (#560)
         const openableRules: IRecipeCockpitValidationRuleSourceViewModel[] = [];
-        listedRuleNamesByObject.forEach((ruleNames, objectApiName) => new Set(ruleNames).forEach(ruleName => {
-            if ( sourceFilePaths.has(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectApiName, ruleName)) ) {
-                openableRules.push({ objectApiName: objectApiName, ruleName: ruleName });
+        rulesMessage.objects.forEach(listObject => new Set(listObject.rules.filter(rule => !rule.isFileMissing).map(rule => rule.ruleName)).forEach(ruleName => {
+            if ( filePathsByRuleKey.has(RecipeCockpitValidationRuleList.buildRuleSourceKey(listObject.objectApiName, ruleName)) ) {
+                openableRules.push({ objectApiName: listObject.objectApiName, ruleName: ruleName });
             }
         }));
         if ( openableRules.length > 0 ) {
@@ -17120,13 +17127,14 @@ export class RecipeCockpitService {
             // A VALIDATION RULES LIST WAS DRAWN (#560): ITS LINKS ARE HONOURED FROM HERE, AND ONLY FOR THE MODEL THEY WERE READ FOR
             case 'validationRulesRendered': {
 
-                const { treeKey, renderSequence } = panelMessage;
+                const { treeKey, renderSequence, listSequence } = panelMessage;
                 const pendingList = typeof treeKey === 'string' ? panelState.pendingValidationRuleListKeys.get(treeKey) : undefined;
 
                 if ( !pendingList
                         || panelState.acknowledgedRenderSequence === null
                         || renderSequence !== panelState.acknowledgedRenderSequence
-                        || pendingList.renderSequence !== renderSequence ) {
+                        || pendingList.renderSequence !== renderSequence
+                        || listSequence !== pendingList.listSequence ) {
                     return undefined;
                 }
 
@@ -19381,7 +19389,6 @@ export class RecipeCockpitService {
 
     }
 
-    // EVERY FILE AND LINE THE RENDERED MODEL OFFERS TO OPEN, AND NOTHING ELSE
     /*
         Each rule a field row names (#560) gets sourceRuleNames for the ones whose file the project
         holds, found once per load from the configured objects path. Only a field with rules is
@@ -19396,7 +19403,12 @@ export class RecipeCockpitService {
         const ruleNamesByObject = new Map<string, string[]>();
         objects.forEach(objectViewModel => objectViewModel.fields.forEach(fieldViewModel => {
             if ( fieldViewModel.validationRules ) {
-                ruleNamesByObject.set(objectViewModel.objectApiName, [...( ruleNamesByObject.get(objectViewModel.objectApiName) ?? [] ), ...ruleNamesOf(fieldViewModel.validationRules)]);
+                let ruleNames = ruleNamesByObject.get(objectViewModel.objectApiName);
+                if ( !ruleNames ) {
+                    ruleNames = [];
+                    ruleNamesByObject.set(objectViewModel.objectApiName, ruleNames);
+                }
+                ruleNames.push(...ruleNamesOf(fieldViewModel.validationRules));
             }
         }));
 
@@ -19458,12 +19470,7 @@ export class RecipeCockpitService {
             ruleFilePath = undefined;
         }
 
-        let ruleXml: string | undefined;
-        try {
-            ruleXml = ruleFilePath ? fs.readFileSync(ruleFilePath, 'utf-8') : undefined;
-        } catch {
-            ruleXml = undefined;
-        }
+        const ruleXml = ruleFilePath ? RecipeCockpitValidationRuleList.readRuleFileText(ruleFilePath) : undefined;
 
         if ( !ruleFilePath || ruleXml === undefined ) {
             VSCodeWorkspaceService.showWarningMessage(`${RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX} ${ruleLabel}. ${RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_ADVICE}`);
@@ -19474,6 +19481,7 @@ export class RecipeCockpitService {
 
     }
 
+    // EVERY FILE AND LINE THE RENDERED MODEL OFFERS TO OPEN, AND NOTHING ELSE
     static collectOpenableSourceKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
 
         const openableSourceKeys: string[] = [];
@@ -31551,7 +31559,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         // ITS LINKS ARE HONOURED ONCE THE LIST IS ON SCREEN (#560)
         if (Object.keys(openableRuleKeys).length > 0) {
-            vscodeApi.postMessage({ command: 'validationRulesRendered', treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence });
+            vscodeApi.postMessage({ command: 'validationRulesRendered', treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence, listSequence: rulesMessage.listSequence });
         }
 
     }

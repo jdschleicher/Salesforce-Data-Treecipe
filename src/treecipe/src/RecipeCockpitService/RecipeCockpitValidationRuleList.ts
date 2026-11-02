@@ -68,10 +68,21 @@ export interface IValidationRuleListLocalRule {
     ruleName: string;
     // THE NAME GENERATION RECORDED THE RULE UNDER (<fullName>, ELSE THE FILE'S), UNCUT: WHAT A RUN RECORD IS MATCHED BY
     recordedName: string;
+    // WHERE THE RULE'S FILE IS AND WHAT IT IS NAMED (#560), SO THE LIST'S LINKS NEED NO SECOND READ
+    fileName?: string;
+    filePath?: string;
+    // THE FILE'S TEXT WAS READ, PARSED OR NOT: ONLY SUCH A FILE IS LINKED, SINCE THE CLICK READS IT AGAIN
+    isTextRead?: boolean;
     isReadable: boolean;
     isActive?: boolean;
     errorMessage?: string;
     formula?: string;
+}
+
+// A RULE FILE AN OBJECT FOLDER LISTS (#560): ITS NAME AND WHERE IT IS
+export interface IValidationRuleSourceFile {
+    fileName: string;
+    filePath: string;
 }
 
 export interface IValidationRuleListLocalRules {
@@ -166,7 +177,8 @@ export class RecipeCockpitValidationRuleList {
         const rules: IValidationRuleListLocalRule[] = [];
 
         for ( const ruleFileName of readFileNames ) {
-            rules.push(await this.readLocalValidationRule(path.join(rulesDirectoryPath, ruleFileName), ruleFileName));
+            const ruleFilePath = path.join(rulesDirectoryPath, ruleFileName);
+            rules.push({ ...await this.readLocalValidationRule(ruleFilePath, ruleFileName), fileName: ruleFileName, filePath: ruleFilePath });
             // xml2js SETTLES SYNCHRONOUSLY, SO ONLY A MACROTASK GIVES THE HOST BACK
             readProgress.readFileCount++;
             if ( readProgress.readFileCount % VALIDATION_RULE_LIST_YIELD_EVERY_FILES === 0 ) {
@@ -193,7 +205,7 @@ export class RecipeCockpitValidationRuleList {
             return unreadable;
         }
 
-        return this.readValidationRuleXml(ruleXml, fileRuleName);
+        return { ...await this.readValidationRuleXml(ruleXml, fileRuleName), isTextRead: true };
 
     }
 
@@ -385,9 +397,11 @@ export class RecipeCockpitValidationRuleList {
     }
 
     // THE WHOLE LIST FOR ONE TREE: ITS OBJECTS ONCE EACH, IN ITS ORDER, ONLY API NAMES
+    // sourceFilePaths, WHEN GIVEN, IS FILLED WITH EACH LISTED RULE'S FILE BY pickRuleSourceFiles' RULE, FROM THE NAMES THIS READ RECORDED (#560)
     static async buildTreeValidationRules(objectsDirectoryPath: string,
                                             objectApiNames: readonly string[],
-                                            runRulesByObject: ReadonlyMap<string, ReadonlyMap<string, IValidationRuleListRunRecord>>): Promise<IValidationRuleListObject[]> {
+                                            runRulesByObject: ReadonlyMap<string, ReadonlyMap<string, IValidationRuleListRunRecord>>,
+                                            sourceFilePaths?: { workspaceRoot: string; filePathsByRuleKey: Map<string, string> }): Promise<IValidationRuleListObject[]> {
 
         const listedObjectApiNames = [...new Set(objectApiNames)].filter(objectApiName => SalesforceApiName.isApiName(objectApiName));
         const objectDirectoryPaths = this.findObjectDirectoryPaths(objectsDirectoryPath, listedObjectApiNames);
@@ -398,9 +412,42 @@ export class RecipeCockpitValidationRuleList {
             const objectDirectoryPath = objectDirectoryPaths.get(objectApiName);
             const localRules = objectDirectoryPath ? await this.readLocalValidationRules(objectDirectoryPath, readProgress) : { rules: [], unreadRuleCount: 0 };
             objects.push(this.buildObjectValidationRules(objectApiName, localRules, runRulesByObject.get(objectApiName) ?? new Map()));
+            if ( sourceFilePaths ) {
+                this.collectListedRuleSourceFiles(objectApiName, localRules, sourceFilePaths.workspaceRoot, sourceFilePaths.filePathsByRuleKey);
+            }
         }
 
         return objects;
+
+    }
+
+    private static collectListedRuleSourceFiles(objectApiName: string,
+                                                localRules: IValidationRuleListLocalRules,
+                                                workspaceRoot: string,
+                                                filePathsByRuleKey: Map<string, string>) {
+
+        if ( !SalesforceApiName.isApiName(objectApiName) ) {
+            return;
+        }
+
+        const recordedNamesByFilePath = new Map<string, string>();
+        const ruleFiles: IValidationRuleSourceFile[] = [];
+        localRules.rules.forEach(localRule => {
+            if ( localRule.fileName !== undefined && localRule.filePath !== undefined && localRule.isTextRead ) {
+                ruleFiles.push({ fileName: localRule.fileName, filePath: localRule.filePath });
+                recordedNamesByFilePath.set(localRule.filePath, localRule.recordedName);
+            }
+        });
+
+        const wantedRuleNames = new Set([...recordedNamesByFilePath.values()].filter(ruleName => SalesforceApiName.isApiName(ruleName)));
+        const isContained = this.buildContainmentCheck(workspaceRoot);
+
+        this.pickRuleSourceFiles(ruleFiles, wantedRuleNames, ruleFile => recordedNamesByFilePath.get(ruleFile.filePath))
+            .forEach((ruleFilePath, ruleName) => {
+                if ( isContained(ruleFilePath) ) {
+                    filePathsByRuleKey.set(this.buildRuleSourceKey(objectApiName, ruleName), ruleFilePath);
+                }
+            });
 
     }
 
@@ -410,31 +457,25 @@ export class RecipeCockpitValidationRuleList {
     }
 
     /*
-        The file of each named rule (#560), keyed by buildRuleSourceKey. A file is matched by the name
-        generation recorded it under (<fullName>, else its file name), read here without xml2js so a
-        model load stays synchronous. Only a regular file (a Dirent of a link is not a file) inside
-        the workspace is kept, only an object and rule that ARE api names are looked for, and a name
-        two files claim is left out: neither can be called the rule.
+        The file of each named rule (#560), keyed by buildRuleSourceKey. Source format names a rule's
+        file after the rule, so <Rule>.validationRule-meta.xml is read first and taken when the name it
+        is recorded under is that rule; only a rule no file is named after makes the object's other
+        files be read, and a name two of those claim is left out. Only a regular file (a Dirent of a
+        link is not a file) inside the workspace is kept, and only an object and rule that ARE api
+        names are looked for. The workspace root's real path is resolved once per call.
     */
     static resolveRuleSourceFilePaths(objectsDirectoryPath: string,
                                         workspaceRoot: string,
                                         ruleNamesByObject: ReadonlyMap<string, readonly string[]>): Map<string, string> {
 
         const sourceFilePaths = new Map<string, string>();
-        const wantedRuleNamesByObject = new Map<string, Set<string>>();
-
-        ruleNamesByObject.forEach((ruleNames, objectApiName) => {
-            const wantedRuleNames = new Set(ruleNames.filter(ruleName => SalesforceApiName.isApiName(ruleName)));
-            if ( SalesforceApiName.isApiName(objectApiName) && wantedRuleNames.size > 0 ) {
-                wantedRuleNamesByObject.set(objectApiName, wantedRuleNames);
-            }
-        });
+        const wantedRuleNamesByObject = this.filterWantedRuleNames(ruleNamesByObject);
 
         if ( wantedRuleNamesByObject.size === 0 ) {
             return sourceFilePaths;
         }
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const isContained = this.buildContainmentCheck(workspaceRoot);
         const objectDirectoryPaths = this.findObjectDirectoryPaths(objectsDirectoryPath, [...wantedRuleNamesByObject.keys()]);
 
         wantedRuleNamesByObject.forEach((wantedRuleNames, objectApiName) => {
@@ -445,32 +486,32 @@ export class RecipeCockpitValidationRuleList {
             }
 
             const rulesDirectoryPath = path.join(objectDirectoryPath, VALIDATION_RULES_DIRECTORY_NAME);
-            let ruleFileNames: string[];
+            let ruleFiles: IValidationRuleSourceFile[];
             try {
                 if ( !fs.lstatSync(rulesDirectoryPath).isDirectory() ) {
                     return;
                 }
-                ruleFileNames = fs.readdirSync(rulesDirectoryPath, { withFileTypes: true })
+                ruleFiles = fs.readdirSync(rulesDirectoryPath, { withFileTypes: true })
                     .filter(ruleEntry => ruleEntry.isFile() && ValidationRuleAnalyzerService.isValidationRuleFileName(ruleEntry.name))
                     .map(ruleEntry => ruleEntry.name)
                     .sort()
-                    .slice(0, VALIDATION_RULE_LIST_MAX_RULES_PER_OBJECT);
+                    .slice(0, VALIDATION_RULE_LIST_MAX_RULES_PER_OBJECT)
+                    .map(ruleFileName => ({ fileName: ruleFileName, filePath: path.join(rulesDirectoryPath, ruleFileName) }));
             } catch {
                 return;
             }
 
-            const filePathsByRuleName = new Map<string, string[]>();
-            ruleFileNames.forEach(ruleFileName => {
-                const ruleFilePath = path.join(rulesDirectoryPath, ruleFileName);
-                const recordedName = this.readRecordedRuleName(ruleFilePath, ruleFileName.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length));
-                if ( recordedName !== undefined && wantedRuleNames.has(recordedName) ) {
-                    filePathsByRuleName.set(recordedName, [...( filePathsByRuleName.get(recordedName) ?? [] ), ruleFilePath]);
+            const recordedNames = new Map<string, string | undefined>();
+            const readRecordedName = (ruleFile: IValidationRuleSourceFile) => {
+                if ( !recordedNames.has(ruleFile.filePath) ) {
+                    recordedNames.set(ruleFile.filePath, this.readRecordedRuleName(ruleFile.filePath, this.toFileRuleName(ruleFile.fileName)));
                 }
-            });
+                return recordedNames.get(ruleFile.filePath);
+            };
 
-            filePathsByRuleName.forEach((ruleFilePaths, ruleName) => {
-                if ( ruleFilePaths.length === 1 && SfdxProjectService.isPathContainedInWorkspace(path.resolve(ruleFilePaths[0]), resolvedWorkspaceRoot) ) {
-                    sourceFilePaths.set(this.buildRuleSourceKey(objectApiName, ruleName), ruleFilePaths[0]);
+            this.pickRuleSourceFiles(ruleFiles, wantedRuleNames, readRecordedName).forEach((ruleFilePath, ruleName) => {
+                if ( isContained(ruleFilePath) ) {
+                    sourceFilePaths.set(this.buildRuleSourceKey(objectApiName, ruleName), ruleFilePath);
                 }
             });
 
@@ -480,26 +521,126 @@ export class RecipeCockpitValidationRuleList {
 
     }
 
-    // THE NAME A RULE FILE IS RECORDED UNDER, AS readValidationRuleXml READS IT; undefined FOR A FILE THAT CANNOT BE READ
+    /*
+        The one choice both the lookup and the Validation Rules list make: a wanted rule's own file when
+        it is recorded under that rule, else the one file that is. readRecordedName is asked lazily, so
+        the lookup reads the named files and, only for a rule no file is named after, the rest.
+    */
+    static pickRuleSourceFiles(ruleFiles: readonly IValidationRuleSourceFile[],
+                                wantedRuleNames: ReadonlySet<string>,
+                                readRecordedName: (ruleFile: IValidationRuleSourceFile) => string | undefined): Map<string, string> {
+
+        const pickedFilePaths = new Map<string, string>();
+        const ruleFilesByFileRuleName = new Map(ruleFiles.map(ruleFile => [this.toFileRuleName(ruleFile.fileName), ruleFile]));
+        const unmatchedRuleNames = new Set<string>();
+
+        wantedRuleNames.forEach(ruleName => {
+            const ownRuleFile = ruleFilesByFileRuleName.get(ruleName);
+            if ( ownRuleFile && readRecordedName(ownRuleFile) === ruleName ) {
+                pickedFilePaths.set(ruleName, ownRuleFile.filePath);
+            } else {
+                unmatchedRuleNames.add(ruleName);
+            }
+        });
+
+        if ( unmatchedRuleNames.size === 0 ) {
+            return pickedFilePaths;
+        }
+
+        const claimingFilePaths = new Map<string, string[]>();
+        ruleFiles.forEach(ruleFile => {
+            const recordedName = readRecordedName(ruleFile);
+            if ( recordedName !== undefined && unmatchedRuleNames.has(recordedName) ) {
+                claimingFilePaths.set(recordedName, [...( claimingFilePaths.get(recordedName) ?? [] ), ruleFile.filePath]);
+            }
+        });
+        claimingFilePaths.forEach((filePaths, ruleName) => {
+            if ( filePaths.length === 1 ) {
+                pickedFilePaths.set(ruleName, filePaths[0]);
+            }
+        });
+
+        return pickedFilePaths;
+
+    }
+
+    /*
+        The name a rule file is recorded under, read as readValidationRuleXml reads it (xml2js, which
+        answers synchronously): <fullName> when it is one text element, else the file's own name, which
+        is also what a file that does not parse is recorded under. undefined for a file whose text
+        cannot be read, which is never linked.
+    */
     static readRecordedRuleName(ruleFilePath: string, fileRuleName: string): string | undefined {
 
-        let ruleXml: string;
+        const ruleXml = this.readRuleFileText(ruleFilePath);
+        if ( ruleXml === undefined ) {
+            return undefined;
+        }
+
+        let parsedXml: unknown;
+        xml2js.parseString(ruleXml, (parseError: Error | null, parsedResult: unknown) => {
+            parsedXml = parseError ? undefined : parsedResult;
+        });
+
+        const fullName = this.asRecord(this.asRecord(parsedXml)?.ValidationRule)?.fullName;
+        return Array.isArray(fullName) && fullName.length === 1 && typeof fullName[0] === 'string' ? fullName[0] : fileRuleName;
+
+    }
+
+    // A RULE FILE'S TEXT THROUGH ONE HANDLE THAT FOLLOWS NO LINK WHERE THE PLATFORM CAN REFUSE ONE, OR undefined
+    static readRuleFileText(ruleFilePath: string): string | undefined {
+
+        let fileDescriptor: number | undefined;
         try {
-            if ( fs.lstatSync(ruleFilePath).size > VALIDATION_RULE_LIST_MAX_FILE_BYTES ) {
+            fileDescriptor = fs.openSync(ruleFilePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
+            const fileStats = fs.fstatSync(fileDescriptor);
+            if ( !fileStats.isFile() || fileStats.size > VALIDATION_RULE_LIST_MAX_FILE_BYTES ) {
                 return undefined;
             }
-            ruleXml = fs.readFileSync(ruleFilePath, 'utf-8');
+            return fs.readFileSync(fileDescriptor, 'utf-8');
         } catch {
             return undefined;
+        } finally {
+            if ( fileDescriptor !== undefined ) {
+                fs.closeSync(fileDescriptor);
+            }
         }
 
-        const fullNameMatches = [...ruleXml.matchAll(/<fullName>([^<]*)<\/fullName>/g)];
-        if ( fullNameMatches.length > 1 ) {
-            return undefined;
-        }
+    }
 
-        return fullNameMatches.length === 1 ? fullNameMatches[0][1] : fileRuleName;
+    private static filterWantedRuleNames(ruleNamesByObject: ReadonlyMap<string, readonly string[]>): Map<string, Set<string>> {
 
+        const wantedRuleNamesByObject = new Map<string, Set<string>>();
+        ruleNamesByObject.forEach((ruleNames, objectApiName) => {
+            const wantedRuleNames = new Set(ruleNames.filter(ruleName => SalesforceApiName.isApiName(ruleName)));
+            if ( SalesforceApiName.isApiName(objectApiName) && wantedRuleNames.size > 0 ) {
+                wantedRuleNamesByObject.set(objectApiName, wantedRuleNames);
+            }
+        });
+        return wantedRuleNamesByObject;
+
+    }
+
+    // SfdxProjectService's OWN CHECK, ITS REAL RESOLVER MEMOIZED SO THE ROOT IS RESOLVED ONCE, NOT ONCE PER FILE
+    private static buildContainmentCheck(workspaceRoot: string): (filePath: string) => boolean {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const realDirectoryPaths = new Map<string, string>();
+        const resolveRealDirectoryPath = (directoryPath: string) => {
+            let realDirectoryPath = realDirectoryPaths.get(directoryPath);
+            if ( realDirectoryPath === undefined ) {
+                realDirectoryPath = SfdxProjectService.getRealDirectoryPath(directoryPath);
+                realDirectoryPaths.set(directoryPath, realDirectoryPath);
+            }
+            return realDirectoryPath;
+        };
+
+        return (filePath: string) => SfdxProjectService.isPathContainedInWorkspace(path.resolve(filePath), resolvedWorkspaceRoot, resolveRealDirectoryPath);
+
+    }
+
+    private static toFileRuleName(ruleFileName: string): string {
+        return ruleFileName.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length);
     }
 
     // THE 1-BASED LINE A RULE FILE IS OPENED AT: ITS <errorConditionFormula>, ELSE ITS FIRST LINE
