@@ -1,6 +1,6 @@
 ---
 name: readability-gauge
-description: Gauges how readable a file or area is for BOTH readers — a human maintainer and a coding agent — and scores it on eight dimensions where the two meet (one checked input per entry point, abstraction proportional to variety, hops to an answer, greppable literals, domain names, comment budget, reproducible in one test, read size), plus an optional guidance budget for CLAUDE.md and design notes. Proposes concrete refactors ranked by the score and tokens they save; applies them only when asked. Ported from salesforce-to-git's /readability-gauge. Use on existing code before a refactor; use /readable-code to check a diff.
+description: Gauges how readable a file or area is for BOTH readers — a human maintainer and a coding agent — and scores it on nine dimensions where the two meet (one checked input per entry point, abstraction proportional to variety, hops to an answer, greppable literals, domain names, comment budget, reproducible in one test, read size, feedback loop), plus an optional guidance budget for CLAUDE.md and design notes. Measures the tokens and seconds an agent spends to change one thing. Proposes concrete refactors ranked by the score, tokens and seconds they save; applies them only when asked. Ported from salesforce-to-git's /readability-gauge. Use on existing code before a refactor; use /readable-code to check a diff.
 ---
 
 # /readability-gauge
@@ -57,6 +57,19 @@ and the jumps (`grep` → open → scroll) each answer took:
 
 Also note the **tokens read** to get each answer (bytes read ÷ ~4). These counts are the
 evidence for the scores below. Write them down.
+
+Then measure what an agent pays to **change one thing** in the target — pick a typical task
+(add a field to a panel message, fix one refusal text):
+
+```bash
+wc -c <every file and slice the change needs read>        # ÷ 4 = tokens read per task
+grep -c '<the line you would anchor the Edit on>' <file>  # 1 = a unique anchor
+time npx jest <the one suite that covers it> --coverage=false   # warm; add --no-cache for cold
+time npx tsc --noEmit -p .                                 # the compile an edit waits for
+```
+
+Count every region that must stay in step for the change (type, router case, executor,
+panel function, test): regions far apart in one file cost as much as separate files.
 
 ---
 
@@ -143,14 +156,29 @@ What an agent must load to change one thing. Read in units of the Read tool's 2,
   files. **0:** a file past 5,000 lines holding unrelated concerns, or logic that lives in a
   string the compiler never checks (the Recipe Cockpit's panel script).
 
+Lower the score one step (not below 0) when the change's Edit anchors are not unique — the
+same line or block repeated so an agent must read wider context to place an edit — or when a
+change touches more than three regions over 1,000 lines apart.
+
 ### 3.9 Guidance budget (only when the target includes CLAUDE.md, `.claude/**` or a design note)
 
-Always-loaded guidance is read by every session and every subagent before any work starts.
+Always-loaded guidance is read by every session and every subagent before any work starts,
+so its cost is its size × (sessions + subagents). Report it in tokens per session.
 
 - **2:** `CLAUDE.md` holds rules and pointers, a few lines each; history, measurements and
   issue chronology live in the CHANGELOG, the PR or a design note beside the service, loaded
   only when that service is touched. **1:** some rules carry their history inline. **0:** most
   of the file is design history, or it is past ~100 KB.
+
+### 3.10 Feedback loop
+
+How long an agent waits to learn whether an edit is right. Every wait is paid again per retry,
+and a slow loop pushes an agent to run fewer checks.
+
+- **2:** the one covering suite runs warm in under ~5 s and its errors point at a line in a
+  checked file. **1:** 5–20 s, or a full-project `tsc` is the only compile check. **0:** over
+  20 s, a suite that must import a file past ~1 MB (its cold transform alone is seconds), or a
+  failure that surfaces only at run time with no line (a slip inside a template-literal string).
 
 ---
 
@@ -167,13 +195,18 @@ between this code and a cold reader>
 |---|---|---|---|
 | What goes in? | `openValidationRuleSource {objectApiName, ruleName}`, checked in `routePanelMessage` | 1 | ~3k |
 
+### Cost of one change
+| Task | Tokens read | Regions in step | Unique anchor | Suite (warm / cold) | Compile |
+|---|---|---|---|---|---|
+| Add a field to `openValidationRuleSource` | ~6k | 5, lines 2,978–22,299 | yes | 5 s / 15 s | 17 s |
+
 ### Scores
 | Dimension | Score | Evidence | Human cost | Agent cost |
 |---|---|---|---|---|
 | 3.8 Read size | 0 | `RecipeCockpitService.ts`: 33,509 lines, 1.86 MB; panel script lines 21,747–33,502 in a string | one file per feature to scroll | ~465k tokens to hold it; grep-and-slice only |
 
 ### Proposed refactors (highest score and token gain first)
-1. **<dimension>** — <before → after, small enough to paste> — +<points>, ~<tokens saved per task>
+1. **<dimension>** — <before → after, small enough to paste> — +<points>, ~<tokens saved per task>, <seconds saved per check>
 
 ### Next steps
 - Apply refactor 1? (yes/no)
@@ -196,7 +229,7 @@ not per repository.
 3. Run the affected suites (`npx jest <path>`), `npm run compile` and `npm run lint`; the
    source-scanning tests (button kinds, row presentation, contrast) must follow the code they
    scan.
-4. Re-score and report the before/after total, and the before/after size of what an agent reads
-   for the gauged task, in one line.
+4. Re-score and report the before/after total, tokens read for the gauged task, and the
+   covering suite's time, in one line.
 
 If a PR exists, post the report as a PR comment, ending with the attribution footer.

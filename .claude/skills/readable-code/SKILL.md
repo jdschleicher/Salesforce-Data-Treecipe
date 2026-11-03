@@ -111,6 +111,9 @@ Readability for an agent is measured in tokens: every line it must read to chang
   more than a few lines per rule, or design history, measurements and issue chronology that
   belong in the PR, the CHANGELOG or a design note beside the service. Every line of
   `CLAUDE.md` is read by every session and every subagent.
+- **Fail:** a new test that imports `RecipeCockpitService.ts` (1.8 MB, seconds of cold
+  transform per run) only to reach logic that lives, or could live, in a smaller module — the
+  test then pays that import on every retry. Import the module that holds the rule.
 
 ---
 
