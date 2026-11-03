@@ -81,11 +81,27 @@ npx vsce package
 - **Naming conventions** - PascalCase for classes/interfaces, camelCase for methods/variables; service files match their class name
 - **No comments for self-evident code** - Only add comments where the logic is non-obvious
 
+### Human-Readable Code — a change reads like the rule it implements
+
+Someone who knows Salesforce metadata, Treecipe recipes and VS Code, but not this file, should understand a change from the code alone, and an agent should find it without reading more than it changes. Applies to new and changed code; do not rewrite untouched code just to comply.
+
+- **Domain names** — `objectApiName`, `ruleName`, `treeKey`, never `tmp`, `data`, `flag`, `result2`
+- **A rule and its data live together** — allowed values, limits and labels within a screen of the check that reads them
+- **The smallest change that states the rule** — no counters, log lines, flags or helpers the request did not ask for; propose them instead
+- **Several rules on one record are a named list** — each with a name, a check and a reason, run in order
+- **Comments say why, in a line or two** — history goes in the PR or CHANGELOG; a hazard warning stays beside its line
+- **Messages a person can act on** — name the object, field, file or org, the rule broken, and what to do
+- **Mind what a reader must load** — prefer a checked `.ts` module over code in a template-literal string, a new file over growing one past ~2,000 lines, and a design note beside the service over history in this file
+
+`/readable-code` checks a diff against these rules; `/readability-gauge` scores a file or area for a human and an agent and proposes refactors.
+
 ## Project Structure
 
 ```
 .claude/skills/cockpit-help-sync/            # Keeps the cockpit's ? help and docs/RECIPE-COCKPIT-GUIDE.md in step, re-takes its screenshots
 .claude/skills/cockpit-row-style/            # Holds every cockpit list to the row presentation standard (#558): two-line row header, bordered row box, column table
+.claude/skills/readable-code/                # Readability review of a diff for a human and an agent: CLAUDE.md's Human-Readable Code rules, token cost of where code and guidance are added (from salesforce-to-git)
+.claude/skills/readability-gauge/            # Scores a file or area for a human and an agent on nine dimensions (read size and feedback loop included) plus a guidance budget, measures tokens and seconds per change, and proposes refactors (from salesforce-to-git)
 docs/RECIPE-COCKPIT-GUIDE.md                 # The guide the cockpit's "Open the full guide" opens; pictures in docs/images/recipe-cockpit/
 developmentSupportScripts/recipe-cockpit-screenshots/ # Renders the real cockpit shell from the historyWorkspace fixture and writes the guide's pictures
 jestSetup/                                   # Jest harness only — outside tsconfig rootDir, never packaged

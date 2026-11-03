@@ -9,6 +9,7 @@
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": false,
+		"isolatedModules": true,
 		"types": [
 			"jest",
 			"node"
@@ -17,7 +18,10 @@
 	// Default excludes are replaced rather than added to, so node_modules and the outDir are
 	// named here as well. jestSetup/ is jest harness code: it lives outside rootDir so that
 	// nothing tsc emits into out/ -- and therefore nothing the .vsix ships -- comes from it.
-	// ts-jest type checks it as part of the test program.
+	// jestSetup/tsconfig.json type checks it, run by npm run compile.
+	//
+	// isolatedModules: ts-jest then transpiles each file without type checking it, which
+	// npm run compile already does; a cold cockpit suite went from 15 s to 5.5 s (#562).
 	"exclude": [
 		"node_modules",
 		"out",

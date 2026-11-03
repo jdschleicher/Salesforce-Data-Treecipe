@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.192.1] - Tests: ts-jest stops type checking what `npm run compile` already checks
+
+[#562](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/562). Every suite waited for ts-jest to type check each file it imported, the 1.86 MB `RecipeCockpitService.ts` included, though `npm run compile` checks the same files, and CI runs it before the tests.
+
+- **`isolatedModules` in `tsconfig.json`.** ts-jest now transpiles each file without a type check. A cold `RecipeCockpitValidationRuleSource.test.ts` went from 15.3 s to 6.3 s, and a cold `npm run jest-test` (`--maxWorkers=2`, coverage on, as CI runs it) from 556 s to 241 s, with every suite passing and coverage unchanged (98.41% statements, 94.6% branches).
+- **`jestSetup/` is still type checked.** It sits outside the root tsconfig, and only ts-jest used to check it, so `npm run compile` now also runs `jestSetup/tsconfig.json`. A type error there fails the compile.
+- **Unchanged.** No source file; `tsc` reported nothing new under `isolatedModules`.
+- **Two readability skills, ported from salesforce-to-git.** `/readable-code` checks a diff against CLAUDE.md's new **Human-Readable Code** section (domain names, a rule beside its data, the smallest change, named rule lists, short why-comments, messages a person can act on, and what a reader must load). `/readability-gauge` scores a file or area for a human and an agent on nine dimensions, read size and feedback loop among them, measures the tokens and seconds one change costs, and proposes refactors; it is what found #562, #563, #564, #565 and #566.
+
 ## [3.192.0] - Recipe Cockpit: a validation rule's name links to its `.validationRule-meta.xml` file
 
 [#560](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/560). A field a validation rule constrains (#324, #325) named the rule, but reading its formula meant finding `<objects>/<Object>/validationRules/<Rule>.validationRule-meta.xml` by hand, while the `↗ yml` beside it already opened the recipe line.

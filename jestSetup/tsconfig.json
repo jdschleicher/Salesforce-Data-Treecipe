@@ -1,0 +1,11 @@
+{
+	// jestSetup/ is outside the root tsconfig (nothing it holds may be emitted into out/), and
+	// ts-jest no longer type checks with isolatedModules on, so npm run compile checks it here.
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "..",
+		"noEmit": true
+	},
+	"include": ["./**/*.ts"],
+	"exclude": []
+}
