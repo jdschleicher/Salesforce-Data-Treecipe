@@ -1,5 +1,13 @@
 # Change Log
 
+## [3.192.1] - Tests: ts-jest stops type checking what `npm run compile` already checks
+
+[#562](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/562). Every suite waited for ts-jest to type check each file it imported, the 1.86 MB `RecipeCockpitService.ts` included, though `npm run compile` checks the same files, and CI runs it before the tests.
+
+- **`isolatedModules` in `tsconfig.json`.** ts-jest now transpiles each file without a type check. A cold `RecipeCockpitValidationRuleSource.test.ts` went from 15.3 s to 6.3 s.
+- **`jestSetup/` is still type checked.** It sits outside the root tsconfig, and only ts-jest used to check it, so `npm run compile` now also runs `jestSetup/tsconfig.json`. A type error there fails the compile.
+- **Unchanged.** No source file; `tsc` reported nothing new under `isolatedModules`.
+
 ## [3.192.0] - Recipe Cockpit: a validation rule's name links to its `.validationRule-meta.xml` file
 
 [#560](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/560). A field a validation rule constrains (#324, #325) named the rule, but reading its formula meant finding `<objects>/<Object>/validationRules/<Rule>.validationRule-meta.xml` by hand, while the `↗ yml` beside it already opened the recipe line.
