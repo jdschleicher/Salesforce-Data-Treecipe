@@ -296,16 +296,16 @@ The rules below hold for a change in ANY area. Each service's design notes, with
 - **Every picklist value reaches a recipe through its backend's escaper, never raw** — `escapePicklistValueForJavaScriptString` (faker-js), `escapePicklistValueForJinjaStringLiteral` (snowfakery), the YAML half in `RecipeYamlScalar` (PyYAML also breaks at U+0085, U+2028, U+2029). Snowfakery renders BOTH `${{ … }}` and the legacy, unsandboxed `<< … >>`. A new sink must be added to `buildRecipeWithEveryPicklistSink` and the hostile pipeline suites. `RecipeService/DESIGN.md`
 - **A metadata NAME reaches a recipe only if it IS a Salesforce api name** (`SalesforceApiName`, imports nothing) — one guard per name: `appendFieldRecipeToObjectRecipe` for field keys, `partitionRecordTypesByWritableDeveloperName` for record types, `getDependentPicklistRecipeFakerValue` for controlling fields, `ObjectInfoWrapper.addKeyToObjectInfoMap` for objects. A refused name is one escaped `### TODO -- … SKIPPED` comment. `RecipeService/DESIGN.md`
 - **Workspace text shown in a VS Code notification or input-box message goes through `escapeForNotification`** — it renders `[label](command:…)` as a link that RUNS the command. `ErrorHandlingService.handleGenericError` escapes centrally.
-- **A map keyed by picklist values, or by any name from a workspace file, has no prototype** — `Object.create(null)` and an own-key check, never `in` or a `{}` map (`__proto__`, `constructor`).
-- **Generated output is deterministic** — sort with `<`, never `localeCompare`, and once where data is loaded, so a recipe never depends on the machine.
+- **A map keyed by picklist values, or by any name from a workspace file, has no prototype** — `Object.create(null)` and an own-key check, never `in` or a `{}` map (`__proto__`, `constructor`). `RecipeService/DESIGN.md`, `RecipeCockpitService/DESIGN.md`
+- **Generated output is deterministic** — sort with `<`, never `localeCompare`, and once where data is loaded, so a recipe never depends on the machine. `RecipeService/DESIGN.md`
 - **Record types and validation rules are applied in `RecipeService`, never in a backend**, so neither backend has a second path to keep in sync. `RecipeService/DESIGN.md`, `RelationshipService/DESIGN.md`
 - **Every line generation emits must load as YAML in both backends** — `DirectoryProcessor.generatedRecipeYaml.test.ts` loads every file the real pipeline writes.
 - **A workspace without a feature's input writes byte-identical output** — new optional data is set only when present.
 
-#### Recipe Cockpit (and every cockpit after it)
+#### Recipe Cockpit, every cockpit after it, and every webview
 
 - **Behind `recipeCockpitEnabled`, gated in the command handler**, not by a `when` clause. Every other door (status bar, Activity Bar view) runs the palette command id with no arguments.
-- **The shell builder takes a nonce and nothing else**, `localResourceRoots: []`, CSP admits only the nonced style and script, no external file or URL. Every value reaches the panel by `postMessage` and is written with `textContent`; glyphs are built with `createElementNS`. A link out is a message to the host, never an `href`.
+- **The shell builder takes a nonce and nothing else** (the Picklist Dependency Explorer's too), `localResourceRoots: []`, CSP admits only the nonced style and script, no external file or URL. Every value reaches the panel by `postMessage` and is written with `textContent`; glyphs are built with `createElementNS`. A link out is a message to the host, never an `href`.
 - **Every panel action is matched against a pending/active allow-list built from the RENDERED model** — pending at post, active only on the panel's `rendered` echoing that `renderSequence`, emptied on `ready`, a new post and a failure to draw. The panel posts names and indexes, never a path, org, username or value it could choose. `routePanelMessage` is pure and returns an action.
 - **Every path the host opens or writes passes `SfdxProjectService.isPathContainedInWorkspace`** when the model is built AND when it is used; no link is followed; new files are written `wx`.
 - **Workspace and org text is untrusted** — every file and every answer from an org or the CLI is type-checked field by field, size-capped, and parsed with no prototype.
@@ -320,7 +320,7 @@ The cockpit's design notes, grouped by tab and concern, are `src/treecipe/src/Re
 
 #### Orgs and the Salesforce CLI
 
-- **Org work goes through `SalesforceOrgService.getConnection`; never `import` `jsforce`** (a devDependency only). Every remaining `sf` call is listed in `PicklistDependencyCheckService/tests/SalesforceCliCallSites.test.ts`; a new one needs a reason in its issue and its entry there. An access token is never written, logged, posted to a webview or quoted in a notification. `PicklistDependencyCheckService/DESIGN.md`
+- **Org work goes through `SalesforceOrgService.getConnection`; never `import` `jsforce`** (a devDependency only). Every remaining `sf` call is listed in `PicklistDependencyCheckService/tests/SalesforceCliCallSites.test.ts`; a new one needs a reason in its issue and its entry there. An access token is never written, logged, posted to a webview or quoted in a notification, and a browser opens an org only through a one-time `singleaccess` frontdoor address, never `frontdoor.jsp?sid=`. `PicklistDependencyCheckService/DESIGN.md`, `RecipeCockpitService/DESIGN.md`
 - **Every org picker lists only authorizations that answer a ping, and fails closed.** `SalesforceOrgService/DESIGN.md`
 - **A CLI call with a `cwd` runs the absolute `sf` from `findSalesforceCliOnPath` (project mode)** — a repository can plant `sf.cmd` in its own folder. `ScratchOrgService/DESIGN.md`
 - **Nothing builds an `sf org delete` argv.**
