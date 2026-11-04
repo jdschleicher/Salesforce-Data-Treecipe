@@ -22,3 +22,6 @@ coverage/
 # workspace root, so anchoring loses none of its intent.
 /treecipe/
 scripts/picklist-dependency-demo/demoSalesforceProject/
+
+# The flow guard's per-checkout records (.claude/hooks/flowGuard.js): approvals and Phase 1 passes
+.claude/flow-state/

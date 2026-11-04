@@ -1,5 +1,47 @@
 # Change Log
 
+## [3.192.4] - Repo tooling: flow guard hooks hold Claude Code sessions to /next-task and /pr-flow
+
+Sessions had skipped `/next-task`'s plan approval (#571 was started without one). Remembering the flows was not enough, so the harness now enforces them. Nothing ships in the `.vsix`: `.claude/**` is excluded.
+
+- **`.claude/settings.json`** wires `.claude/hooks/flowGuard.js` into five places:
+  - the person's prompt;
+  - Write/Edit;
+  - Bash;
+  - the GitHub tools' remote writes (PR creation, `push_files`, file and branch writes);
+  - a check after every tool.
+
+  Each guard is set to block if the hook itself fails, and the script refuses whenever it cannot decide (no git, a corrupt record), so an error never lets a write through.
+- **Guarded paths wait for an approved plan.** These are `src/`, the hook files, `.claude/settings*.json` and `package*.json`, so the guard and Phase 1 cannot be loosened in the same session they hold.
+  - `/next-task <N>` starts issue N.
+  - Only a message from the person consisting of exactly `approve plan #<N>` approves it. None of these does:
+    - a plain "approve" or "go";
+    - a longer message that merely contains the phrase;
+    - approving another issue's number.
+  - Until then, these are refused:
+    - Write/Edit of a guarded path, including one inside a `.claude/worktrees/<name>/` copy;
+    - the common shell writes that name one (`sed -i`, `>`, `tee`, `cp`, `mv`, `rm`, `git checkout`, `git apply`, …).
+
+    Each refusal gives the reason and what to do next. Read-only commands such as `grep … 2>/dev/null` are not refused.
+  - **After every tool**, any uncommitted change to a guarded path made with no approved plan is reported back, however it was made (`cd src && …`, `eslint --fix`, a script). The report says how to put the change back.
+- **A push or a PR waits for `/pr-flow` Phase 1 on the exact HEAD.**
+  - These are refused unless `node .claude/hooks/prFlowPhase1.js` passed on HEAD with nothing uncommitted:
+    - `git push` in any spelling the check knows (`git -C … push`, an inline alias, `send-pack`);
+    - `gh pr create`/`new`;
+    - a `gh api` write;
+    - the GitHub tools' remote writes.
+  - A branch that changes `src/` also needs an approved plan.
+  - Merging (`gh pr merge`, the GitHub tools' merge and auto-merge) is always refused, because merging is the person's decision.
+  - The script runs the Phase 1 checks itself, cheapest first: compile, lint, the debug-artifact audit, CHANGELOG version sync, then the full test suite.
+  - It stops at the first failure. Each npm script has a 15-minute limit, and running out of time counts as a failure.
+  - It records a pass in `.claude/flow-state/` (gitignored) only when every check passes, and only while HEAD and the working tree stay unchanged during the run.
+- **Neither record can be written by Claude.** Every guard refuses a Write/Edit into a `flow-state` folder and any shell command naming one.
+- **`/pr-flow`** now commits before Phase 1 and runs the script with the Bash timeout at 20 minutes. **`/next-task`** ends its plan with "Reply `approve plan #<N>` to start". CLAUDE.md's Project Structure and Implementation Checklist name both.
+- **Limits:**
+  - The shell checks match common forms, so an unusual spelling can get past them, but the after-tool check still reports the change. The push guard is the hard gate, since nothing leaves the machine without a Phase 1 pass.
+  - A session reads `.claude/settings.json` when it starts, so the hooks hold sessions started after this lands, not the session that adds them.
+  - Check 1f (both faker backends kept in sync) and the supply-chain check stay judgement calls in `/pr-flow`.
+
 ## [3.192.3] - Tests: `RecipeCockpitRecipeWriter.test.ts` from 34 s to 12.6 s
 
 [#564](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/564). The writer suite was the slowest in the run. `replaceFieldValue` and `commentOutField` ran against every field of each fixture, four times, once per line-ending variant. The checks also re-parsed the unedited recipe two or three times per field, so each test cost O(fields²).
