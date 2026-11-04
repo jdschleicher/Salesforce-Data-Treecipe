@@ -1,0 +1,5 @@
+# Collections API insert — design notes
+
+Design notes moved out of CLAUDE.md (#563). Read this before changing the service; CLAUDE.md keeps only the rules every change must follow. History is in CHANGELOG.md.
+
+- **A file that stops the shared insert is a red ERROR with View errors** (#310) — `upsertDataSetToSelectedOrg` shows `Failed to process <file>: …` through `VSCodeWorkspaceService.showNotificationWithWorkspaceFile('error', …)` (the helper the cockpit's notifications use too), whose **View errors** (`INSERT_VIEW_ERRORS_LABEL`) opens that attempt's results file after re-checking it exists and is in the workspace. A request that THROWS is recorded in that file by `recordRequestFailure` (one `REQUEST_FAILED` entry with the `fileName` under the object's `FailureResults`, never counted as a failed record by `isRequestFailureResult`), so the first file throwing still leaves a file to open; a write that fails leaves the error without a button. A caller that reports the outcome itself passes `isFailureReportedByCaller` and gets no notification from here. A cancel stays a warning

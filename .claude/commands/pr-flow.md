@@ -130,7 +130,7 @@ If a PR already exists, note its number and URL and continue.
 
 ## Phase 3 — Triple Code Review
 
-Invoke `/code-review` as an Agent. Wait for completion.
+Invoke `/code-review` as an Agent, telling it to read the `DESIGN.md` beside every service the diff touches (its "Read the Design Notes" step). Wait for completion.
 
 **Gate:** If the architecture review returns REQUEST CHANGES on a CRITICAL finding, surface it to the user and ask whether to proceed or fix first.
 

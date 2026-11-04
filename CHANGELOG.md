@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.192.2] - CLAUDE.md trimmed from 333 KB to 36 KB; design notes moved into a `DESIGN.md` beside each service
+
+[#563](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/563). `CLAUDE.md` is loaded into every Claude Code session and every subagent before any work starts. At 333 KB (about 83k tokens) it scored 0/2 on `/readability-gauge`'s guidance budget, and 87% of it was **Key Design Decisions**: per-feature design history a session fixing one field handler paid for in full, and `/pr-flow` paid again in each reviewer subagent.
+
+- **108 design notes moved, word for word, into 24 `DESIGN.md` files** beside the services they describe: `RecipeCockpitService/DESIGN.md` (214 KB, under ten headings by tab and concern), `RecipeService`, `RelationshipService`, the four `PicklistDependency*` services, `SalesforceOrgService`, `ScratchOrgService`, `SfdxProjectService`, `ConfigurationService`, `VSCodeWorkspace` and the rest, plus `jestSetup/DESIGN.md`. A script checked that every moved passage is in exactly one file.
+- **What stays in `CLAUDE.md`** is the rules a change in any area must follow, a few lines each: the picklist escapers and api-name guard, notification escaping, no-prototype maps, deterministic output, the cockpit's nonce-only shell, `localResourceRoots: []`, `textContent`, pending/active allow-lists, containment, sandbox-only writes, in-panel confirmations, no direct `jsforce` import, both faker backends in sync, and the test rules. A table points to every `DESIGN.md`.
+- **Project Structure** is one short line per file. The 43 long descriptions it replaced are kept verbatim in a **Files** section of their folder's `DESIGN.md`.
+- **Skills.** `/docs-check` gains Check 7, which fails a `CLAUDE.md` of 100 KB or more and a pointer to a `DESIGN.md` that does not exist. `/code-review`, `/pr-flow` and `/next-task` read the `DESIGN.md` of every service a diff touches.
+- **Unchanged.** No source file, test or setting. `DESIGN.md` files sit under `src/` and `jestSetup/`, which `.vscodeignore` already leaves out of the extension package.
+
 ## [3.192.1] - Tests: ts-jest stops type checking what `npm run compile` already checks
 
 [#562](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/562). Every suite waited for ts-jest to type check each file it imported, the 1.86 MB `RecipeCockpitService.ts` included, though `npm run compile` checks the same files, and CI runs it before the tests.
