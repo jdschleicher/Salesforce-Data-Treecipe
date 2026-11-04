@@ -54,7 +54,7 @@ Derive the slug from the issue title: lowercase, spaces replaced with hyphens, s
 
 ## Step 3 — Explore Affected Areas
 
-Read the files listed in the issue's "Affected Areas" section. If not listed, explore based on the issue description:
+Read the files listed in the issue's "Affected Areas" section. If not listed, explore based on the issue description. Read the `DESIGN.md` beside each service you will change first (#563): it holds that service's design notes, which `CLAUDE.md` no longer carries.
 
 ```bash
 # Which services are likely affected?

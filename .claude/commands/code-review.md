@@ -42,6 +42,14 @@ git diff main...HEAD --name-only 2>/dev/null || git diff HEAD~1 --name-only
 
 Read each changed `.ts` file. For context on unchanged files they interact with, read those too.
 
+### Read the Design Notes of Every Touched Service
+
+```bash
+git diff main...HEAD --name-only 2>/dev/null | grep -oE '^(src/treecipe/src/[^/]+|jestSetup)/' | sort -u | while read d; do [ -f "$d/DESIGN.md" ] && echo "$d/DESIGN.md"; done
+```
+
+Read each `DESIGN.md` listed before reviewing (#563). A change that breaks a rule written there is a finding at the severity of the rule it breaks, and a new design decision belongs in that file, not in `CLAUDE.md`.
+
 ---
 
 ### Check 1 — TypeScript Strict Mode [CRITICAL if violated]

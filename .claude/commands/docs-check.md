@@ -98,6 +98,19 @@ node -e "const p = require('./package.json'); console.log(JSON.stringify(Object.
 
 ---
 
+## Check 7 — CLAUDE.md Size
+
+`CLAUDE.md` is loaded into every session and every subagent, so it stays under 100 KB (#563). Design notes go in the `DESIGN.md` beside the service they describe.
+
+```bash
+size=$(wc -c < CLAUDE.md); echo "CLAUDE.md: $size bytes"; [ "$size" -lt 102400 ] || echo "FAIL: over 100 KB"
+for d in $(grep -oE '[A-Za-z0-9_./-]+/DESIGN\.md' CLAUDE.md | sort -u); do [ -f "$d" ] || [ -f "src/treecipe/src/$d" ] || echo "STALE pointer: $d"; done
+```
+
+**Fail:** `CLAUDE.md` is 100 KB (102,400 bytes) or more, or names a `DESIGN.md` that does not exist. Offer to move the newest design notes into the matching `DESIGN.md`.
+
+---
+
 ## Check 6 — CHANGELOG Entry Quality (recent entries)
 
 Read the top 3 CHANGELOG entries and verify each has:
@@ -161,6 +174,11 @@ STALE — npm run <script> referenced in CLAUDE.md but not in package.json
 PASS — top 3 entries have complete version, date, and content
   OR
 WARN — entry for vX.Y.Z is missing date or has placeholder content
+
+### Check 7 — CLAUDE.md Size
+PASS — CLAUDE.md is <N> KB (under 100 KB), every DESIGN.md it names exists
+  OR
+FAIL — CLAUDE.md is <N> KB / names missing DESIGN.md: <list>
 
 ---
 
