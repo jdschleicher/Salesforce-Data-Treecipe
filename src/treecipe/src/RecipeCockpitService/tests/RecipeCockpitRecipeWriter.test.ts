@@ -34,12 +34,12 @@ const RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [
 const NESTED_RECIPE_FIXTURE: [string, string] = ['faker-js nested', 'recipe-fakerjs-nested--RelationshipTree_1.yml'];
 const ALL_RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [...RECIPE_FIXTURES, NESTED_RECIPE_FIXTURE];
 
-// THE FIRST VARIANT EDITS EVERY FIELD; THE OTHERS A SAMPLE OF ONE FIELD PER LINE SHAPE (#564)
-const LINE_ENDING_VARIANTS: ReadonlyArray<[string, string, boolean]> = [
-    ['LF with a final newline', '\n', true],
-    ['LF without a final newline', '\n', false],
-    ['CRLF with a final newline', '\r\n', true],
-    ['CRLF without a final newline', '\r\n', false]
+// [name, line ending, final newline, every field edited] -- THE OTHER VARIANTS EDIT A SAMPLE (#564)
+const LINE_ENDING_VARIANTS: ReadonlyArray<[string, string, boolean, boolean]> = [
+    ['LF with a final newline', '\n', true, true],
+    ['LF without a final newline', '\n', false, false],
+    ['CRLF with a final newline', '\r\n', true, false],
+    ['CRLF without a final newline', '\r\n', false, false]
 ];
 
 function readFixture(fileName: string): string {
@@ -217,9 +217,8 @@ function collectFieldAddresses(recipeText: string): Array<[string, string, strin
 }
 
 /*
-    A field line's shape, which is what the line-ending rule depends on: how deep its object is nested,
-    how many lines the field spans (record type TODOs, a multi-line value, a field before friends:),
-    and how its value starts. The line ending is about the lines around an edit, not which field it is.
+    A cheap spread of field kinds for the sample: how deep the object is nested, how many lines the
+    field spans and how its value starts. It is not what line endings depend on -- see the sample.
 */
 function describeFieldLineShape(recipeLines: string[], fieldLineNumber: number, nextEntryLineNumber: number): string {
     const fieldLine = recipeLines[fieldLineNumber - 1];
@@ -236,7 +235,7 @@ function fieldAddressKey([objectApiName, fieldApiName, objectNickname]: FieldAdd
 }
 
 // EVERY FIELD OF THE UNEDITED TEXT WITH ITS LINE SHAPE, IN FILE-ENTRY ORDER
-function collectFieldLineShapes(recipeText: string): Array<{ fieldAddress: FieldAddress; lineShape: string; isFirstOfOccurrence: boolean }> {
+function collectFieldLineShapes(recipeText: string): Array<{ fieldAddress: FieldAddress; fieldLineNumber: number; lineShape: string; isFirstOfOccurrence: boolean }> {
 
     const recipeLines = recipeText.split(/\r?\n/);
     const occurrences = collectUnpatchedObjectOccurrences(recipeText);
@@ -247,15 +246,23 @@ function collectFieldLineShapes(recipeText: string): Array<{ fieldAddress: Field
 
     return occurrences.flatMap(({ objectApiName, objectNickname, objectEntry }) => Array.from(objectEntry.fieldEntries.entries()).map(([fieldApiName, fieldEntry], fieldIndex) => ({
         fieldAddress: [objectApiName, fieldApiName, objectNickname] as FieldAddress,
+        fieldLineNumber: fieldEntry.lineNumber,
         lineShape: describeFieldLineShape(recipeLines, fieldEntry.lineNumber, nextEntryLineNumberOf(fieldEntry.lineNumber)),
         isFirstOfOccurrence: fieldIndex === 0
     })));
 
 }
 
+// THE FIELD WRITTEN LAST IN THE FILE, WHICH IS NOT THE LAST IN PARSE ORDER WHEN A REPEATED OBJECT'S ITERATION ENDS THE FILE
+function findFieldAtEndOfFile(fieldLineShapes: ReturnType<typeof collectFieldLineShapes>): FieldAddress {
+    return fieldLineShapes.reduce((latest, candidate) => candidate.fieldLineNumber > latest.fieldLineNumber ? candidate : latest).fieldAddress;
+}
+
 /*
-    One field per line shape, plus the first and last field and the first field of every occurrence of
-    an object written more than once (#188). The full sweep runs once per fixture on the first variant.
+    The writer's line endings depend on one thing: whether an edit's span reaches the file's last line,
+    which has no ending of its own (applySplice, spliceFieldSpans). So the field at the end of the file
+    is always sampled, with the first field, the first field of every occurrence of an object written
+    more than once (#188) and one field per line shape. The full sweep runs once per fixture.
 */
 function sampleFieldAddressesByLineShape(recipeText: string): FieldAddress[] {
 
@@ -271,7 +278,7 @@ function sampleFieldAddressesByLineShape(recipeText: string): FieldAddress[] {
     };
 
     sample(fieldLineShapes[0].fieldAddress);
-    sample(fieldLineShapes[fieldLineShapes.length - 1].fieldAddress);
+    sample(findFieldAtEndOfFile(fieldLineShapes));
     fieldLineShapes.forEach(({ fieldAddress, lineShape, isFirstOfOccurrence }) => {
         const isRepeatedObjectOccurrence = fieldAddress[2] !== undefined && isFirstOfOccurrence;
         if ( !sampledShapes.has(lineShape) || isRepeatedObjectOccurrence ) {
@@ -348,10 +355,9 @@ describe('RecipeCockpitRecipeWriter', () => {
 
     describe.each(ALL_RECIPE_FIXTURES)('against the %s fixture', (unusedBackend, fileName) => {
 
-        describe.each(LINE_ENDING_VARIANTS)('%s', (unusedVariantName, lineEnding, hasFinalNewline) => {
+        describe.each(LINE_ENDING_VARIANTS)('%s', (unusedVariantName, lineEnding, hasFinalNewline, isFullSweep) => {
 
             const recipeText = toVariant(readFixture(fileName), lineEnding, hasFinalNewline);
-            const isFullSweep = lineEnding === LINE_ENDING_VARIANTS[0][1] && hasFinalNewline === LINE_ENDING_VARIANTS[0][2];
             const allFieldAddresses = collectFieldAddresses(recipeText);
             const fieldAddresses = isFullSweep ? allFieldAddresses : sampleFieldAddressesByLineShape(recipeText);
             const objectOccurrences = collectObjectOccurrences(recipeText);
@@ -363,7 +369,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             });
 
-            test('the sample edits a field of every line shape, every object written more than once, and the first and last field', () => {
+            test('the sample edits a field of every line shape, every object written more than once, and the first field and the field at the end of the file', () => {
 
                 const fieldLineShapes = collectFieldLineShapes(recipeText);
                 const sampledKeys = new Set(fieldAddresses.map(fieldAddressKey));
@@ -372,7 +378,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
                 expect(Array.from(sampledShapes).sort()).toEqual(Array.from(everyShape).sort());
                 expect(fieldAddresses[0]).toEqual(allFieldAddresses[0]);
-                expect(fieldAddresses).toContainEqual(allFieldAddresses[allFieldAddresses.length - 1]);
+                expect(fieldAddresses).toContainEqual(findFieldAtEndOfFile(fieldLineShapes));
                 fieldLineShapes.filter(({ fieldAddress, isFirstOfOccurrence }) => fieldAddress[2] !== undefined && isFirstOfOccurrence).forEach(({ fieldAddress }) => {
                     expect(fieldAddresses).toContainEqual(fieldAddress);
                 });
