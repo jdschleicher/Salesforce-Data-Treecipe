@@ -34,6 +34,7 @@ const RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [
 const NESTED_RECIPE_FIXTURE: [string, string] = ['faker-js nested', 'recipe-fakerjs-nested--RelationshipTree_1.yml'];
 const ALL_RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [...RECIPE_FIXTURES, NESTED_RECIPE_FIXTURE];
 
+// THE FIRST VARIANT EDITS EVERY FIELD; THE OTHERS A SAMPLE OF ONE FIELD PER LINE SHAPE (#564)
 const LINE_ENDING_VARIANTS: ReadonlyArray<[string, string, boolean]> = [
     ['LF with a final newline', '\n', true],
     ['LF without a final newline', '\n', false],
@@ -65,13 +66,27 @@ function collectObjectOccurrences(recipeText: string): ObjectOccurrence[] {
     return occurrences;
 }
 
+/*
+    A sweep edits every field of the same unedited text, so that text is parsed once rather than once
+    per field (#564: the per-field re-parse made the sweep quadratic). Only an unedited fixture or
+    variant goes in here; a patched text is parsed fresh every time.
+*/
+const unpatchedOccurrencesByRecipeText = new Map<string, ObjectOccurrence[]>();
+
+function collectUnpatchedObjectOccurrences(recipeText: string): ObjectOccurrence[] {
+    if ( !unpatchedOccurrencesByRecipeText.has(recipeText) ) {
+        unpatchedOccurrencesByRecipeText.set(recipeText, collectObjectOccurrences(recipeText));
+    }
+    return unpatchedOccurrencesByRecipeText.get(recipeText);
+}
+
 function findOccurrence(occurrences: ObjectOccurrence[], objectApiName: string, objectNickname?: string): ObjectOccurrence {
     return occurrences.find(occurrence => occurrence.objectApiName === objectApiName && occurrence.objectNickname === objectNickname);
 }
 
 // THE OBJECT'S FIELD COLUMN, READ FROM ITS HEADER LINE RATHER THAN FROM THE WRITER UNDER TEST
 function fieldIndentOf(recipeText: string, objectApiName: string, objectNickname?: string): string {
-    const headerLine = recipeText.split(/\r?\n/)[findOccurrence(collectObjectOccurrences(recipeText), objectApiName, objectNickname).objectEntry.lineNumber - 1];
+    const headerLine = recipeText.split(/\r?\n/)[findOccurrence(collectUnpatchedObjectOccurrences(recipeText), objectApiName, objectNickname).objectEntry.lineNumber - 1];
     return ' '.repeat(/^ */.exec(headerLine)[0].length + 4);
 }
 
@@ -148,7 +163,7 @@ type FieldExpectation = { isAbsent: true } | { isAbsent: false; valueText: strin
 */
 function expectRoundTrip(recipeText: string, patchedRecipeText: string, objectApiName: string, fieldApiName: string | undefined, fieldExpectation?: FieldExpectation, objectNickname?: string): void {
 
-    const originalOccurrences = collectObjectOccurrences(recipeText);
+    const originalOccurrences = collectUnpatchedObjectOccurrences(recipeText);
     const patchedOccurrences = collectObjectOccurrences(patchedRecipeText);
     const originalLines = recipeText.split(/\r?\n/);
     const patchedLines = patchedRecipeText.split(/\r?\n/);
@@ -199,6 +214,74 @@ function collectFieldAddresses(recipeText: string): Array<[string, string, strin
         objectEntry.fieldEntries.forEach((unusedFieldEntry, fieldApiName) => fieldAddresses.push([objectApiName, fieldApiName, objectNickname]));
     });
     return fieldAddresses;
+}
+
+/*
+    A field line's shape, which is what the line-ending rule depends on: how deep its object is nested,
+    how many lines the field spans (record type TODOs, a multi-line value, a field before friends:),
+    and how its value starts. The line ending is about the lines around an edit, not which field it is.
+*/
+function describeFieldLineShape(recipeLines: string[], fieldLineNumber: number, nextEntryLineNumber: number): string {
+    const fieldLine = recipeLines[fieldLineNumber - 1];
+    const depth = /^ */.exec(fieldLine)[0].length;
+    const valueStart = fieldLine.replace(/^[^:]*:\s*/, '').slice(0, 3);
+    const valueKind = valueStart === '' ? 'empty' : /^[|>]/.test(valueStart) ? 'block' : valueStart.startsWith('${{') ? 'expression' : /^['"]/.test(valueStart) ? 'quoted' : 'plain';
+    return `${depth}:${nextEntryLineNumber - fieldLineNumber}:${valueKind}`;
+}
+
+type FieldAddress = [string, string, string | undefined];
+
+function fieldAddressKey([objectApiName, fieldApiName, objectNickname]: FieldAddress): string {
+    return `${objectApiName}|${objectNickname ?? ''}|${fieldApiName}`;
+}
+
+// EVERY FIELD OF THE UNEDITED TEXT WITH ITS LINE SHAPE, IN FILE-ENTRY ORDER
+function collectFieldLineShapes(recipeText: string): Array<{ fieldAddress: FieldAddress; lineShape: string; isFirstOfOccurrence: boolean }> {
+
+    const recipeLines = recipeText.split(/\r?\n/);
+    const occurrences = collectUnpatchedObjectOccurrences(recipeText);
+    const entryLineNumbers = occurrences
+        .flatMap(({ objectEntry }) => [objectEntry.lineNumber, ...Array.from(objectEntry.fieldEntries.values()).map(fieldEntry => fieldEntry.lineNumber)])
+        .sort((first, second) => first - second);
+    const nextEntryLineNumberOf = (lineNumber: number): number => entryLineNumbers.find(entryLineNumber => entryLineNumber > lineNumber) ?? recipeLines.length + 1;
+
+    return occurrences.flatMap(({ objectApiName, objectNickname, objectEntry }) => Array.from(objectEntry.fieldEntries.entries()).map(([fieldApiName, fieldEntry], fieldIndex) => ({
+        fieldAddress: [objectApiName, fieldApiName, objectNickname] as FieldAddress,
+        lineShape: describeFieldLineShape(recipeLines, fieldEntry.lineNumber, nextEntryLineNumberOf(fieldEntry.lineNumber)),
+        isFirstOfOccurrence: fieldIndex === 0
+    })));
+
+}
+
+/*
+    One field per line shape, plus the first and last field and the first field of every occurrence of
+    an object written more than once (#188). The full sweep runs once per fixture on the first variant.
+*/
+function sampleFieldAddressesByLineShape(recipeText: string): FieldAddress[] {
+
+    const fieldLineShapes = collectFieldLineShapes(recipeText);
+    const sampledKeys = new Set<string>();
+    const sampledShapes = new Set<string>();
+    const sampledAddresses: FieldAddress[] = [];
+    const sample = (fieldAddress: FieldAddress): void => {
+        if ( !sampledKeys.has(fieldAddressKey(fieldAddress)) ) {
+            sampledKeys.add(fieldAddressKey(fieldAddress));
+            sampledAddresses.push(fieldAddress);
+        }
+    };
+
+    sample(fieldLineShapes[0].fieldAddress);
+    sample(fieldLineShapes[fieldLineShapes.length - 1].fieldAddress);
+    fieldLineShapes.forEach(({ fieldAddress, lineShape, isFirstOfOccurrence }) => {
+        const isRepeatedObjectOccurrence = fieldAddress[2] !== undefined && isFirstOfOccurrence;
+        if ( !sampledShapes.has(lineShape) || isRepeatedObjectOccurrence ) {
+            sampledShapes.add(lineShape);
+            sample(fieldAddress);
+        }
+    });
+
+    return sampledAddresses;
+
 }
 
 const SINGLE_LINE_VALUE = "${{ random_choice('Alpha', 'Beta') }}";
@@ -268,13 +351,35 @@ describe('RecipeCockpitRecipeWriter', () => {
         describe.each(LINE_ENDING_VARIANTS)('%s', (unusedVariantName, lineEnding, hasFinalNewline) => {
 
             const recipeText = toVariant(readFixture(fileName), lineEnding, hasFinalNewline);
-            const fieldAddresses = collectFieldAddresses(recipeText);
+            const isFullSweep = lineEnding === LINE_ENDING_VARIANTS[0][1] && hasFinalNewline === LINE_ENDING_VARIANTS[0][2];
+            const allFieldAddresses = collectFieldAddresses(recipeText);
+            const fieldAddresses = isFullSweep ? allFieldAddresses : sampleFieldAddressesByLineShape(recipeText);
             const objectOccurrences = collectObjectOccurrences(recipeText);
 
             test('the variant reads the same objects and fields as the fixture', () => {
 
-                expect(fieldAddresses.length).toBeGreaterThan(100);
-                expect(fieldAddresses).toEqual(collectFieldAddresses(readFixture(fileName)));
+                expect(allFieldAddresses.length).toBeGreaterThan(100);
+                expect(allFieldAddresses).toEqual(collectFieldAddresses(readFixture(fileName)));
+
+            });
+
+            test('the sample edits a field of every line shape, every object written more than once, and the first and last field', () => {
+
+                const fieldLineShapes = collectFieldLineShapes(recipeText);
+                const sampledKeys = new Set(fieldAddresses.map(fieldAddressKey));
+                const everyShape = new Set(fieldLineShapes.map(({ lineShape }) => lineShape));
+                const sampledShapes = new Set(fieldLineShapes.filter(({ fieldAddress }) => sampledKeys.has(fieldAddressKey(fieldAddress))).map(({ lineShape }) => lineShape));
+
+                expect(Array.from(sampledShapes).sort()).toEqual(Array.from(everyShape).sort());
+                expect(fieldAddresses[0]).toEqual(allFieldAddresses[0]);
+                expect(fieldAddresses).toContainEqual(allFieldAddresses[allFieldAddresses.length - 1]);
+                fieldLineShapes.filter(({ fieldAddress, isFirstOfOccurrence }) => fieldAddress[2] !== undefined && isFirstOfOccurrence).forEach(({ fieldAddress }) => {
+                    expect(fieldAddresses).toContainEqual(fieldAddress);
+                });
+                expect(fieldAddresses).toContainEqual(expect.arrayContaining(['RecordTypeId']));
+                if ( isFullSweep ) {
+                    expect(fieldAddresses).toEqual(allFieldAddresses);
+                }
 
             });
 

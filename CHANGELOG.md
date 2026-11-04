@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.192.3] - Tests: `RecipeCockpitRecipeWriter.test.ts` from 34 s to 12.6 s
+
+[#564](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/564). The writer suite was the slowest in the run. `replaceFieldValue` and `commentOutField` ran against every field of each fixture, four times, once per line-ending variant. The checks also re-parsed the unedited recipe two or three times per field, so each test cost O(fields²).
+
+- **The unedited text is parsed once.** `fieldIndentOf` and `expectRoundTrip` read the unedited fixture or variant through `collectUnpatchedObjectOccurrences`, a cache keyed by that text. Every edited text is still parsed fresh. This alone took the suite from 34 s to 25 s.
+- **The full field sweep runs once per fixture**, on LF with a final newline. The other three variants (LF without a final newline, and CRLF with and without one) edit a sample (`sampleFieldAddressesByLineShape`): one field per line shape (object depth, lines the field spans, and how its value starts), the first and last field, and the first field of every occurrence of an object written more than once. That is 12 of 152 fields for snowfakery, 13 of 153 for faker-js and 28 of 249 for the nested faker-js fixture. The line-ending rule is about the lines around an edit, not which field it is.
+- **A new test per variant holds the sample to that rule.** It fails when a line shape the variant's recipe has is not sampled, or when the sample leaves out the first or last field, an object written more than once, or `RecordTypeId`. On the full-sweep variant it requires every field.
+- **Measured** on its own with `--coverage=false`: 34 s before and 12.6 s after. The suite now has 232 tests (220 before). The writer's coverage from this suite is unchanged (26.37% statements, 21.45% branches, the same uncovered lines). The writer itself is unchanged.
+
 ## [3.192.2] - CLAUDE.md trimmed from 333 KB to 36 KB; design notes moved into a `DESIGN.md` beside each service
 
 [#563](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/563). `CLAUDE.md` is loaded into every Claude Code session and every subagent before any work starts. At 333 KB (about 83k tokens) it scored 0/2 on `/readability-gauge`'s guidance budget, and 87% of it was **Key Design Decisions**: per-feature design history a session fixing one field handler paid for in full, and `/pr-flow` paid again in each reviewer subagent.
