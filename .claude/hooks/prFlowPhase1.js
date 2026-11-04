@@ -17,9 +17,13 @@ function runGit(gitArguments) {
     return execFileSync('git', gitArguments, { cwd: projectDirectory, encoding: 'utf8' }).trim();
 }
 
+// THE FULL JEST RUN TAKES ABOUT FOUR MINUTES; A SCRIPT STILL RUNNING AFTER THIS IS TREATED AS A FAILURE, NEVER A PASS
+const NPM_SCRIPT_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
+
 function runNpmScript(scriptName) {
-    const npmRun = spawnSync('npm', ['run', scriptName], { cwd: projectDirectory, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-    return { isPassed: npmRun.status === 0, output: `${npmRun.stdout}${npmRun.stderr}` };
+    const npmRun = spawnSync('npm', ['run', scriptName], { cwd: projectDirectory, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: NPM_SCRIPT_TIMEOUT_MILLISECONDS });
+    const timeoutNote = npmRun.error ? `\nnpm run ${scriptName} did not finish: ${npmRun.error.message}` : '';
+    return { isPassed: npmRun.status === 0, output: `${npmRun.stdout ?? ''}${npmRun.stderr ?? ''}${timeoutNote}` };
 }
 
 function listDebugArtifacts() {
@@ -53,7 +57,7 @@ function readChangelogVersionMismatch() {
     return changelogVersion === packageVersion ? undefined : `package.json is ${packageVersion}, the top CHANGELOG.md entry is ${changelogVersion}`;
 }
 
-// THE PHASE 1 CHECKS OF .claude/commands/pr-flow.md, IN ITS ORDER: EACH RETURNS undefined ON A PASS, ELSE WHAT FAILED
+// THE PHASE 1 CHECKS OF .claude/commands/pr-flow.md, CHEAPEST FIRST SO A FAILURE STOPS BEFORE THE FOUR-MINUTE TEST RUN: EACH RETURNS undefined ON A PASS, ELSE WHAT FAILED
 const PHASE_ONE_CHECKS = [
     ['1a compile', () => { const result = runNpmScript('compile'); return result.isPassed ? undefined : result.output.slice(-3000); }],
     ['1c lint (zero errors)', () => { const result = runNpmScript('lint'); return result.isPassed ? undefined : result.output.slice(-3000); }],
@@ -76,6 +80,7 @@ for ( const [checkName, runCheck] of PHASE_ONE_CHECKS ) {
     console.log(failure === undefined ? `✅ ${checkName}` : `❌ ${checkName}\n${failure}`);
     if ( failure !== undefined ) {
         failedChecks.push(checkName);
+        break;
     }
 }
 

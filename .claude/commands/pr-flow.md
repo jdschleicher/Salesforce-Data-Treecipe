@@ -29,7 +29,7 @@ git add <changed files by name> && git commit   # 2a's commit, done now so the c
 node .claude/hooks/prFlowPhase1.js
 ```
 
-The script runs 1a–1e below and records the pass in `.claude/flow-state/` only when every one passes; nothing else can write that record. A fix after a failure is a new commit, and the script runs again. 1f and 1g need judgement, so they stay with you, as below. Do NOT invoke `/pre-commit` as a sub-skill.
+Run the script with the Bash tool's `timeout` at `1200000` (or `run_in_background`): the test suite takes about four minutes, and the tool's two-minute default kills it before a pass is recorded. The script runs 1a–1e below, stops at the first failure, and records the pass in `.claude/flow-state/` only when every one passes; nothing else can write that record. A fix after a failure is a new commit, and the script runs again. 1f and 1g need judgement, so they stay with you, as below. Do NOT invoke `/pre-commit` as a sub-skill.
 
 The checks the script runs, for reference:
 

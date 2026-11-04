@@ -104,7 +104,7 @@ Before writing any code, output a plan:
 
 Ask the user to confirm or redirect before implementing. End the plan with: **Reply `approve plan #<N>` to start.**
 
-The flow guard (`.claude/hooks/flowGuard.js`) holds `src/` read-only until then: `/next-task <N>` starts issue N, and only the person's own message `approve plan #<N>` approves it. A plain "approve" or "go" does not, and nothing Claude runs can. If an edit is refused with "plan is not approved", stop and wait for that reply; do not work around it.
+The flow guard (`.claude/hooks/flowGuard.js`) holds `src/`, the hook files, `.claude/settings.json` and `package.json` read-only until then: `/next-task <N>` starts issue N, and only the person's own message, consisting of exactly `approve plan #<N>`, approves it. A plain "approve" or "go" does not, nor does a longer message that merely contains the phrase, and nothing Claude runs can. If an edit is refused with "plan is not approved", stop and wait for that reply; do not work around it.
 
 ---
 
