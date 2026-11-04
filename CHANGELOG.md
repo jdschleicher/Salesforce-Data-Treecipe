@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.192.4] - Repo tooling: flow guard hooks hold Claude Code sessions to /next-task and /pr-flow
+
+Sessions had skipped `/next-task`'s plan approval (#571 was started without one). Remembering the flows was not enough, so the harness now enforces them. Nothing ships in the `.vsix`: `.claude/**` is excluded.
+
+- **`.claude/settings.json`** wires `.claude/hooks/flowGuard.js` into four hook events: the person's prompt, Write/Edit, Bash, and the GitHub tool's PR creation.
+- **`src/` waits for an approved plan.**
+  - `/next-task <N>` starts issue N.
+  - Only the person's own message `approve plan #<N>` approves it. A plain "approve" or "go" does not, and neither does approving another issue's number.
+  - Until then, `src/` refuses Write/Edit and the common shell writes (`sed -i`, `>`, `tee`, `cp`, `mv`, `rm`, `git apply`, …), each with the reason and what to do next. Read-only commands such as `grep` are not refused.
+- **A push or a PR waits for `/pr-flow` Phase 1 on the exact HEAD.** `git push`, `gh pr create` and the GitHub tool's PR creation are refused unless `node .claude/hooks/prFlowPhase1.js` passed on HEAD with nothing uncommitted.
+  - The script runs the Phase 1 checks itself: compile, lint, the debug-artifact audit, CHANGELOG version sync and the full test suite.
+  - It records a pass in `.claude/flow-state/` (gitignored) only when every check passes, and only while HEAD and the working tree stay unchanged during the run.
+- **Neither record can be written by Claude.** Every guard refuses a write into `.claude/flow-state/`.
+- **`/pr-flow`** now commits before Phase 1 and runs the script. **`/next-task`** ends its plan with "Reply `approve plan #<N>` to start". CLAUDE.md's Project Structure and Implementation Checklist name both.
+- **Limits:**
+  - The shell-write check matches common forms, so an unusual one can get past it. The push guard is the hard gate, since nothing leaves the machine without a Phase 1 pass.
+  - Check 1f (both faker backends kept in sync) and the supply-chain check stay judgement calls in `/pr-flow`.
+
 ## [3.192.3] - Tests: `RecipeCockpitRecipeWriter.test.ts` from 34 s to 12.6 s
 
 [#564](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/564). The writer suite was the slowest in the run. `replaceFieldValue` and `commentOutField` ran against every field of each fixture, four times, once per line-ending variant. The checks also re-parsed the unedited recipe two or three times per field, so each test cost O(fields²).
