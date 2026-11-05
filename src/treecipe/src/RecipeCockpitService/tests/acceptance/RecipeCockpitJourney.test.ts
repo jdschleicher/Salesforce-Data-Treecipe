@@ -6,6 +6,7 @@ jest.mock('@salesforce/core', () => require('./RecipeCockpitJourneyFakes').journ
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { RecipeCockpitService, RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
 import { JOURNEY_ORG_PICKER_NAME, RecipeCockpitJourney } from './RecipeCockpitJourney';
@@ -93,6 +94,22 @@ describe('RecipeCockpitJourney (#577)', () => {
         expect(journey.fileChanges).toEqual([{ change: 'removed', relativePath: recipePath, step: 'remove the Lead recipe' }]);
         expect(journey.hostCalls).toEqual([{ call: 'commands.executeCommand', args: ['workbench.action.reloadWindow'], step: '(between steps)' }]);
         expect(journey.workspaceState.get('treecipe.someKey')).toBeUndefined();
+
+    });
+
+    test('the cockpit reads the journey\'s own home folder, in every step of every test, and none of the machine\'s default-org variables', async () => {
+
+        // A CLI DEFAULT IN THE JOURNEY'S HOME IS THE ONE THE ORG LIST MARKS; THE MACHINE'S OWN HOME IS NEVER READ
+        fs.mkdirSync(path.join(journey.homePath, '.sf'));
+        fs.writeFileSync(path.join(journey.homePath, '.sf', 'config.json'), JSON.stringify({ 'target-org': 'qa' }));
+
+        await journey.step('read the home folder', () => {
+            expect(os.homedir()).toBe(journey.homePath);
+            expect(process.env.SF_TARGET_ORG).toBeUndefined();
+        });
+        await journey.chooseTree('Lead-ONLY');
+
+        expect(journey.optionLabelsOf(JOURNEY_ORG_PICKER_NAME).filter(label => label.startsWith('qa'))).toEqual([expect.stringMatching(/^qa .*default/i)]);
 
     });
 

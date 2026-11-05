@@ -10,7 +10,7 @@ Slice A of epic #576. No source file changes, and nothing a user sees changes.
   - **`screen()`:** an accessibility-style tree of role, name and state (`RecipeCockpitScreen.ts`). Anything the shell's stylesheet hides is left out.
   - **What it records:** notifications (kind, text, buttons), quick picks and input boxes with what each offered, files written or removed under the workspace, calls on the fake org (built on `orgAuthorizations.json` and `OrgConnectionPings.ts`), and the message log in both directions.
   - **Named steps:** every action and every expectation runs as one, so a failure names the step and what was on screen instead.
-  - **Hermetic:** each journey has its own home folder and none of the CLI's default-org variables, so the orgs offered are the fixture's on every machine.
+  - **Hermetic:** each journey has its own home folder and none of the CLI's default-org variables, so the orgs offered are the fixture's on every machine. `os.homedir()` asks the operating system rather than Jest's copy of `process.env`, so setting `HOME` would not reach it: each step spies `os.homedir` to the journey's folder instead. A test proves that a CLI default written there is the one the org list marks.
 - **The first journey** (`FirstJourney.ts`, run by `FirstJourney.test.ts` on `historyWorkspace`):
   - the newest run is shown;
   - the Treecipes dropdown lists both trees in order;
@@ -28,7 +28,8 @@ Slice A of epic #576. No source file changes, and nothing a user sees changes.
   - Export JSON's files are recorded, and its "Open file" button opens the file;
   - the run switch's in-panel confirmation is answered by its button;
   - a failed action says what was on screen instead;
-  - a disabled control is not clicked, a host that throws or never answers fails the step rather than hanging, and a file removed in a step is recorded.
+  - a disabled control is not clicked, a host that throws or never answers fails the step rather than hanging, and a file removed in a step is recorded;
+  - a journey that fails to open closes itself, removing its temp folder and putting back the variables it cleared.
 - **The fakes are tested on their own** (`RecipeCockpitJourneyFakes.test.ts`), so a later journey that reaches a VS Code or org call the first journey never made finds it working. A connection call the fake org has no answer for throws, naming the call and the org.
 - **No lookups by class or id.** `AcceptanceSelectorScan.test.ts` fails on `className`, `classList`, `.getElementById` or a `querySelector` with a class or id selector anywhere in `tests/acceptance/`. A seeded line of each kind proves the scan can fail.
 - `RecipeCockpitPanelHarness` gains `isDisplayed`: an element is not displayed when the shell's own stylesheet gives one of its classes `display: none`.

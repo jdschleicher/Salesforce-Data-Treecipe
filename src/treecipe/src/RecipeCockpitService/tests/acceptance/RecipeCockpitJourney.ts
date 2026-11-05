@@ -50,11 +50,12 @@ export const JOURNEY_ORG_PICKER_NAME = 'Salesforce org the generated data goes t
 const RECIPE_COCKPIT_FLAG_SETTING = 'salesforce-data-treecipe.recipeCockpitEnabled';
 
 /*
-    The org listing reads the CLI's default org from the environment and from the home folder's
-    .sf/config.json, so a journey runs with a home folder of its own and none of these set: the orgs it
-    offers are the fixture's, on every machine.
+    The org listing reads the CLI's default org from these variables and from os.homedir()'s
+    .sf/config.json, so a journey runs with none of them set and a home folder of its own: the orgs it
+    offers are the fixture's, on every machine. os.homedir() asks the operating system, not Jest's copy
+    of process.env, so setting HOME would not reach it; each step spies it instead (see step).
 */
-const MACHINE_ENVIRONMENT_VARIABLES = ['HOME', 'USERPROFILE', TARGET_ORG_ENVIRONMENT_VARIABLE, LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
+const MACHINE_ENVIRONMENT_VARIABLES = [TARGET_ORG_ENVIRONMENT_VARIABLE, LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
 
 // ROUNDS OF THE EVENT LOOP BEFORE A JOURNEY GIVES UP ON IDLE; QUIET ROUNDS BEFORE IT CALLS IDLE
@@ -102,6 +103,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
     workspaceRoot = '';
     private journeyRoot = '';
     private readonly machineEnvironment = new Map<string, string | undefined>();
+    // THE HOME FOLDER os.homedir() ANSWERS DURING EVERY STEP; EMPTY UNTIL open
+    homePath = '';
     readonly settings = new Map<string, unknown>([[RECIPE_COCKPIT_FLAG_SETTING, true]]);
     readonly org = new FakeOrgConnections();
 
@@ -151,22 +154,26 @@ export class RecipeCockpitJourney implements IJourneyHost {
         this.workspaceRoot = path.join(this.journeyRoot, 'workspace');
         fs.cpSync(fixturePath, this.workspaceRoot, { recursive: true });
 
-        const journeyHomePath = path.join(this.journeyRoot, 'home');
-        fs.mkdirSync(journeyHomePath);
+        this.homePath = path.join(this.journeyRoot, 'home');
+        fs.mkdirSync(this.homePath);
         MACHINE_ENVIRONMENT_VARIABLES.forEach(variableName => {
             this.machineEnvironment.set(variableName, process.env[variableName]);
             delete process.env[variableName];
         });
-        process.env.HOME = journeyHomePath;
-        process.env.USERPROFILE = journeyHomePath;
 
         setOpenJourneyHost(this);
         setOpenOrgConnections(this.org);
 
-        await this.step(`open the cockpit on ${fixtureName}`, async () => {
-            await RecipeCockpitService.openRecipeCockpitPanel(this.workspaceRoot, this.workspaceState);
-            await this.settle();
-        });
+        // A JOURNEY THAT FAILS TO OPEN IS NEVER HANDED TO ITS SUITE TO CLOSE, SO IT CLOSES ITSELF
+        try {
+            await this.step(`open the cockpit on ${fixtureName}`, async () => {
+                await RecipeCockpitService.openRecipeCockpitPanel(this.workspaceRoot, this.workspaceState);
+                await this.settle();
+            });
+        } catch (openError) {
+            await this.close();
+            throw openError;
+        }
 
         return this;
 
@@ -184,6 +191,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
             if ( variableValue === undefined ) { delete process.env[variableName]; } else { process.env[variableName] = variableValue; }
         });
         this.machineEnvironment.clear();
+        this.homePath = '';
         if ( this.journeyRoot ) {
             fs.rmSync(this.journeyRoot, { recursive: true, force: true });
         }
@@ -203,6 +211,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
         this.stepStack.push(stepName);
         this.steps.push(this.stepStack.join(' › '));
         const filesBefore = isOutermostStep ? this.snapshotFiles() : undefined;
+        // AGAIN AT EVERY STEP: restoreMocks REMOVES THE SPY BEFORE EACH TEST OF A SUITE THAT OPENED ITS JOURNEY ONCE
+        if ( this.homePath ) { jest.spyOn(os, 'homedir').mockReturnValue(this.homePath); }
 
         try {
             return await stepAction();
