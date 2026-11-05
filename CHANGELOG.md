@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.192.6] - Repo tooling: every dependency pinned to the version the lockfile locks (#588)
+
+Nothing a user sees changes, and the `.vsix` packages the same 2,260 files.
+
+- **`package.json` holds no ranges.** The 21 `^` entries are now the exact versions `package-lock.json` already resolved, e.g. `@salesforce/core` `8.10.0` (the one that ships in the `.vsix`), `typescript` `5.8.3`, `jsforce` `3.8.1`. A developer's `npm install` or `npm update` can no longer move one to a newly published, possibly hijacked, release. The lockfile's root entry carries the same specs. Every other entry is unchanged, except the one below.
+- **One exception: `@types/vscode` is pinned to `1.94.0`, not the locked `1.99.1`.** `vsce` refuses to package when `@types/vscode` is newer than `engines.vscode` (`^1.94.0`). The `^` range passed only because `vsce` compares its floor. The code compiles cleanly against the 1.94 types, so it uses no API that VS Code 1.94 lacks.
+- **`.npmrc` sets `save-exact=true`**, so `npm install --save-dev <pkg>` writes `7.0.0`, not `^7.0.0`. `vsce` leaves `.npmrc` out of the package by default.
+- **`.github/workflowScripts/tests/dependencyPins.test.js`** fails when a `dependencies` or `devDependencies` entry is not an exact `x.y.z` version, or is not the version the lockfile locks. Its message names the package, its spec and the locked version, and says to pin it. It also checks:
+  - the lockfile's root entry matches `package.json`;
+  - `@types/vscode` is the `engines.vscode` floor;
+  - `.npmrc` sets `save-exact=true`.
+
+  The rule refuses `^`, `~`, `*`, `x`, `>=`, hyphen ranges, `latest`, prereleases, and git, URL, `file:` and `npm:` alias specs.
+
 ## [3.192.5] - Tests: a layer ratchet over every service import, and a golden test of the generation commands (#571)
 
 The first slice of epic #570. No source file changes, and nothing a user sees changes.
@@ -1737,7 +1751,7 @@ Recipes ignored validation rules, so a generated record could fail its insert on
   - `ISBLANK(f)`: the field must have a value.
   - `LEN(f)` against a number: a length minimum or maximum.
   - `f` against `TODAY()` or `DATE(y, m, d)`: an earliest or latest date, for a Date field.
-  
+
   `AND`/`OR`, two fields, a cross-object reference and anything else are not applied, never partly applied. Every field reference must be an api name (`SalesforceApiName`). A rule naming a field the walk did not read from the object's `fields/` folder is not applied, and so is one naming a standard-field mapping.
 - **Workspace text is parsed, never copied.** Numbers are written back from their parsed digits. A bound the formula excludes (`<=`, `>=`) moves one step of the field's scale inward, done in whole units with `BigInt`, so `Amount__c >= 50000` on a scale-2 field becomes a maximum of `49999.99`. Dates are checked as calendar dates and shifted by a day for `<=` and `>=`. Formula string literals have their backslash escapes read.
 - **Regex.** A pattern is translated into a sequence of atoms: a literal, a character class, `.`, `\d`, `\w` or `\s`, each with an optional quantifier. A value made of one draw per atom always matches, because Salesforce's `REGEX` matches the whole value. Groups, alternation, back-references, lookarounds, nested or intersected classes, possessive quantifiers, non-ASCII characters, and any pattern holding a template opener (`${{`, `${%`, `${`, `{{`, `{%`, `<<`, `<%`) or a line break either YAML parser sees are refused. faker-js writes a class of letters, digits and `_` through `faker.helpers.fromRegExp`, writes literals as JS strings through the picklist escaper, and draws any other set with `faker.string.fromCharacters`, because `fromRegExp` skips most punctuation inside a class. snowfakery has no regex generator, so a regex rule is reported not applied there. A regex applies to Text, TextArea, LongTextArea and Phone fields.
@@ -2295,7 +2309,7 @@ The issue was written for Data-by-Org's per-object **+ Create**, which [#255](ht
   - every component failed: an error with **View output**
   - a timeout, or an answer too large to read: a warning that it may have partly applied
   - a cancel: the process tree is killed, and a message says the deploy may have partly applied
-  
+
   The result is saved, redacted, to `treecipe/OrgOperations/<username>/<timestamp>-metadata-deploy.json`. Two operations in the same second now take `<name>-2`, `<name>-3`, … rather than losing the later result.
 - **Afterwards, however it ended** (once the CLI started, even if something threw after it): the deploy stays in flight, with its button, every insert and the picker held, until the readiness has been checked again, and the deployed target leaves the allow-list until a fresh readiness offers it again. The new per-org, per-object `SalesforceOrgService.clearDescribeCache(username, object)` drops that describe, and every card listing the object is checked again, connecting only for what the cache no longer holds. The insert is offered only when the fresh describe says so.
 - **Unchanged:** the shell builder still takes only a nonce, and every new text reaches the panel over `postMessage` and is written with `textContent`. Everything ships behind `recipeCockpitEnabled`, whose warning now names the deploy among the things the cockpit can write to an org. Nothing a field depends on (global value sets, record types, permission sets) is deployed with it, and no field-level security is granted.
@@ -2328,7 +2342,7 @@ Closes [#226](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/22
   - shows the insert result beside the card's insert button, as the reload did;
   - puts the data set at the top of the card's Previous Fake Sets, if that tab is built;
   - puts it under its version in Previous Versions, if that version is expanded.
-  
+
   Every other node on the page is the one that was there before, and a test checks this by object identity across every card. The org selection, readiness and comparisons stay as they were.
 - **Placed by the reload's own rule.** `RecipeCockpitTreeHistory.buildAddedDataset` reads the one new folder and places it through `groupTreeHistories`, the function a reload uses. A partial update and a reload therefore cannot disagree on which cards list it.
 - **Falls back to the reload.** The run is reloaded, onto the same tab as before (Previous Fake Sets after ▶ Run Faker, Treecipe after an insert), when:
@@ -2612,7 +2626,7 @@ Data-by-Org's **+ Create** needs a non-production org that already has the proje
   - the definition's edition, admin email and username, since whoever wrote the file may administer the org
   - that `replacements` copy local files or environment variables into the deploy, when they do
   - that the metadata deployed is the repository's
-  
+
   Every value is put on one line, so none can add a line to the modal.
 - **The Dev Hub lookup also reads the legacy names:** `SFDX_DEFAULTDEVHUBUSERNAME`, and `defaultdevhubusername` in `.sfdx/sfdx-config.json`, each after its `sf` counterpart. A package directory that does not exist is refused before any org is made.
 - **The run is the window's, not the panel's.** A cockpit closed and reopened mid-run starts from the run's state, so its router still refuses another run, Create, org selection, ⟳ and `loadDataOrgs`, and every later state reaches the panel open now. A click the host refuses because a run is going is answered with that run's state. While a run is in flight the panel posts no org listing, and while a Create is in flight the button is disabled.
@@ -6291,7 +6305,7 @@ Based upon the same YAML file approached used with snowfakery, this update intro
 5. Custom functions for date and datetime field types for FakerJSRecipeProcessor similar to Snowfakery. 
 6. Non-intrusive info box for inserting data sets  (doesn't prevent anything from being done in VS Code and shows the status of the files being processed)
 7. On Non-intrusive progress window, selecting "Cancel" button will initiate "Delete Previous Records" functionality that will delete any saved records of that run
-  
+
 
 ## [1.3.0] [PR#15](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/15) - Feature: Salesforce OOTB boilerplate faker recipes for several OOTB objects like Account, Contact 
 
