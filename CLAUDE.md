@@ -115,6 +115,8 @@ jestSetup/                                   # Jest harness only — outside tsc
 src/
 ├── extension.ts                             # Extension entry point, command registration
 └── treecipe/src/
+    ├── tests/
+    │   └── ServiceLayers.test.ts            # SERVICE_LAYERS, the one layer table (#570), and KNOWN_LAYER_VIOLATIONS, which only shrinks
     ├── CockpitKit/                          # What every cockpit shares (#524): palette, button kinds, org picker CSS, in-panel confirmation; imports only crypto
     │   └── tests/                           # Every kit piece appears verbatim and once in the Recipe Cockpit's document, so its suites cover the kit
     ├── CollectionsApiService/
@@ -140,7 +142,8 @@ src/
     │   └── tests/
     ├── ExtensionCommandService/
     │   ├── ExtensionCommandService.ts       # VS Code command handler implementations
-    │   └── tests/
+    │   └── tests/                           # GenerationCommands.golden.test.ts: both generation commands against golden/ (#571)
+    │       ├── golden/                      # Every file Generate Treecipe and Run Faker write for the mock metadata, per backend; UPDATE_GOLDEN=1 rewrites
     │       └── mocks/                       # A pre-3.29.1 recipe per backend (bare record-type variants) and a recipe with an unrelated YAML error
     ├── FakerRecipeProcessor/
     │   ├── IFakerRecipeProcessor.ts         # Interface both processors implement
@@ -284,6 +287,12 @@ User runs command (Cmd+Shift+P)
                   → generates faker expression per field type
                 → Writes YAML recipe file(s) to workspace
 ```
+
+### Layers
+
+**A folder under `src/treecipe/src` imports only its own layer or a lower one, never in a cycle** (epic #570). The layers run from 0 (leaf: imports no other service) through platform, metadata model, generation and insert, and features, to 5 (commands, `src/extension.ts`). Each folder's layer is `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table. That test fails on an upward import, a folder-level cycle, a folder with no layer, and a `KNOWN_LAYER_VIOLATIONS` entry that no longer happens. The list holds today's violations, each with the slice that removes it (#572, #574, #575), and only shrinks. A new folder gets its layer in the same change. Shared code a lower layer needs moves down; it is not added to the list.
+
+`ExtensionCommandService/tests/GenerationCommands.golden.test.ts` runs Generate Treecipe and Run Faker by Recipe and compares every file they write with `tests/golden/`. A move that claims "behaviour unchanged" passes it with no change to those files. `UPDATE_GOLDEN=1` rewrites them, and the PR then says what a user now gets differently.
 
 ### Key Design Decisions
 

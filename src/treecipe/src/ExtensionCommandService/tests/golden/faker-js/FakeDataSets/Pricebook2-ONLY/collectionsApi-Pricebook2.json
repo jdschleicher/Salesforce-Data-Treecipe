@@ -1,0 +1,15 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Pricebook2",
+        "referenceId": "Pricebook2_Reference_1__Pricebook2_NickName"
+      },
+      "Description": null,
+      "IsActive": null,
+      "IsStandard": null,
+      "Name": null
+    }
+  ]
+}

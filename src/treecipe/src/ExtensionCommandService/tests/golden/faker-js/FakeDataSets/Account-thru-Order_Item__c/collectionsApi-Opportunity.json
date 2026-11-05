@@ -1,0 +1,35 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Opportunity",
+        "referenceId": "Opportunity_Reference_1__Opportunity_Account_NickName"
+      },
+      "Name": "Devolved cloud-native throughput",
+      "Amount": "465475.00",
+      "CloseDate": "Fri Dec 12 2025 17:19:59 GMT+0000 (Coordinated Universal Time)\n",
+      "Description": "Natus voluptas speciosus usitas maiores comptus deripio. Bibo verto adfero animi desparatus atqui adversus vir thesis arguo. Tactus esse degenero saepe sapiente.",
+      "ExpectedRevenue": "617017.00",
+      "LeadSource": "Phone Inquiry",
+      "NextStep": "Vulpes aedificium dolorum tutis articulus reiciendis aspicio.",
+      "Probability": "27.0",
+      "StageName": "Closed Lost",
+      "Type": "New Customer",
+      "ForecastCategory": "Commit",
+      "AccountId": "Account_NickName",
+      "CampaignId": null,
+      "ContractId": null,
+      "CurrentGenerators__c": "Amicitia nam repudiandae ait laboriosam degenero.\nSuggero ambulo tenax sum aestas.\nCresco thalassinu",
+      "DeliveryInstallationStatus__c": "Completed",
+      "IqScore": null,
+      "IsPrivate": null,
+      "MainCompetitors__c": "Eaque ademptio occaecati delego. Ulciscor saepe illo adimpleo aeger synagoga suppellex neque. Territ",
+      "OrderNumber__c": "Infit de",
+      "OwnerId": null,
+      "Pricebook2Id": null,
+      "TotalOpportunityQuantity": null,
+      "TrackingNumber__c": "Denique coti"
+    }
+  ]
+}

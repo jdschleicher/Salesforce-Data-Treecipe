@@ -1,0 +1,13 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "MasterDetailMadness__c",
+        "referenceId": "MasterDetailMadness__c_Reference_1__MasterDetailMadness__c_Contact_Account_NickName"
+      },
+      "LU_Contact__c": "Contact_Account_NickName",
+      "MD_MegaMapMadness__c": "MegaMapMadness__c_NickName"
+    }
+  ]
+}

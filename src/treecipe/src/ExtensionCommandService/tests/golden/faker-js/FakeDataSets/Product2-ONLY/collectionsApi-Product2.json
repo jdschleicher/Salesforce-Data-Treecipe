@@ -1,0 +1,29 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Product2",
+        "referenceId": "Product2_Reference_1__Product2_NickName"
+      },
+      "Name": "Ergonomic Concrete Table",
+      "Description": "Accusamus solitudo adopto hic theatrum amiculum aegrus vulgus. Cupiditate apto tubineus cras cogo textor consequatur. Desidero carpo aro ago commemoro.",
+      "ProductCode": "Computer-defO7Y",
+      "IsActive": "false",
+      "Family": "Services",
+      "QuantityUnitOfMeasure": "Box",
+      "DisplayUrl": "https://ornate-thread.org",
+      "ExternalId": "addd1c99-41d9-4080-9cf1-6997d5c77328",
+      "Cost__c": "114071666903231.56\n",
+      "Current_Inventory__c": "930336130220814000\n",
+      "ExternalDataSourceId": null,
+      "Lifespan_Months__c": "773138416801940100\n",
+      "Maintenance_Cycle__c": "949816289314153500\n",
+      "Replacement_Part__c": "false",
+      "SellerId": null,
+      "SourceProductId": null,
+      "StockKeepingUnit": null,
+      "Warehouse_SKU__c": "Despecto cupiditas cibus agnitio cetera vado vitium. Vivo tabgo tumultus bene magnam debitis audeo. "
+    }
+  ]
+}

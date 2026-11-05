@@ -1,0 +1,13 @@
+# Relationship Tree: RelationshipTree_4
+# Objects must be processed in this order for proper lookup resolution
+
+# Level 0 - Manufacturing_Event__e
+# Manufacturing_Event__e (No relationships)
+
+- object: Manufacturing_Event__e
+  nickname: Manufacturing_Event__e_NickName
+  count: 1
+  fields:
+    Order_Id__c: ${{fake.text(max_nb_chars=18)}}
+    Status__c: ${{fake.text(max_nb_chars=255)}}
+
