@@ -1,5 +1,33 @@
 # Change Log
 
+## [3.192.5] - Tests: a layer ratchet over every service import, and a golden test of the generation commands (#571)
+
+The first slice of epic #570. No source file changes, and nothing a user sees changes.
+
+- **The layers are declared.** CLAUDE.md's new **Layers** section states the rule: a folder imports only its own layer or a lower one, never in a cycle. It points to `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table (#570's six layers, applied to today's 32 folders).
+- **The layer test reads every relative import** in the 76 non-test `.ts` files under `src/treecipe/src` and in `src/extension.ts`, through `ts.preProcessFile`. That covers `import type`, re-exports, `require` and `import()`; `tests/` and `mocks/` are skipped. It fails on:
+  - an upward import, naming both files and both layers and saying to move the shared code down or ask for a layer change;
+  - a folder-level cycle once the listed edges are taken out, listing the imports that close it;
+  - a folder with no layer, or a layer naming no folder;
+  - a `.ts` file outside any service folder;
+  - a `KNOWN_LAYER_VIOLATIONS` entry that no longer happens, or still happens but is no longer upward or inside a cycle.
+- **`KNOWN_LAYER_VIOLATIONS` holds today's 31 violations**, each as `importing file → imported file` with the slice that removes it:
+  - **#572 (16):** imports of the seven dependency-free shared files.
+  - **#574 (13):** the `sf` CLI gate, `ConfigurationService`'s faker backends and `SavedRecordTypeSelection`, and `ObjectInfo` → `RelationshipService`.
+  - **#575 (2):** one edge each for the two same-layer cycles, the metadata model and `ConfigurationService ↔ VSCodeWorkspace`.
+- **The golden test runs the generation commands.** `ExtensionCommandService/tests/GenerationCommands.golden.test.ts` calls `activate()` and runs `treecipe.generateTreecipe` on a temp copy of `MockSalesforceMetadataDirectory`, then `treecipe.runFakerByRecipe` on each recipe. Only `vscode` is mocked.
+  - **What it compares:** 53 files under `tests/golden/`, byte for byte:
+    - every recipe;
+    - the objects wrapper;
+    - the SOQL/SOSL and Mermaid files;
+    - for faker-js, every `collectionsApi-<Object>.json`.
+  - **Runs:** faker-js, which is also the nested-`friends:` run since #46, and snowfakery, which compares generation only.
+  - **Deterministic:** only `Date` is faked, at a fixed instant; timestamps and the workspace path are replaced with `{TIMESTAMP}` and `{WORKSPACE}`; faker-js is seeded. A second run in a row writes the same files.
+  - **On a mismatch:** a unified diff per file, naming the file and line. `UPDATE_GOLDEN=1` rewrites the expected files.
+    - A change past 2,000 × 2,000 lines is shown as every old line out and every new line in, so the alignment table cannot run the worker out of memory.
+    - A Run Faker that returns no data set folder fails the run, so `UPDATE_GOLDEN=1` cannot drop that data set's expected files unnoticed.
+- **Found, not fixed here:** generated output depends on the order `readDirectory` lists folders. Reversing the listing renumbers the relationship trees and reorders fields, so the golden test lists sorted. Noted in `ExtensionCommandService/DESIGN.md`.
+
 ## [3.192.4] - Repo tooling: flow guard hooks hold Claude Code sessions to /next-task and /pr-flow
 
 Sessions had skipped `/next-task`'s plan approval (#571 was started without one). Remembering the flows was not enough, so the harness now enforces them. Nothing ships in the `.vsix`: `.claude/**` is excluded.

@@ -1,0 +1,53 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Lead",
+        "referenceId": "Lead_Reference_1__Lead_NickName"
+      },
+      "FirstName": "Cathy",
+      "LastName": "Treutel",
+      "Company": "Auer, O'Kon and Becker",
+      "Title": "undefined",
+      "Email": "Pete_Bernhard@yahoo.com",
+      "Phone": "(383) 473-3521\n",
+      "MobilePhone": "(232) 328-1938\n",
+      "Street": "7859 Priory Road",
+      "City": "South Hill",
+      "State": "Tennessee",
+      "PostalCode": "85521",
+      "Country": "Solomon Islands",
+      "Industry": "Retail",
+      "AnnualRevenue": "0507904",
+      "Description": "Necessitatibus derideo tyrannus compono thesaurus demens delectus. Arbustum dignissimos ciminatio absum. Terebro vir utilis circumvenio vita ipsa despecto cupiditas cibus agnitio.",
+      "LeadSource": "Phone Inquiry",
+      "Rating": "Cold",
+      "Status": "Closed - Not Converted",
+      "NumberOfEmployees": "5978",
+      "Address": null,
+      "CampaignId": null,
+      "CleanStatus": null,
+      "CompanyDunsNumber": null,
+      "CurrentGenerators__c": "Audeo aequitas degenero decor demitto chirographum. Condico ante sponte utroque reiciendis. Amplexus",
+      "CustomLeadCheck__c": "true",
+      "DandbCompanyId": null,
+      "DoNotCall": null,
+      "Fax": null,
+      "GenderIdentity": null,
+      "HasOptedOutOfEmail": null,
+      "HasOptedOutOfFax": null,
+      "IndividualId": null,
+      "Jigsaw": null,
+      "LastTransferDate": null,
+      "Name": null,
+      "NumberofLocations__c": "463\n",
+      "OwnerId": null,
+      "Primary__c": "Yes",
+      "ProductInterest__c": "GC3000 series",
+      "Pronouns": null,
+      "SICCode__c": "Alo derelinquo ",
+      "Website": null
+    }
+  ]
+}

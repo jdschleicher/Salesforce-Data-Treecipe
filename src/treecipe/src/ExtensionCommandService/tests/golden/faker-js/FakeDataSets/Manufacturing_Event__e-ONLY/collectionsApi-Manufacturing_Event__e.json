@@ -1,0 +1,13 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Manufacturing_Event__e",
+        "referenceId": "Manufacturing_Event__e_Reference_1__Manufacturing_Event__e_NickName"
+      },
+      "Order_Id__c": "Velociter sumo acc",
+      "Status__c": "Amiculum aegrus vulgus dolorem cupiditate apto tubineus cras cogo. Consequatur comitatus desidero carpo aro ago commemoro benevolentia capio. Timor angelus voluptatem contigo."
+    }
+  ]
+}

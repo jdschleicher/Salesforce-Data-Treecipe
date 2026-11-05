@@ -1,0 +1,30 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Case",
+        "referenceId": "Case_Reference_1__Case_NickName"
+      },
+      "Subject": "Devolved discrete support",
+      "Description": "Accusamus solitudo adopto hic theatrum amiculum aegrus vulgus. Cupiditate apto tubineus cras cogo textor consequatur. Desidero carpo aro ago commemoro.",
+      "Status": "New",
+      "Origin": "Email",
+      "Priority": "High",
+      "Type": "Question",
+      "Reason": "Installation",
+      "SuppliedName": "Fredrick Kuvalis",
+      "SuppliedEmail": "Korey86@hotmail.com",
+      "SuppliedPhone": "(808) 652-1860\n",
+      "SuppliedCompany": "Bartoletti and Sons",
+      "Case_Category__c": "Other",
+      "PotentialLiability__c": "No",
+      "ProductId": null,
+      "Product__c": "GC3040",
+      "SLAViolation__c": "Yes",
+      "SlaExitDate": null,
+      "SlaStartDate": null,
+      "Vehicle__c": null
+    }
+  ]
+}

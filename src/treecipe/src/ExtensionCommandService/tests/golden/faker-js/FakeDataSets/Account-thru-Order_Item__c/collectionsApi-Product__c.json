@@ -1,0 +1,28 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Product__c",
+        "referenceId": "Product__c_Reference_1__Product__c_Product_Family__c_NickName"
+      },
+      "Battery__c": "Inflammatio aranea subvenio aveho arx templum tamdiu tergo sunt. Peior voluntarius deputo aduro solu",
+      "Category__c": "Mountain",
+      "Charger__c": "Casus synagoga sum alienus abstergo approbo adstringo placeat.\nAcies thermae cedo deserunt venustas ",
+      "Description__c": "Aiunt correptius confero voveo verto thermae defaeco aperte dens.",
+      "Fork__c": "Nihil thesis incidunt deprimo talio vorax thesis. Eos vitiosus alter contra. Tantum rerum illum impe",
+      "Frame_Color__c": "white",
+      "Front_Brakes__c": "Spiculum voluptatibus sol aut quo. Vulnus atque canonicus callide. Clarus delectus voveo somniculosu",
+      "Handlebar_Color__c": "white",
+      "Level__c": "Enthusiast",
+      "MSRP__c": "849659\n",
+      "Material__c": "Carbon",
+      "Motor__c": "Sollicito voluptates attonbitus occaecati tenax. Nemo aufero tenus fuga cribro accommodo agnosco. Ad",
+      "Picture_URL__c": "https://paltry-fundraising.com",
+      "Product_Family__c": "Product_Family__c_NickName",
+      "Rear_Brakes__c": "Audeo terebro cupressus deorsum utor vorago solvo somnus tepesco. Nulla defendo aufero atque. Cliban",
+      "Seat_Color__c": "white",
+      "Waterbottle_Color__c": "white"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Product_Family__c",
+        "referenceId": "Product_Family__c_Reference_1__Product_Family__c_NickName"
+      },
+      "Category__c": "Hybrid",
+      "Description__c": "Depopulo thorax viridis decet blanditiis curto vitae substantia deorsum. Aegrotatio tripudio patior ocer excepturi conculco coepi. Quas caput tandem voveo voco cernuus solitudo ara patria quam."
+    }
+  ]
+}
