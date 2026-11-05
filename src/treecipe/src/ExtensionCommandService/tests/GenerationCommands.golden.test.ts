@@ -140,10 +140,10 @@ const FIXED_FOLDER_TIMESTAMP = '2026-01-02T03-04-05';
 const FAKER_SEED = 571;
 
 // ONLY Date IS FAKED: GENERATION AWAITS REAL FILE WRITES AND PROMISES, WHICH NEED REAL TIMERS
-const REAL_TIMER_APIS: FakeableAPI[] = ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame',
-    'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'];
-type FakeableAPI = 'hrtime' | 'nextTick' | 'performance' | 'queueMicrotask' | 'requestAnimationFrame' | 'cancelAnimationFrame'
+type RealTimerAPI = 'hrtime' | 'nextTick' | 'performance' | 'queueMicrotask' | 'requestAnimationFrame' | 'cancelAnimationFrame'
     | 'requestIdleCallback' | 'cancelIdleCallback' | 'setImmediate' | 'clearImmediate' | 'setInterval' | 'clearInterval' | 'setTimeout' | 'clearTimeout';
+const REAL_TIMER_APIS: RealTimerAPI[] = ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame',
+    'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'];
 
 type GoldenFiles = Map<string, string>;
 
@@ -183,16 +183,14 @@ function normalizeRunText(runText: string): string {
 
 }
 
-function createGoldenWorkspace(goldenRun: IGoldenRun): string {
+function fillGoldenWorkspace(workspaceRootPath: string, goldenRun: IGoldenRun) {
 
-    const workspaceRootPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `treecipe-golden-${goldenRun.runName}-`)));
     fs.cpSync(MOCK_METADATA_DIRECTORY_PATH, path.join(workspaceRootPath, 'force-app', 'main', 'default'), { recursive: true });
     fs.mkdirSync(path.join(workspaceRootPath, 'treecipe'));
     fs.writeFileSync(path.join(workspaceRootPath, 'treecipe', 'treecipe.config.json'), JSON.stringify({
         salesforceObjectsPath: './force-app/main/default/objects',
         dataFakerService: goldenRun.selectedFakerService
     }, null, 4));
-    return workspaceRootPath;
 
 }
 
@@ -203,7 +201,7 @@ function createGoldenWorkspace(goldenRun: IGoldenRun): string {
 */
 async function runGenerationCommands(goldenRun: IGoldenRun): Promise<GoldenFiles> {
 
-    const workspaceRootPath = createGoldenWorkspace(goldenRun);
+    const workspaceRootPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `treecipe-golden-${goldenRun.runName}-`)));
     mockVscodeHost.workspaceRootPath = workspaceRootPath;
     mockVscodeHost.settings = new Map<string, unknown>([['selectedFakerService', goldenRun.selectedFakerService]]);
     mockVscodeHost.registeredCommands.clear();
@@ -213,6 +211,7 @@ async function runGenerationCommands(goldenRun: IGoldenRun): Promise<GoldenFiles
 
     try {
 
+        fillGoldenWorkspace(workspaceRootPath, goldenRun);
         await activate({ subscriptions: [], workspaceState: { get: () => undefined, update: async () => undefined } } as unknown as vscode.ExtensionContext);
         await vscode.commands.executeCommand('treecipe.generateTreecipe');
 
@@ -233,7 +232,10 @@ async function runGenerationCommands(goldenRun: IGoldenRun): Promise<GoldenFiles
                 const datasetFolderPath = await vscode.commands.executeCommand<string | undefined>('treecipe.runFakerByRecipe', recipeFilePath);
                 const treeFolderName = path.basename(path.dirname(recipeFilePath));
 
-                listFilesBelow(path.join(datasetFolderPath ?? '', 'DatasetFilesForCollectionsApi')).forEach(collectionsApiFilePath => {
+                // A RUN THAT WROTE NO DATA SET WOULD OTHERWISE LET UPDATE_GOLDEN=1 DROP ITS EXPECTED FILES UNNOTICED
+                expect({ recipeFilePath, datasetFolderPath }).toEqual({ recipeFilePath, datasetFolderPath: expect.any(String) });
+
+                listFilesBelow(path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi')).forEach(collectionsApiFilePath => {
                     goldenFiles.set(`FakeDataSets/${treeFolderName}/${path.basename(collectionsApiFilePath)}`, normalizeRunText(fs.readFileSync(collectionsApiFilePath, 'utf8')));
                 });
 
@@ -279,6 +281,9 @@ function writeGoldenFiles(runName: string, goldenFiles: GoldenFiles) {
     common head and tail are trimmed first, so the longest-common-subsequence table only spans the
     lines that changed.
 */
+// 2,000 × 2,000 CHANGED LINES IS ABOUT 32 MB OF TABLE; TODAY'S LARGEST GOLDEN FILE IS 2,452 LINES
+const MAXIMUM_ALIGNED_DIFF_CELLS = 4_000_000;
+
 export function buildUnifiedDiff(goldenFileName: string, expectedText: string, actualText: string): string {
 
     const expectedLines = expectedText.split('\n');
@@ -296,8 +301,11 @@ export function buildUnifiedDiff(goldenFileName: string, expectedText: string, a
 
     const changedExpected = expectedLines.slice(headLength, expectedLines.length - tailLength);
     const changedActual = actualLines.slice(headLength, actualLines.length - tailLength);
-    const commonLengths = Array.from({ length: changedExpected.length + 1 }, () => new Array<number>(changedActual.length + 1).fill(0));
-    for ( let expectedIndex = changedExpected.length - 1; expectedIndex >= 0; expectedIndex-- ) {
+
+    // THE TABLE IS changed × changed NUMBERS: A WHOLLY REWRITTEN LARGE FILE WOULD RUN THE WORKER OUT OF MEMORY, SO IT IS SHOWN AS ALL OUT, ALL IN
+    const isTooLargeToAlign = changedExpected.length * changedActual.length > MAXIMUM_ALIGNED_DIFF_CELLS;
+    const commonLengths = isTooLargeToAlign ? [] : Array.from({ length: changedExpected.length + 1 }, () => new Array<number>(changedActual.length + 1).fill(0));
+    for ( let expectedIndex = commonLengths.length ? changedExpected.length - 1 : -1; expectedIndex >= 0; expectedIndex-- ) {
         for ( let actualIndex = changedActual.length - 1; actualIndex >= 0; actualIndex-- ) {
             commonLengths[expectedIndex][actualIndex] = changedExpected[expectedIndex] === changedActual[actualIndex]
                 ? commonLengths[expectedIndex + 1][actualIndex + 1] + 1
@@ -305,9 +313,11 @@ export function buildUnifiedDiff(goldenFileName: string, expectedText: string, a
         }
     }
 
-    const changeLines: string[] = [];
-    let expectedIndex = 0;
-    let actualIndex = 0;
+    const changeLines: string[] = isTooLargeToAlign
+        ? [...changedExpected.map(removedLine => `-${removedLine}`), ...changedActual.map(addedLine => `+${addedLine}`)]
+        : [];
+    let expectedIndex = isTooLargeToAlign ? changedExpected.length : 0;
+    let actualIndex = isTooLargeToAlign ? changedActual.length : 0;
     while ( expectedIndex < changedExpected.length || actualIndex < changedActual.length ) {
         if ( expectedIndex < changedExpected.length && actualIndex < changedActual.length && changedExpected[expectedIndex] === changedActual[actualIndex] ) {
             changeLines.push(` ${changedExpected[expectedIndex]}`);
@@ -412,6 +422,19 @@ describe('Generate Treecipe and Run Faker by Recipe write exactly the golden fil
                 ' four',
                 ' '
             ].join('\n')]);
+
+        });
+
+        test('a file rewritten past the alignment limit is shown as every old line out and every new line in', () => {
+
+            const expectedText = Array.from({ length: 2001 }, (_, lineIndex) => `old ${lineIndex}`).join('\n');
+            const actualText = Array.from({ length: 2001 }, (_, lineIndex) => `new ${lineIndex}`).join('\n');
+            const diffLines = buildUnifiedDiff('faker-js/large.json', expectedText, actualText).split('\n');
+
+            expect(diffLines.slice(2, 4)).toEqual(['@@ line 1 (first change at line 1) @@', '-old 0']);
+            expect(diffLines[2 + 2001]).toBe('-old 2000');
+            expect(diffLines[2 + 2002]).toBe('+new 0');
+            expect(diffLines).toHaveLength(3 + 4002);
 
         });
 
