@@ -43,14 +43,15 @@ function lockedVersionOf(packageName) {
 describe('every package.json dependency is pinned to its locked version', () => {
 
     test('there are dependencies to check, so this cannot pass by finding none', () => {
-        expect(dependencyEntries.length).toBeGreaterThanOrEqual(22);
+        expect(dependencyEntries).not.toHaveLength(0);
     });
 
     test.each(dependencyEntries)('$packageName ($sectionName)', (dependencyEntry) => {
         const lockedVersion = lockedVersionOf(dependencyEntry.packageName);
+        const [unpinnedDependency] = findUnpinnedDependencies({ [dependencyEntry.sectionName]: { [dependencyEntry.packageName]: dependencyEntry.versionSpec } });
 
-        if (!EXACT_VERSION_PATTERN.test(dependencyEntry.versionSpec)) {
-            throw new Error(describeUnpinnedDependency(dependencyEntry, lockedVersion));
+        if (unpinnedDependency) {
+            throw new Error(describeUnpinnedDependency(unpinnedDependency, lockedVersion));
         }
         if (dependencyEntry.versionSpec !== lockedVersion) {
             throw new Error(`${dependencyEntry.packageName} in ${dependencyEntry.sectionName} is "${dependencyEntry.versionSpec}" `
@@ -68,8 +69,15 @@ describe('every package.json dependency is pinned to its locked version', () => 
     // vsce refuses to package when @types/vscode is newer than the oldest VS Code the extension
     // claims to support; a "^" range hid that, since vsce compares the range's floor (#588).
     test('@types/vscode is the engines.vscode floor, so the types cannot offer an API the oldest supported VS Code lacks', () => {
-        const engineFloorVersion = manifest.engines.vscode.replace(/^\^/, '');
-        expect(manifest.devDependencies['@types/vscode']).toBe(engineFloorVersion);
+        const engineFloorMatch = /^\^(\d+\.\d+\.\d+)$/.exec(manifest.engines.vscode);
+        if (!engineFloorMatch) {
+            throw new Error(`engines.vscode is "${manifest.engines.vscode}"; this check reads its floor from a "^x.y.z" range. `
+                + 'Update the check if the engines range form changed.');
+        }
+        if (manifest.devDependencies['@types/vscode'] !== engineFloorMatch[1]) {
+            throw new Error(`@types/vscode is "${manifest.devDependencies['@types/vscode']}" but engines.vscode is "${manifest.engines.vscode}". `
+                + `vsce refuses to package newer types; pin @types/vscode to "${engineFloorMatch[1]}" or raise engines.vscode in the same PR.`);
+        }
     });
 
     test('.npmrc makes npm install --save write exact versions', () => {
