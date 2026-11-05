@@ -66,6 +66,28 @@ describe('the first journey catches a broken cockpit (#577)', () => {
 
     });
 
+    test('a second journey in the same file starts from a fresh window: the same steps pass, recording org calls of its own', async () => {
+
+        const firstJourney = await new RecipeCockpitJourney().open(FIRST_JOURNEY_FIXTURE);
+        await runFirstJourney(firstJourney);
+        await firstJourney.close();
+
+        journey = await new RecipeCockpitJourney().open(FIRST_JOURNEY_FIXTURE);
+        await expect(runFirstJourney(journey)).resolves.toBeUndefined();
+
+    });
+
+    test('the page runs the document the host assigns, so a host that assigns none fails to open, and cleans up', async () => {
+
+        jest.spyOn(RecipeCockpitService, 'buildWebviewShellHtml').mockReturnValue('<!DOCTYPE html><html><body></body></html>');
+        const unopenedJourney = new RecipeCockpitJourney();
+
+        await expect(unopenedJourney.open(FIRST_JOURNEY_FIXTURE)).rejects.toThrow('The panel document has no nonced <script>: the webview would run nothing.');
+        expect(fs.existsSync(unopenedJourney.workspaceRoot)).toBeFalse();
+        expect(unopenedJourney.homePath).toBe('');
+
+    });
+
     test('each journey works on its own copy of the fixture, so a write in one never reaches another', async () => {
 
         const writtenFileName = 'written-by-the-first-journey.txt';

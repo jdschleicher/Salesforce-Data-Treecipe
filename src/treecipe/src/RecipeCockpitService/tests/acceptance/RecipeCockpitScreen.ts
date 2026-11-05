@@ -75,17 +75,30 @@ export class RecipeCockpitScreen {
             .filter(textPart => !!textPart).join(' ').replace(/\s+/g, ' ').trim();
     }
 
-    private everyPageElement(): IPageElement[] {
-        const elements: IPageElement[] = [];
-        const visit = (element: IPageElement) => { elements.push(element); element.children.forEach(visit); };
-        this.pageRoots.forEach(visit);
-        return elements;
+    // THE PAGE'S ids AND <label for>s, WALKED ONCE PER SCREEN SO A NAME LOOKUP IS NOT A WALK OF ITS OWN
+    private pageIndex: { elementById: Map<string, IPageElement>; labelByControlId: Map<string, IPageElement> } | undefined;
+
+    private indexOfPage() {
+        if ( !this.pageIndex ) {
+            const elementById = new Map<string, IPageElement>();
+            const labelByControlId = new Map<string, IPageElement>();
+            const visit = (element: IPageElement) => {
+                const elementId = element.attributes.id;
+                if ( elementId && !elementById.has(elementId) ) { elementById.set(elementId, element); }
+                const labelledControlId = element.attributes.for;
+                if ( String(element.tagName).toLowerCase() === 'label' && labelledControlId && !labelByControlId.has(labelledControlId) ) { labelByControlId.set(labelledControlId, element); }
+                element.children.forEach(visit);
+            };
+            this.pageRoots.forEach(visit);
+            this.pageIndex = { elementById, labelByControlId };
+        }
+        return this.pageIndex;
     }
 
-    // THE ELEMENT A for, aria-labelledby OR aria-controls POINTS AT: HOW A BROWSER RESOLVES A NAME, NOT HOW A TEST FINDS AN ELEMENT
+    // THE ELEMENT A for OR aria-labelledby POINTS AT: HOW A BROWSER RESOLVES A NAME, NOT HOW A TEST FINDS AN ELEMENT
     private referencedElements(referencedIds: string): IPageElement[] {
         const wantedIds = referencedIds.split(/\s+/).filter(referencedId => !!referencedId);
-        return wantedIds.map(wantedId => this.everyPageElement().find(element => element.attributes.id === wantedId)).filter(element => !!element);
+        return wantedIds.map(wantedId => this.indexOfPage().elementById.get(wantedId)).filter(element => !!element);
     }
 
     private nameOf(element: IPageElement, role: string): string {
@@ -95,7 +108,7 @@ export class RecipeCockpitScreen {
         }
         const elementId = element.attributes.id;
         if ( elementId ) {
-            const labelElement = this.everyPageElement().find(candidate => String(candidate.tagName).toLowerCase() === 'label' && candidate.attributes.for === elementId);
+            const labelElement = this.indexOfPage().labelByControlId.get(elementId);
             if ( labelElement ) { return this.shownTextOf(labelElement); }
         }
         return ROLES_NAMED_BY_CONTENT.has(role) ? this.shownTextOf(element) : '';

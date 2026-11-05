@@ -24,6 +24,8 @@ export interface IPanelScriptOptions {
     prefersReducedMotion?: boolean;
     // GIVES THE WINDOW A FAKE ResizeObserver AND requestAnimationFrame (#464); LEFT OUT, IT HAS NEITHER
     hasResizeObserver?: boolean;
+    // THE DOCUMENT TO RUN, AS THE HOST ASSIGNED IT TO webview.html (#577); LEFT OUT, A SHELL BUILT HERE
+    shellHtml?: string;
 }
 
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
@@ -162,11 +164,12 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             setState: (nextState: any) => { savedState = JSON.parse(JSON.stringify(nextState)); setStateCalls.push(savedState); return nextState; }
         });
 
-    const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
-    const panelScript = shellHtml.substring(
-        shellHtml.indexOf('<script nonce="testNonce">') + '<script nonce="testNonce">'.length,
-        shellHtml.lastIndexOf('</script>')
-    );
+    const shellHtml = panelScriptOptions.shellHtml ?? RecipeCockpitService.buildWebviewShellHtml('testNonce');
+    const scriptOpeningTag = /<script nonce="[^"]+">/.exec(shellHtml);
+    if ( !scriptOpeningTag ) {
+        throw new Error('The panel document has no nonced <script>: the webview would run nothing.');
+    }
+    const panelScript = shellHtml.substring(scriptOpeningTag.index + scriptOpeningTag[0].length, shellHtml.lastIndexOf('</script>'));
 
     // RUNNING THE REAL PANEL SCRIPT IS THE POINT OF THIS HARNESS
     new Function('document', 'window', 'acquireVsCodeApi', panelScript)(fakeDocument, fakeWindow, acquireVsCodeApi);

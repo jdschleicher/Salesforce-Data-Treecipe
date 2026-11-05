@@ -139,8 +139,9 @@ describe('RecipeCockpitJourney (#577)', () => {
 
         jest.spyOn(RecipeCockpitService, 'routePanelMessage').mockImplementation(() => ({ kind: 'selectRun', runFolderName: 'never' }));
         jest.spyOn(RecipeCockpitService as any, 'runPanelAction').mockImplementation(() => new Promise(() => undefined));
+        journey.settleStallLimitMs = 100;
 
-        await expect(journey.chooseRun(OLDER_RUN_LABEL)).rejects.toThrow('failed: the cockpit did not go idle: 1 host handler(s) were still running.');
+        await expect(journey.chooseRun(OLDER_RUN_LABEL)).rejects.toThrow('failed: the cockpit did not go idle: 1 host handler(s) were still running after 100 ms with nothing delivered and nothing asked of the reader.');
 
     });
 

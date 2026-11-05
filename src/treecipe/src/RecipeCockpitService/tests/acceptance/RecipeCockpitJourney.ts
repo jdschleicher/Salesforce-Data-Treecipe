@@ -10,6 +10,7 @@ import {
 } from '../../RecipeCockpitService';
 import { runPanelScript } from '../RecipeCockpitPanelHarness';
 import {
+    SalesforceOrgService,
     LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
     LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
@@ -58,8 +59,26 @@ const RECIPE_COCKPIT_FLAG_SETTING = 'salesforce-data-treecipe.recipeCockpitEnabl
 const MACHINE_ENVIRONMENT_VARIABLES = [TARGET_ORG_ENVIRONMENT_VARIABLE, LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
 
-// ROUNDS OF THE EVENT LOOP BEFORE A JOURNEY GIVES UP ON IDLE; QUIET ROUNDS BEFORE IT CALLS IDLE
-const MAX_SETTLE_ROUNDS = 20000;
+/*
+    How long a host handler may run with nothing delivered and no reader asked before a step fails as
+    "did not go idle". Wall-clock, not rounds: a round costs a screen build while a handler is in
+    flight, so a round cap grows with the screen and ran into Jest's own 5 s timeout first (#596).
+*/
+const DEFAULT_SETTLE_STALL_LIMIT_MS = 2000;
+
+/*
+    What the host keeps for the whole VS Code window, outside the panel a close disposes. A journey is a
+    fresh window, so each is emptied before it opens; left, a second journey in a file reads the first's
+    connection check and lists, and records no org call of its own.
+*/
+const WINDOW_CACHES: ReadonlyArray<{ name: string; clear: () => void }> = [
+    { name: 'connected org status', clear: () => SalesforceOrgService.clearConnectedOrgStatusCache() },
+    { name: 'org describes', clear: () => SalesforceOrgService.clearDescribeCache() },
+    { name: 'Troubleshooting summaries', clear: () => RecipeCockpitService.clearTroubleshootingSummaries() },
+    { name: 'Validation Rules lists', clear: () => RecipeCockpitService.clearTreeValidationRuleLists() },
+    { name: 'Query tab lists', clear: () => RecipeCockpitService.clearTreeQueryLists() }
+];
+// QUIET ROUNDS OF THE EVENT LOOP BEFORE A JOURNEY CALLS IDLE
 const QUIET_ROUNDS_WHEN_IDLE = 3;
 const QUIET_ROUNDS_WHEN_WAITING_ON_READER = 50;
 
@@ -105,6 +124,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
     private readonly machineEnvironment = new Map<string, string | undefined>();
     // THE HOME FOLDER os.homedir() ANSWERS DURING EVERY STEP; EMPTY UNTIL open
     homePath = '';
+    settleStallLimitMs = DEFAULT_SETTLE_STALL_LIMIT_MS;
     readonly settings = new Map<string, unknown>([[RECIPE_COCKPIT_FLAG_SETTING, true]]);
     readonly org = new FakeOrgConnections();
 
@@ -163,6 +183,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
         setOpenJourneyHost(this);
         setOpenOrgConnections(this.org);
+        WINDOW_CACHES.forEach(windowCache => windowCache.clear());
 
         // A JOURNEY THAT FAILS TO OPEN IS NEVER HANDED TO ITS SUITE TO CLOSE, SO IT CLOSES ITSELF
         try {
@@ -208,6 +229,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
         // A STEP INSIDE A STEP IS PART OF IT: THE OUTERMOST ONE NAMES A FAILURE AND OWNS THE FILES WRITTEN
         const isOutermostStep = this.stepStack.length === 0;
+        // A FAILURE AN EARLIER STEP TOLERATED NAMES NOTHING NOW
+        if ( isOutermostStep ) { this.failedStepPath = undefined; }
         this.stepStack.push(stepName);
         this.steps.push(this.stepStack.join(' › '));
         const filesBefore = isOutermostStep ? this.snapshotFiles() : undefined;
@@ -416,7 +439,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     createWebviewPanel(): IFakeWebviewPanel {
 
-        const startPage = () => this.startPage();
+        const startPage = (assignedShellHtml: string) => this.startPage(assignedShellHtml);
         let shellHtml = '';
         const fakePanel: IFakeWebviewPanel = {
             visible: true,
@@ -427,7 +450,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
             webview: {
                 get html() { return shellHtml; },
                 // A NEW DOCUMENT IS A NEW RUN OF THE PANEL SCRIPT; THE OLD ONE IS GONE, AND WHAT WAS POSTED TO IT WITH IT
-                set html(nextShellHtml: string) { shellHtml = nextShellHtml; startPage(); },
+                set html(nextShellHtml: string) { shellHtml = nextShellHtml; startPage(nextShellHtml); },
                 postMessage: (hostMessage: unknown) => {
                     this.hostToPanelQueue.push(hostMessage);
                     this.logMessage('host → panel', hostMessage);
@@ -479,8 +502,9 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     // ---- the message pump ----
 
-    private startPage() {
-        this.page = runPanelScript();
+    // THE DOCUMENT THE HOST ASSIGNED IS THE ONE THAT RUNS, SO A HOST THAT ASSIGNS THE WRONG ONE FAILS A JOURNEY
+    private startPage(assignedShellHtml: string) {
+        this.page = runPanelScript({ shellHtml: assignedShellHtml });
         this.hostToPanelQueue = [];
         this.deliveredPanelMessageCount = 0;
     }
@@ -537,33 +561,39 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     /*
         Delivers messages both ways until neither side has anything left to do: both queues empty, and
-        every host handler finished -- or waiting on a reader's answer to a prompt or a notification,
-        which only the journey's next step can give.
+        every host message handler finished -- or waiting on a reader's answer to a prompt, a notification
+        or a confirmation, which only the journey's next step can give. Work the host starts outside a
+        handler (a notification button's follow-up) is not counted; it is waited for only by the quiet rounds.
     */
     private async settle(): Promise<void> {
 
         let quietRounds = 0;
+        let lastDeliveryAt = Date.now();
 
-        for (let round = 0; round < MAX_SETTLE_ROUNDS; round++) {
+        for (;;) {
 
             const isAnythingDelivered = this.deliverQueuedMessages();
             await new Promise(resolveRound => setImmediate(resolveRound));
 
             if ( isAnythingDelivered ) {
                 quietRounds = 0;
+                lastDeliveryAt = Date.now();
             } else if ( this.inFlightHostHandlerCount === 0 ) {
                 if ( ++quietRounds >= QUIET_ROUNDS_WHEN_IDLE ) { break; }
             } else if ( this.isWaitingOnReader() ) {
                 if ( ++quietRounds >= QUIET_ROUNDS_WHEN_WAITING_ON_READER ) { break; }
-            }
-
-            if ( round === MAX_SETTLE_ROUNDS - 1 ) {
-                throw new Error(`the cockpit did not go idle: ${this.inFlightHostHandlerCount} host handler(s) were still running.`);
+            } else if ( Date.now() - lastDeliveryAt > this.settleStallLimitMs ) {
+                throw new Error(`the cockpit did not go idle: ${this.inFlightHostHandlerCount} host handler(s) were still running after ${this.settleStallLimitMs} ms with nothing delivered and nothing asked of the reader.`);
             }
 
         }
 
-        this.shownQuickPicks.forEach(entry => { entry.record.offeredLabels = entry.quickPick.offeredLabels(); });
+        // THE ORG PICKER CHANGES ITS PLACEHOLDER AND ITEMS ONCE THE LISTING ANSWERS
+        this.shownQuickPicks.forEach(entry => {
+            entry.record.title = entry.quickPick.title;
+            entry.record.placeholder = entry.quickPick.placeholder;
+            entry.record.offeredLabels = entry.quickPick.offeredLabels();
+        });
 
         const handlerErrors = this.hostHandlerErrors.splice(0);
         if ( handlerErrors.length > 0 ) {
