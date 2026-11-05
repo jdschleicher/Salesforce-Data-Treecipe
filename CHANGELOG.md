@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.192.7] - Repo tooling: every dependency pinned to the version the lockfile locks (#588)
+
+Nothing a user sees changes, and the `.vsix` packages the same 2,260 files.
+
+- **`package.json` holds no ranges.** The 21 `^` entries are now the exact versions `package-lock.json` already resolved, e.g. `@salesforce/core` `8.10.0` (the one that ships in the `.vsix`), `typescript` `5.8.3`, `jsforce` `3.8.1`. A developer's `npm install` or `npm update` can no longer move one to a newly published, possibly hijacked, release. The lockfile's root entry carries the same specs. Every other entry is unchanged, except the one below.
+- **One exception: `@types/vscode` is pinned to `1.94.0`, not the locked `1.99.1`.** `vsce` refuses to package when `@types/vscode` is newer than `engines.vscode` (`^1.94.0`). The `^` range passed only because `vsce` compares its floor. The code compiles cleanly against the 1.94 types, so it uses no API that VS Code 1.94 lacks.
+- **`.npmrc` sets `save-exact=true`**, so `npm install --save-dev <pkg>` writes `7.0.0`, not `^7.0.0`. `vsce` leaves `.npmrc` out of the package by default.
+- **`.github/workflowScripts/tests/dependencyPins.test.js`** fails when a `dependencies` or `devDependencies` entry is not an exact `x.y.z` version, or is not the version the lockfile locks. Its message names the package, its spec and the locked version, and says to pin it. It also checks:
+  - the lockfile's root entry matches `package.json`;
+  - `@types/vscode` is the `engines.vscode` floor;
+  - `.npmrc` sets `save-exact=true`.
+
+  The rule refuses `^`, `~`, `*`, `x`, `>=`, hyphen ranges, `latest`, prereleases, and git, URL, `file:` and `npm:` alias specs.
+
 ## [3.192.6] - Tests: a journey harness drives the Recipe Cockpit as a reader does, and the first journey (#577)
 
 Slice A of epic #576. No source file changes, and nothing a user sees changes.
