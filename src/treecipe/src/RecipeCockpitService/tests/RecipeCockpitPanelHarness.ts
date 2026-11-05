@@ -183,6 +183,11 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const isHidden = (element: any) => element.classList.contains('hidden');
 
+    // WHAT A BROWSER'S COMPUTED STYLE WOULD SAY (#577): EVERY ONE-CLASS RULE OF THE SHELL'S OWN STYLESHEET THAT SETS display: none
+    const displayNoneClassNames = Array.from(shellHtml.matchAll(/^\s*\.([A-Za-z][\w-]*)\s*\{\s*display:\s*none\b/gm), ruleMatch => ruleMatch[1]);
+    const isDisplayed = (element: any) => !displayNoneClassNames.some(className => element.classList.contains(className))
+                                            && element.attributes.hidden === undefined;
+
     // THE STRUCTURE TAB'S OBJECTS, OF EVERY CARD WHOSE BODY IS BUILT -- A COLLAPSED CARD HAS NOT ATTACHED ITS OBJECTS YET
     const objectElements = () => findAll(cockpitBodyElement, 'treeObject');
     const objectHeaderOf = (objectElement: any) => objectElement.children[0];
@@ -207,6 +212,7 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         activeElement: () => fakeDocument.activeElement,
         findAll,
         isHidden,
+        isDisplayed,
         // AN ACTION CARD (#381, #384) NAMES ITSELF IN ITS TITLE SPAN, NOT ITS OWN TEXT
         cardTitleOf: (buttonElement: any) => findAll(buttonElement, 'actionCardTitle')[0].textContent,
         treeCards,

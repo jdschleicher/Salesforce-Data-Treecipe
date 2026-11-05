@@ -1,0 +1,643 @@
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import {
+    RecipeCockpitService,
+    IRecipeCockpitWorkspaceState,
+    RECIPE_COCKPIT_RUN_PICKER_LABEL,
+    RECIPE_COCKPIT_TREECIPE_PICKER_LABEL
+} from '../../RecipeCockpitService';
+import { runPanelScript } from '../RecipeCockpitPanelHarness';
+import {
+    LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
+    LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
+    TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
+    TARGET_ORG_ENVIRONMENT_VARIABLE
+} from '../../../SalesforceOrgService/SalesforceOrgService';
+import {
+    FakeOrgConnections,
+    FakeQuickPick,
+    IFakeWebviewPanel,
+    IJourneyHost,
+    IRecordedNotification,
+    IRecordedPrompt,
+    NotificationKind,
+    setOpenJourneyHost,
+    setOpenOrgConnections
+} from './RecipeCockpitJourneyFakes';
+import { IPageElement, IScreenNode, RecipeCockpitScreen } from './RecipeCockpitScreen';
+
+/*
+    Drives the Recipe Cockpit the way a reader does (#577) and records what it does, so a refactor can
+    prove the UX did not change.
+
+    The host is the real RecipeCockpitService, opened through openRecipeCockpitPanel on a fresh copy of
+    a fixture workspace in a temp folder; only vscode and @salesforce/core are fakes. Panel -> host
+    messages go through the real routePanelMessage and executor; host -> panel messages go to the real
+    panel script in RecipeCockpitPanelHarness's fake page. After every action both sides run until idle.
+
+    Every action is a named STEP: a failure says which step, and in the reader's words what was on
+    screen instead. Nothing here finds an element by class or id (AcceptanceSelectorScan.test.ts):
+    every element is found by its role and name on screen().
+*/
+
+export const JOURNEY_FIXTURES_ROOT = path.join(__dirname, '..', 'mocks');
+
+// THE ORG DROPDOWN AT THE TOP OF A CARD'S TREECIPE TAB, BY THE NAME IT GIVES ITSELF
+export const JOURNEY_ORG_PICKER_NAME = 'Salesforce org the generated data goes to';
+
+const RECIPE_COCKPIT_FLAG_SETTING = 'salesforce-data-treecipe.recipeCockpitEnabled';
+
+/*
+    The org listing reads the CLI's default org from the environment and from the home folder's
+    .sf/config.json, so a journey runs with a home folder of its own and none of these set: the orgs it
+    offers are the fixture's, on every machine.
+*/
+const MACHINE_ENVIRONMENT_VARIABLES = ['HOME', 'USERPROFILE', TARGET_ORG_ENVIRONMENT_VARIABLE, LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
+    TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
+
+// ROUNDS OF THE EVENT LOOP BEFORE A JOURNEY GIVES UP ON IDLE; QUIET ROUNDS BEFORE IT CALLS IDLE
+const MAX_SETTLE_ROUNDS = 20000;
+const QUIET_ROUNDS_WHEN_IDLE = 3;
+const QUIET_ROUNDS_WHEN_WAITING_ON_READER = 50;
+
+export type MessageDirection = 'panel → host' | 'host → panel';
+
+export interface IRecordedMessage {
+    direction: MessageDirection;
+    command: string;
+    message: unknown;
+    step: string;
+}
+
+export interface IRecordedFileChange {
+    change: 'written' | 'removed';
+    // RELATIVE TO THE WORKSPACE ROOT, WITH / SEPARATORS
+    relativePath: string;
+    step: string;
+}
+
+export interface IRecordedHostCall {
+    call: string;
+    args: unknown[];
+    step: string;
+}
+
+// A PART OF THE SCREEN BY ITS ROLE AND NAME, SUCH AS { role: 'group', name: 'Lead · Base Query' }
+export interface IScreenRegion {
+    role: string;
+    name: string | RegExp;
+}
+
+interface IWaitingAnswer<TRecord> {
+    record: TRecord;
+    answer(chosen: string | undefined): void;
+}
+
+type PanelPage = ReturnType<typeof runPanelScript>;
+
+export class RecipeCockpitJourney implements IJourneyHost {
+
+    workspaceRoot = '';
+    private journeyRoot = '';
+    private readonly machineEnvironment = new Map<string, string | undefined>();
+    readonly settings = new Map<string, unknown>([[RECIPE_COCKPIT_FLAG_SETTING, true]]);
+    readonly org = new FakeOrgConnections();
+
+    readonly steps: string[] = [];
+    readonly notifications: IRecordedNotification[] = [];
+    readonly prompts: IRecordedPrompt[] = [];
+    readonly fileChanges: IRecordedFileChange[] = [];
+    readonly messages: IRecordedMessage[] = [];
+    readonly hostCalls: IRecordedHostCall[] = [];
+    readonly workspaceStateValues = new Map<string, unknown>();
+
+    private readonly stepStack: string[] = [];
+    private failedStepPath: string | undefined;
+    private page: PanelPage | undefined;
+    private panelMessageHandler: ((panelMessage: unknown) => unknown) | undefined;
+    private readonly disposeHandlers: Array<() => void> = [];
+    private hostToPanelQueue: unknown[] = [];
+    private deliveredPanelMessageCount = 0;
+    private inFlightHostHandlerCount = 0;
+    private readonly hostHandlerErrors: unknown[] = [];
+    private readonly waitingNotifications: Array<IWaitingAnswer<IRecordedNotification>> = [];
+    private readonly waitingPrompts: Array<IWaitingAnswer<IRecordedPrompt>> = [];
+    private readonly shownQuickPicks: Array<{ quickPick: FakeQuickPick; record: IRecordedPrompt }> = [];
+
+    readonly workspaceState: IRecipeCockpitWorkspaceState = {
+        get: <T>(key: string) => this.workspaceStateValues.get(key) as T | undefined,
+        update: (key: string, value: unknown) => {
+            if ( value === undefined ) { this.workspaceStateValues.delete(key); } else { this.workspaceStateValues.set(key, JSON.parse(JSON.stringify(value))); }
+            return Promise.resolve();
+        }
+    };
+
+    // ---- opening and closing ----
+
+    /*
+        Copies the fixture to a temp folder of its own, so a write in one journey never reaches another,
+        and opens the cockpit on the copy.
+    */
+    async open(fixtureName: string): Promise<this> {
+
+        const fixturePath = path.join(JOURNEY_FIXTURES_ROOT, fixtureName);
+        if ( !fs.existsSync(fixturePath) ) {
+            throw new Error(`No fixture workspace "${fixtureName}" in ${JOURNEY_FIXTURES_ROOT}.`);
+        }
+
+        this.journeyRoot = fs.mkdtempSync(path.join(os.tmpdir(), `treecipe-journey-${fixtureName}-`));
+        this.workspaceRoot = path.join(this.journeyRoot, 'workspace');
+        fs.cpSync(fixturePath, this.workspaceRoot, { recursive: true });
+
+        const journeyHomePath = path.join(this.journeyRoot, 'home');
+        fs.mkdirSync(journeyHomePath);
+        MACHINE_ENVIRONMENT_VARIABLES.forEach(variableName => {
+            this.machineEnvironment.set(variableName, process.env[variableName]);
+            delete process.env[variableName];
+        });
+        process.env.HOME = journeyHomePath;
+        process.env.USERPROFILE = journeyHomePath;
+
+        setOpenJourneyHost(this);
+        setOpenOrgConnections(this.org);
+
+        await this.step(`open the cockpit on ${fixtureName}`, async () => {
+            await RecipeCockpitService.openRecipeCockpitPanel(this.workspaceRoot, this.workspaceState);
+            await this.settle();
+        });
+
+        return this;
+
+    }
+
+    // CLOSES THE PANEL AS A READER CLOSING THE TAB WOULD, AND REMOVES THE WORKSPACE COPY
+    async close(): Promise<void> {
+
+        this.disposeHandlers.splice(0).forEach(disposeHandler => disposeHandler());
+        await this.settle();
+        setOpenJourneyHost(undefined);
+        setOpenOrgConnections(undefined);
+        this.machineEnvironment.forEach((variableValue, variableName) => {
+            if ( variableValue === undefined ) { delete process.env[variableName]; } else { process.env[variableName] = variableValue; }
+        });
+        this.machineEnvironment.clear();
+        if ( this.journeyRoot ) {
+            fs.rmSync(this.journeyRoot, { recursive: true, force: true });
+        }
+
+    }
+
+    // ---- steps ----
+
+    /*
+        Runs one step of the journey under its name. A journey wraps its own expectations in a step too,
+        so a failure always says which step it was, and what was on screen.
+    */
+    async step<TResult>(stepName: string, stepAction: () => Promise<TResult> | TResult): Promise<TResult> {
+
+        // A STEP INSIDE A STEP IS PART OF IT: THE OUTERMOST ONE NAMES A FAILURE AND OWNS THE FILES WRITTEN
+        const isOutermostStep = this.stepStack.length === 0;
+        this.stepStack.push(stepName);
+        this.steps.push(this.stepStack.join(' › '));
+        const filesBefore = isOutermostStep ? this.snapshotFiles() : undefined;
+
+        try {
+            return await stepAction();
+        } catch (stepError) {
+            // THE DEEPEST STEP THAT FAILED IS THE ONE NAMED, WITH THE STEPS IT WAS PART OF
+            this.failedStepPath = this.failedStepPath ?? this.stepStack.join(' › ');
+            if ( !isOutermostStep ) { throw stepError; }
+            const failedStepPath = this.failedStepPath;
+            this.failedStepPath = undefined;
+            const reason = stepError instanceof Error ? stepError.message : String(stepError);
+            throw new Error(`Step "${failedStepPath}" failed: ${reason}`, { cause: stepError });
+        } finally {
+            if ( filesBefore ) { this.recordFileChanges(filesBefore); }
+            this.stepStack.pop();
+        }
+
+    }
+
+    private currentStepName(): string {
+        return this.stepStack.join(' › ') || '(between steps)';
+    }
+
+    // ---- what the reader does in the panel ----
+
+    async chooseRun(runLabel: string): Promise<void> {
+
+        await this.step(`choose the run "${runLabel}"`, async () => {
+            const modelsBefore = this.countHostMessages('recipeData');
+            await this.chooseOptionIn(RECIPE_COCKPIT_RUN_PICKER_LABEL, runLabel);
+            const shownRun = this.screen().get('combobox', RECIPE_COCKPIT_RUN_PICKER_LABEL).value;
+            if ( this.countHostMessages('recipeData') === modelsBefore || shownRun !== runLabel ) {
+                throw new Error(`the "${RECIPE_COCKPIT_RUN_PICKER_LABEL}" dropdown was set to "${runLabel}", but the cockpit drew no run for it`
+                    + ` (it shows "${shownRun}").`);
+            }
+        });
+
+    }
+
+    async chooseTree(treeName: string): Promise<void> {
+
+        await this.step(`choose the treecipe "${treeName}"`, async () => {
+            const optionLabel = this.optionLabelsOf(RECIPE_COCKPIT_TREECIPE_PICKER_LABEL).find(label => label === treeName || label === '★ ' + treeName) ?? treeName;
+            await this.chooseOptionIn(RECIPE_COCKPIT_TREECIPE_PICKER_LABEL, optionLabel);
+            const shownTreeName = this.shownTreeName();
+            if ( shownTreeName !== treeName ) {
+                throw new Error(`the "${RECIPE_COCKPIT_TREECIPE_PICKER_LABEL}" dropdown was set to "${treeName}", but the card shown is still "${shownTreeName}".`);
+            }
+        });
+
+    }
+
+    async openTab(tabName: string): Promise<void> {
+
+        await this.step(`open the "${tabName}" tab`, async () => {
+            const screen = this.screen();
+            await this.clickNode(screen, screen.get('tab', tabName));
+            const tab = this.screen().get('tab', tabName);
+            if ( !tab.states.includes('selected') ) {
+                throw new Error(`the "${tabName}" tab was clicked but is not selected.`);
+            }
+            this.screen().get('tabpanel', tabName);
+        });
+
+    }
+
+    // within NAMES THE REGION TO LOOK IN WHEN THE SAME NAME IS ON SCREEN MORE THAN ONCE, AS A READER WOULD SAY "THE Run… OF THE Lead QUERY"
+    async click(role: string, name: string | RegExp, within?: IScreenRegion): Promise<void> {
+
+        await this.step(`click the ${role} "${name}"${within ? ` in the ${within.role} "${within.name}"` : ''}`, async () => {
+            const screen = this.screen();
+            await this.clickNode(screen, screen.get(role, name, within ? screen.get(within.role, within.name) : undefined));
+        });
+
+    }
+
+    // AN OPTION CHOSEN IN A DROPDOWN, WITH NO CHECK OF WHAT FOLLOWS: FOR A CHOICE THE COCKPIT ANSWERS WITH A CONFIRMATION
+    async chooseOption(comboboxName: string, optionLabel: string): Promise<void> {
+
+        await this.step(`choose "${optionLabel}" in "${comboboxName}"`, () => this.chooseOptionIn(comboboxName, optionLabel));
+
+    }
+
+    async type(label: string, text: string): Promise<void> {
+
+        await this.step(`type "${text}" in "${label}"`, async () => {
+            const screen = this.screen();
+            const textBoxes = [...screen.findAll('textbox', label), ...screen.findAll('searchbox', label)];
+            if ( textBoxes.length !== 1 ) {
+                throw new Error(`${textBoxes.length === 0 ? 'no' : textBoxes.length} text boxes named "${label}" are on screen.`
+                    + ` The text boxes on screen: ${[...screen.findAll('textbox'), ...screen.findAll('searchbox')].map(node => `"${node.name}"`).join(', ') || 'none'}.`);
+            }
+            const textBoxElement = screen.elementOf(textBoxes[0]);
+            textBoxElement.value = text;
+            textBoxElement.dispatch('input');
+            textBoxElement.dispatch('change');
+            await this.settle();
+        });
+
+    }
+
+    // THE IN-PANEL CONFIRMATION (#349) ANSWERED BY ITS BUTTON
+    async answerConfirmation(buttonLabel: string): Promise<void> {
+
+        await this.step(`answer the confirmation with "${buttonLabel}"`, async () => {
+            const screen = this.screen();
+            await this.clickNode(screen, screen.get('button', buttonLabel, this.shownDialog(screen)));
+        });
+
+    }
+
+    async pickOrg(orgLabel: string): Promise<void> {
+
+        await this.step(`pick the org "${orgLabel}"`, async () => {
+            await this.chooseOptionIn(JOURNEY_ORG_PICKER_NAME, orgLabel);
+        });
+
+    }
+
+    // ---- what the reader answers in VS Code ----
+
+    async answerQuickPick(label: string): Promise<void> {
+
+        await this.step(`answer the quick pick with "${label}"`, async () => {
+            const shownQuickPick = [...this.shownQuickPicks].reverse().find(entry => entry.quickPick.isShown);
+            if ( shownQuickPick ) {
+                shownQuickPick.record.offeredLabels = shownQuickPick.quickPick.offeredLabels();
+                shownQuickPick.quickPick.accept(label);
+                shownQuickPick.record.isWaiting = false;
+            } else {
+                const waitingQuickPick = this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick', 'No quick pick is open.');
+                if ( !waitingQuickPick.record.offeredLabels.includes(label) ) {
+                    this.waitingPrompts.push(waitingQuickPick);
+                    throw new Error(`the quick pick offers no "${label}". It offers: ${waitingQuickPick.record.offeredLabels.map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
+                }
+                waitingQuickPick.answer(label);
+            }
+            await this.settle();
+        });
+
+    }
+
+    async answerInputBox(text: string | undefined): Promise<void> {
+
+        await this.step(text === undefined ? 'dismiss the input box' : `answer the input box with "${text}"`, async () => {
+            this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'inputBox', 'No input box is open.').answer(text);
+            await this.settle();
+        });
+
+    }
+
+    async clickNotificationButton(buttonLabel: string): Promise<void> {
+
+        await this.step(`click "${buttonLabel}" on the notification`, async () => {
+            const waitingNotification = this.takeWaiting(this.waitingNotifications, entry => entry.record.buttons.includes(buttonLabel),
+                `No notification on screen has a "${buttonLabel}" button. Waiting: ${this.waitingNotifications.map(entry => `"${entry.record.text}" [${entry.record.buttons.join(', ')}]`).join('; ') || 'none'}.`);
+            waitingNotification.answer(buttonLabel);
+            await this.settle();
+        });
+
+    }
+
+    // ---- what the reader sees ----
+
+    screen(): RecipeCockpitScreen {
+        const page = this.requirePage();
+        return new RecipeCockpitScreen(
+            [page.cockpitMetaElement, page.loadStatusElement, page.cockpitBodyElement, page.cockpitDialogHostElement] as IPageElement[],
+            element => page.isDisplayed(element)
+        );
+    }
+
+    optionLabelsOf(comboboxName: string): string[] {
+        const screen = this.screen();
+        return screen.findAll('option', undefined, screen.get('combobox', comboboxName)).map(option => option.name);
+    }
+
+    /*
+        The card on screen, by the name its header gives its rename button -- the first "Rename …" in
+        reading order, since a data set row's comes below it. Never the dropdown's value: that is what
+        the reader just set, whether or not the card followed it.
+    */
+    shownTreeName(): string {
+        const renameButton = this.screen().findAll('button', /^Rename .+$/)[0];
+        if ( !renameButton ) { throw new Error('No treecipe card is shown.'); }
+        return renameButton.name.replace(/^Rename /, '');
+    }
+
+    // THE TAB PANEL A READER HAS OPEN ON THE SHOWN CARD
+    shownTabPanel(): IScreenNode {
+        const screen = this.screen();
+        const selectedTab = screen.findAll('tab').find(tab => tab.states.includes('selected'));
+        if ( !selectedTab ) { throw new Error('No tab is selected on screen.'); }
+        return screen.get('tabpanel', selectedTab.name);
+    }
+
+    waitingNotificationTexts(): string[] {
+        return this.waitingNotifications.map(entry => entry.record.text);
+    }
+
+    private shownDialog(screen: RecipeCockpitScreen): IScreenNode {
+        const dialogs = [...screen.findAll('dialog'), ...screen.findAll('alertdialog')];
+        if ( dialogs.length !== 1 ) {
+            throw new Error(dialogs.length === 0 ? 'No confirmation is on screen.' : `${dialogs.length} confirmations are on screen.`);
+        }
+        return dialogs[0];
+    }
+
+    // ---- the host side of the fakes (IJourneyHost) ----
+
+    createWebviewPanel(): IFakeWebviewPanel {
+
+        const startPage = () => this.startPage();
+        let shellHtml = '';
+        const fakePanel: IFakeWebviewPanel = {
+            visible: true,
+            reveal: () => undefined,
+            dispose: () => { this.disposeHandlers.splice(0).forEach(disposeHandler => disposeHandler()); },
+            onDidDispose: (disposeHandler: () => void) => { this.disposeHandlers.push(disposeHandler); return { dispose: () => undefined }; },
+            onDidChangeViewState: () => ({ dispose: () => undefined }),
+            webview: {
+                get html() { return shellHtml; },
+                // A NEW DOCUMENT IS A NEW RUN OF THE PANEL SCRIPT; THE OLD ONE IS GONE, AND WHAT WAS POSTED TO IT WITH IT
+                set html(nextShellHtml: string) { shellHtml = nextShellHtml; startPage(); },
+                postMessage: (hostMessage: unknown) => {
+                    this.hostToPanelQueue.push(hostMessage);
+                    this.logMessage('host → panel', hostMessage);
+                    return Promise.resolve(true);
+                },
+                onDidReceiveMessage: (messageHandler: (panelMessage: unknown) => unknown) => {
+                    this.panelMessageHandler = messageHandler;
+                    return { dispose: () => { if ( this.panelMessageHandler === messageHandler ) { this.panelMessageHandler = undefined; } } };
+                }
+            }
+        };
+        return fakePanel;
+
+    }
+
+    async showNotification(kind: NotificationKind, text: string, options: { modal?: boolean; detail?: string } | undefined, buttons: string[]): Promise<string | undefined> {
+
+        const notification: IRecordedNotification = { kind, text, detail: options?.detail, isModal: options?.modal === true, buttons, isWaiting: buttons.length > 0 };
+        this.notifications.push(notification);
+        if ( buttons.length === 0 ) { return undefined; }
+        return new Promise(resolveAnswer => this.waitingNotifications.push({
+            record: notification,
+            answer: chosen => { notification.isWaiting = false; resolveAnswer(chosen); }
+        }));
+
+    }
+
+    async showPrompt(prompt: IRecordedPrompt): Promise<string | undefined> {
+
+        this.prompts.push(prompt);
+        return new Promise(resolveAnswer => this.waitingPrompts.push({
+            record: prompt,
+            answer: chosen => { prompt.isWaiting = false; resolveAnswer(chosen); }
+        }));
+
+    }
+
+    showQuickPickControl(quickPick: FakeQuickPick): void {
+
+        const record: IRecordedPrompt = { kind: 'quickPick', title: quickPick.title, placeholder: quickPick.placeholder, offeredLabels: quickPick.offeredLabels(), isWaiting: true };
+        this.prompts.push(record);
+        this.shownQuickPicks.push({ quickPick, record });
+
+    }
+
+    recordCall(call: string, args: unknown[]): void {
+        this.hostCalls.push({ call, args, step: this.currentStepName() });
+    }
+
+    // ---- the message pump ----
+
+    private startPage() {
+        this.page = runPanelScript();
+        this.hostToPanelQueue = [];
+        this.deliveredPanelMessageCount = 0;
+    }
+
+    private requirePage(): PanelPage {
+        if ( !this.page ) { throw new Error('The cockpit has no panel open.'); }
+        return this.page;
+    }
+
+    private logMessage(direction: MessageDirection, message: unknown) {
+        const command = String((message as { command?: unknown })?.command ?? '');
+        this.messages.push({ direction, command, message, step: this.currentStepName() });
+    }
+
+    countHostMessages(command: string): number {
+        return this.messages.filter(entry => entry.direction === 'host → panel' && entry.command === command).length;
+    }
+
+    private deliverQueuedMessages(): boolean {
+
+        let isAnythingDelivered = false;
+        const page = this.page;
+        if ( !page ) { return false; }
+
+        while ( this.hostToPanelQueue.length > 0 && this.page === page ) {
+            isAnythingDelivered = true;
+            page.postToPanel(this.hostToPanelQueue.shift());
+        }
+
+        while ( this.page === page && this.deliveredPanelMessageCount < page.postedHostMessages.length ) {
+            isAnythingDelivered = true;
+            const panelMessage = page.postedHostMessages[this.deliveredPanelMessageCount++];
+            this.logMessage('panel → host', panelMessage);
+            const messageHandler = this.panelMessageHandler;
+            if ( !messageHandler ) { continue; }
+            this.inFlightHostHandlerCount++;
+            Promise.resolve()
+                .then(() => messageHandler(panelMessage))
+                .catch(handlerError => { this.hostHandlerErrors.push(handlerError); })
+                .finally(() => { this.inFlightHostHandlerCount--; });
+        }
+
+        return isAnythingDelivered;
+
+    }
+
+    // A PROMPT OR NOTIFICATION WITH BUTTONS IN VS CODE, OR A CONFIRMATION ON SCREEN IN THE PANEL (#349)
+    private isWaitingOnReader(): boolean {
+        if ( this.waitingNotifications.length > 0 || this.waitingPrompts.length > 0 || this.shownQuickPicks.some(entry => entry.quickPick.isShown) ) {
+            return true;
+        }
+        const screen = this.screen();
+        return screen.findAll('dialog').length + screen.findAll('alertdialog').length > 0;
+    }
+
+    /*
+        Delivers messages both ways until neither side has anything left to do: both queues empty, and
+        every host handler finished -- or waiting on a reader's answer to a prompt or a notification,
+        which only the journey's next step can give.
+    */
+    private async settle(): Promise<void> {
+
+        let quietRounds = 0;
+
+        for (let round = 0; round < MAX_SETTLE_ROUNDS; round++) {
+
+            const isAnythingDelivered = this.deliverQueuedMessages();
+            await new Promise(resolveRound => setImmediate(resolveRound));
+
+            if ( isAnythingDelivered ) {
+                quietRounds = 0;
+            } else if ( this.inFlightHostHandlerCount === 0 ) {
+                if ( ++quietRounds >= QUIET_ROUNDS_WHEN_IDLE ) { break; }
+            } else if ( this.isWaitingOnReader() ) {
+                if ( ++quietRounds >= QUIET_ROUNDS_WHEN_WAITING_ON_READER ) { break; }
+            }
+
+            if ( round === MAX_SETTLE_ROUNDS - 1 ) {
+                throw new Error(`the cockpit did not go idle: ${this.inFlightHostHandlerCount} host handler(s) were still running.`);
+            }
+
+        }
+
+        this.shownQuickPicks.forEach(entry => { entry.record.offeredLabels = entry.quickPick.offeredLabels(); });
+
+        const handlerErrors = this.hostHandlerErrors.splice(0);
+        if ( handlerErrors.length > 0 ) {
+            throw new Error(`the host threw while handling a panel message: ${handlerErrors.map(handlerError => handlerError instanceof Error ? handlerError.message : String(handlerError)).join('; ')}`);
+        }
+
+    }
+
+    // ---- panel actions on screen nodes ----
+
+    // THE NODE IS CLICKED ON THE SCREEN IT WAS FOUND ON: NO SECOND LOOKUP BY NAME THAT COULD FIND ANOTHER
+    private async clickNode(screen: RecipeCockpitScreen, node: IScreenNode): Promise<void> {
+        if ( node.states.includes('disabled') ) {
+            throw new Error(`the ${node.role} "${node.name}" is disabled.`);
+        }
+        screen.elementOf(node).dispatch('click');
+        await this.settle();
+    }
+
+    private async chooseOptionIn(comboboxName: string, optionLabel: string): Promise<void> {
+
+        const screen = this.screen();
+        const combobox = screen.get('combobox', comboboxName);
+        if ( combobox.states.includes('disabled') ) {
+            throw new Error(`the "${comboboxName}" dropdown is disabled.`);
+        }
+        const options = screen.findAll('option', undefined, combobox);
+        const chosenOption = options.find(option => option.name === optionLabel);
+        if ( !chosenOption ) {
+            throw new Error(`the "${comboboxName}" dropdown offers no "${optionLabel}". It offers: ${options.map(option => `"${option.name}"`).join(', ') || 'nothing'}.`);
+        }
+        const comboboxElement = screen.elementOf(combobox);
+        comboboxElement.value = screen.elementOf(chosenOption).value;
+        comboboxElement.dispatch('change');
+        await this.settle();
+
+    }
+
+    private takeWaiting<TRecord>(waitingAnswers: Array<IWaitingAnswer<TRecord>>, isWanted: (entry: IWaitingAnswer<TRecord>) => boolean, missingMessage: string): IWaitingAnswer<TRecord> {
+        for (let index = waitingAnswers.length - 1; index >= 0; index--) {
+            if ( isWanted(waitingAnswers[index]) ) {
+                return waitingAnswers.splice(index, 1)[0];
+            }
+        }
+        throw new Error(missingMessage);
+    }
+
+    // ---- files written or removed under the workspace ----
+
+    private snapshotFiles(): Map<string, string> {
+        const fileHashes = new Map<string, string>();
+        if ( !this.workspaceRoot || !fs.existsSync(this.workspaceRoot) ) { return fileHashes; }
+        const visit = (directoryPath: string) => {
+            fs.readdirSync(directoryPath, { withFileTypes: true }).forEach(entry => {
+                const entryPath = path.join(directoryPath, entry.name);
+                if ( entry.isDirectory() ) {
+                    visit(entryPath);
+                } else if ( entry.isFile() ) {
+                    fileHashes.set(path.relative(this.workspaceRoot, entryPath).split(path.sep).join('/'),
+                        crypto.createHash('sha256').update(fs.readFileSync(entryPath)).digest('hex'));
+                }
+            });
+        };
+        visit(this.workspaceRoot);
+        return fileHashes;
+    }
+
+    private recordFileChanges(filesBefore: Map<string, string>) {
+        const filesAfter = this.snapshotFiles();
+        const stepName = this.currentStepName();
+        filesAfter.forEach((fileHash, relativePath) => {
+            if ( filesBefore.get(relativePath) !== fileHash ) { this.fileChanges.push({ change: 'written', relativePath, step: stepName }); }
+        });
+        filesBefore.forEach((_fileHash, relativePath) => {
+            if ( !filesAfter.has(relativePath) ) { this.fileChanges.push({ change: 'removed', relativePath, step: stepName }); }
+        });
+    }
+
+}
