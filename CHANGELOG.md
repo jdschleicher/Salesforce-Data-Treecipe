@@ -27,7 +27,9 @@ Slice A of epic #576. No source file changes, and nothing a user sees changes.
   - a Query tab Run… is answered through the org quick pick, and its notification and query are recorded;
   - Export JSON's files are recorded, and its "Open file" button opens the file;
   - the run switch's in-panel confirmation is answered by its button;
-  - a failed action says what was on screen instead.
+  - a failed action says what was on screen instead;
+  - a disabled control is not clicked, a host that throws or never answers fails the step rather than hanging, and a file removed in a step is recorded.
+- **The fakes are tested on their own** (`RecipeCockpitJourneyFakes.test.ts`), so a later journey that reaches a VS Code or org call the first journey never made finds it working. A connection call the fake org has no answer for throws, naming the call and the org.
 - **No lookups by class or id.** `AcceptanceSelectorScan.test.ts` fails on `className`, `classList`, `.getElementById` or a `querySelector` with a class or id selector anywhere in `tests/acceptance/`. A seeded line of each kind proves the scan can fail.
 - `RecipeCockpitPanelHarness` gains `isDisplayed`: an element is not displayed when the shell's own stylesheet gives one of its classes `display: none`.
 

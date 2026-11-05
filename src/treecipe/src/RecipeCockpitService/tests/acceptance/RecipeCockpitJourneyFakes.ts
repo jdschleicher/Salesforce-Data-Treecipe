@@ -78,7 +78,8 @@ function journeyHost(): IJourneyHost {
 
 const disposable = () => ({ dispose: () => undefined });
 
-const labelOf = (item: unknown): string => typeof item === 'string' ? item : String((item as { label?: unknown; title?: unknown })?.label ?? (item as { title?: unknown })?.title ?? '');
+// A QUICK PICK ITEM HAS A label, A NOTIFICATION'S MessageItem A title, AND EITHER MAY BE A PLAIN STRING
+const labelOf = (item: string | { label?: string; title?: string }): string => typeof item === 'string' ? item : String(item.label ?? item.title);
 
 // showInformationMessage(message, [options], ...buttons): A BUTTON IS A STRING OR A MessageItem
 function splitNotificationArguments(notificationArguments: unknown[]) {
@@ -147,7 +148,7 @@ export class FakeQuickPick {
     accept(label: string) {
         const chosenItem = this.items.find(item => labelOf(item) === label);
         if ( !chosenItem ) {
-            throw new Error(`The quick pick "${this.title ?? this.placeholder ?? ''}" offers no "${label}". It offers: ${this.offeredLabels().map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
+            throw new Error(`The quick pick "${this.title ?? this.placeholder}" offers no "${label}". It offers: ${this.offeredLabels().map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
         }
         this.selectedItems = [chosenItem];
         this.acceptListeners.forEach(listener => listener());
@@ -186,7 +187,7 @@ export const journeyVscodeModule = {
         showInputBox: async (options: { title?: string; prompt?: string; placeHolder?: string; value?: string } = {}) =>
             journeyHost().showPrompt({ kind: 'inputBox', title: options.title, prompt: options.prompt, placeholder: options.placeHolder, value: options.value, offeredLabels: [], isWaiting: true }),
         withProgress: async (options: { title?: string }, progressTask: (progress: unknown, cancellationToken: unknown) => unknown) => {
-            journeyHost().recordCall('window.withProgress', [options?.title]);
+            journeyHost().recordCall('window.withProgress', [options.title]);
             return progressTask({ report: () => undefined }, { isCancellationRequested: false, onCancellationRequested: () => disposable() });
         },
         createStatusBarItem: () => ({ text: '', tooltip: '', command: undefined, show: () => undefined, hide: () => undefined, dispose: () => undefined }),
@@ -204,23 +205,21 @@ export const journeyVscodeModule = {
     },
     workspace: {
         get workspaceFolders() { return openJourneyHost ? [{ uri: fileUri(openJourneyHost.workspaceRoot), name: path.basename(openJourneyHost.workspaceRoot), index: 0 }] : undefined; },
-        getConfiguration: (section?: string) => ({
-            get: (key: string, defaultValue?: unknown) => {
-                const settingKey = section ? `${section}.${key}` : key;
-                return journeyHost().settings.has(settingKey) ? journeyHost().settings.get(settingKey) : defaultValue;
-            },
-            update: async (key: string, value: unknown) => {
-                journeyHost().recordCall('workspace.getConfiguration().update', [section ? `${section}.${key}` : key, value]);
-                journeyHost().settings.set(section ? `${section}.${key}` : key, value);
-            },
-            inspect: (key: string) => {
-                const settingKey = section ? `${section}.${key}` : key;
-                return { key: settingKey, workspaceValue: journeyHost().settings.get(settingKey) };
-            },
-            has: (key: string) => journeyHost().settings.has(section ? `${section}.${key}` : key)
-        }),
+        getConfiguration: (section?: string) => {
+            // A SETTING IS KEPT BY ITS FULL NAME, AS getConfiguration().get('salesforce-data-treecipe.x') READS IT
+            const settingKeyOf = (key: string) => section ? `${section}.${key}` : key;
+            return {
+                get: (key: string, defaultValue?: unknown) => journeyHost().settings.has(settingKeyOf(key)) ? journeyHost().settings.get(settingKeyOf(key)) : defaultValue,
+                update: async (key: string, value: unknown) => {
+                    journeyHost().recordCall('workspace.getConfiguration().update', [settingKeyOf(key), value]);
+                    journeyHost().settings.set(settingKeyOf(key), value);
+                },
+                inspect: (key: string) => ({ key: settingKeyOf(key), workspaceValue: journeyHost().settings.get(settingKeyOf(key)) }),
+                has: (key: string) => journeyHost().settings.has(settingKeyOf(key))
+            };
+        },
         onDidChangeConfiguration: () => disposable(),
-        openTextDocument: async (documentUri: { fsPath?: string }) => { journeyHost().recordCall('workspace.openTextDocument', [documentUri?.fsPath ?? documentUri]); return { uri: documentUri, lineCount: 0 }; },
+        openTextDocument: async (documentUri: { fsPath: string }) => { journeyHost().recordCall('workspace.openTextDocument', [documentUri.fsPath]); return { uri: documentUri, lineCount: 0 }; },
         fs: {
             readDirectory: async (directoryUri: { fsPath: string }) => (await fs.promises.readdir(directoryUri.fsPath, { withFileTypes: true }))
                 .map(entry => [entry.name, entry.isDirectory() ? 2 : entry.isSymbolicLink() ? 64 : 1]),
@@ -293,6 +292,7 @@ export class FakeOrgConnections {
             }
             return { totalSize: 0, done: true, records: [] };
         };
+        const answerToolingQuery = (soql: string) => this.queryAnswer(username, soql) ?? { totalSize: 0, done: true, records: [] };
         const unanswered = (call: string) => (...args: unknown[]) => {
             this.record(username, call, args);
             throw new Error(`The journey's fake org has no answer for ${call} on ${username}: script it on journey.org.`);
@@ -313,7 +313,7 @@ export class FakeOrgConnections {
                 update: unanswered(`connection.sobject(${objectApiName}).update`),
                 describe: unanswered(`connection.sobject(${objectApiName}).describe`)
             }),
-            tooling: { query: async (soql: string) => { this.record(username, 'connection.tooling.query', [soql]); return this.queryAnswer(username, soql) ?? { totalSize: 0, done: true, records: [] }; } },
+            tooling: { query: async (soql: string) => { this.record(username, 'connection.tooling.query', [soql]); return answerToolingQuery(soql); } },
             metadata: { retrieve: unanswered('connection.metadata.retrieve'), deploy: unanswered('connection.metadata.deploy'), list: unanswered('connection.metadata.list') }
         };
         return connection;

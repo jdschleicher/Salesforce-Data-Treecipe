@@ -176,7 +176,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async close(): Promise<void> {
 
         this.disposeHandlers.splice(0).forEach(disposeHandler => disposeHandler());
-        await this.settle();
+        // ONE TURN FOR WHAT THE CLOSE STARTS, AND NO WAIT FOR IDLE: CLOSING MUST CLEAN UP AFTER A HOST THAT HUNG TOO
+        await new Promise(resolveTurn => setImmediate(resolveTurn));
         setOpenJourneyHost(undefined);
         setOpenOrgConnections(undefined);
         this.machineEnvironment.forEach((variableValue, variableName) => {
@@ -389,14 +390,6 @@ export class RecipeCockpitJourney implements IJourneyHost {
         return renameButton.name.replace(/^Rename /, '');
     }
 
-    // THE TAB PANEL A READER HAS OPEN ON THE SHOWN CARD
-    shownTabPanel(): IScreenNode {
-        const screen = this.screen();
-        const selectedTab = screen.findAll('tab').find(tab => tab.states.includes('selected'));
-        if ( !selectedTab ) { throw new Error('No tab is selected on screen.'); }
-        return screen.get('tabpanel', selectedTab.name);
-    }
-
     waitingNotificationTexts(): string[] {
         return this.waitingNotifications.map(entry => entry.record.text);
     }
@@ -488,7 +481,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
     }
 
     private logMessage(direction: MessageDirection, message: unknown) {
-        const command = String((message as { command?: unknown })?.command ?? '');
+        const command = String((message as { command: unknown }).command);
         this.messages.push({ direction, command, message, step: this.currentStepName() });
     }
 
@@ -499,8 +492,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
     private deliverQueuedMessages(): boolean {
 
         let isAnythingDelivered = false;
-        const page = this.page;
-        if ( !page ) { return false; }
+        const page = this.requirePage();
 
         while ( this.hostToPanelQueue.length > 0 && this.page === page ) {
             isAnythingDelivered = true;

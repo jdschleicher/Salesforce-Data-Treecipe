@@ -138,7 +138,7 @@ export class RecipeCockpitScreen {
             const shownOption = element.children.find(optionElement => String(optionElement.value) === String(element.value));
             node.value = shownOption ? this.shownTextOf(shownOption) : '';
         }
-        if ( role === 'textbox' || role === 'searchbox' ) { node.value = String(element.value ?? ''); }
+        if ( role === 'textbox' || role === 'searchbox' ) { node.value = String(element.value); }
 
         this.elementByNode.set(node, element);
         return [node];
@@ -185,11 +185,6 @@ export class RecipeCockpitScreen {
         };
         (within ? [within] : this.roots).forEach(node => visit(node, 0));
         return lines;
-    }
-
-    // THE TEXT UNDER A NODE, IN READING ORDER, ONE ENTRY PER NAMED NODE
-    textsOf(within: IScreenNode): string[] {
-        return new RecipeCockpitScreenSubtree(within).all().slice(1).map(node => node.name).filter(name => !!name);
     }
 
 }

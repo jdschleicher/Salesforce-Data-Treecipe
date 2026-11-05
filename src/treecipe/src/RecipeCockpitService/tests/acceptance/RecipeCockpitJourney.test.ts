@@ -5,8 +5,9 @@ jest.mock('vscode', () => require('./RecipeCockpitJourneyFakes').journeyVscodeMo
 jest.mock('@salesforce/core', () => require('./RecipeCockpitJourneyFakes').journeySalesforceCoreModule);
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
-import { RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
+import { RecipeCockpitService, RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
 import { JOURNEY_ORG_PICKER_NAME, RecipeCockpitJourney } from './RecipeCockpitJourney';
 
 /*
@@ -36,6 +37,23 @@ describe('RecipeCockpitJourney (#577)', () => {
 
     });
 
+    test('screen() prints as indented lines of role, name, value and state, and acts only on its own nodes', () => {
+
+        const screen = journey.screen();
+        const treecipePicker = screen.get('combobox', 'Treecipe');
+
+        expect(screen.lines(treecipePicker)).toEqual([
+            'combobox "Treecipe" = "Account-thru-OtherChildObject__c"',
+            '  option "Account-thru-OtherChildObject__c" [selected]',
+            '  option "Lead-ONLY"'
+        ]);
+        expect(screen.lines()).toContain('  tab "Treecipe" [selected]');
+        expect(() => journey.screen().elementOf(treecipePicker)).toThrow('The combobox "Treecipe" is not from this screen.');
+        expect(() => screen.get('tab', /^Tr/)).toThrow('3 tabs named "/^Tr/" are on screen, so which one is meant is unclear.');
+        expect(() => screen.get('row', 'Account')).toThrow('No row named "Account" is on screen. The rows on screen: none.');
+
+    });
+
     test('click and type act on what is on screen, by role and name', async () => {
 
         await journey.click('button', 'About this cockpit');
@@ -60,6 +78,63 @@ describe('RecipeCockpitJourney (#577)', () => {
         await expect(journey.answerQuickPick('qa')).rejects.toThrow('failed: No quick pick is open.');
         await expect(journey.answerInputBox('x')).rejects.toThrow('failed: No input box is open.');
         await expect(journey.clickNotificationButton('Open file')).rejects.toThrow('failed: No notification on screen has a "Open file" button. Waiting: none.');
+
+    });
+
+    test('a file written or removed in a step is recorded under that step; a call between steps, as between steps', async () => {
+
+        const recipePath = 'treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml';
+
+        await journey.step('remove the Lead recipe', () => fs.rmSync(path.join(journey.workspaceRoot, recipePath)));
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        await journey.workspaceState.update('treecipe.someKey', { kept: true });
+        await journey.workspaceState.update('treecipe.someKey', undefined);
+
+        expect(journey.fileChanges).toEqual([{ change: 'removed', relativePath: recipePath, step: 'remove the Lead recipe' }]);
+        expect(journey.hostCalls).toEqual([{ call: 'commands.executeCommand', args: ['workbench.action.reloadWindow'], step: '(between steps)' }]);
+        expect(journey.workspaceState.get('treecipe.someKey')).toBeUndefined();
+
+    });
+
+    test('a disabled control is not clicked, and the step says so', async () => {
+
+        await journey.chooseTree('Lead-ONLY');
+        await journey.openTab('Query');
+
+        await expect(journey.click('button', 'Export JSON')).rejects.toThrow('Step "click the button "Export JSON"" failed: the button "Export JSON" is disabled.');
+        expect(journey.fileChanges).toEqual([]);
+
+    });
+
+    test('a host that throws on a panel message fails the step, saying what it threw', async () => {
+
+        const routePanelMessage = RecipeCockpitService.routePanelMessage.bind(RecipeCockpitService);
+        jest.spyOn(RecipeCockpitService, 'routePanelMessage').mockImplementation((panelMessage, panelState) => {
+            if ( panelMessage?.command === 'selectRun' ) { throw new Error('routing broke'); }
+            return routePanelMessage(panelMessage, panelState);
+        });
+
+        await expect(journey.chooseRun(OLDER_RUN_LABEL)).rejects.toThrow(`Step "choose the run "${OLDER_RUN_LABEL}"" failed: the host threw while handling a panel message: routing broke`);
+
+    });
+
+    test('a host that never answers and asks the reader nothing fails the step, rather than hanging the suite', async () => {
+
+        jest.spyOn(RecipeCockpitService, 'routePanelMessage').mockImplementation(() => ({ kind: 'selectRun', runFolderName: 'never' }));
+        jest.spyOn(RecipeCockpitService as any, 'runPanelAction').mockImplementation(() => new Promise(() => undefined));
+
+        await expect(journey.chooseRun(OLDER_RUN_LABEL)).rejects.toThrow('failed: the cockpit did not go idle: 1 host handler(s) were still running.');
+
+    });
+
+    test('a journey reads no screen before it opens, and its steps record no file outside a workspace', async () => {
+
+        const unopenedJourney = new RecipeCockpitJourney();
+
+        expect(() => unopenedJourney.screen()).toThrow('The cockpit has no panel open.');
+        await expect(unopenedJourney.step('look around', () => 'nothing')).resolves.toBe('nothing');
+        expect(unopenedJourney.fileChanges).toEqual([]);
+        await expect(unopenedJourney.open('noSuchFixture')).rejects.toThrow(/^No fixture workspace "noSuchFixture" in /);
 
     });
 
@@ -142,13 +217,18 @@ describe('RecipeCockpitJourney (#577)', () => {
         await expect(journey.answerQuickPick('Third')).rejects.toThrow('failed: the quick pick offers no "Third". It offers: "First", "Second".');
         await journey.answerQuickPick('Second');
         await journey.answerInputBox('qa-scratch');
+        const dismissedInput = vscode.window.showInputBox({ prompt: 'Duration' });
+        await journey.answerInputBox(undefined);
+        await expect(dismissedInput).resolves.toBeUndefined();
 
         await expect(enteredAlias).resolves.toBe('qa-scratch');
         await expect(chosenItem).resolves.toEqual({ label: 'Second' });
         expect(journey.prompts).toEqual([
             { kind: 'inputBox', title: 'New scratch org', prompt: 'Alias', placeholder: undefined, value: 'seven', offeredLabels: [], isWaiting: false },
-            { kind: 'quickPick', title: undefined, placeholder: 'Pick one', offeredLabels: ['First', 'Second'], isWaiting: false }
+            { kind: 'quickPick', title: undefined, placeholder: 'Pick one', offeredLabels: ['First', 'Second'], isWaiting: false },
+            { kind: 'inputBox', title: undefined, prompt: 'Duration', placeholder: undefined, value: undefined, offeredLabels: [], isWaiting: false }
         ]);
+        expect(journey.steps.slice(-2)).toEqual(['answer the input box with "qa-scratch"', 'dismiss the input box']);
 
     });
 
