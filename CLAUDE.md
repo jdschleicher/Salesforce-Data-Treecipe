@@ -185,6 +185,7 @@ src/
     │   ├── RecipeCockpitRecordCreation.ts    # Pure rules of the tree insert; imports nothing
     │   ├── RecipeCockpitTreeHistory.ts       # A tree card's Previously Used Data Sets
     │   └── tests/                            # RecipeCockpitPanelHarness.ts runs the real panel script against a fake DOM
+    │       ├── acceptance/                   # Journeys (#577): the real host and panel on a temp fixture copy, read by role and name, never by class or id
     │       └── mocks/                        # Workspace fixtures, listed in DESIGN.md
     ├── RecipeFakerService.ts/               # DIRECTORY (not a file)
     │   ├── IRecipeFakerService.ts           # Interface both faker services implement

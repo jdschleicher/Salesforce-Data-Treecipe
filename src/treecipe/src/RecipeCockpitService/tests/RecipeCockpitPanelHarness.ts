@@ -24,6 +24,8 @@ export interface IPanelScriptOptions {
     prefersReducedMotion?: boolean;
     // GIVES THE WINDOW A FAKE ResizeObserver AND requestAnimationFrame (#464); LEFT OUT, IT HAS NEITHER
     hasResizeObserver?: boolean;
+    // THE DOCUMENT TO RUN, AS THE HOST ASSIGNED IT TO webview.html (#577); LEFT OUT, A SHELL BUILT HERE
+    shellHtml?: string;
 }
 
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
@@ -162,11 +164,12 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             setState: (nextState: any) => { savedState = JSON.parse(JSON.stringify(nextState)); setStateCalls.push(savedState); return nextState; }
         });
 
-    const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
-    const panelScript = shellHtml.substring(
-        shellHtml.indexOf('<script nonce="testNonce">') + '<script nonce="testNonce">'.length,
-        shellHtml.lastIndexOf('</script>')
-    );
+    const shellHtml = panelScriptOptions.shellHtml ?? RecipeCockpitService.buildWebviewShellHtml('testNonce');
+    const scriptOpeningTag = /<script nonce="[^"]+">/.exec(shellHtml);
+    if ( !scriptOpeningTag ) {
+        throw new Error('The panel document has no nonced <script>: the webview would run nothing.');
+    }
+    const panelScript = shellHtml.substring(scriptOpeningTag.index + scriptOpeningTag[0].length, shellHtml.lastIndexOf('</script>'));
 
     // RUNNING THE REAL PANEL SCRIPT IS THE POINT OF THIS HARNESS
     new Function('document', 'window', 'acquireVsCodeApi', panelScript)(fakeDocument, fakeWindow, acquireVsCodeApi);
@@ -182,6 +185,11 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
     };
 
     const isHidden = (element: any) => element.classList.contains('hidden');
+
+    // WHAT A BROWSER'S COMPUTED STYLE WOULD SAY (#577): EVERY ONE-CLASS RULE OF THE SHELL'S OWN STYLESHEET THAT SETS display: none
+    const displayNoneClassNames = Array.from(shellHtml.matchAll(/^\s*\.([A-Za-z][\w-]*)\s*\{\s*display:\s*none\b/gm), ruleMatch => ruleMatch[1]);
+    const isDisplayed = (element: any) => !displayNoneClassNames.some(className => element.classList.contains(className))
+                                            && element.attributes.hidden === undefined;
 
     // THE STRUCTURE TAB'S OBJECTS, OF EVERY CARD WHOSE BODY IS BUILT -- A COLLAPSED CARD HAS NOT ATTACHED ITS OBJECTS YET
     const objectElements = () => findAll(cockpitBodyElement, 'treeObject');
@@ -207,6 +215,7 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         activeElement: () => fakeDocument.activeElement,
         findAll,
         isHidden,
+        isDisplayed,
         // AN ACTION CARD (#381, #384) NAMES ITSELF IN ITS TITLE SPAN, NOT ITS OWN TEXT
         cardTitleOf: (buttonElement: any) => findAll(buttonElement, 'actionCardTitle')[0].textContent,
         treeCards,
