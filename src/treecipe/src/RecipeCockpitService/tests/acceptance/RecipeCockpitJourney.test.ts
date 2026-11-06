@@ -73,6 +73,8 @@ describe('RecipeCockpitJourney (#577)', () => {
 
     test('a failed action says what is on screen instead, and in which step', async () => {
 
+        // EVERY ACTION WAITS FOR ITS TARGET UP TO THE STALL LIMIT BEFORE IT FAILS (#580); A SHORT ONE KEEPS SIX FAILURES WITHIN THE TEST'S TIME
+        journey.settleStallLimitMs = 100;
         await expect(journey.click('button', 'No such button')).rejects.toThrow(/^Step "click the button "No such button"" failed: No button named "No such button" is on screen\. The buttons on screen: "Open CHANGELOG on GitHub", /);
         await expect(journey.chooseTree('No such tree')).rejects.toThrow('Step "choose the treecipe "No such tree"" failed: the "Treecipe" dropdown offers no "No such tree". It offers: "Account-thru-OtherChildObject__c", "Lead-ONLY".');
         await expect(journey.type('No such box', 'x')).rejects.toThrow(/failed: no text boxes named "No such box" are on screen\./);
@@ -116,6 +118,7 @@ describe('RecipeCockpitJourney (#577)', () => {
 
     test('a disabled control is not clicked, and the step says so', async () => {
 
+        journey.settleStallLimitMs = 100;
         await journey.chooseTree('Lead-ONLY');
         await journey.openTab('Query');
 
@@ -214,6 +217,7 @@ describe('RecipeCockpitJourney (#577)', () => {
         await journey.click('button', 'Contact: Included — click to exclude');
         await journey.chooseOption(RECIPE_COCKPIT_RUN_PICKER_LABEL, OLDER_RUN_LABEL);
 
+        await journey.waitForConfirmation();
         const screen = journey.screen();
         const confirmation = screen.get('dialog', `Switch to ${OLDER_RUN_LABEL}?`);
         expect(screen.findAll('button', undefined, confirmation).map(button => button.name)).toEqual(expect.arrayContaining(['Reset selections', 'Cancel']));
@@ -264,6 +268,19 @@ describe('RecipeCockpitJourney (#577)', () => {
         expect(screen.get('tab', 'Fields')).not.toHaveProperty('description');
         // lines() PRINTS ROLE, NAME, VALUE AND STATE ONLY, SO EVERY JOURNEY'S EXPECTED LINES ARE UNCHANGED BY IT
         expect(screen.lines(screen.get('tabpanel', 'Fields')).some(screenLine => screenLine.includes('INVALID_FIELD'))).toBeFalse();
+
+    });
+
+    test('waitFor returns once what the reader expects is on screen, and fails within the stall limit naming what is missing or still disabled (#580)', async () => {
+
+        journey.settleStallLimitMs = 100;
+        await journey.waitFor('combobox', 'Treecipe');
+        await journey.chooseTree('Lead-ONLY');
+        await journey.openTab('Query');
+
+        await expect(journey.waitFor('button', 'No such button')).rejects.toThrow('Step "wait for the button "No such button"" failed: No button named "No such button" is on screen.');
+        await expect(journey.waitFor('button', 'Export JSON', undefined, { isEnabled: true })).rejects.toThrow('the button "Export JSON" stayed disabled for 100 ms.');
+        await journey.waitFor('button', 'Export JSON');
 
     });
 

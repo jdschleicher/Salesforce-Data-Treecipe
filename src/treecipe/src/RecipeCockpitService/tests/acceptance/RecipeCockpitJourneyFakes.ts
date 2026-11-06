@@ -344,6 +344,8 @@ export class FakeOrgConnections {
     readonly calls: IRecordedOrgCall[] = [];
     queryAnswer: OrgQueryAnswer = () => undefined;
     insertAnswer: OrgInsertAnswer = () => undefined;
+    // THE TREECIPE ADAPTER'S PATCH composite/sobjects (#580): ONE RESULT PER RECORD SENT, OR undefined FOR EVERY RECORD UPDATED
+    updateAnswer: OrgInsertAnswer = () => undefined;
     describeAnswer: OrgDescribeAnswer = () => undefined;
     callAnswer: OrgCallAnswer = () => undefined;
     private insertedRecordCount = 0;
@@ -420,7 +422,11 @@ export class FakeOrgConnections {
             sobject: (objectApiName: string) => ({
                 insert: async (records: Array<Record<string, unknown>>, insertOptions?: unknown) => answerInsert(objectApiName, 'insert', records, insertOptions),
                 create: async (records: Array<Record<string, unknown>>, insertOptions?: unknown) => answerInsert(objectApiName, 'create', records, insertOptions),
-                update: unanswered(`connection.sobject(${objectApiName}).update`),
+                update: async (records: Array<Record<string, unknown>>, updateOptions?: unknown) => {
+                    this.record(username, `connection.sobject(${objectApiName}).update`, [records, updateOptions]);
+                    return this.updateAnswer(username, objectApiName, records)
+                        ?? records.map(record => ({ success: true, id: record.Id, errors: [] }));
+                },
                 describe: unanswered(`connection.sobject(${objectApiName}).describe`)
             }),
             tooling: { query: async (soql: string) => { this.record(username, 'connection.tooling.query', [soql]); return answerToolingQuery(soql); } },

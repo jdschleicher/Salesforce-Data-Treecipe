@@ -1,0 +1,8 @@
+button "Open CHANGELOG on GitHub"
+button "About this cockpit" [collapsed]
+label "Select Generated Treecipe runs by date:"
+combobox "Select Generated Treecipe runs by date:" = "2026-09-10 00:00:00 UTC · faker-js"
+  option "2026-09-20 10:00:00 UTC · snowfakery · latest"
+  option "2026-09-10 00:00:00 UTC · faker-js" [selected]
+  option "2026-09-01 00:00:00 UTC · snowfakery"
+text "The objects wrapper "treecipeObjectsWrapper-2026-09-10T00-00-00.json" for this run could not be read: Unexpected end of JSON input. Choose another run, or run "Generate Treecipe" again."

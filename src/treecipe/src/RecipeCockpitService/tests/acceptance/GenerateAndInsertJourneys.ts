@@ -28,6 +28,7 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
             await journey.answerQuickPick(INSERT_ORG_LABEL);
             await journey.click('button', /^Records, inserted parents first/);
 
+            await journey.waitForConfirmation();
             await journey.step('the confirmation lists each object\'s record total, parents first', () => {
                 const screen = journey.screen();
                 const confirmation = screen.get('alertdialog', CONFIRMATION_TITLE);
@@ -201,6 +202,7 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
             const fileChangeCountBefore = journey.fileChanges.length;
             await journey.forgePanelMessage({ command: 'insertTree', treeKey: TREE_NAME });
 
+            await journey.waitForConfirmation();
             await journey.step('the forged insertTree opens the insert confirmation, and nothing is sent yet', () => {
                 journey.screen().get('alertdialog', CONFIRMATION_TITLE);
                 expectEqual(insertCallCount(journey), 0, 'Inserts sent before the confirmation is answered');

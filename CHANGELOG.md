@@ -1,5 +1,39 @@
 # Change Log
 
+## [3.192.11] - Tests: Data Sets and Treecipe Adapter journeys, and rendered baselines of the Recipe Cockpit's key screens (#580)
+
+Slice D of epic #576, the last. No source file changes, and nothing a user sees changes. These must pass unchanged when #565 reshapes the panel's markup and moves its stylesheet, and when #566 moves the Data Sets and Adapter host code.
+
+- **Three Previously Used Data Sets journeys** (`DataSetsJourneys.ts`), on two data sets that two Generate fake data and insert runs made, at a fixed clock:
+  - rename a data set inline, and a name another data set already has is refused under its box (`Another data set already has that name.`);
+  - favourite it, then Favorites only lists only it (`1 of 2 data sets`);
+  - **Insert…** it into `qa` again: the confirmation names the data set, the sandbox and its records; the row's status chip names the new insert; the insert journey table lists both attempts newest first, and sorting by Time puts the oldest first.
+- **Four Treecipe Adapter journeys** (`AdapterJourneys.ts`), on an org holding 201 Accounts:
+  - **load, generate, update and restore:**
+    - **Load:** pick the parent and a WHERE, Next, choose `Account.Region__c` and `Contact.Title__c`, then Load records. That is a SELECT per object, children narrowed to the parents' Ids, in parts of 150.
+    - **Generate values:** its confirmation, then a preview of current and new values, with nothing sent.
+    - **Update records:** all-or-none is asked. The snapshot is on disk before the first request, the PATCHes go Account 200, Account 1, Contact 1, and one notification names the snapshot and the adapted data set and recipe, which are written.
+    - **Restore previous values…:** the old values are sent back.
+  - **unhappy paths:**
+    - an update against another sandbox than the load's is refused, naming both orgs;
+    - a WHERE with `FOR UPDATE` is refused with the reason;
+    - a snapshot edited by hand out of shape is refused whole.
+
+    Nothing is sent on any of them.
+- **Rendered baselines** (`CockpitBaselines.ts`, `baselines/*.txt`): 11 key screens, each kept as a text file of the page as a reader reads it (role, accessible name, value and state, in document order, no CSS class), compared with a unified diff. `UPDATE_COCKPIT_BASELINES=1` rewrites them. `BaselinesCatchChanges.test.ts` renames the Adapter's Next button and swaps a confirmation's button with its Cancel, and each fails exactly the baselines that show it.
+- **Harness:**
+  - **every action waits for its target:** `click`, `answerConfirmation`, `answerQuickPick`, `answerQuickPickMany`, `dismissQuickPick`, `answerInputBox`, `clickNotificationButton` and choosing an option retry their lookup after a settle until the target is on screen (and enabled), within the stall limit, and then fail with the same message as before. The cockpit draws some of what a reader acts on after the handler that asked for it has answered (an org list, a confirmation, a card's readiness), and on a loaded machine settle's quiet rounds ended first, so the new journeys failed intermittently in the full suite;
+  - `waitForConfirmation()`, which every step that reads a confirmation waits on first, and every step that checks there is none waits for the refusal's notification first;
+  - `waitForNotification(text, countBefore)`; `generateAndInsert` waits for the insert's outcome notification, and reads from its button whether an org is already chosen instead of whether a prompt happens to be up;
+  - `waitFor(role, name, within?, { isEnabled })` waits for what host work outside a handler draws;
+  - `settle` and `waitFor` read `performance.now()`, so a journey that fakes `Date` cannot stop them;
+  - the fake org answers `sobject(x).update`, scriptable with `updateAnswer`;
+  - `generateAndInsert` waits for its button to be enabled again after an insert;
+  - the treecipeTabWorkspace describe answers `updateable: true`;
+  - the golden test's unified diff moved to `ExtensionCommandService/tests/UnifiedDiff.ts`, which both use; a baseline's diff names its sides `baselines/` and `rendered/`.
+- **Found, not fixed:** a second insert's data set can be missing from an open Previously Used Data Sets list, depending on the order its `datasetAdded` and `insertState` messages arrive in. The journeys reopen the cockpit after two inserts rather than pin it.
+- **Not in this PR:** comparing the same screens in real Chromium, which needs Playwright as a devDependency, goes in its own issue, #602.
+
 ## [3.192.10] - Tests: the production-org journey proves the sandbox-only rule refuses a forged insert (#599)
 
 Follows up #598's review. No source file changes, and nothing a user sees changes.

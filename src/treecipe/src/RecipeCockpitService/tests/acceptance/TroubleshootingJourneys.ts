@@ -63,6 +63,7 @@ async function startFieldDeploy(journey: RecipeCockpitJourney): Promise<void> {
     await journey.click('button', 'Deploy fields & dependencies…');
     await journey.click('button', /^Components 7/);
 
+    await journey.waitForConfirmation();
     await journey.step('the confirmation counts and lists the components it deploys', () => {
         const lines = confirmationLines(journey);
         expectEqual(lines[0], `alertdialog "${DEPLOY_CONFIRMATION_TITLE}"`, 'The confirmation');
@@ -177,6 +178,7 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
 
             await journey.click('button', 'Retrieve validation rules…');
 
+            await journey.waitForConfirmation();
             await journey.step('the org\'s rules are listed through metadata.list, and the confirmation names what the tree retrieves and how many local files it overwrites', () => {
                 expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'connection.metadata.list').map(orgCall => orgCall.args), [[{ type: 'ValidationRule' }]], 'The metadata.list calls');
                 const lines = confirmationLines(journey);
@@ -241,6 +243,7 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
             });
 
             await journey.answerQuickPickMany(['Account_Tree_Access', 'SDT_Account_thru_OtherChildObject_c']);
+            await journey.waitForConfirmation();
             await journey.step('the confirmation names the two sets and the user they go to', () => {
                 expectEqual(confirmationLines(journey)[0], `alertdialog "Assign 2 permission sets for ${TROUBLESHOOTING_TREE_NAME} to ${SANDBOX_USERNAME} in ${SANDBOX_ORG_LABEL} · ${SANDBOX_USERNAME}?"`, 'The confirmation');
             });
@@ -274,6 +277,7 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
             await openTroubleshootingSubTab(journey, 'Permissions');
             await journey.click('button', 'Generate permission set…');
 
+            await journey.waitForConfirmation();
             await journey.step('the confirmation names the file it overwrites and what it grants', () => {
                 const lines = confirmationLines(journey);
                 expectEqual(lines[0], `alertdialog "Overwrite the permission set SDT_Account_thru_OtherChildObject_c for ${TROUBLESHOOTING_TREE_NAME}?"`, 'The confirmation');
@@ -318,6 +322,7 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
             await journey.openTab('Troubleshooting');
             await journey.click('button', 'Remove TODO: on the object, line 42');
 
+            await journey.waitForConfirmation();
             await journey.step('the confirmation shows the TODO and the line it deletes', () => {
                 const lines = confirmationLines(journey);
                 expectEqual(lines[0], 'dialog "Remove this TODO from the recipe?"', 'The confirmation');
@@ -340,6 +345,7 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
             fileChangeCountBefore = journey.fileChanges.length;
             await journey.click('button', /^Restore: on the object, ### TODO -- VALIDATION RULE NOT APPLIED -- "Complex_Formula"/);
 
+            await journey.waitForConfirmation();
             await journey.step('the Restore confirmation says the line goes back as line 42 and the removed-TODOs file no longer lists it', () => {
                 const lines = confirmationLines(journey);
                 expectEqual(lines[0], 'dialog "Put this TODO back in the recipe?"', 'The confirmation');
