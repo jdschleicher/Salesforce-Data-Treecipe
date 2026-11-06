@@ -19,14 +19,17 @@ import {
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
     TARGET_ORG_ENVIRONMENT_VARIABLE
 } from '../../../SalesforceOrgService/SalesforceOrgService';
+import { PicklistDependencyCheckService } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import {
     FakeOrgConnections,
+    FakeSalesforceCli,
     FakeQuickPick,
     IFakeWebviewPanel,
     IJourneyHost,
     IRecordedNotification,
     IRecordedPrompt,
     NotificationKind,
+    PromptAnswer,
     setOpenJourneyHost,
     setOpenOrgConnections
 } from './RecipeCockpitJourneyFakes';
@@ -121,7 +124,7 @@ export interface IScreenRegion {
 
 interface IWaitingAnswer<TRecord> {
     record: TRecord;
-    answer(chosen: string | undefined): void;
+    answer(chosen: PromptAnswer): void;
 }
 
 type PanelPage = ReturnType<typeof runPanelScript>;
@@ -136,6 +139,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
     settleStallLimitMs = DEFAULT_SETTLE_STALL_LIMIT_MS;
     readonly settings = new Map<string, unknown>([[RECIPE_COCKPIT_FLAG_SETTING, true]]);
     readonly org = new FakeOrgConnections();
+    readonly cli = new FakeSalesforceCli();
 
     readonly steps: string[] = [];
     readonly notifications: IRecordedNotification[] = [];
@@ -174,16 +178,23 @@ export class RecipeCockpitJourney implements IJourneyHost {
         Copies the fixture to a temp folder of its own, so a write in one journey never reaches another,
         and opens the cockpit on the copy.
     */
-    async open(fixtureName: string): Promise<this> {
+    /*
+        overlays are copied over the fixture in order, as the cockpit's unit suites copy
+        metadataDeployWorkspace over treeWorkspace (#579): a workspace no single fixture holds.
+    */
+    async open(fixtureName: string, openOptions: { overlays?: string[] } = {}): Promise<this> {
 
-        const fixturePath = path.join(JOURNEY_FIXTURES_ROOT, fixtureName);
-        if ( !fs.existsSync(fixturePath) ) {
-            throw new Error(`No fixture workspace "${fixtureName}" in ${JOURNEY_FIXTURES_ROOT}.`);
-        }
+        const fixturePaths = [fixtureName, ...( openOptions.overlays ?? [] )].map(name => {
+            const fixturePath = path.join(JOURNEY_FIXTURES_ROOT, name);
+            if ( !fs.existsSync(fixturePath) ) {
+                throw new Error(`No fixture workspace "${name}" in ${JOURNEY_FIXTURES_ROOT}.`);
+            }
+            return fixturePath;
+        });
 
         this.journeyRoot = fs.mkdtempSync(path.join(os.tmpdir(), `treecipe-journey-${fixtureName}-`));
         this.workspaceRoot = path.join(this.journeyRoot, 'workspace');
-        fs.cpSync(fixturePath, this.workspaceRoot, { recursive: true });
+        fixturePaths.forEach(fixturePath => fs.cpSync(fixturePath, this.workspaceRoot, { recursive: true }));
 
         this.homePath = path.join(this.journeyRoot, 'home');
         fs.mkdirSync(this.homePath);
@@ -223,6 +234,24 @@ export class RecipeCockpitJourney implements IJourneyHost {
         this.hostCalls.splice(hostCallCountBefore);
     }
 
+    /*
+        The reader closes the cockpit's tab and opens it again from the palette (#579): the panel is
+        disposed, and the real treecipe.openRecipeCockpit command activate() registered builds a new
+        one. What the cockpit keeps across that is what it saved in the window's workspaceState.
+    */
+    async reopen(): Promise<void> {
+
+        await this.step('close the cockpit and open it again', async () => {
+            this.disposeHandlers.splice(0).forEach(disposeHandler => disposeHandler());
+            this.page = undefined;
+            const openCommand = this.registeredCommands.get('treecipe.openRecipeCockpit');
+            if ( !openCommand ) { throw new Error('the extension registered no treecipe.openRecipeCockpit command to open the cockpit with.'); }
+            await openCommand();
+            await this.settle();
+        });
+
+    }
+
     // CLOSES THE PANEL AS A READER CLOSING THE TAB WOULD, AND REMOVES THE WORKSPACE COPY
     async close(): Promise<void> {
 
@@ -260,6 +289,9 @@ export class RecipeCockpitJourney implements IJourneyHost {
         const filesBefore = isOutermostStep ? this.snapshotFiles() : undefined;
         // AGAIN AT EVERY STEP: restoreMocks REMOVES THE SPY BEFORE EACH TEST OF A SUITE THAT OPENED ITS JOURNEY ONCE
         if ( this.homePath ) { jest.spyOn(os, 'homedir').mockReturnValue(this.homePath); }
+        // NO sf PROCESS EVER STARTS IN A JOURNEY: EVERY CALL GOES TO journey.cli, RE-SPIED FOR THE SAME REASON
+        jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli')
+            .mockImplementation((cliArguments, _registerCancellation, _timeoutMilliseconds, projectOptions) => this.cli.run(cliArguments, projectOptions) as ReturnType<typeof PicklistDependencyCheckService.runSalesforceCli>);
 
         try {
             return await stepAction();
@@ -431,6 +463,22 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     }
 
+    // A MULTI-SELECT QUICK PICK (#579) ANSWERED WITH EXACTLY THESE LABELS TICKED, WHATEVER STARTED TICKED
+    async answerQuickPickMany(labels: string[]): Promise<void> {
+
+        await this.step(`answer the multi-select with ${labels.map(label => `"${label}"`).join(', ') || 'nothing ticked'}`, async () => {
+            const waitingQuickPick = this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick' && entry.record.canPickMany === true, 'No multi-select quick pick is open.');
+            const notOffered = labels.filter(label => !waitingQuickPick.record.offeredLabels.includes(label));
+            if ( notOffered.length > 0 ) {
+                this.waitingPrompts.push(waitingQuickPick);
+                throw new Error(`the multi-select offers no ${notOffered.map(label => `"${label}"`).join(', ')}. It offers: ${waitingQuickPick.record.offeredLabels.map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
+            }
+            waitingQuickPick.answer(labels);
+            await this.settle();
+        });
+
+    }
+
     // ESCAPE ON THE QUICK PICK THAT IS OPEN: IT CLOSES WITH NOTHING CHOSEN (#578)
     async dismissQuickPick(): Promise<void> {
 
@@ -544,12 +592,13 @@ export class RecipeCockpitJourney implements IJourneyHost {
         if ( buttons.length === 0 ) { return undefined; }
         return new Promise(resolveAnswer => this.waitingNotifications.push({
             record: notification,
-            answer: chosen => { notification.isWaiting = false; resolveAnswer(chosen); }
+            // A NOTIFICATION IS ANSWERED BY ONE BUTTON'S LABEL, NEVER BY A LIST
+            answer: chosen => { notification.isWaiting = false; resolveAnswer(typeof chosen === 'string' ? chosen : undefined); }
         }));
 
     }
 
-    async showPrompt(prompt: IRecordedPrompt): Promise<string | undefined> {
+    async showPrompt(prompt: IRecordedPrompt): Promise<PromptAnswer> {
 
         this.prompts.push(prompt);
         return new Promise(resolveAnswer => this.waitingPrompts.push({

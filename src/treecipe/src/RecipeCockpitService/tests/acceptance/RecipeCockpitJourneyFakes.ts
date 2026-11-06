@@ -35,7 +35,13 @@ export interface IRecordedPrompt {
     value?: string;
     offeredLabels: string[];
     isWaiting: boolean;
+    // SET ONLY ON A MULTI-SELECT QUICK PICK (canPickMany, #579): IT IS ANSWERED WITH answerQuickPickMany, AND THESE START TICKED
+    canPickMany?: true;
+    pickedLabels?: string[];
 }
+
+// WHAT A PROMPT IS ANSWERED WITH: A LABEL OR TEXT, THE LABELS TICKED IN A MULTI-SELECT, OR NOTHING FOR A DISMISSED ONE
+export type PromptAnswer = string | string[] | undefined;
 
 export interface IRecordedOrgCall {
     username: string;
@@ -57,7 +63,7 @@ export interface IJourneyHost {
     workspaceRoot: string;
     createWebviewPanel(): IFakeWebviewPanel;
     showNotification(kind: NotificationKind, text: string, options: { modal?: boolean; detail?: string } | undefined, buttons: string[]): Promise<string | undefined>;
-    showPrompt(prompt: IRecordedPrompt): Promise<string | undefined>;
+    showPrompt(prompt: IRecordedPrompt): Promise<PromptAnswer>;
     showQuickPickControl(quickPick: FakeQuickPick): void;
     recordCall(call: string, args: unknown[]): void;
     settings: Map<string, unknown>;
@@ -183,10 +189,19 @@ export const journeyVscodeModule = {
         showInformationMessage: showNotification('information'),
         showWarningMessage: showNotification('warning'),
         showErrorMessage: showNotification('error'),
-        showQuickPick: async (items: unknown, options: { title?: string; placeHolder?: string } = {}) => {
+        showQuickPick: async (items: unknown, options: { title?: string; placeHolder?: string; canPickMany?: boolean } = {}) => {
             const offeredItems = await Promise.resolve(items) as unknown[];
-            const chosenLabel = await journeyHost().showPrompt({ kind: 'quickPick', title: options.title, placeholder: options.placeHolder, offeredLabels: offeredItems.map(labelOf), isWaiting: true });
-            return chosenLabel === undefined ? undefined : offeredItems.find(item => labelOf(item) === chosenLabel);
+            const multiSelect = options.canPickMany === true
+                ? { canPickMany: true as const, pickedLabels: offeredItems.filter(item => typeof item === 'object' && item !== null && (item as { picked?: unknown }).picked === true).map(labelOf) }
+                : {};
+            const chosen = await journeyHost().showPrompt({ kind: 'quickPick', title: options.title, placeholder: options.placeHolder, offeredLabels: offeredItems.map(labelOf), isWaiting: true, ...multiSelect });
+            if ( chosen === undefined ) { return undefined; }
+            // VS CODE ANSWERS A MULTI-SELECT WITH THE ITEMS TICKED, AND ANY OTHER QUICK PICK WITH THE ONE ITEM CHOSEN
+            if ( options.canPickMany === true ) {
+                const chosenLabels = Array.isArray(chosen) ? chosen : [chosen];
+                return offeredItems.filter(item => chosenLabels.includes(labelOf(item)));
+            }
+            return offeredItems.find(item => labelOf(item) === chosen);
         },
         createQuickPick: () => new FakeQuickPick(),
         showInputBox: async (options: { title?: string; prompt?: string; placeHolder?: string; value?: string } = {}) =>
@@ -309,6 +324,13 @@ export interface IFakeInsertResult {
 }
 // WHAT connection.describe(objectApiName) ANSWERS: { name, fields: [{ name, type, createable, … }] }, OR undefined FOR NO ANSWER
 export type OrgDescribeAnswer = (username: string, objectApiName: string) => { name: string; fields: Array<Record<string, unknown>> } | undefined;
+/*
+    What a Metadata API call (#579) or a GET on the org answers, by the call's name as it is recorded --
+    'connection.metadata.deploy', 'connection.metadata.checkDeployStatus', 'connection.requestGet' -- or
+    undefined for no answer, when the call throws as every other unanswered one does.
+*/
+export type OrgCallAnswer = (username: string, call: string, args: unknown[]) => unknown;
+export const SCRIPTED_METADATA_CALLS = ['deploy', 'checkDeployStatus', 'cancelDeploy', 'list', 'retrieve', 'checkRetrieveStatus'] as const;
 export type OrgInsertAnswer = (username: string, objectApiName: string, records: Array<Record<string, unknown>>) => IFakeInsertResult[] | undefined;
 
 // AN ID SALESFORCE COULD HAVE GIVEN: THE OBJECT'S NAME LEADS, SO A FAILURE READS "Contact0000…" RATHER THAN A MEANINGLESS NUMBER
@@ -322,6 +344,7 @@ export class FakeOrgConnections {
     queryAnswer: OrgQueryAnswer = () => undefined;
     insertAnswer: OrgInsertAnswer = () => undefined;
     describeAnswer: OrgDescribeAnswer = () => undefined;
+    callAnswer: OrgCallAnswer = () => undefined;
     private insertedRecordCount = 0;
 
     // A COPY PER JOURNEY, SO addAuthorization NEVER REACHES ANOTHER JOURNEY OR THE FIXTURE
@@ -362,6 +385,18 @@ export class FakeOrgConnections {
             this.record(username, call, args);
             throw new Error(`The journey's fake org has no answer for ${call} on ${username}: script it on journey.org.`);
         };
+        const answerInsert = (objectApiName: string, insertCall: 'insert' | 'create', records: Array<Record<string, unknown>>, insertOptions: unknown) => {
+            this.record(username, `connection.sobject(${objectApiName}).${insertCall}`, [records, insertOptions]);
+            return this.insertAnswer(username, objectApiName, records)
+                ?? records.map(() => ({ success: true, id: buildFakeRecordId(objectApiName, ++this.insertedRecordCount), errors: [] }));
+        };
+        // NOT async: AN UNSCRIPTED CALL THROWS AS IT IS CALLED; A SCRIPTED ONE IS RECORDED AND ANSWERS AS A PROMISE
+        const scripted = (call: string) => (...args: unknown[]) => {
+            const scriptedAnswer = this.callAnswer(username, call, args);
+            if ( scriptedAnswer === undefined ) { return unanswered(call)(...args); }
+            this.record(username, call, args);
+            return Promise.resolve(scriptedAnswer);
+        };
         const connection: Record<string, unknown> = {
             instanceUrl: authorization?.instanceUrl,
             version: '62.0',
@@ -378,19 +413,17 @@ export class FakeOrgConnections {
             },
             describeGlobal: unanswered('connection.describeGlobal'),
             request: unanswered('connection.request'),
+            requestGet: scripted('connection.requestGet'),
             requestPost: unanswered('connection.requestPost'),
+            // create IS jsforce'S OTHER NAME FOR insert (THE PERMISSION SET ASSIGNMENT USES IT, #579); EACH IS RECORDED UNDER ITS OWN NAME
             sobject: (objectApiName: string) => ({
-                insert: async (records: Array<Record<string, unknown>>, insertOptions?: unknown) => {
-                    this.record(username, `connection.sobject(${objectApiName}).insert`, [records, insertOptions]);
-                    return this.insertAnswer(username, objectApiName, records)
-                        ?? records.map(() => ({ success: true, id: buildFakeRecordId(objectApiName, ++this.insertedRecordCount), errors: [] }));
-                },
-                create: unanswered(`connection.sobject(${objectApiName}).create`),
+                insert: async (records: Array<Record<string, unknown>>, insertOptions?: unknown) => answerInsert(objectApiName, 'insert', records, insertOptions),
+                create: async (records: Array<Record<string, unknown>>, insertOptions?: unknown) => answerInsert(objectApiName, 'create', records, insertOptions),
                 update: unanswered(`connection.sobject(${objectApiName}).update`),
                 describe: unanswered(`connection.sobject(${objectApiName}).describe`)
             }),
             tooling: { query: async (soql: string) => { this.record(username, 'connection.tooling.query', [soql]); return answerToolingQuery(soql); } },
-            metadata: { retrieve: unanswered('connection.metadata.retrieve'), deploy: unanswered('connection.metadata.deploy'), list: unanswered('connection.metadata.list') }
+            metadata: Object.fromEntries(SCRIPTED_METADATA_CALLS.map(metadataCall => [metadataCall, scripted(`connection.metadata.${metadataCall}`)]))
         };
         return connection;
     }
@@ -419,6 +452,38 @@ export class FakeOrgConnections {
             },
             getConnection: () => this.buildConnection(username)
         };
+    }
+
+}
+
+/*
+    The Salesforce CLI (#579), faked where every sf process starts: PicklistDependencyCheckService.runSalesforceCli.
+    Each call is recorded as the argv the cockpit built and the folder it runs in, and answered by
+    the journey's answer for that argv. One with no answer comes back as a CLI that could not be
+    started, its message naming the argv, so a journey that reaches it reads which answer is missing.
+*/
+export interface IFakeCliAnswer {
+    stdout: string;
+    stderr?: string;
+    exitCode: number;
+}
+export interface IRecordedCliCall {
+    argv: string[];
+    workingDirectoryPath?: string;
+}
+export class FakeSalesforceCli {
+
+    readonly calls: IRecordedCliCall[] = [];
+    answer: (argv: string[]) => IFakeCliAnswer | undefined = () => undefined;
+
+    async run(argv: string[], projectOptions?: { workingDirectoryPath?: string }) {
+        this.calls.push({ argv: [...argv], ...( projectOptions?.workingDirectoryPath ? { workingDirectoryPath: projectOptions.workingDirectoryPath } : {} ) });
+        const scriptedAnswer = this.answer(argv);
+        if ( !scriptedAnswer ) {
+            const spawnError: NodeJS.ErrnoException = Object.assign(new Error(`The journey's fake sf CLI has no answer for: sf ${argv.join(' ')}. Script it on journey.cli.answer.`), { code: 'ENOENT' });
+            return { stdout: '', stderr: '', exitCode: null, spawnError: spawnError };
+        }
+        return { stdout: scriptedAnswer.stdout, stderr: scriptedAnswer.stderr ?? '', exitCode: scriptedAnswer.exitCode };
     }
 
 }

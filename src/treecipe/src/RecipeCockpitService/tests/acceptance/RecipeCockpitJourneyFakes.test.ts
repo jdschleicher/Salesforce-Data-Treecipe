@@ -7,6 +7,7 @@ import * as path from 'path';
 import {
     FakeOrgConnections,
     FakeQuickPick,
+    FakeSalesforceCli,
     IJourneyHost,
     IRecordedPrompt,
     journeySalesforceCoreModule,
@@ -340,17 +341,48 @@ describe('the journey fakes (#577)', () => {
 
         });
 
+        test('a Metadata API call and a GET answer as scripted by their recorded name, and an unscripted one throws as it is called (#579)', async () => {
+
+            const connection: any = (await journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' })).getConnection();
+            orgConnections.callAnswer = (_username, call, args) => call === 'connection.metadata.list' ? [{ fullName: 'Account.Rule' }]
+                : call === 'connection.metadata.deploy' ? { id: '0Af000000000001AAA' }
+                : call === 'connection.requestGet' && String(args[0]).endsWith('/services/oauth2/singleaccess') ? { frontdoor_uri: 'https://example.com/frontdoor.jsp?otp=x' }
+                : undefined;
+
+            expect(await connection.metadata.list({ type: 'ValidationRule' })).toEqual([{ fullName: 'Account.Rule' }]);
+            expect(await connection.metadata.deploy(Buffer.from('PK'), { rollbackOnError: true })).toEqual({ id: '0Af000000000001AAA' });
+            expect(await connection.requestGet('https://acme.my.salesforce.com/services/oauth2/singleaccess')).toEqual({ frontdoor_uri: 'https://example.com/frontdoor.jsp?otp=x' });
+            expect(() => connection.metadata.checkDeployStatus('0Af000000000001AAA', true)).toThrow('no answer for connection.metadata.checkDeployStatus on qa@example.com.qa');
+            expect(() => connection.metadata.retrieve({})).toThrow('no answer for connection.metadata.retrieve');
+            expect(() => connection.requestGet('https://acme.my.salesforce.com/services/data')).toThrow('no answer for connection.requestGet');
+
+            expect(orgConnections.calls.filter(orgCall => orgCall.call !== 'Org.create').map(orgCall => orgCall.call)).toEqual([
+                'connection.metadata.list', 'connection.metadata.deploy', 'connection.requestGet',
+                'connection.metadata.checkDeployStatus', 'connection.metadata.retrieve', 'connection.requestGet'
+            ]);
+
+        });
+
+        test('sobject(x).create answers as insert does and is recorded under its own name, as jsforce aliases it (#579)', async () => {
+
+            const connection: any = (await journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' })).getConnection();
+
+            expect(await connection.sobject('PermissionSetAssignment').create([{ PermissionSetId: '0PS' }], { allOrNone: false })).toEqual([{ success: true, id: 'Permis000000000001', errors: [] }]);
+            expect(orgConnections.calls.slice(-1)).toEqual([{ username: 'qa@example.com.qa', call: 'connection.sobject(PermissionSetAssignment).create', args: [[{ PermissionSetId: '0PS' }], { allOrNone: false }] }]);
+
+        });
+
         test('a connection call the fake has no answer for throws, naming the call and the org', () => {
 
             const connectionPromise = journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' }).then(org => org.getConnection() as any);
 
             return connectionPromise.then(connection => {
                 expect(() => connection.describe()).toThrow('The journey\'s fake org has no answer for connection.describe on qa@example.com.qa: script it on journey.org.');
-                expect(() => connection.sobject('Account').create({ Name: 'Acme' })).toThrow('no answer for connection.sobject(Account).create on qa@example.com.qa');
+                expect(() => connection.sobject('Account').update({ Name: 'Acme' })).toThrow('no answer for connection.sobject(Account).update on qa@example.com.qa');
                 expect(() => connection.metadata.deploy()).toThrow('no answer for connection.metadata.deploy');
                 expect(orgConnections.calls.slice(-3)).toEqual([
                     { username: 'qa@example.com.qa', call: 'connection.describe', args: [] },
-                    { username: 'qa@example.com.qa', call: 'connection.sobject(Account).create', args: [{ Name: 'Acme' }] },
+                    { username: 'qa@example.com.qa', call: 'connection.sobject(Account).update', args: [{ Name: 'Acme' }] },
                     { username: 'qa@example.com.qa', call: 'connection.metadata.deploy', args: [] }
                 ]);
             });
@@ -365,6 +397,24 @@ describe('the journey fakes (#577)', () => {
             await expect(journeySalesforceCoreModule.scratchOrgCreate()).rejects.toThrow('The journey\'s fake org does not create scratch orgs.');
 
         });
+
+    });
+
+});
+
+describe('FakeSalesforceCli (#579)', () => {
+
+    test('records each argv and folder, answers as scripted, and answers an unscripted call as a CLI that could not start, naming the argv', async () => {
+
+        const fakeCli = new FakeSalesforceCli();
+        fakeCli.answer = argv => argv[0] === 'project' ? { stdout: '{"status":0}', exitCode: 0 } : undefined;
+
+        expect(await fakeCli.run(['project', 'deploy', 'start'], { workingDirectoryPath: '/workspace' })).toEqual({ stdout: '{"status":0}', stderr: '', exitCode: 0 });
+        const unscripted = await fakeCli.run(['org', 'list']);
+
+        expect(unscripted).toMatchObject({ stdout: '', stderr: '', exitCode: null });
+        expect(unscripted.spawnError).toMatchObject({ code: 'ENOENT', message: 'The journey\'s fake sf CLI has no answer for: sf org list. Script it on journey.cli.answer.' });
+        expect(fakeCli.calls).toEqual([{ argv: ['project', 'deploy', 'start'], workingDirectoryPath: '/workspace' }, { argv: ['org', 'list'] }]);
 
     });
 
