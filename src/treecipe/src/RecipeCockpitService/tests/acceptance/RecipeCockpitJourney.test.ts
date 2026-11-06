@@ -73,6 +73,8 @@ describe('RecipeCockpitJourney (#577)', () => {
 
     test('a failed action says what is on screen instead, and in which step', async () => {
 
+        // EVERY ACTION WAITS FOR ITS TARGET UP TO THE STALL LIMIT BEFORE IT FAILS (#580); A SHORT ONE KEEPS SIX FAILURES WITHIN THE TEST'S TIME
+        journey.settleStallLimitMs = 100;
         await expect(journey.click('button', 'No such button')).rejects.toThrow(/^Step "click the button "No such button"" failed: No button named "No such button" is on screen\. The buttons on screen: "Open CHANGELOG on GitHub", /);
         await expect(journey.chooseTree('No such tree')).rejects.toThrow('Step "choose the treecipe "No such tree"" failed: the "Treecipe" dropdown offers no "No such tree". It offers: "Account-thru-OtherChildObject__c", "Lead-ONLY".');
         await expect(journey.type('No such box', 'x')).rejects.toThrow(/failed: no text boxes named "No such box" are on screen\./);
@@ -116,6 +118,7 @@ describe('RecipeCockpitJourney (#577)', () => {
 
     test('a disabled control is not clicked, and the step says so', async () => {
 
+        journey.settleStallLimitMs = 100;
         await journey.chooseTree('Lead-ONLY');
         await journey.openTab('Query');
 

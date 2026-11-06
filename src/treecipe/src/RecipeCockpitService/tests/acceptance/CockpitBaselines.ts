@@ -99,5 +99,5 @@ export function describeBaselineMismatch(screenName: string, renderedText: strin
     if ( baselineText === renderedText ) {
         return undefined;
     }
-    return `The ${screenName} screen differs from baselines/${screenName}.txt. If the change is intended, run with UPDATE_COCKPIT_BASELINES=1 and say in the PR what a reader now sees differently.\n\n${buildUnifiedDiff(`${screenName}.txt`, baselineText, renderedText)}`;
+    return `The ${screenName} screen differs from baselines/${screenName}.txt. If the change is intended, run with UPDATE_COCKPIT_BASELINES=1 and say in the PR what a reader now sees differently.\n\n${buildUnifiedDiff(`${screenName}.txt`, baselineText, renderedText, { expected: 'baselines', actual: 'rendered' })}`;
 }

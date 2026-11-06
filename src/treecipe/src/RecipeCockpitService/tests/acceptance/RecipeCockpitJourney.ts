@@ -358,8 +358,11 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async click(role: string, name: string | RegExp, within?: IScreenRegion): Promise<void> {
 
         await this.step(`click the ${role} "${name}"${within ? ` in the ${within.role} "${within.name}"` : ''}`, async () => {
-            const screen = this.screen();
-            await this.clickNode(screen, screen.get(role, name, within ? screen.get(within.role, within.name) : undefined));
+            const { screen, node } = await this.untilOnScreen(() => {
+                const screen = this.screen();
+                return { screen, node: this.enabledNode(screen.get(role, name, within ? screen.get(within.role, within.name) : undefined)) };
+            });
+            await this.clickNode(screen, node);
         });
 
     }
@@ -410,8 +413,11 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async answerConfirmation(buttonLabel: string): Promise<void> {
 
         await this.step(`answer the confirmation with "${buttonLabel}"`, async () => {
-            const screen = this.screen();
-            await this.clickNode(screen, screen.get('button', buttonLabel, this.shownDialog(screen)));
+            const { screen, node } = await this.untilOnScreen(() => {
+                const screen = this.screen();
+                return { screen, node: this.enabledNode(screen.get('button', buttonLabel, this.shownDialog(screen))) };
+            });
+            await this.clickNode(screen, node);
         });
 
     }
@@ -442,19 +448,22 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async answerQuickPick(label: string): Promise<void> {
 
         await this.step(`answer the quick pick with "${label}"`, async () => {
-            const shownQuickPick = [...this.shownQuickPicks].reverse().find(entry => entry.quickPick.isShown);
-            if ( shownQuickPick ) {
-                shownQuickPick.record.offeredLabels = shownQuickPick.quickPick.offeredLabels();
-                shownQuickPick.quickPick.accept(label);
-                shownQuickPick.record.isWaiting = false;
-            } else {
-                const waitingQuickPick = this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick', 'No quick pick is open.');
+            // THE ORG PICKER FILLS ITS ITEMS ONCE ITS PINGS ANSWER, SO THE LABEL IS WAITED FOR, NOT ONLY THE PICKER
+            await this.untilOnScreen(() => {
+                const shownQuickPick = [...this.shownQuickPicks].reverse().find(entry => entry.quickPick.isShown);
+                if ( shownQuickPick ) {
+                    shownQuickPick.record.offeredLabels = shownQuickPick.quickPick.offeredLabels();
+                    shownQuickPick.quickPick.accept(label);
+                    shownQuickPick.record.isWaiting = false;
+                    return;
+                }
+                const waitingQuickPick = this.findWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick', 'No quick pick is open.');
                 if ( !waitingQuickPick.record.offeredLabels.includes(label) ) {
-                    this.waitingPrompts.push(waitingQuickPick);
                     throw new Error(`the quick pick offers no "${label}". It offers: ${waitingQuickPick.record.offeredLabels.map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
                 }
+                this.waitingPrompts.splice(this.waitingPrompts.indexOf(waitingQuickPick), 1);
                 waitingQuickPick.answer(label);
-            }
+            });
             await this.settle();
         });
 
@@ -464,12 +473,12 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async answerQuickPickMany(labels: string[]): Promise<void> {
 
         await this.step(`answer the multi-select with ${labels.map(label => `"${label}"`).join(', ') || 'nothing ticked'}`, async () => {
-            const waitingQuickPick = this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick' && entry.record.canPickMany === true, 'No multi-select quick pick is open.');
+            const waitingQuickPick = await this.untilOnScreen(() => this.findWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick' && entry.record.canPickMany === true, 'No multi-select quick pick is open.'));
             const notOffered = labels.filter(label => !waitingQuickPick.record.offeredLabels.includes(label));
             if ( notOffered.length > 0 ) {
-                this.waitingPrompts.push(waitingQuickPick);
                 throw new Error(`the multi-select offers no ${notOffered.map(label => `"${label}"`).join(', ')}. It offers: ${waitingQuickPick.record.offeredLabels.map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
             }
+            this.waitingPrompts.splice(this.waitingPrompts.indexOf(waitingQuickPick), 1);
             waitingQuickPick.answer(labels);
             await this.settle();
         });
@@ -480,14 +489,16 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async dismissQuickPick(): Promise<void> {
 
         await this.step('dismiss the quick pick', async () => {
-            const shownQuickPick = [...this.shownQuickPicks].reverse().find(entry => entry.quickPick.isShown);
-            if ( shownQuickPick ) {
-                shownQuickPick.record.offeredLabels = shownQuickPick.quickPick.offeredLabels();
-                shownQuickPick.quickPick.hide();
-                shownQuickPick.record.isWaiting = false;
-            } else {
+            await this.untilOnScreen(() => {
+                const shownQuickPick = [...this.shownQuickPicks].reverse().find(entry => entry.quickPick.isShown);
+                if ( shownQuickPick ) {
+                    shownQuickPick.record.offeredLabels = shownQuickPick.quickPick.offeredLabels();
+                    shownQuickPick.quickPick.hide();
+                    shownQuickPick.record.isWaiting = false;
+                    return;
+                }
                 this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick', 'No quick pick is open.').answer(undefined);
-            }
+            });
             await this.settle();
         });
 
@@ -496,7 +507,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async answerInputBox(text: string | undefined): Promise<void> {
 
         await this.step(text === undefined ? 'dismiss the input box' : `answer the input box with "${text}"`, async () => {
-            this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'inputBox', 'No input box is open.').answer(text);
+            const waitingInputBox = await this.untilOnScreen(() => this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'inputBox', 'No input box is open.'));
+            waitingInputBox.answer(text);
             await this.settle();
         });
 
@@ -505,8 +517,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
     async clickNotificationButton(buttonLabel: string): Promise<void> {
 
         await this.step(`click "${buttonLabel}" on the notification`, async () => {
-            const waitingNotification = this.takeWaiting(this.waitingNotifications, entry => entry.record.buttons.includes(buttonLabel),
-                `No notification on screen has a "${buttonLabel}" button. Waiting: ${this.waitingNotifications.map(entry => `"${entry.record.text}" [${entry.record.buttons.join(', ')}]`).join('; ') || 'none'}.`);
+            const waitingNotification = await this.untilOnScreen(() => this.takeWaiting(this.waitingNotifications, entry => entry.record.buttons.includes(buttonLabel),
+                `No notification on screen has a "${buttonLabel}" button. Waiting: ${this.waitingNotifications.map(entry => `"${entry.record.text}" [${entry.record.buttons.join(', ')}]`).join('; ') || 'none'}.`));
             waitingNotification.answer(buttonLabel);
             await this.settle();
         });
@@ -736,6 +748,23 @@ export class RecipeCockpitJourney implements IJourneyHost {
         lands. waitFor settles until it is on screen, within the same stall limit, and says what was
         there instead. Time is read from performance.now(), which a journey that fakes Date does not stop.
     */
+    /*
+        A notification the reader waits for: what an insert says when it ends, which the cockpit shows
+        after the handler that started it has answered (#580). Waits for one shown since the given count
+        whose text fits, and fails naming the notifications there are.
+    */
+    async waitForNotification(text: RegExp, notificationCountBefore: number): Promise<IRecordedNotification> {
+
+        return this.step(`wait for a notification matching ${text}`, () => this.untilOnScreen(() => {
+            const shown = this.notifications.slice(notificationCountBefore).find(notification => text.test(notification.text));
+            if ( !shown ) {
+                throw new Error(`no notification matching ${text} was shown. The notifications since: ${JSON.stringify(this.notifications.slice(notificationCountBefore).map(notification => notification.text))}.`);
+            }
+            return shown;
+        }));
+
+    }
+
     // isEnabled ALSO WAITS FOR IT TO BE USABLE: A TREE'S GENERATE BUTTON IS DISABLED WHILE ITS READINESS IS CHECKED AGAIN AFTER AN INSERT
     async waitFor(role: string, name: string | RegExp, within?: IScreenRegion, waitOptions: { isEnabled?: boolean } = {}): Promise<void> {
 
@@ -744,6 +773,9 @@ export class RecipeCockpitJourney implements IJourneyHost {
             for (;;) {
                 const screen = this.screen();
                 const region = within ? screen.findAll(within.role, within.name)[0] : undefined;
+                if ( within && !region && performance.now() - waitStartedAt > this.settleStallLimitMs ) {
+                    screen.get(within.role, within.name);
+                }
                 const found = ( !within || region ) ? screen.findAll(role, name, region) : [];
                 if ( found.some(node => !waitOptions.isEnabled || !node.states.includes('disabled')) ) { return; }
                 if ( performance.now() - waitStartedAt > this.settleStallLimitMs ) {
@@ -759,21 +791,58 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     private async chooseOptionIn(comboboxName: string, optionLabel: string): Promise<void> {
 
-        const screen = this.screen();
-        const combobox = screen.get('combobox', comboboxName);
-        if ( combobox.states.includes('disabled') ) {
-            throw new Error(`the "${comboboxName}" dropdown is disabled.`);
-        }
-        const options = screen.findAll('option', undefined, combobox);
-        const chosenOption = options.find(option => option.name === optionLabel);
-        if ( !chosenOption ) {
-            throw new Error(`the "${comboboxName}" dropdown offers no "${optionLabel}". It offers: ${options.map(option => `"${option.name}"`).join(', ') || 'nothing'}.`);
-        }
+        const { screen, combobox, chosenOption } = await this.untilOnScreen(() => {
+            const screen = this.screen();
+            const combobox = screen.get('combobox', comboboxName);
+            if ( combobox.states.includes('disabled') ) {
+                throw new Error(`the "${comboboxName}" dropdown is disabled.`);
+            }
+            const options = screen.findAll('option', undefined, combobox);
+            const chosenOption = options.find(option => option.name === optionLabel);
+            if ( !chosenOption ) {
+                throw new Error(`the "${comboboxName}" dropdown offers no "${optionLabel}". It offers: ${options.map(option => `"${option.name}"`).join(', ') || 'nothing'}.`);
+            }
+            return { screen, combobox, chosenOption };
+        });
         const comboboxElement = screen.elementOf(combobox);
         comboboxElement.value = screen.elementOf(chosenOption).value;
         comboboxElement.dispatch('change');
         await this.settle();
 
+    }
+
+    /*
+        What a reader acts on can be drawn by host work no panel message's handler awaits -- an org list
+        answering its pings, a confirmation, a card's readiness checked again after an insert -- so
+        settle's quiet rounds can end before it lands, more often on a loaded machine (#580). Every
+        action looks for its target this way: the lookup only reads, and it is tried again after a
+        settle until it succeeds or the stall limit passes, when its own error says what was there.
+    */
+    private async untilOnScreen<TFound>(lookUp: () => TFound): Promise<TFound> {
+        const waitStartedAt = performance.now();
+        for (;;) {
+            try {
+                return lookUp();
+            } catch (lookUpError) {
+                if ( performance.now() - waitStartedAt > this.settleStallLimitMs ) { throw lookUpError; }
+            }
+            await new Promise(resolveWait => setTimeout(resolveWait, 10));
+            await this.settle();
+        }
+    }
+
+    private enabledNode(node: IScreenNode): IScreenNode {
+        if ( node.states.includes('disabled') ) {
+            throw new Error(`the ${node.role} "${node.name}" is disabled.`);
+        }
+        return node;
+    }
+
+    // THE NEWEST WAITING ANSWER THAT FITS, LEFT IN PLACE: A LOOKUP THAT MAY BE TRIED AGAIN TAKES NOTHING
+    private findWaiting<TRecord>(waitingAnswers: Array<IWaitingAnswer<TRecord>>, isWanted: (entry: IWaitingAnswer<TRecord>) => boolean, missingMessage: string): IWaitingAnswer<TRecord> {
+        const found = [...waitingAnswers].reverse().find(isWanted);
+        if ( !found ) { throw new Error(missingMessage); }
+        return found;
     }
 
     private takeWaiting<TRecord>(waitingAnswers: Array<IWaitingAnswer<TRecord>>, isWanted: (entry: IWaitingAnswer<TRecord>) => boolean, missingMessage: string): IWaitingAnswer<TRecord> {

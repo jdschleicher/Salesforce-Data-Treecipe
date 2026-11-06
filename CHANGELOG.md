@@ -22,12 +22,14 @@ Slice D of epic #576, the last. No source file changes, and nothing a user sees 
     Nothing is sent on any of them.
 - **Rendered baselines** (`CockpitBaselines.ts`, `baselines/*.txt`): 11 key screens, each kept as a text file of the page as a reader reads it (role, accessible name, value and state, in document order, no CSS class), compared with a unified diff. `UPDATE_COCKPIT_BASELINES=1` rewrites them. `BaselinesCatchChanges.test.ts` renames the Adapter's Next button and swaps a confirmation's button with its Cancel, and each fails exactly the baselines that show it.
 - **Harness:**
+  - **every action waits for its target:** `click`, `answerConfirmation`, `answerQuickPick`, `answerQuickPickMany`, `dismissQuickPick`, `answerInputBox`, `clickNotificationButton` and choosing an option retry their lookup after a settle until the target is on screen (and enabled), within the stall limit, and then fail with the same message as before. The cockpit draws some of what a reader acts on after the handler that asked for it has answered (an org list, a confirmation, a card's readiness), and on a loaded machine settle's quiet rounds ended first, so the new journeys failed intermittently in the full suite;
+  - `waitForNotification(text, countBefore)`; `generateAndInsert` waits for the insert's outcome notification, and reads from its button whether an org is already chosen instead of whether a prompt happens to be up;
   - `waitFor(role, name, within?, { isEnabled })` waits for what host work outside a handler draws;
   - `settle` and `waitFor` read `performance.now()`, so a journey that fakes `Date` cannot stop them;
   - the fake org answers `sobject(x).update`, scriptable with `updateAnswer`;
   - `generateAndInsert` waits for its button to be enabled again after an insert;
   - the treecipeTabWorkspace describe answers `updateable: true`;
-  - the golden test's unified diff moved to `ExtensionCommandService/tests/UnifiedDiff.ts`, which both use.
+  - the golden test's unified diff moved to `ExtensionCommandService/tests/UnifiedDiff.ts`, which both use; a baseline's diff names its sides `baselines/` and `rendered/`.
 - **Found, not fixed:** a second insert's data set can be missing from an open Previously Used Data Sets list, depending on the order its `datasetAdded` and `insertState` messages arrive in. The journeys reopen the cockpit after two inserts rather than pin it.
 - **Not in this PR:** comparing the same screens in real Chromium, which needs Playwright as a devDependency, goes in its own issue, #602.
 

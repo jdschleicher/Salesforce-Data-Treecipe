@@ -12,7 +12,8 @@
 // 2,000 × 2,000 CHANGED LINES IS ABOUT 32 MB OF TABLE; TODAY'S LARGEST GOLDEN FILE IS 2,452 LINES
 const MAXIMUM_ALIGNED_DIFF_CELLS = 4_000_000;
 
-export function buildUnifiedDiff(goldenFileName: string, expectedText: string, actualText: string): string {
+// WHAT THE TWO SIDES ARE CALLED IN THE HEADER: THE GOLDEN TEST'S BY DEFAULT, A COCKPIT BASELINE'S baselines/ AND rendered/
+export function buildUnifiedDiff(goldenFileName: string, expectedText: string, actualText: string, sideLabels: { expected: string; actual: string } = { expected: 'golden', actual: 'generated' }): string {
 
     const expectedLines = expectedText.split('\n');
     const actualLines = actualText.split('\n');
@@ -65,8 +66,8 @@ export function buildUnifiedDiff(goldenFileName: string, expectedText: string, a
     const firstLineNumber = headLength - contextBefore.length + 1;
 
     return [
-        `--- golden/${goldenFileName}`,
-        `+++ generated/${goldenFileName}`,
+        `--- ${sideLabels.expected}/${goldenFileName}`,
+        `+++ ${sideLabels.actual}/${goldenFileName}`,
         `@@ line ${firstLineNumber} (first change at line ${headLength + 1}) @@`,
         ...contextBefore,
         ...changeLines,

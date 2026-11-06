@@ -1,5 +1,5 @@
 import { RecipeCockpitJourney } from './RecipeCockpitJourney';
-import { TREE_NAME, expectEqual, generateAndInsert, openTreecipeTabJourney } from './TreecipeTabWorkspace';
+import { INSERT_OUTCOME_NOTIFICATION, TREE_NAME, expectEqual, generateAndInsert, openTreecipeTabJourney } from './TreecipeTabWorkspace';
 
 /*
     The Previously Used Data Sets tab's journeys (#580). Its rows are made the way a reader makes them:
@@ -130,10 +130,8 @@ export const DATA_SETS_JOURNEYS: Array<{ name: string; run(journey: RecipeCockpi
             jest.setSystemTime(new Date('2026-10-20T10:05:00.000Z'));
             const insertCountBefore = journey.org.calls.filter(orgCall => /\.insert$/.test(orgCall.call)).length;
             await journey.click('button', 'Insert…', DATA_SETS_PANEL);
-            // THE REOPENED COCKPIT MAY ASK FOR THE ORG AGAIN; THE READER CHOOSES THE SAME SANDBOX
-            if ( journey.prompts.some(prompt => prompt.isWaiting && prompt.offeredLabels.includes('qa')) ) {
-                await journey.answerQuickPick('qa');
-            }
+            // A REOPENED COCKPIT HAS NO ORG CHOSEN (A RELOAD CLEARS IT), SO Insert… ASKS FOR ONE; THE READER CHOOSES THE SAME SANDBOX
+            await journey.answerQuickPick('qa');
 
             await journey.step('the confirmation names the data set, the sandbox and the records, parents first', () => {
                 const screen = journey.screen();
@@ -143,8 +141,10 @@ export const DATA_SETS_JOURNEYS: Array<{ name: string; run(journey: RecipeCockpi
                 expectEqual(journey.org.calls.filter(orgCall => /\.insert$/.test(orgCall.call)).length, insertCountBefore, 'Inserts sent before the confirmation is answered');
             });
 
+            const notificationCountBeforeInsert = journey.notifications.length;
             await journey.answerConfirmation('Insert');
             await journey.answerQuickPick('AllOrNone: TRUE');
+            await journey.waitForNotification(INSERT_OUTCOME_NOTIFICATION, notificationCountBeforeInsert);
             await journey.waitFor('img', 'Inserted. Last insert: 2026-10-20 10:05:00 UTC into qa · 3 records saved · 0 records failed', DATA_SETS_PANEL);
 
             await journey.step('the records go parents first, and the row\'s status chip names the new insert', () => {

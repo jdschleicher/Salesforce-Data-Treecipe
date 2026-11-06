@@ -118,6 +118,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 expectEqual(journey.prompts.filter(prompt => prompt.isWaiting).map(prompt => prompt.offeredLabels), [['AllOrNone: TRUE', 'AllOrNone: FALSE']], 'The prompt waiting');
             });
             await journey.answerQuickPick('AllOrNone: TRUE');
+            await journey.waitForNotification(/ were updated in qa /, 0);
 
             const snapshotPath = writtenSnapshotPath(journey);
 
@@ -149,10 +150,10 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 expectEqual(confirmationTitle(journey).length, 1, 'Confirmations on screen');
                 expectEqual(journey.screen().lines().some(screenLine => screenLine.includes(path.basename(snapshotPath))), true, 'The snapshot is named on screen');
             });
-            await journey.answerConfirmation(journey.screen().findAll('button').map(button => button.name).find(buttonName => /^Restore/.test(buttonName) && !buttonName.includes('…')) ?? 'Restore');
-            if ( journey.prompts.some(prompt => prompt.isWaiting && prompt.offeredLabels.includes('AllOrNone: TRUE')) ) {
-                await journey.answerQuickPick('AllOrNone: TRUE');
-            }
+            const notificationCountBeforeRestore = journey.notifications.length;
+            await journey.answerConfirmation('Restore values');
+            await journey.answerQuickPick('AllOrNone: TRUE');
+            await journey.waitForNotification(/ were restored in qa /, notificationCountBeforeRestore);
 
             await journey.step('the snapshot\'s old values are sent back, parents first, at most 200 a request, after the values they replace are saved in a snapshot of their own', () => {
                 expectEqual(journey.notifications.slice(-1)[0]?.text.startsWith(`${ACCOUNT_COUNT + 1} records of ${TREE_NAME} were restored in qa · qa@example.com.qa. Their old values are in `), true, `The restore notification: ${JSON.stringify(journey.notifications.slice(-1)[0]?.text)}`);
@@ -176,11 +177,10 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             await journey.pickOrg('staging');
 
             await journey.click('button', /^Update \d+ records in /);
-            if ( confirmationTitle(journey).length > 0 ) {
-                await journey.answerConfirmation('Update records');
-            }
 
-            await journey.step('the update is refused with the reason, and nothing reaches either org', () => {
+            // REFUSED BEFORE ANY CONFIRMATION: THE READER IS NOT ASKED TO CONFIRM AN UPDATE THAT CANNOT GO
+            await journey.step('the update is refused with the reason, before any confirmation, and nothing reaches either org', () => {
+                expectEqual(confirmationTitle(journey), [], 'Confirmations on screen');
                 expectEqual(journey.org.calls.filter(orgCall => ORG_WRITE_CALL.test(orgCall.call)), [], 'Writes to any org');
                 expectEqual(journey.fileChanges.filter(fileChange => SNAPSHOT_FILE_PATTERN.test(fileChange.relativePath)), [], 'Snapshots written');
                 const refusal = journey.notifications.slice(-1)[0];
@@ -216,6 +216,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             await journey.click('button', /^Update \d+ records in qa · qa@example\.com\.qa$/);
             await journey.answerConfirmation('Update records');
             await journey.answerQuickPick('AllOrNone: TRUE');
+            await journey.waitForNotification(/ were updated in qa /, 0);
             const snapshotPath = writtenSnapshotPath(journey);
             const updateCountBefore = updatesSent(journey).length;
 
@@ -225,12 +226,9 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             fs.writeFileSync(snapshotFilePath, snapshotText.replace(`"${CONTACT_ID}"`, '"not-an-id"'));
 
             await journey.click('button', `Restore previous values… ${path.basename(snapshotPath)}`);
-            const restoreButton = journey.screen().findAll('button').map(button => button.name).find(buttonName => /^Restore/.test(buttonName) && !buttonName.includes('…'));
-            if ( restoreButton && confirmationTitle(journey).length > 0 ) {
-                await journey.answerConfirmation(restoreButton);
-            }
 
-            await journey.step('the whole snapshot is refused with the reason, and no record is sent back', () => {
+            await journey.step('the whole snapshot is refused with the reason, before any confirmation, and no record is sent back', () => {
+                expectEqual(confirmationTitle(journey), [], 'Confirmations on screen');
                 expectEqual(updatesSent(journey).slice(updateCountBefore), [], 'Restore requests sent');
                 const refusal = journey.notifications.slice(-1)[0];
                 expectEqual({ kind: refusal?.kind, text: refusal?.text }, {

@@ -97,18 +97,25 @@ export function writtenDatasetFolder(journey: RecipeCockpitJourney, fileChangeCo
 }
 
 export const INSERT_ORG_LABEL = 'qa';
+// HOW EVERY INSERT OUTCOME THE COCKPIT REPORTS BEGINS: LANDED, PARTLY LANDED, NOTHING, OR STOPPED
+export const INSERT_OUTCOME_NOTIFICATION = /^(\d+ records? (was|were) inserted|Nothing was inserted|The insert of )/;
 
 // THE GENERATE BUTTON, THE ORG, THE CONFIRMATION AND ALL-OR-NONE, AS A READER ANSWERS THEM; THE DATA SET FOLDER IT WROTE
 export async function generateAndInsert(journey: RecipeCockpitJourney, allOrNoneLabel = 'AllOrNone: TRUE'): Promise<string> {
     const fileChangeCountBefore = journey.fileChanges.length;
     // AFTER AN INSERT THE CARD CHECKS ITS TREE AGAINST THE ORG AGAIN, AND THE BUTTON WAITS FOR THAT, AS A READER DOES
     await journey.waitFor('button', GENERATE_AND_INSERT_BUTTON_NAME, undefined, { isEnabled: true });
+    // THE BUTTON SAYS WHICH ORG IT INSERTS INTO ONCE ONE IS CHOSEN; WITH NONE, IT ASKS FOR ONE FIRST
+    const isOrgChosen = / into \S+ for /.test(journey.screen().get('button', GENERATE_AND_INSERT_BUTTON_NAME).name);
+    const notificationCountBefore = journey.notifications.length;
     await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
-    if ( journey.prompts.some(prompt => prompt.isWaiting && prompt.kind === 'quickPick' && prompt.offeredLabels.includes(INSERT_ORG_LABEL)) ) {
+    if ( !isOrgChosen ) {
         await journey.answerQuickPick(INSERT_ORG_LABEL);
     }
     await journey.answerConfirmation('Generate and insert');
     await journey.answerQuickPick(allOrNoneLabel);
+    // THE INSERT ENDS WITH ITS ONE NOTIFICATION, SHOWN AFTER THE HANDLER THAT STARTED IT ANSWERED: NO STEP AFTER THIS RUNS INTO IT
+    await journey.waitForNotification(INSERT_OUTCOME_NOTIFICATION, notificationCountBefore);
     return writtenDatasetFolder(journey, fileChangeCountBefore);
 }
 
