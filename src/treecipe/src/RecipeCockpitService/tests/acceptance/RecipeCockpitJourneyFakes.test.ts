@@ -214,7 +214,8 @@ describe('the journey fakes (#577)', () => {
         expect(journeyVscodeModule.Uri.parse(path.join(workspaceRoot, 'recordTypes'))).toMatchObject({ scheme: 'file', fsPath: path.join(workspaceRoot, 'recordTypes') });
         expect(journeyVscodeModule.Uri.parse('file://' + workspaceRoot)).toMatchObject({ scheme: 'file', fsPath: workspaceRoot });
         expect(journeyVscodeModule.Uri.parse('https://example.com/issues')).not.toHaveProperty('fsPath');
-        expect(await journeyVscodeModule.workspace.fs.readDirectory(journeyVscodeModule.Uri.parse(path.join(workspaceRoot, 'recordTypes')))).toEqual([['Business.recordType-meta.xml', 1]]);
+        const parsedFolderUri = journeyVscodeModule.Uri.parse(path.join(workspaceRoot, 'recordTypes')) as { fsPath: string };
+        expect(await journeyVscodeModule.workspace.fs.readDirectory(parsedFolderUri)).toEqual([['Business.recordType-meta.xml', 1]]);
 
         const joinedUri = journeyVscodeModule.Uri.joinPath(journeyVscodeModule.Uri.file(workspaceRoot), 'recordTypes', 'Business.recordType-meta.xml');
         expect(joinedUri.fsPath).toBe(path.join(workspaceRoot, 'recordTypes', 'Business.recordType-meta.xml'));
