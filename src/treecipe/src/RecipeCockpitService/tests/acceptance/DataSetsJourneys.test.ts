@@ -23,7 +23,7 @@ describe('Recipe Cockpit journeys: Previously Used Data Sets (#580)', () => {
     });
 
     test.each(DATA_SETS_JOURNEYS)('$name', async (dataSetsJourney) => {
-        journey = await openDataSetsJourney();
+        journey = await ( dataSetsJourney.open ?? openDataSetsJourney )();
         await dataSetsJourney.run(journey);
     }, 60000);
 

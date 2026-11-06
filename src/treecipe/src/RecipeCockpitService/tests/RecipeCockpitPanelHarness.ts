@@ -28,6 +28,16 @@ export interface IPanelScriptOptions {
     shellHtml?: string;
 }
 
+/*
+    VS Code serializes a webview message as it is posted, each way, as it does setState below (#604): the
+    panel holds a copy of the host's model and never the host's object. Passed by reference, a host
+    that changed its stored model after posting it changed the panel's too, and the panel then found a
+    data set already listed that no row of its open tab showed.
+*/
+export function copyAsVsCodeDelivers<TMessage>(message: TMessage): TMessage {
+    return message === undefined ? message : JSON.parse(JSON.stringify(message));
+}
+
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const postedHostMessages: any[] = [];
@@ -156,9 +166,9 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
     let savedState: any = panelScriptOptions.savedState;
     const setStateCalls: any[] = [];
     const acquireVsCodeApi = () => (panelScriptOptions.isStateApiMissing
-        ? { postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); } }
+        ? { postMessage: (hostMessage: any) => { postedHostMessages.push(copyAsVsCodeDelivers(hostMessage)); } }
         : {
-            postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); },
+            postMessage: (hostMessage: any) => { postedHostMessages.push(copyAsVsCodeDelivers(hostMessage)); },
             getState: () => savedState,
             // VS CODE KEEPS A SERIALIZED COPY, SO THE PANEL CANNOT REACH BACK INTO WHAT IT SAVED
             setState: (nextState: any) => { savedState = JSON.parse(JSON.stringify(nextState)); setStateCalls.push(savedState); return nextState; }
@@ -285,7 +295,7 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         // THE STRUCTURE TAB'S SEARCH OF ONE CARD -- THE FIRST, UNLESS ONE IS NAMED
         typeIntoFilter: (searchText: string, treeCard?: any) => typeIntoSearch(findAll(treeCard || treeCards()[0], 'treeStructure')[0], searchText),
         // THE DATA-BY-ORG TAB'S OBJECT ROWS, OF EVERY CARD WHOSE TAB IS BUILT
-        postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
+        postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: copyAsVsCodeDelivers(hostMessage) }),
         raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
         // THERE IS NO LAYOUT: A TEST SETS scrollWidth/clientWidth ON AN ELEMENT, THEN RESIZES SO THE PANEL MEASURES AGAIN (#464)
         resizeWindow: () => windowListenersByType['resize']({ type: 'resize' }),
