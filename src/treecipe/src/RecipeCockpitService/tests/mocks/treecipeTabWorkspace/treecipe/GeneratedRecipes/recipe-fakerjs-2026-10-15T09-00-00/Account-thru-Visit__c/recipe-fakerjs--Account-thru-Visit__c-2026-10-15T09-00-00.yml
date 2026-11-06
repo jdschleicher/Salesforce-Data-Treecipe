@@ -1,0 +1,82 @@
+# Relationship Tree: RelationshipTree_1
+# Child objects are nested under their parent's friends: block -- a friend's count is records PER parent record
+
+# Account (Children: Contact)
+- object: Account
+  nickname: Account_NickName
+  count: 1
+  fields:
+    RecordTypeId: Account.Business
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # Account.Partner
+    Name: ${{faker.company.name()}}
+    AccountNumber: ${{faker.string.numeric(8)}}
+    AnnualRevenue: ${{faker.string.numeric(7)}}
+    BillingStreet: ${{faker.location.streetAddress()}}
+    BillingCity: ${{faker.location.city()}}
+    BillingState: ${{faker.location.state()}}
+    BillingPostalCode: ${{faker.location.zipCode()}}
+    BillingCountry: ${{faker.location.country()}}
+    Description: ${{faker.company.catchPhrase()}}
+    Industry: ${{faker.helpers.arrayElement(['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education'])}}
+    NumberOfEmployees: ${{faker.string.numeric(4)}}
+    Phone: |
+                    ${{faker.phone.number({style:'national'})}}
+    Rating: ${{faker.helpers.arrayElement(['Hot', 'Warm', 'Cold'])}}
+    ShippingStreet: ${{faker.location.streetAddress()}}
+    ShippingCity: ${{faker.location.city()}}
+    ShippingState: ${{faker.location.state()}}
+    ShippingPostalCode: ${{faker.location.zipCode()}}
+    ShippingCountry: ${{faker.location.country()}}
+    Sic: ${{faker.string.numeric(4)}}
+    Type: ${{faker.helpers.arrayElement(['Customer', 'Partner', 'Prospect'])}}
+    Website: ${{faker.internet.domainName()}}
+    Rating__c: ${{ faker.helpers.arrayElement([`Hot`,`Warm`,`Cold`]) }}
+                    ### TODO: -- RecordType Options -- Business -- Below is the faker recipe for the record type Business for the field Rating__c
+                    # ${{ faker.helpers.arrayElement([`Hot`,`Warm`]) }}
+                    ### TODO: -- RecordType Options -- Partner -- Below is the faker recipe for the record type Partner for the field Rating__c
+                    # ${{ faker.helpers.arrayElement([`Cold`]) }}
+    Region__c: ${{ faker.lorem.text(40).substring(0, 40) }}
+  friends:
+    # Contact (Parents: Account | Children: Visit__c)
+    - object: Contact
+      nickname: Contact_NickName
+      count: 1
+      fields:
+        FirstName: ${{faker.person.firstName()}}
+        LastName: ${{faker.person.lastName()}}
+        Email: ${{faker.internet.email()}}
+        Phone: |
+                        ${{faker.phone.number({style:'national'})}}
+        MobilePhone: |
+                        ${{faker.phone.number({style:'national'})}}
+        Title: ${{faker.job}}
+        Department: ${{faker.helpers.arrayElement(['Sales', 'Marketing', 'IT', 'Finance', 'HR', 'Operations'])}}
+        Birthdate: ${{faker.date.birthdate()}}
+        Description: ${{faker.lorem.paragraph()}}
+        MailingStreet: ${{faker.location.streetAddress()}}
+        MailingCity: ${{faker.location.city()}}
+        MailingState: ${{faker.location.state()}}
+        MailingPostalCode: ${{faker.location.zipCode()}}
+        MailingCountry: ${{faker.location.country()}}
+        OtherStreet: ${{faker.location.streetAddress()}}
+        OtherCity: ${{faker.location.city()}}
+        OtherState: ${{faker.location.state()}}
+        OtherPostalCode: ${{faker.location.zipCode()}}
+        OtherCountry: ${{faker.location.country()}}
+        LeadSource: ${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}
+        Salutation: ${{faker.helpers.arrayElement(['Mr.', 'Ms.', 'Mrs.', 'Dr.'])}}
+        AssistantName: ${{faker.person.fullName()}}
+        AssistantPhone: |
+                        ${{faker.phone.number({style:'national'})}}
+        AccountId: Account_NickName
+        Title__c: ${{ faker.lorem.text(80).substring(0, 80) }}
+      friends:
+        # Visit__c (Parents: Contact)
+        - object: Visit__c
+          nickname: Visit__c_NickName
+          count: 1
+          fields:
+            Contact__c: Contact_NickName
+            Notes__c: ${{ faker.lorem.text(255).substring(0, 255) }}
+
