@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.192.10] - Tests: the production-org journey proves the sandbox-only rule refuses a forged insert (#599)
+
+Follows up #598's review. No source file changes, and nothing a user sees changes.
+
+- **Two new generate-and-insert journeys** (`GenerateAndInsertJourneys.ts`), each on its own copy of `treecipeTabWorkspace`:
+  - **the positive control:** with `qa` chosen in the org picker, the same forged `insertTree` the production journey sends opens `Generate Account-thru-Visit__c and insert it into qa (qa@example.com.qa)?`, sends no insert before it is answered, and after Cancel generates, writes and sends nothing;
+  - **an unknown tree:** a forged `insertTree` for `No-Such-Tree`, with `qa` chosen, asks nothing and sends nothing. So a tree no card shows is refused separately from the sandbox-only rule.
+- **The production journey can fail** (`GenerateAndInsertJourneyCatchesBreakage.test.ts`): with `routePanelMessage` made to see the chosen org as a sandbox for `insertTree` only, the journey fails at "the forged insertTree asks nothing and sends nothing". The journey itself is unchanged.
+- **The journeys' shared helpers moved:** `INSERT_ORG_LABEL`, `generateAndInsert`, `filteredRecipeOf` and `insertsSent` are now in `TreecipeTabWorkspace.ts`, so `TreecipeTabJourneys.ts` and `GenerateAndInsertJourneys.ts` no longer import from each other. Every #578 journey keeps its name, steps and expectations.
+
 ## [3.192.9] - Tests: Troubleshooting and Query journeys drive the Recipe Cockpit's deploys, retrieves, permission sets, TODOs and queries (#579)
 
 Slice C of epic #576. No source file changes, and nothing a user sees changes. These journeys must pass unchanged when #566 moves the Troubleshooting and Query host code and #574 moves the CLI gate.
