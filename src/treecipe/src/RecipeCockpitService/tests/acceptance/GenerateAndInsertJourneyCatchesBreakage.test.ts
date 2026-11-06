@@ -16,7 +16,11 @@ import { openTreecipeTabJourney } from './TreecipeTabWorkspace';
 */
 describe('the production-org journey catches a bypassed sandbox-only rule (#599)', () => {
 
-    const productionJourney = GENERATE_AND_INSERT_JOURNEYS.find(generateAndInsertJourney => generateAndInsertJourney.name.startsWith('a production org:'));
+    const productionJourneyNamePrefix = 'a production org:';
+    const productionJourney = GENERATE_AND_INSERT_JOURNEYS.find(generateAndInsertJourney => generateAndInsertJourney.name.startsWith(productionJourneyNamePrefix));
+    if ( !productionJourney ) {
+        throw new Error(`No journey in GENERATE_AND_INSERT_JOURNEYS is named "${productionJourneyNamePrefix} …": a renamed production-org journey needs this test updated.`);
+    }
 
     let journey: RecipeCockpitJourney | undefined;
 
@@ -28,7 +32,7 @@ describe('the production-org journey catches a bypassed sandbox-only rule (#599)
     test('passes on the cockpit as it is', async () => {
 
         journey = await openTreecipeTabJourney();
-        await expect(productionJourney!.run(journey)).resolves.toBeUndefined();
+        await expect(productionJourney.run(journey)).resolves.toBeUndefined();
 
     }, 60000);
 
@@ -48,7 +52,7 @@ describe('the production-org journey catches a bypassed sandbox-only rule (#599)
         });
 
         journey = await openTreecipeTabJourney();
-        const failureMessage = await productionJourney!.run(journey).then(() => { throw new Error('The production-org journey passed with the sandbox-only rule bypassed.'); }, (journeyError: Error) => journeyError.message);
+        const failureMessage = await productionJourney.run(journey).then(() => { throw new Error('The production-org journey passed with the sandbox-only rule bypassed.'); }, (journeyError: Error) => journeyError.message);
 
         // THE BREAKAGE MUST REALLY BE MADE: THE FORGED MESSAGE WAS ROUTED AS AN INSERT
         expect(bypassedRoutes).toEqual(['insertTree']);

@@ -230,6 +230,7 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
 
             await journey.step('the forged insertTree for an unknown tree asks nothing and sends nothing', () => {
                 expectEqual(journey.org.calls.slice(orgCallCountBefore).map(orgCall => orgCall.call), [], 'Calls on an org after the forged message');
+                expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'commands.executeCommand').map(hostCall => hostCall.args[0]), [], 'Commands run');
                 expectEqual(journey.screen().findAll('alertdialog').length, 0, 'Confirmations on screen');
                 expectEqual(journey.prompts, [], 'Quick picks and input boxes');
                 expectEqual(journey.notifications, [], 'Notifications');
