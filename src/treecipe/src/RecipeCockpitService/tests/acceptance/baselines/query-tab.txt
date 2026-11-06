@@ -1,0 +1,136 @@
+button "Open CHANGELOG on GitHub"
+button "About this cockpit" [collapsed]
+text "Target Org Manager"
+button "Choose org…"
+button "New scratch org"
+text "Treecipes"
+label "Select Generated Treecipe runs by date:"
+combobox "Select Generated Treecipe runs by date:" = "2026-10-15 09:00:00 UTC · faker-js · latest"
+  option "2026-10-15 09:00:00 UTC · faker-js · latest" [selected]
+searchbox "Search treecipes, objects, fields and record types" = ""
+label "Treecipe"
+combobox "Treecipe" = "Account-thru-Visit__c"
+  option "Account-thru-Visit__c" [selected]
+button "☆ Favorites only"
+text "Insert order:"
+text "Account"
+text "→"
+text "Contact (Account_NickName-1)"
+text "→"
+text "Visit__c (Contact_NickName-1)"
+text "· 3 objects"
+button "Mark Account-thru-Visit__c as a favorite"
+button "Rename Account-thru-Visit__c" [collapsed]
+text "Account-thru-Visit__c"
+text "3 objects · 51 fields"
+tablist ""
+  tab "Treecipe"
+  tab "Previously Used Data Sets"
+  tab "Troubleshooting"
+  tab "Query" [selected]
+  tab "Treecipe Adapter"
+tabpanel "Query"
+  searchbox "Search queries (Account-thru-Visit__c)" = ""
+  text "9 queries"
+  text "The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks), then export what it returned as JSON or CSV. A query only reads."
+  group "Account · Base Query"
+    text "Account · Base Query"
+    textbox "SOQL for Account · Base Query" = "SELECT Id,
+       Rating__c,
+       Region__c
+FROM Account"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Account · Parent-to-Child Query"
+    text "Account · Parent-to-Child Query"
+    text "Children: Contact (via AccountId)"
+    text "Note: Verify 'Contacts' is the correct Child Relationship Name"
+    textbox "SOQL for Account · Parent-to-Child Query" = "SELECT Id,
+    (SELECT Id, Title__c
+     FROM Contacts)
+FROM Account"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Account · Record Type Filtered Query"
+    text "Account · Record Type Filtered Query"
+    text "Record Type: Business"
+    textbox "SOQL for Account · Record Type Filtered Query" = "SELECT Id,
+       Rating__c,
+       Region__c
+FROM Account
+WHERE RecordType.DeveloperName = 'Business'"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Account · Record Type Filtered Query"
+    text "Account · Record Type Filtered Query"
+    text "Record Type: Partner"
+    textbox "SOQL for Account · Record Type Filtered Query" = "SELECT Id,
+       Rating__c,
+       Region__c
+FROM Account
+WHERE RecordType.DeveloperName = 'Partner'"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Contact · Base Query"
+    text "Contact · Base Query"
+    textbox "SOQL for Contact · Base Query" = "SELECT Id,
+       AccountId,
+       Title__c
+FROM Contact"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Contact · Child-to-Parent Query"
+    text "Contact · Child-to-Parent Query"
+    text "Lookup to Account via AccountId"
+    textbox "SOQL for Contact · Child-to-Parent Query" = "SELECT Id,
+       AccountId,
+       Account.Rating__c,
+       Account.Region__c
+FROM Contact"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Contact · Parent-to-Child Query"
+    text "Contact · Parent-to-Child Query"
+    text "Children: Visit__c (via Contact__c)"
+    text "Note: Verify 'Visits__r' is the correct Child Relationship Name"
+    textbox "SOQL for Contact · Parent-to-Child Query" = "SELECT Id,
+    (SELECT Id, Notes__c
+     FROM Visits__r)
+FROM Contact"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Visit__c · Base Query"
+    text "Visit__c · Base Query"
+    textbox "SOQL for Visit__c · Base Query" = "SELECT Id,
+       Contact__c,
+       Notes__c
+FROM Visit__c"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]
+  group "Visit__c · Child-to-Parent Query"
+    text "Visit__c · Child-to-Parent Query"
+    text "Lookup to Contact via Contact__c"
+    textbox "SOQL for Visit__c · Child-to-Parent Query" = "SELECT Id,
+       Contact__c,
+       Contact__r.Title__c
+FROM Visit__c"
+    button "Reset"
+    button "Run…"
+    button "Export JSON" [disabled]
+    button "Export CSV" [disabled]

@@ -1,0 +1,4 @@
+button "Open CHANGELOG on GitHub"
+button "About this cockpit" [collapsed]
+text "No generated recipe run was found under treecipe/GeneratedRecipes. Generate Treecipe writes one from the object metadata in this workspace, and the cockpit opens it when it finishes."
+button "Generate Treecipe"

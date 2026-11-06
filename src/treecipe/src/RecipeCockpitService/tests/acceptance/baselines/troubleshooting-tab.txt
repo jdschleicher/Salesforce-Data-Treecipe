@@ -1,0 +1,74 @@
+button "Open CHANGELOG on GitHub"
+button "About this cockpit" [collapsed]
+text "3 data sets couldn't be matched to a recipe tree."
+text "Target Org Manager"
+button "Choose org…"
+button "New scratch org"
+text "Treecipes"
+label "Select Generated Treecipe runs by date:"
+combobox "Select Generated Treecipe runs by date:" = "2026-09-20 10:00:00 UTC · snowfakery · latest"
+  option "2026-09-20 10:00:00 UTC · snowfakery · latest" [selected]
+  option "2026-09-10 00:00:00 UTC · faker-js"
+  option "2026-09-01 00:00:00 UTC · snowfakery"
+searchbox "Search treecipes, objects, fields and record types" = ""
+label "Treecipe"
+combobox "Treecipe" = "Account-thru-OtherChildObject__c"
+  option "Account-thru-OtherChildObject__c" [selected]
+  option "Lead-ONLY"
+button "☆ Favorites only"
+text "Insert order:"
+text "Account"
+text "→"
+text "Contact"
+text "→"
+text "OtherChildObject__c"
+text "· 3 objects"
+button "Mark Account-thru-OtherChildObject__c as a favorite"
+button "Rename Account-thru-OtherChildObject__c" [collapsed]
+text "Account-thru-OtherChildObject__c"
+text "3 objects · 13 fields"
+tablist ""
+  tab "Treecipe"
+  tab "Previously Used Data Sets"
+  tab "Troubleshooting" [selected]
+  tab "Query"
+  tab "Treecipe Adapter"
+tabpanel "Troubleshooting"
+  tablist "Troubleshooting"
+    tab "TODO's (5)" [selected]
+    tab "Fields"
+    tab "Permissions"
+    tab "Validation Rules"
+    tab "Record Types"
+    tab "Global Value Sets"
+    tab "History"
+  tabpanel "TODO's"
+    tablist "TODO's"
+      tab "Open (5)" [selected]
+      tab "Removed (0)"
+    tabpanel "Open"
+      searchbox "Search TODOs by object, field or text (Account-thru-OtherChildObject__c)" = ""
+      text "5 TODOs"
+      button "Account 3 TODOs" [expanded]
+      text "Regions__c"
+      button "↗ yml"
+      button "Remove TODO: Regions__c, line 20" [disabled]
+      text "### TODO -- NO PICKLIST VALUES"
+      text "ParentId"
+      button "↗ yml"
+      button "Remove TODO: ParentId, line 21" [disabled]
+      text "### TODO -- REFERENCE ID REQUIRED"
+      text "OwnerId"
+      button "↗ yml"
+      button "Remove TODO: OwnerId, line 22" [disabled]
+      text "### TODO -- REFERENCE ID REQUIRED"
+      button "Contact 1 TODO" [expanded]
+      text "AccountId"
+      button "↗ yml"
+      button "Remove TODO: AccountId, line 32" [disabled]
+      text "### TODO -- REFERENCE ID REQUIRED"
+      button "OtherChildObject__c 1 TODO" [expanded]
+      text "Contact__c"
+      button "↗ yml"
+      button "Remove TODO: Contact__c, line 43" [disabled]
+      text "### TODO -- REFERENCE ID REQUIRED"
