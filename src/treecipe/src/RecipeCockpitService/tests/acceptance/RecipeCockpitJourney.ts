@@ -409,6 +409,13 @@ export class RecipeCockpitJourney implements IJourneyHost {
         return textBoxes[0];
     }
 
+    // AN IN-PANEL CONFIRMATION IS DRAWN BY A MESSAGE THE HOST POSTS AFTER THE ACTION THAT ASKED FOR IT, SO A STEP THAT READS ONE WAITS FOR IT FIRST (#580)
+    async waitForConfirmation(): Promise<void> {
+
+        await this.step('wait for a confirmation', () => this.untilOnScreen(() => this.shownDialog(this.screen())));
+
+    }
+
     // THE IN-PANEL CONFIRMATION (#349) ANSWERED BY ITS BUTTON
     async answerConfirmation(buttonLabel: string): Promise<void> {
 

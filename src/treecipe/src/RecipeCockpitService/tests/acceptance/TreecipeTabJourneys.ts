@@ -121,6 +121,7 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
             await journey.type('Value or faker expression for Account.Region__c', 'EMEA');
             await journey.click('button', 'Save', { role: 'group', name: 'Edit Account.Region__c' });
 
+            await journey.waitForConfirmation();
             await journey.step('the confirmation names the recipe and leaves every other line alone', () => {
                 const screen = journey.screen();
                 const confirmationText = screen.lines(screen.get('dialog', 'Write a fixed value into Account.Region__c?')).join('\n');
@@ -140,6 +141,7 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
             await journey.click('button', 'Region__c: Fixed value — click to change or clear it');
             await journey.click('button', 'Clear', { role: 'group', name: 'Edit Account.Region__c' });
 
+            await journey.waitForConfirmation();
             await journey.step('the Clear confirmation names the recipe and its fixed-values file', () => {
                 const screen = journey.screen();
                 const confirmationText = screen.lines(screen.get('dialog', 'Clear the edit of Account.Region__c?')).join('\n');
@@ -168,6 +170,7 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
             await journey.click('checkbox', 'Cold', { role: 'group', name: 'Values of Account.Rating__c' });
             await journey.click('button', 'Save', { role: 'group', name: 'Edit values of Account.Rating__c' });
 
+            await journey.waitForConfirmation();
             await journey.step('the confirmation shows the faker-js expression the ticked values make', () => {
                 const screen = journey.screen();
                 const confirmationText = screen.lines(screen.get('dialog', 'Write an edited faker expression into Account.Rating__c?')).join('\n');

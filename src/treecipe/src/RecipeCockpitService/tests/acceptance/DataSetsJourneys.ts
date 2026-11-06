@@ -133,6 +133,7 @@ export const DATA_SETS_JOURNEYS: Array<{ name: string; run(journey: RecipeCockpi
             // A REOPENED COCKPIT HAS NO ORG CHOSEN (A RELOAD CLEARS IT), SO Insert… ASKS FOR ONE; THE READER CHOOSES THE SAME SANDBOX
             await journey.answerQuickPick('qa');
 
+            await journey.waitForConfirmation();
             await journey.step('the confirmation names the data set, the sandbox and the records, parents first', () => {
                 const screen = journey.screen();
                 const confirmation = screen.get('alertdialog', `Insert ${FIRST_DATA_SET} into qa (qa@example.com.qa)?`);

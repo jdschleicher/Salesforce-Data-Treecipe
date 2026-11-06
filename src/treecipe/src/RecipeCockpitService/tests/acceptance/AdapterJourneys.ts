@@ -80,6 +80,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             });
 
             await journey.click('button', 'Generate values');
+            await journey.waitForConfirmation();
             await journey.step('the Generate confirmation names the fields and the records it fills, and that nothing is written', () => {
                 expectEqual(confirmationTitle(journey), [`Generate new values for 2 fields of ${TREE_NAME}?`], 'The confirmation');
                 const screen = journey.screen();
@@ -109,6 +110,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             };
 
             await journey.click('button', /^Update \d+ records in qa · qa@example\.com\.qa$/);
+            await journey.waitForConfirmation();
             await journey.step('the Update confirmation names the records, the tree and the sandbox', () => {
                 expectEqual(confirmationTitle(journey), [`Update ${ACCOUNT_COUNT + 1} records of ${TREE_NAME} in qa · qa@example.com.qa?`], 'The confirmation');
                 expectEqual(updatesSent(journey), [], 'Updates before the confirmation is answered');
@@ -146,6 +148,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
 
             const updateCountBefore = updatesSent(journey).length;
             await journey.click('button', `Restore previous values… ${path.basename(snapshotPath)}`);
+            await journey.waitForConfirmation();
             await journey.step('the Restore confirmation names the snapshot', () => {
                 expectEqual(confirmationTitle(journey).length, 1, 'Confirmations on screen');
                 expectEqual(journey.screen().lines().some(screenLine => screenLine.includes(path.basename(snapshotPath))), true, 'The snapshot is named on screen');
@@ -176,7 +179,9 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             await journey.click('button', 'Refresh orgs: check the org connections again');
             await journey.pickOrg('staging');
 
+            const notificationCountBeforeUpdate = journey.notifications.length;
             await journey.click('button', /^Update \d+ records in /);
+            await journey.waitForNotification(/^Nothing was updated: /, notificationCountBeforeUpdate);
 
             // REFUSED BEFORE ANY CONFIRMATION: THE READER IS NOT ASKED TO CONFIRM AN UPDATE THAT CANNOT GO
             await journey.step('the update is refused with the reason, before any confirmation, and nothing reaches either org', () => {
@@ -225,7 +230,9 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             const snapshotText = fs.readFileSync(snapshotFilePath, 'utf8');
             fs.writeFileSync(snapshotFilePath, snapshotText.replace(`"${CONTACT_ID}"`, '"not-an-id"'));
 
+            const notificationCountBeforeRestore = journey.notifications.length;
             await journey.click('button', `Restore previous values… ${path.basename(snapshotPath)}`);
+            await journey.waitForNotification(/^Nothing was restored: /, notificationCountBeforeRestore);
 
             await journey.step('the whole snapshot is refused with the reason, before any confirmation, and no record is sent back', () => {
                 expectEqual(confirmationTitle(journey), [], 'Confirmations on screen');

@@ -217,6 +217,7 @@ describe('RecipeCockpitJourney (#577)', () => {
         await journey.click('button', 'Contact: Included — click to exclude');
         await journey.chooseOption(RECIPE_COCKPIT_RUN_PICKER_LABEL, OLDER_RUN_LABEL);
 
+        await journey.waitForConfirmation();
         const screen = journey.screen();
         const confirmation = screen.get('dialog', `Switch to ${OLDER_RUN_LABEL}?`);
         expect(screen.findAll('button', undefined, confirmation).map(button => button.name)).toEqual(expect.arrayContaining(['Reset selections', 'Cancel']));
