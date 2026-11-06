@@ -1,5 +1,30 @@
 # Change Log
 
+## [3.192.8] - Tests: Treecipe tab and generate-and-insert journeys drive the Recipe Cockpit end to end (#578)
+
+Slice B of epic #576. No source file changes, and nothing a user sees changes.
+
+- **Six Treecipe tab journeys** (`TreecipeTabJourneys.ts`, run by `TreecipeTabJourneys.test.ts`), each on its own copy of the new `treecipeTabWorkspace` fixture:
+  - **exclude an object:** Contact reads excluded, Visit__c auto-excluded, and the card reads `1 of 3 objects`; Generate's filtered recipe holds only Account, `datasetSource.json` lists `excludedObjectApiNames`, and only Account is sent;
+  - **untick a field:** All fields reads mixed (`aria-checked="mixed"`, named `22 of 23 fields ticked`), `RecordTypeId` cannot be unticked and says why, and neither the filtered recipe nor the Account sent has the field;
+  - **set a record count:** the card reads `Create 5 Account record(s), changed from the recipe's 1`, the filtered recipe carries `count: 5`, five of each object are sent, and the recipe file is unchanged;
+  - **edit a value, then Clear it:** both confirmations name the recipe (Clear's also its `.fixedValues.json`), Save writes `Region__c: "EMEA"` on every Account, and Clear puts the file back byte for byte and removes the fixed-values file;
+  - **choose picklist values from the tiles:** Save writes the faker-js `arrayElement` of the values left ticked, and Reset to generated puts the file back byte for byte;
+  - **record types:** ticking Partner beside Business and clicking Regenerate writes a new run whose recipe has an Account block for each, and leaves the run on screen as it was.
+- **Five generate-and-insert journeys** (`GenerateAndInsertJourneys.ts`):
+  - **into a sandbox:** the confirmation lists each object's record total, all-or-none is asked, Account, Contact and Visit__c go in that order with each child pointing at its parent's new Id, one notification with **View results** opens the data set's results file, and the data set is the first row of Previously Used Data Sets without a reload;
+  - **a production org** (the CLI's default): the button is disabled with its reason, and a forged `insertTree` asks and sends nothing;
+  - **no org chosen:** the org is asked once, and dismissing it sends nothing and gives the button back;
+  - **Cancel in the confirmation:** nothing is generated, written or sent;
+  - **a record rejected without all-or-none:** a warning with **View errors** and **Open Troubleshooting**, which opens the Validation Rules sub-tab a `FIELD_CUSTOM_VALIDATION_EXCEPTION` points to.
+- **The harness runs the extension's real commands.** A journey's `open` calls the real `activate()`, so `executeCommand` runs the handlers `extension.ts` registers; activation's own start-up calls are not recorded as a reader's. faker-js is seeded per journey.
+- **What the fakes gained,** each tested on its own in `RecipeCockpitJourneyFakes.test.ts`:
+  - the fake org: `sobject(x).insert` (recorded; every record lands unless `insertAnswer` says otherwise), a scripted `describeAnswer`, and `addAuthorization` for one journey's extra org;
+  - `vscode`: `Uri.joinPath`, `workspace.fs.stat`, `Uri.parse` of a plain path as a file (as `RecordTypeService` uses it), and what `activate()` builds the Activity Bar view with.
+- **`screen()` reports `mixed`** for a tri-state box with `aria-checked="mixed"`, as a screen reader reads it; it dropped that state before.
+- **New reader actions:** `press(label, key)` (Enter commits a record count), `dismissQuickPick()`, and `forgePanelMessage(message)` for a message the panel's own controls would never send.
+- **`treecipeTabWorkspace/`** is an sfdx project (Account with the Business and Partner record types and a `Rating__c` picklist, Contact, Visit__c) and the faker-js run the real Generate Treecipe wrote over it.
+
 ## [3.192.7] - Repo tooling: every dependency pinned to the version the lockfile locks (#588)
 
 Nothing a user sees changes, and the `.vsix` packages the same 2,260 files.

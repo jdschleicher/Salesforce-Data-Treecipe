@@ -2,6 +2,9 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { faker } from '@faker-js/faker';
+import type { ExtensionContext } from 'vscode';
+import { activate } from '../../../../../extension';
 import {
     RecipeCockpitService,
     IRecipeCockpitWorkspaceState,
@@ -78,6 +81,12 @@ const WINDOW_CACHES: ReadonlyArray<{ name: string; clear: () => void }> = [
     { name: 'Validation Rules lists', clear: () => RecipeCockpitService.clearTreeValidationRuleLists() },
     { name: 'Query tab lists', clear: () => RecipeCockpitService.clearTreeQueryLists() }
 ];
+/*
+    faker-js draws every generated value from one seeded stream, so a journey that generates a data set
+    writes the same values on every run and a step can check a file by its content (#578).
+*/
+export const JOURNEY_FAKER_SEED = 578;
+
 // QUIET ROUNDS OF THE EVENT LOOP BEFORE A JOURNEY CALLS IDLE
 const QUIET_ROUNDS_WHEN_IDLE = 3;
 const QUIET_ROUNDS_WHEN_WAITING_ON_READER = 50;
@@ -134,6 +143,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
     readonly fileChanges: IRecordedFileChange[] = [];
     readonly messages: IRecordedMessage[] = [];
     readonly hostCalls: IRecordedHostCall[] = [];
+    readonly registeredCommands = new Map<string, (...commandArguments: unknown[]) => unknown>();
+    private readonly extensionSubscriptions: Array<{ dispose(): unknown }> = [];
     readonly workspaceStateValues = new Map<string, unknown>();
 
     private readonly stepStack: string[] = [];
@@ -184,10 +195,12 @@ export class RecipeCockpitJourney implements IJourneyHost {
         setOpenJourneyHost(this);
         setOpenOrgConnections(this.org);
         WINDOW_CACHES.forEach(windowCache => windowCache.clear());
+        faker.seed(JOURNEY_FAKER_SEED);
 
         // A JOURNEY THAT FAILS TO OPEN IS NEVER HANDED TO ITS SUITE TO CLOSE, SO IT CLOSES ITSELF
         try {
             await this.step(`open the cockpit on ${fixtureName}`, async () => {
+                await this.activateExtension();
                 await RecipeCockpitService.openRecipeCockpitPanel(this.workspaceRoot, this.workspaceState);
                 await this.settle();
             });
@@ -200,10 +213,21 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     }
 
+    /*
+        The real activate(), so executeCommand runs the handlers extension.ts registers (#578). What the
+        window does as it starts is not a step of the reader's, so the calls it makes are not kept.
+    */
+    private async activateExtension(): Promise<void> {
+        const hostCallCountBefore = this.hostCalls.length;
+        await activate({ subscriptions: this.extensionSubscriptions, workspaceState: this.workspaceState } as unknown as ExtensionContext);
+        this.hostCalls.splice(hostCallCountBefore);
+    }
+
     // CLOSES THE PANEL AS A READER CLOSING THE TAB WOULD, AND REMOVES THE WORKSPACE COPY
     async close(): Promise<void> {
 
         this.disposeHandlers.splice(0).forEach(disposeHandler => disposeHandler());
+        this.extensionSubscriptions.splice(0).forEach(subscription => subscription.dispose());
         // ONE TURN FOR WHAT THE CLOSE STARTS, AND NO WAIT FOR IDLE: CLOSING MUST CLEAN UP AFTER A HOST THAT HUNG TOO
         await new Promise(resolveTurn => setImmediate(resolveTurn));
         setOpenJourneyHost(undefined);
@@ -322,18 +346,35 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
         await this.step(`type "${text}" in "${label}"`, async () => {
             const screen = this.screen();
-            const textBoxes = [...screen.findAll('textbox', label), ...screen.findAll('searchbox', label)];
-            if ( textBoxes.length !== 1 ) {
-                throw new Error(`${textBoxes.length === 0 ? 'no' : textBoxes.length} text boxes named "${label}" are on screen.`
-                    + ` The text boxes on screen: ${[...screen.findAll('textbox'), ...screen.findAll('searchbox')].map(node => `"${node.name}"`).join(', ') || 'none'}.`);
-            }
-            const textBoxElement = screen.elementOf(textBoxes[0]);
+            const textBoxElement = screen.elementOf(this.onlyTextBox(screen, label));
             textBoxElement.value = text;
             textBoxElement.dispatch('input');
             textBoxElement.dispatch('change');
             await this.settle();
         });
 
+    }
+
+    // A KEY PRESSED IN A TEXT BOX, AS ENTER COMMITS A RECORD COUNT (#578)
+    async press(label: string, key: string): Promise<void> {
+
+        await this.step(`press ${key} in "${label}"`, async () => {
+            const screen = this.screen();
+            const textBoxElement = screen.elementOf(this.onlyTextBox(screen, label));
+            textBoxElement.dispatch('keydown', { key: key, preventDefault: () => undefined });
+            textBoxElement.dispatch('keyup', { key: key, preventDefault: () => undefined });
+            await this.settle();
+        });
+
+    }
+
+    private onlyTextBox(screen: RecipeCockpitScreen, label: string): IScreenNode {
+        const textBoxes = [...screen.findAll('textbox', label), ...screen.findAll('searchbox', label)];
+        if ( textBoxes.length !== 1 ) {
+            throw new Error(`${textBoxes.length === 0 ? 'no' : textBoxes.length} text boxes named "${label}" are on screen.`
+                + ` The text boxes on screen: ${[...screen.findAll('textbox'), ...screen.findAll('searchbox')].map(node => `"${node.name}"`).join(', ') || 'none'}.`);
+        }
+        return textBoxes[0];
     }
 
     // THE IN-PANEL CONFIRMATION (#349) ANSWERED BY ITS BUTTON
@@ -350,6 +391,19 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
         await this.step(`pick the org "${orgLabel}"`, async () => {
             await this.chooseOptionIn(JOURNEY_ORG_PICKER_NAME, orgLabel);
+        });
+
+    }
+
+    /*
+        A message the panel's own controls would not send, posted as if the panel sent it: what a
+        compromised or stale page could send, which the host's allow-lists must refuse (#578).
+    */
+    async forgePanelMessage(panelMessage: { command: string; [key: string]: unknown }): Promise<void> {
+
+        await this.step(`forge the panel message "${panelMessage.command}"`, async () => {
+            this.requirePage().postedHostMessages.push(panelMessage);
+            await this.settle();
         });
 
     }
@@ -371,6 +425,23 @@ export class RecipeCockpitJourney implements IJourneyHost {
                     throw new Error(`the quick pick offers no "${label}". It offers: ${waitingQuickPick.record.offeredLabels.map(offered => `"${offered}"`).join(', ') || 'nothing'}.`);
                 }
                 waitingQuickPick.answer(label);
+            }
+            await this.settle();
+        });
+
+    }
+
+    // ESCAPE ON THE QUICK PICK THAT IS OPEN: IT CLOSES WITH NOTHING CHOSEN (#578)
+    async dismissQuickPick(): Promise<void> {
+
+        await this.step('dismiss the quick pick', async () => {
+            const shownQuickPick = [...this.shownQuickPicks].reverse().find(entry => entry.quickPick.isShown);
+            if ( shownQuickPick ) {
+                shownQuickPick.record.offeredLabels = shownQuickPick.quickPick.offeredLabels();
+                shownQuickPick.quickPick.hide();
+                shownQuickPick.record.isWaiting = false;
+            } else {
+                this.takeWaiting(this.waitingPrompts, entry => entry.record.kind === 'quickPick', 'No quick pick is open.').answer(undefined);
             }
             await this.settle();
         });

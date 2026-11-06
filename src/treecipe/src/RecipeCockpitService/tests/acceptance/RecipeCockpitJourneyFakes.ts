@@ -61,6 +61,8 @@ export interface IJourneyHost {
     showQuickPickControl(quickPick: FakeQuickPick): void;
     recordCall(call: string, args: unknown[]): void;
     settings: Map<string, unknown>;
+    // WHAT activate() REGISTERED, BY COMMAND ID: executeCommand RUNS THESE, AS VS CODE DOES
+    registeredCommands: Map<string, (...commandArguments: unknown[]) => unknown>;
 }
 
 let openJourneyHost: IJourneyHost | undefined;
@@ -161,6 +163,9 @@ export class FakeQuickPick {
 }
 
 class FakeThemeIcon { constructor(readonly id: string) {} }
+// WHAT activate() BUILDS THE ACTIVITY BAR VIEW WITH (#456); NOTHING IN A JOURNEY LISTENS TO IT
+class FakeEventEmitter { event = () => disposable(); fire() { return undefined; } dispose() { return undefined; } }
+class FakeTreeItem { constructor(public label: string, public collapsibleState?: number) {} }
 class FakePosition { constructor(readonly line: number, readonly character: number) {} }
 class FakeRange { constructor(readonly start: FakePosition, readonly end: FakePosition) {} }
 class FakeSelection extends FakeRange { constructor(anchor: FakePosition, active: FakePosition) { super(anchor, active); } }
@@ -219,16 +224,36 @@ export const journeyVscodeModule = {
             };
         },
         onDidChangeConfiguration: () => disposable(),
+        onDidChangeWorkspaceFolders: () => disposable(),
+        createFileSystemWatcher: () => ({ onDidCreate: () => disposable(), onDidChange: () => disposable(), onDidDelete: () => disposable(), dispose: () => undefined }),
         openTextDocument: async (documentUri: { fsPath: string }) => { journeyHost().recordCall('workspace.openTextDocument', [documentUri.fsPath]); return { uri: documentUri, lineCount: 0 }; },
         fs: {
             readDirectory: async (directoryUri: { fsPath: string }) => (await fs.promises.readdir(directoryUri.fsPath, { withFileTypes: true }))
                 .map(entry => [entry.name, entry.isDirectory() ? 2 : entry.isSymbolicLink() ? 64 : 1]),
-            readFile: async (fileUriToRead: { fsPath: string }) => fs.promises.readFile(fileUriToRead.fsPath)
+            readFile: async (fileUriToRead: { fsPath: string }) => fs.promises.readFile(fileUriToRead.fsPath),
+            stat: async (statUri: { fsPath: string }) => {
+                const fileStat = await fs.promises.stat(statUri.fsPath);
+                return { type: fileStat.isDirectory() ? 2 : 1, ctime: fileStat.ctimeMs, mtime: fileStat.mtimeMs, size: fileStat.size };
+            }
         }
     },
+    /*
+        A command the extension registered runs its real handler, so the cockpit's Generate and Run Faker
+        write what they write for a user (#578); any other id is VS Code's own and is only recorded.
+    */
     commands: {
-        executeCommand: async (commandId: string, ...commandArguments: unknown[]) => { journeyHost().recordCall('commands.executeCommand', [commandId, ...commandArguments]); return undefined; },
-        registerCommand: () => disposable()
+        executeCommand: async (commandId: string, ...commandArguments: unknown[]) => {
+            journeyHost().recordCall('commands.executeCommand', [commandId, ...commandArguments]);
+            return journeyHost().registeredCommands.get(commandId)?.(...commandArguments);
+        },
+        registerCommand: (commandId?: string, commandHandler?: (...commandArguments: unknown[]) => unknown) => {
+            if ( typeof commandId === 'string' && commandHandler ) {
+                const registeredCommands = journeyHost().registeredCommands;
+                registeredCommands.set(commandId, commandHandler);
+                return { dispose: () => { if ( registeredCommands.get(commandId) === commandHandler ) { registeredCommands.delete(commandId); } } };
+            }
+            return disposable();
+        }
     },
     env: {
         openExternal: async (externalUri: unknown) => { journeyHost().recordCall('env.openExternal', [String(externalUri)]); return true; },
@@ -236,7 +261,11 @@ export const journeyVscodeModule = {
     },
     Uri: {
         file: fileUri,
-        parse: (uriValue: string) => ({ scheme: uriValue.split(':')[0], toString: () => uriValue })
+        joinPath: (baseUri: { fsPath: string }, ...pathSegments: string[]) => fileUri(path.join(baseUri.fsPath, ...pathSegments)),
+        // A PLAIN PATH OR file:// IS A FILE, AS VS CODE PARSES IT (RecordTypeService PARSES ITS FOLDER'S PATH); ANY OTHER SCHEME IS KEPT AS GIVEN
+        parse: (uriValue: string) => /^(file:\/\/|\/)/.test(uriValue)
+            ? fileUri(uriValue.replace(/^file:\/\//, ''))
+            : { scheme: uriValue.split(':')[0], toString: () => uriValue }
     },
     ViewColumn: { One: 1, Two: 2, Active: -1, Beside: -2 },
     ProgressLocation: { SourceControl: 1, Window: 10, Notification: 15 },
@@ -247,6 +276,9 @@ export const journeyVscodeModule = {
     InputBoxValidationSeverity: { Info: 1, Warning: 2, Error: 3 },
     TextEditorRevealType: { Default: 0, InCenter: 1 },
     ThemeIcon: FakeThemeIcon,
+    EventEmitter: FakeEventEmitter,
+    TreeItem: FakeTreeItem,
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Position: FakePosition,
     Range: FakeRange,
     Selection: FakeSelection,
@@ -259,18 +291,51 @@ export const journeyVscodeModule = {
     its connection is recorded. A query is answered with no records unless the journey scripts it, and
     the Organization row says IsSandbox from the authorization; any other connection call throws, naming
     itself, so a journey that reaches one says which answer it is missing.
+
+    A Collections API insert (#578) is recorded with its object and records, and answered as Salesforce
+    answers one that landed, unless the journey scripts insertAnswer. An org the shared fixture lacks,
+    such as a production org, is added to one journey with addAuthorization.
 */
 const ORG_AUTHORIZATIONS: Array<Record<string, unknown>> = JSON.parse(fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'SalesforceOrgService', 'tests', 'mocks', 'orgAuthorizations.json'), 'utf-8'));
 
 export type OrgQueryAnswer = (username: string, soql: string) => { totalSize: number; done: boolean; records: unknown[] } | undefined;
 
+// ONE RESULT PER RECORD, IN THE ORDER SENT, AS sobject(x).insert ANSWERS: { success, id } OR { success: false, errors }
+export interface IFakeInsertResult {
+    success: boolean;
+    id?: string;
+    errors?: Array<{ statusCode: string; message: string; fields: string[] }>;
+}
+// WHAT connection.describe(objectApiName) ANSWERS: { name, fields: [{ name, type, createable, … }] }, OR undefined FOR NO ANSWER
+export type OrgDescribeAnswer = (username: string, objectApiName: string) => { name: string; fields: Array<Record<string, unknown>> } | undefined;
+export type OrgInsertAnswer = (username: string, objectApiName: string, records: Array<Record<string, unknown>>) => IFakeInsertResult[] | undefined;
+
+// AN ID SALESFORCE COULD HAVE GIVEN: THE OBJECT'S NAME LEADS, SO A FAILURE READS "Contact0000…" RATHER THAN A MEANINGLESS NUMBER
+function buildFakeRecordId(objectApiName: string, recordNumber: number): string {
+    return (objectApiName.replace(/[^A-Za-z0-9]/g, '').slice(0, 6) + String(recordNumber).padStart(12, '0')).slice(0, 18);
+}
+
 export class FakeOrgConnections {
 
     readonly calls: IRecordedOrgCall[] = [];
     queryAnswer: OrgQueryAnswer = () => undefined;
+    insertAnswer: OrgInsertAnswer = () => undefined;
+    describeAnswer: OrgDescribeAnswer = () => undefined;
+    private insertedRecordCount = 0;
 
-    readonly authorizations = ORG_AUTHORIZATIONS;
+    // A COPY PER JOURNEY, SO addAuthorization NEVER REACHES ANOTHER JOURNEY OR THE FIXTURE
+    readonly authorizations: Array<Record<string, unknown>> = ORG_AUTHORIZATIONS.map(authorization => ({ ...authorization }));
+    private readonly addedConnectedUsernames = new Set<string>();
+
+    // AN ORG FOR THIS JOURNEY ONLY; IT ANSWERS A PING, AND ITS Organization ROW SAYS IsSandbox FROM authorization.isSandbox
+    addAuthorization(authorization: { username: string; aliases?: string[]; orgId: string; instanceUrl: string; isSandbox?: boolean }) {
+        if ( this.authorizationOf(authorization.username) ) {
+            throw new Error(`The journey's fake org already has an authorization for ${authorization.username}.`);
+        }
+        this.authorizations.push({ isScratchOrg: false, isDevHub: false, ...authorization });
+        this.addedConnectedUsernames.add(authorization.username);
+    }
 
     private authorizationOf(username: string) {
         return this.authorizations.find(authorization => authorization.username === username
@@ -304,11 +369,22 @@ export class FakeOrgConnections {
             getApiVersion: () => '62.0',
             query: async (soql: string) => answerQuery(soql),
             queryMore: unanswered('connection.queryMore'),
-            describe: unanswered('connection.describe'),
+            // NOT async: AN UNSCRIPTED DESCRIBE THROWS AS IT IS CALLED, AS EVERY OTHER UNANSWERED CALL DOES
+            describe: (...describeArguments: unknown[]) => {
+                const scriptedDescribe = typeof describeArguments[0] === 'string' ? this.describeAnswer(username, describeArguments[0]) : undefined;
+                if ( !scriptedDescribe ) { return unanswered('connection.describe')(...describeArguments); }
+                this.record(username, 'connection.describe', describeArguments);
+                return Promise.resolve(scriptedDescribe);
+            },
             describeGlobal: unanswered('connection.describeGlobal'),
             request: unanswered('connection.request'),
             requestPost: unanswered('connection.requestPost'),
             sobject: (objectApiName: string) => ({
+                insert: async (records: Array<Record<string, unknown>>, insertOptions?: unknown) => {
+                    this.record(username, `connection.sobject(${objectApiName}).insert`, [records, insertOptions]);
+                    return this.insertAnswer(username, objectApiName, records)
+                        ?? records.map(() => ({ success: true, id: buildFakeRecordId(objectApiName, ++this.insertedRecordCount), errors: [] }));
+                },
                 create: unanswered(`connection.sobject(${objectApiName}).create`),
                 update: unanswered(`connection.sobject(${objectApiName}).update`),
                 describe: unanswered(`connection.sobject(${objectApiName}).describe`)
@@ -337,7 +413,7 @@ export class FakeOrgConnections {
             getOrgId: () => this.authorizationOf(username)?.orgId,
             refreshAuth: async () => {
                 this.record(username, 'org.refreshAuth', []);
-                if ( !CONNECTED_ORG_USERNAMES.includes(username) ) {
+                if ( !CONNECTED_ORG_USERNAMES.includes(username) && !this.addedConnectedUsernames.has(username) ) {
                     throw new Error(FAILED_PING_MESSAGES_BY_USERNAME[username] ?? 'expired access/refresh token');
                 }
             },

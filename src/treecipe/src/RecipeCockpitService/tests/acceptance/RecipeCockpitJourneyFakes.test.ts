@@ -38,7 +38,8 @@ describe('the journey fakes (#577)', () => {
             // THE SECOND ITEM OF A QUICK PICK, 'typed' IN AN INPUT BOX, AND NOTHING FOR A PROMPT TITLED Dismiss
             showPrompt: async (prompt: IRecordedPrompt) => prompt.title === 'Dismiss' ? undefined : prompt.offeredLabels[1] ?? 'typed',
             showQuickPickControl: (quickPick: FakeQuickPick) => { shownQuickPicks.push(quickPick); },
-            recordCall: (call: string, args: unknown[]) => { recordedCalls.push({ call, args }); }
+            recordCall: (call: string, args: unknown[]) => { recordedCalls.push({ call, args }); },
+            registeredCommands: new Map()
         };
         setOpenJourneyHost(journeyHost);
     });
@@ -189,6 +190,51 @@ describe('the journey fakes (#577)', () => {
 
     });
 
+    test('a command the extension registered runs its handler and answers with it; any other id is only recorded (#578)', async () => {
+
+        const registration = journeyVscodeModule.commands.registerCommand('treecipe.runFakerByRecipe', (recipeFilePath: unknown) => `ran ${recipeFilePath}`);
+
+        expect(await journeyVscodeModule.commands.executeCommand('treecipe.runFakerByRecipe', 'recipe.yml')).toBe('ran recipe.yml');
+        expect(await journeyVscodeModule.commands.executeCommand('setContext', 'treecipe.ready', true)).toBeUndefined();
+        registration.dispose();
+        expect(await journeyVscodeModule.commands.executeCommand('treecipe.runFakerByRecipe', 'recipe.yml')).toBeUndefined();
+        expect(recordedCalls).toEqual([
+            { call: 'commands.executeCommand', args: ['treecipe.runFakerByRecipe', 'recipe.yml'] },
+            { call: 'commands.executeCommand', args: ['setContext', 'treecipe.ready', true] },
+            { call: 'commands.executeCommand', args: ['treecipe.runFakerByRecipe', 'recipe.yml'] }
+        ]);
+
+    });
+
+    test('Uri.parse reads a path or a file:// uri as a file, as VS Code does, and keeps any other scheme as given; joinPath and fs.stat work on the copy (#578)', async () => {
+
+        fs.mkdirSync(path.join(workspaceRoot, 'recordTypes'));
+        fs.writeFileSync(path.join(workspaceRoot, 'recordTypes', 'Business.recordType-meta.xml'), '<RecordType/>');
+
+        expect(journeyVscodeModule.Uri.parse(path.join(workspaceRoot, 'recordTypes'))).toMatchObject({ scheme: 'file', fsPath: path.join(workspaceRoot, 'recordTypes') });
+        expect(journeyVscodeModule.Uri.parse('file://' + workspaceRoot)).toMatchObject({ scheme: 'file', fsPath: workspaceRoot });
+        expect(journeyVscodeModule.Uri.parse('https://example.com/issues')).not.toHaveProperty('fsPath');
+        const parsedFolderUri = journeyVscodeModule.Uri.parse(path.join(workspaceRoot, 'recordTypes')) as { fsPath: string };
+        expect(await journeyVscodeModule.workspace.fs.readDirectory(parsedFolderUri)).toEqual([['Business.recordType-meta.xml', 1]]);
+
+        const joinedUri = journeyVscodeModule.Uri.joinPath(journeyVscodeModule.Uri.file(workspaceRoot), 'recordTypes', 'Business.recordType-meta.xml');
+        expect(joinedUri.fsPath).toBe(path.join(workspaceRoot, 'recordTypes', 'Business.recordType-meta.xml'));
+        expect(await journeyVscodeModule.workspace.fs.stat(joinedUri)).toMatchObject({ type: 1, size: 13 });
+        expect(await journeyVscodeModule.workspace.fs.stat(journeyVscodeModule.Uri.file(workspaceRoot))).toMatchObject({ type: 2 });
+
+    });
+
+    test('what activate() builds the Activity Bar view with can be constructed and called (#578)', () => {
+
+        const eventEmitter = new journeyVscodeModule.EventEmitter();
+
+        expect([eventEmitter.event().dispose(), eventEmitter.fire(), eventEmitter.dispose()]).toEqual([undefined, undefined, undefined]);
+        expect(new journeyVscodeModule.TreeItem('Open Recipe Cockpit', journeyVscodeModule.TreeItemCollapsibleState.None)).toMatchObject({ label: 'Open Recipe Cockpit', collapsibleState: 0 });
+        expect(journeyVscodeModule.workspace.onDidChangeWorkspaceFolders().dispose()).toBeUndefined();
+        expect(journeyVscodeModule.workspace.createFileSystemWatcher().onDidCreate().dispose()).toBeUndefined();
+
+    });
+
     describe('the fake org', () => {
 
         let orgConnections: FakeOrgConnections;
@@ -245,6 +291,52 @@ describe('the journey fakes (#577)', () => {
             expect((await unknownConnection.query('SELECT IsSandbox FROM Organization')).records[0]).toMatchObject({ Id: undefined, IsSandbox: false, TrialExpirationDate: null });
 
             expect(orgConnections.calls.filter(orgCall => orgCall.call !== 'Org.create').map(orgCall => orgCall.call)).toEqual(['connection.query', 'connection.query', 'connection.query', 'connection.tooling.query', 'connection.query']);
+
+        });
+
+        test('an insert is recorded with its object, records and options, and answered with an Id per record unless scripted (#578)', async () => {
+
+            const connection: any = (await journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' })).getConnection();
+
+            expect(await connection.sobject('Account').insert([{ Name: 'Acme' }, { Name: 'Globex' }], { allOrNone: true })).toEqual([
+                { success: true, id: 'Accoun000000000001', errors: [] },
+                { success: true, id: 'Accoun000000000002', errors: [] }
+            ]);
+
+            const rejection = { success: false, errors: [{ statusCode: 'FIELD_CUSTOM_VALIDATION_EXCEPTION', message: 'A contact needs a title.', fields: ['Title__c'] }] };
+            orgConnections.insertAnswer = (_username, objectApiName) => objectApiName === 'Contact' ? [rejection] : undefined;
+            expect(await connection.sobject('Contact').insert([{ LastName: 'Lee' }], { allOrNone: false })).toEqual([rejection]);
+            expect(await connection.sobject('Visit__c').insert([{ Notes__c: 'x' }])).toEqual([{ success: true, id: 'Visitc000000000003', errors: [] }]);
+
+            expect(orgConnections.calls.filter(orgCall => orgCall.call.endsWith('.insert'))).toEqual([
+                { username: 'qa@example.com.qa', call: 'connection.sobject(Account).insert', args: [[{ Name: 'Acme' }, { Name: 'Globex' }], { allOrNone: true }] },
+                { username: 'qa@example.com.qa', call: 'connection.sobject(Contact).insert', args: [[{ LastName: 'Lee' }], { allOrNone: false }] },
+                { username: 'qa@example.com.qa', call: 'connection.sobject(Visit__c).insert', args: [[{ Notes__c: 'x' }], undefined] }
+            ]);
+
+        });
+
+        test('a scripted describe answers and is recorded; an object it has no answer for throws, naming the call (#578)', async () => {
+
+            const connection: any = (await journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' })).getConnection();
+            orgConnections.describeAnswer = (_username, objectApiName) => objectApiName === 'Account' ? { name: 'Account', fields: [{ name: 'Name', createable: true }] } : undefined;
+
+            expect(await connection.describe('Account')).toEqual({ name: 'Account', fields: [{ name: 'Name', createable: true }] });
+            expect(() => connection.describe('Contact')).toThrow('The journey\'s fake org has no answer for connection.describe on qa@example.com.qa');
+            expect(orgConnections.calls.filter(orgCall => orgCall.call === 'connection.describe').map(orgCall => orgCall.args)).toEqual([['Account'], ['Contact']]);
+
+        });
+
+        test('addAuthorization adds an org to one journey: it is listed, answers a ping and its Organization row, and reaches no other fake org (#578)', async () => {
+
+            orgConnections.addAuthorization({ username: 'admin@example.com.prod', aliases: ['prod'], orgId: '00D000000000PRDAAA', instanceUrl: 'https://example.my.salesforce.com', isSandbox: false });
+
+            expect((await journeySalesforceCoreModule.AuthInfo.listAllAuthorizations()).map(authorization => authorization.username)).toContain('admin@example.com.prod');
+            const productionOrg = await journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'prod' });
+            await expect(productionOrg.refreshAuth()).resolves.toBeUndefined();
+            expect((await (productionOrg.getConnection() as any).query('SELECT IsSandbox FROM Organization')).records[0]).toMatchObject({ Id: '00D000000000PRDAAA', IsSandbox: false });
+            expect(() => orgConnections.addAuthorization({ username: 'admin@example.com.prod', orgId: 'x', instanceUrl: 'y' })).toThrow('already has an authorization for admin@example.com.prod');
+            expect(new FakeOrgConnections().authorizations.map(authorization => authorization.username)).not.toContain('admin@example.com.prod');
 
         });
 
