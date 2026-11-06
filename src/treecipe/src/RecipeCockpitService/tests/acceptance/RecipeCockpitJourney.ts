@@ -11,7 +11,7 @@ import {
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
     RECIPE_COCKPIT_TREECIPE_PICKER_LABEL
 } from '../../RecipeCockpitService';
-import { runPanelScript } from '../RecipeCockpitPanelHarness';
+import { copyAsVsCodeDelivers, runPanelScript } from '../RecipeCockpitPanelHarness';
 import {
     SalesforceOrgService,
     LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
@@ -587,7 +587,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
                 // A NEW DOCUMENT IS A NEW RUN OF THE PANEL SCRIPT; THE OLD ONE IS GONE, AND WHAT WAS POSTED TO IT WITH IT
                 set html(nextShellHtml: string) { shellHtml = nextShellHtml; startPage(nextShellHtml); },
                 postMessage: (hostMessage: unknown) => {
-                    this.hostToPanelQueue.push(hostMessage);
+                    this.hostToPanelQueue.push(copyAsVsCodeDelivers(hostMessage));
                     this.logMessage('host → panel', hostMessage);
                     return Promise.resolve(true);
                 },

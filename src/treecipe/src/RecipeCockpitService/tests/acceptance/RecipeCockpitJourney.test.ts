@@ -11,6 +11,7 @@ import * as path from 'path';
 import { RecipeCockpitService, RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
 import { PicklistDependencyCheckService } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { JOURNEY_ORG_PICKER_NAME, RecipeCockpitJourney } from './RecipeCockpitJourney';
+import { copyAsVsCodeDelivers } from '../RecipeCockpitPanelHarness';
 
 /*
     The harness itself (#577): every action a journey can take, on the real cockpit, and what each
@@ -355,6 +356,23 @@ describe('RecipeCockpitJourney.open with overlays (#579)', () => {
     test('names an overlay that is not a fixture, and creates nothing', async () => {
 
         await expect(new RecipeCockpitJourney().open('treeWorkspace', { overlays: ['noSuchOverlay'] })).rejects.toThrow('No fixture workspace "noSuchOverlay" in ');
+
+    });
+
+});
+
+describe('copyAsVsCodeDelivers (#604)', () => {
+
+    test('delivers a message as VS Code does: a deep copy, so a change the sender makes after posting never reaches the receiver', () => {
+
+        const posted = { command: 'datasetAdded', dataset: { datasetFolderName: 'dataset-a', objects: ['Account'] } };
+        const delivered = copyAsVsCodeDelivers(posted);
+        posted.dataset.objects.push('Contact');
+        posted.dataset.datasetFolderName = 'changed';
+
+        expect(delivered).toEqual({ command: 'datasetAdded', dataset: { datasetFolderName: 'dataset-a', objects: ['Account'] } });
+        expect(delivered.dataset).not.toBe(posted.dataset);
+        expect(copyAsVsCodeDelivers(undefined)).toBeUndefined();
 
     });
 

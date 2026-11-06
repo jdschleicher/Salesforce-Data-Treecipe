@@ -32,12 +32,7 @@ export async function openDataSetsJourney(): Promise<RecipeCockpitJourney> {
         await generateAndInsert(journey);
         jest.setSystemTime(new Date('2026-10-20T10:01:00.000Z'));
         await generateAndInsert(journey);
-        /*
-            The list is then read from disk by closing and reopening the cockpit. Without it, the second
-            insert's row is sometimes missing from an open list, by the order its datasetAdded and
-            insertState messages arrive in -- a panel issue reported with #580, not one this journey pins.
-        */
-        await journey.reopen();
+        // THE TAB IS FIRST BUILT NOW, AFTER BOTH INSERTS: EACH ROW COMES FROM THE MODEL ITS datasetAdded GREW, WITH NO RELOAD (#604)
         await journey.openTab(DATA_SETS_TAB);
         await journey.waitFor('button', `Rename ${SECOND_DATA_SET}`, DATA_SETS_PANEL);
         await journey.waitFor('button', `Rename ${FIRST_DATA_SET}`, DATA_SETS_PANEL);
@@ -59,7 +54,46 @@ function insertJourneyRows(journey: RecipeCockpitJourney): string[][] {
         .filter(cells => cells.length > 0);
 }
 
-export const DATA_SETS_JOURNEYS: Array<{ name: string; run(journey: RecipeCockpitJourney): Promise<void> }> = [
+/*
+    #604: with the Data Sets tab already built, a second insert's row is drawn on it in place. The
+    harness once passed the host's own model to the panel instead of a copy, as VS Code never does; the
+    host's in-place add then made the panel find the data set already listed and draw no row.
+*/
+export async function openDataSetsTabBetweenInserts(): Promise<RecipeCockpitJourney> {
+    const journey = await openTreecipeTabJourney();
+    try {
+        await generateAndInsert(journey);
+        await journey.openTab(DATA_SETS_TAB);
+        await journey.waitFor('button', `Rename ${FIRST_DATA_SET}`, DATA_SETS_PANEL);
+        await journey.openTab('Treecipe');
+        jest.setSystemTime(new Date('2026-10-20T10:01:00.000Z'));
+        await generateAndInsert(journey);
+    } catch (setupError) {
+        await journey.close();
+        throw setupError;
+    }
+    return journey;
+}
+
+export const DATA_SETS_JOURNEYS: Array<{ name: string; open?: () => Promise<RecipeCockpitJourney>; run(journey: RecipeCockpitJourney): Promise<void> }> = [
+
+    {
+        name: 'a second insert\'s data set is drawn on a Data Sets tab already built, newest first, without a reload (#604)',
+        open: openDataSetsTabBetweenInserts,
+        run: async journey => {
+
+            const readyCountBefore = journey.messages.filter(entry => entry.command === 'ready' || entry.command === 'recipeData').length;
+            await journey.openTab(DATA_SETS_TAB);
+
+            await journey.step('both data sets are listed, newest first, and the cockpit drew no new model to list them', () => {
+                expectEqual(journey.screen().findAll('button', /^Rename dataset-/).map(renameButton => renameButton.name), [`Rename ${SECOND_DATA_SET}`, `Rename ${FIRST_DATA_SET}`], 'The rows');
+                journey.screen().get('text', '2 data sets');
+                expectEqual(journey.messages.filter(entry => entry.command === 'ready' || entry.command === 'recipeData').length, readyCountBefore, 'Panel reloads or new models while opening the tab');
+                expectEqual(journey.messages.filter(entry => entry.command === 'datasetAdded').length, 2, 'datasetAdded messages: one per insert');
+            });
+
+        }
+    },
 
     {
         name: 'rename a data set inline, and a name another data set already has is refused under the box',
@@ -130,8 +164,8 @@ export const DATA_SETS_JOURNEYS: Array<{ name: string; run(journey: RecipeCockpi
             jest.setSystemTime(new Date('2026-10-20T10:05:00.000Z'));
             const insertCountBefore = journey.org.calls.filter(orgCall => /\.insert$/.test(orgCall.call)).length;
             await journey.click('button', 'Insert…', DATA_SETS_PANEL);
-            // A REOPENED COCKPIT HAS NO ORG CHOSEN (A RELOAD CLEARS IT), SO Insert… ASKS FOR ONE; THE READER CHOOSES THE SAME SANDBOX
-            await journey.answerQuickPick('qa');
+            // THE ORG CHOSEN FOR THE TWO GENERATES IS STILL CHOSEN, SO Insert… ASKS FOR NONE
+            expectEqual(journey.prompts.filter(prompt => prompt.isWaiting), [], 'Prompts waiting');
 
             await journey.waitForConfirmation();
             await journey.step('the confirmation names the data set, the sandbox and the records, parents first', () => {

@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.192.12] - Tests: the panel harness copies every webview message as VS Code does, so the Data Sets journeys need no reopen (#604)
+
+No source file changes, and nothing a user sees changes. #604 turned out to be a harness artifact, not a cockpit bug.
+
+- **The cause:** the panel test harness handed each message over as the same object, where VS Code serializes it.
+  - The panel therefore held the host's own model. When the host added a new data set to its stored model in place (`postAddedDataset`), the panel's `addDatasetToTree` found it already listed and drew no row on an open Previously Used Data Sets tab.
+  - In VS Code the panel has its own copy, so the row is drawn.
+  - Shown by experiment: with the Data Sets tab built before a second insert, 5 of 5 runs failed with messages shared and 5 of 5 passed with them copied.
+- **The fix:**
+  - `copyAsVsCodeDelivers` in `RecipeCockpitPanelHarness.ts` JSON-copies every message as it is posted, host → panel and panel → host, as the harness already did for `setState`;
+  - the journey harness copies at post time too, so a host that changes its object after posting cannot reach the panel.
+  - Every cockpit, kit and Explorer suite passes with copying on (106 suites, 4,648 tests): none depended on shared objects.
+- **The Data Sets journeys drop their `reopen()` workaround.** Insert… now runs on the org still chosen, and asks for none.
+- **#604's journey:** with the Data Sets tab built after the first insert, the second insert's row is drawn on it, newest first. No `ready` or new model is posted, and there is one `datasetAdded` per insert. It fails if messages are shared again.
+- **Unchanged:** an insert that throws after writing its data set still reloads the list (`RecipeCockpitTreeInsert.test.ts`).
+
 ## [3.192.11] - Tests: Data Sets and Treecipe Adapter journeys, and rendered baselines of the Recipe Cockpit's key screens (#580)
 
 Slice D of epic #576, the last. No source file changes, and nothing a user sees changes. These must pass unchanged when #565 reshapes the panel's markup and moves its stylesheet, and when #566 moves the Data Sets and Adapter host code.
