@@ -121,6 +121,8 @@ export class RecipeCockpitScreen {
         if ( element.attributes['aria-expanded'] === 'true' ) { states.push('expanded'); }
         if ( element.attributes['aria-expanded'] === 'false' ) { states.push('collapsed'); }
         if ( element.attributes['aria-checked'] === 'true' || element.checked === true ) { states.push('checked'); }
+        // A TRI-STATE BOX (All fields, #578) READS MIXED TO A SCREEN READER WHEN SOME, NOT ALL, ARE TICKED
+        if ( element.attributes['aria-checked'] === 'mixed' ) { states.push('mixed'); }
         if ( element.disabled || element.attributes['aria-disabled'] === 'true' ) { states.push('disabled'); }
         return states;
     }

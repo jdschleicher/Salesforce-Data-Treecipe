@@ -88,12 +88,12 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
             await journey.click('button', 'Show or hide the fields of Account');
             await journey.click('checkbox', 'Region__c: Ticked — click to leave this field out');
 
-            await journey.step('All fields reads that some fields are left out, and RecordTypeId says why it cannot be unticked', () => {
+            await journey.step('All fields reads mixed, and RecordTypeId says why it cannot be unticked', () => {
                 const screen = journey.screen();
                 screen.get('checkbox', 'Region__c: Unticked — click to generate this field');
                 const allFieldsBox = screen.get('checkbox', /^All fields of Account: /);
-                expectEqual({ name: allFieldsBox.name, isChecked: allFieldsBox.states.includes('checked') },
-                    { name: 'All fields of Account: 22 of 23 fields ticked — click to tick every field', isChecked: false }, 'The All fields box');
+                expectEqual({ name: allFieldsBox.name, states: allFieldsBox.states },
+                    { name: 'All fields of Account: 22 of 23 fields ticked — click to tick every field', states: ['mixed'] }, 'The All fields box');
                 const recordTypeIdBox = screen.get('checkbox', /^RecordTypeId: /);
                 expectEqual({ name: recordTypeIdBox.name, states: recordTypeIdBox.states },
                     { name: 'RecordTypeId: Cannot be unticked: record-type sections depend on it', states: ['checked', 'disabled'] }, 'The RecordTypeId box');
