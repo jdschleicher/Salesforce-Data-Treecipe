@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { RecipeCockpitService, RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
+import { PicklistDependencyCheckService } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { JOURNEY_ORG_PICKER_NAME, RecipeCockpitJourney } from './RecipeCockpitJourney';
 
 /*
@@ -247,6 +248,96 @@ describe('RecipeCockpitJourney (#577)', () => {
             { kind: 'inputBox', title: undefined, prompt: 'Duration', placeholder: undefined, value: undefined, offeredLabels: [], isWaiting: false }
         ]);
         expect(journey.steps.slice(-2)).toEqual(['answer the input box with "qa-scratch"', 'dismiss the input box']);
+
+    });
+
+
+    test('a node\'s description is the shown text aria-describedby points at, as a screen reader reads it after the name, and is absent where there is none (#579)', async () => {
+
+        await journey.openTab('Troubleshooting');
+        await journey.click('tab', 'Fields');
+        const screen = journey.screen();
+        const deployCard = screen.get('button', 'Deploy fields & dependencies…');
+
+        expect(deployCard.description).toStartWith('Insert failed with INVALID_FIELD?');
+        expect(deployCard.description).not.toContain('Deploy fields & dependencies…');
+        expect(screen.get('tab', 'Fields')).not.toHaveProperty('description');
+        // lines() PRINTS ROLE, NAME, VALUE AND STATE ONLY, SO EVERY JOURNEY'S EXPECTED LINES ARE UNCHANGED BY IT
+        expect(screen.lines(screen.get('tabpanel', 'Fields')).some(screenLine => screenLine.includes('INVALID_FIELD'))).toBeFalse();
+
+    });
+
+    test('reopen closes the cockpit and opens it again through the command activate() registered, keeping what the window saved (#579)', async () => {
+
+        await journey.chooseTree('Lead-ONLY');
+        const readyCountBefore = journey.messages.filter(entry => entry.command === 'ready').length;
+
+        expect(journey.registeredCommands.has('treecipe.openRecipeCockpit')).toBeTrue();
+        await journey.reopen();
+
+        expect(journey.messages.filter(entry => entry.command === 'ready').length).toBe(readyCountBefore + 1);
+        expect(journey.shownTreeName()).toBe('Lead-ONLY');
+        expect(journey.steps).toContain('close the cockpit and open it again');
+
+    });
+
+    test('every sf call in a step goes to journey.cli: recorded as its argv and folder, answered as scripted, and an unscripted one reads as a CLI that could not start, naming the argv (#579)', async () => {
+
+        journey.cli.answer = argv => argv[0] === '--version' ? { stdout: '@salesforce/cli/2.0.0', exitCode: 0 } : undefined;
+
+        const [versionAnswer, unscriptedAnswer] = await journey.step('run the CLI twice', () => Promise.all([
+            PicklistDependencyCheckService.runSalesforceCli(['--version']),
+            PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, undefined, { workingDirectoryPath: journey.workspaceRoot })
+        ]));
+
+        expect(versionAnswer).toEqual({ stdout: '@salesforce/cli/2.0.0', stderr: '', exitCode: 0 });
+        expect(unscriptedAnswer.exitCode).toBeNull();
+        expect(unscriptedAnswer.spawnError).toMatchObject({ code: 'ENOENT', message: 'The journey\'s fake sf CLI has no answer for: sf org list --json. Script it on journey.cli.answer.' });
+        expect(journey.cli.calls).toEqual([{ argv: ['--version'] }, { argv: ['org', 'list', '--json'], workingDirectoryPath: journey.workspaceRoot }]);
+
+    });
+
+    test('answerQuickPickMany answers a multi-select with exactly the labels given, and refuses one it does not offer (#579)', async () => {
+
+        const items = [{ label: 'Account_Tree_Access' }, { label: 'SDT_Tree', picked: true }, { label: 'Other' }];
+        const firstPick = vscode.window.showQuickPick(items, { canPickMany: true, placeHolder: 'Choose sets' });
+        await journey.step('the multi-select is shown', () => undefined);
+
+        expect(journey.prompts).toEqual([{ kind: 'quickPick', placeholder: 'Choose sets', offeredLabels: ['Account_Tree_Access', 'SDT_Tree', 'Other'], isWaiting: true, canPickMany: true, pickedLabels: ['SDT_Tree'] }]);
+        await expect(journey.answerQuickPickMany(['Missing'])).rejects.toThrow('the multi-select offers no "Missing". It offers: "Account_Tree_Access", "SDT_Tree", "Other".');
+
+        await journey.answerQuickPickMany(['Account_Tree_Access', 'Other']);
+        expect(await firstPick).toEqual([items[0], items[2]]);
+
+        const singlePick = vscode.window.showQuickPick(['one', 'two']);
+        await journey.step('a single-choice quick pick is shown', () => undefined);
+        await expect(journey.answerQuickPickMany(['one'])).rejects.toThrow('No multi-select quick pick is open.');
+        await journey.answerQuickPick('two');
+        expect(await singlePick).toBe('two');
+
+    });
+
+});
+
+describe('RecipeCockpitJourney.open with overlays (#579)', () => {
+
+    test('copies each overlay over the fixture in order, into the journey\'s own copy', async () => {
+
+        const journey = await new RecipeCockpitJourney().open('treeWorkspace', { overlays: ['metadataDeployWorkspace', 'troubleshootingConfigOverlay'] });
+        try {
+            expect(fs.existsSync(path.join(journey.workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00'))).toBeTrue();
+            expect(fs.existsSync(path.join(journey.workspaceRoot, 'sfdx-project.json'))).toBeTrue();
+            expect(JSON.parse(fs.readFileSync(path.join(journey.workspaceRoot, 'treecipe', 'treecipe.config.json'), 'utf8')).salesforceObjectsPath).toBe('./force-app/main/default/objects');
+            expect(fs.existsSync(path.join(__dirname, '..', 'mocks', 'treeWorkspace', 'sfdx-project.json'))).toBeFalse();
+        } finally {
+            await journey.close();
+        }
+
+    });
+
+    test('names an overlay that is not a fixture, and creates nothing', async () => {
+
+        await expect(new RecipeCockpitJourney().open('treeWorkspace', { overlays: ['noSuchOverlay'] })).rejects.toThrow('No fixture workspace "noSuchOverlay" in ');
 
     });
 
