@@ -685,7 +685,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
     private async settle(): Promise<void> {
 
         let quietRounds = 0;
-        let lastDeliveryAt = Date.now();
+        let lastDeliveryAt = performance.now();
 
         for (;;) {
 
@@ -694,12 +694,12 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
             if ( isAnythingDelivered ) {
                 quietRounds = 0;
-                lastDeliveryAt = Date.now();
+                lastDeliveryAt = performance.now();
             } else if ( this.inFlightHostHandlerCount === 0 ) {
                 if ( ++quietRounds >= QUIET_ROUNDS_WHEN_IDLE ) { break; }
             } else if ( this.isWaitingOnReader() ) {
                 if ( ++quietRounds >= QUIET_ROUNDS_WHEN_WAITING_ON_READER ) { break; }
-            } else if ( Date.now() - lastDeliveryAt > this.settleStallLimitMs ) {
+            } else if ( performance.now() - lastDeliveryAt > this.settleStallLimitMs ) {
                 throw new Error(`the cockpit did not go idle: ${this.inFlightHostHandlerCount} host handler(s) were still running after ${this.settleStallLimitMs} ms with nothing delivered and nothing asked of the reader.`);
             }
 
@@ -728,6 +728,33 @@ export class RecipeCockpitJourney implements IJourneyHost {
         }
         screen.elementOf(node).dispatch('click');
         await this.settle();
+    }
+
+    /*
+        Some of what a reader waits for is drawn by host work that no panel message's handler awaits --
+        a tree's data sets reloaded after an insert (#580) -- so settle's quiet rounds can end before it
+        lands. waitFor settles until it is on screen, within the same stall limit, and says what was
+        there instead. Time is read from performance.now(), which a journey that fakes Date does not stop.
+    */
+    // isEnabled ALSO WAITS FOR IT TO BE USABLE: A TREE'S GENERATE BUTTON IS DISABLED WHILE ITS READINESS IS CHECKED AGAIN AFTER AN INSERT
+    async waitFor(role: string, name: string | RegExp, within?: IScreenRegion, waitOptions: { isEnabled?: boolean } = {}): Promise<void> {
+
+        await this.step(`wait for the ${role} "${name}"${within ? ` in the ${within.role} "${within.name}"` : ''}${waitOptions.isEnabled ? ' to be enabled' : ''}`, async () => {
+            const waitStartedAt = performance.now();
+            for (;;) {
+                const screen = this.screen();
+                const region = within ? screen.findAll(within.role, within.name)[0] : undefined;
+                const found = ( !within || region ) ? screen.findAll(role, name, region) : [];
+                if ( found.some(node => !waitOptions.isEnabled || !node.states.includes('disabled')) ) { return; }
+                if ( performance.now() - waitStartedAt > this.settleStallLimitMs ) {
+                    const node = screen.get(role, name, region);
+                    throw new Error(`the ${role} "${node.name}" stayed disabled for ${this.settleStallLimitMs} ms.`);
+                }
+                await new Promise(resolveWait => setTimeout(resolveWait, 10));
+                await this.settle();
+            }
+        });
+
     }
 
     private async chooseOptionIn(comboboxName: string, optionLabel: string): Promise<void> {

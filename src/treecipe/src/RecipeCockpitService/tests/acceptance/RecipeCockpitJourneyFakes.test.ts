@@ -372,17 +372,35 @@ describe('the journey fakes (#577)', () => {
 
         });
 
+        test('an update is recorded with its records and options, and answered per record by Id unless scripted (#580)', async () => {
+
+            const connection: any = (await journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' })).getConnection();
+
+            expect(await connection.sobject('Account').update([{ Id: '001A', Name: 'Acme' }, { Id: '001B', Name: 'Globex' }], { allOrNone: true, allowRecursive: false })).toEqual([
+                { success: true, id: '001A', errors: [] }, { success: true, id: '001B', errors: [] }
+            ]);
+            const rejection = { success: false, errors: [{ statusCode: 'ENTITY_IS_LOCKED', message: 'locked', fields: [] }] };
+            orgConnections.updateAnswer = (_username, objectApiName) => objectApiName === 'Contact' ? [rejection] : undefined;
+            expect(await connection.sobject('Contact').update([{ Id: '003A' }])).toEqual([rejection]);
+
+            expect(orgConnections.calls.filter(orgCall => orgCall.call.endsWith('.update'))).toEqual([
+                { username: 'qa@example.com.qa', call: 'connection.sobject(Account).update', args: [[{ Id: '001A', Name: 'Acme' }, { Id: '001B', Name: 'Globex' }], { allOrNone: true, allowRecursive: false }] },
+                { username: 'qa@example.com.qa', call: 'connection.sobject(Contact).update', args: [[{ Id: '003A' }], undefined] }
+            ]);
+
+        });
+
         test('a connection call the fake has no answer for throws, naming the call and the org', () => {
 
             const connectionPromise = journeySalesforceCoreModule.Org.create({ aliasOrUsername: 'qa' }).then(org => org.getConnection() as any);
 
             return connectionPromise.then(connection => {
                 expect(() => connection.describe()).toThrow('The journey\'s fake org has no answer for connection.describe on qa@example.com.qa: script it on journey.org.');
-                expect(() => connection.sobject('Account').update({ Name: 'Acme' })).toThrow('no answer for connection.sobject(Account).update on qa@example.com.qa');
+                expect(() => connection.sobject('Account').describe()).toThrow('no answer for connection.sobject(Account).describe on qa@example.com.qa');
                 expect(() => connection.metadata.deploy()).toThrow('no answer for connection.metadata.deploy');
                 expect(orgConnections.calls.slice(-3)).toEqual([
                     { username: 'qa@example.com.qa', call: 'connection.describe', args: [] },
-                    { username: 'qa@example.com.qa', call: 'connection.sobject(Account).update', args: [{ Name: 'Acme' }] },
+                    { username: 'qa@example.com.qa', call: 'connection.sobject(Account).describe', args: [] },
                     { username: 'qa@example.com.qa', call: 'connection.metadata.deploy', args: [] }
                 ]);
             });

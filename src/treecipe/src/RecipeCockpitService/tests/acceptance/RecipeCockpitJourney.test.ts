@@ -267,6 +267,19 @@ describe('RecipeCockpitJourney (#577)', () => {
 
     });
 
+    test('waitFor returns once what the reader expects is on screen, and fails within the stall limit naming what is missing or still disabled (#580)', async () => {
+
+        journey.settleStallLimitMs = 100;
+        await journey.waitFor('combobox', 'Treecipe');
+        await journey.chooseTree('Lead-ONLY');
+        await journey.openTab('Query');
+
+        await expect(journey.waitFor('button', 'No such button')).rejects.toThrow('Step "wait for the button "No such button"" failed: No button named "No such button" is on screen.');
+        await expect(journey.waitFor('button', 'Export JSON', undefined, { isEnabled: true })).rejects.toThrow('the button "Export JSON" stayed disabled for 100 ms.');
+        await journey.waitFor('button', 'Export JSON');
+
+    });
+
     test('reopen closes the cockpit and opens it again through the command activate() registered, keeping what the window saved (#579)', async () => {
 
         await journey.chooseTree('Lead-ONLY');

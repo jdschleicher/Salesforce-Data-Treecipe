@@ -62,6 +62,7 @@ export async function openTreecipeTabJourney(): Promise<RecipeCockpitJourney> {
         return fieldNames && {
             name: objectApiName,
             createable: true,
+            updateable: true,
             fields: fieldNames.map(fieldName => ({ name: fieldName, type: 'string', createable: true, updateable: true, nillable: true }))
         };
     };
@@ -100,6 +101,8 @@ export const INSERT_ORG_LABEL = 'qa';
 // THE GENERATE BUTTON, THE ORG, THE CONFIRMATION AND ALL-OR-NONE, AS A READER ANSWERS THEM; THE DATA SET FOLDER IT WROTE
 export async function generateAndInsert(journey: RecipeCockpitJourney, allOrNoneLabel = 'AllOrNone: TRUE'): Promise<string> {
     const fileChangeCountBefore = journey.fileChanges.length;
+    // AFTER AN INSERT THE CARD CHECKS ITS TREE AGAINST THE ORG AGAIN, AND THE BUTTON WAITS FOR THAT, AS A READER DOES
+    await journey.waitFor('button', GENERATE_AND_INSERT_BUTTON_NAME, undefined, { isEnabled: true });
     await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
     if ( journey.prompts.some(prompt => prompt.isWaiting && prompt.kind === 'quickPick' && prompt.offeredLabels.includes(INSERT_ORG_LABEL)) ) {
         await journey.answerQuickPick(INSERT_ORG_LABEL);
