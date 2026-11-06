@@ -121,8 +121,11 @@ export const QUERY_JOURNEYS: IQueryJourney[] = [
             await journey.type(BASE_QUERY_BOX, 'SELECT Id FROM Account WHERE Region__c = \'EMEA; APAC\'');
             await journey.click('button', 'Run in qa', BASE_QUERY_GROUP);
 
-            await journey.step('the quoted ";" is sent as one query', () => {
+            await journey.step('the quoted ";" is sent as one query, with no second warning, and its answer is drawn', () => {
                 expectEqual(queriesSent(journey), ['SELECT Id FROM Account WHERE Region__c = \'EMEA; APAC\''], 'The queries sent');
+                expectEqual(journey.notifications.filter(notification => notification.kind === 'warning').length, 1, 'Warnings shown');
+                const screen = journey.screen();
+                screen.get('text', '0 records from qa · qa@example.com.qa', screen.get(BASE_QUERY_GROUP.role, BASE_QUERY_GROUP.name));
             });
 
         }

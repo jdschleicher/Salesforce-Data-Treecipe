@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { CONNECTED_ORG_USERNAMES, FAILED_PING_MESSAGES_BY_USERNAME } from '../../../SalesforceOrgService/tests/OrgConnectionPings';
+import type { ISalesforceCliInvocationResult } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 
 /*
     The two modules a journey fakes (#577): vscode, and @salesforce/core. Every function here is a plain
@@ -476,7 +477,7 @@ export class FakeSalesforceCli {
     readonly calls: IRecordedCliCall[] = [];
     answer: (argv: string[]) => IFakeCliAnswer | undefined = () => undefined;
 
-    async run(argv: string[], projectOptions?: { workingDirectoryPath?: string }) {
+    async run(argv: string[], projectOptions?: { workingDirectoryPath?: string }): Promise<ISalesforceCliInvocationResult> {
         this.calls.push({ argv: [...argv], ...( projectOptions?.workingDirectoryPath ? { workingDirectoryPath: projectOptions.workingDirectoryPath } : {} ) });
         const scriptedAnswer = this.answer(argv);
         if ( !scriptedAnswer ) {

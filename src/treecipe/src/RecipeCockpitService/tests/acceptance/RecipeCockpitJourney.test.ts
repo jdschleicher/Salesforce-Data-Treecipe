@@ -252,6 +252,21 @@ describe('RecipeCockpitJourney (#577)', () => {
     });
 
 
+    test('a node\'s description is the shown text aria-describedby points at, as a screen reader reads it after the name, and is absent where there is none (#579)', async () => {
+
+        await journey.openTab('Troubleshooting');
+        await journey.click('tab', 'Fields');
+        const screen = journey.screen();
+        const deployCard = screen.get('button', 'Deploy fields & dependencies…');
+
+        expect(deployCard.description).toStartWith('Insert failed with INVALID_FIELD?');
+        expect(deployCard.description).not.toContain('Deploy fields & dependencies…');
+        expect(screen.get('tab', 'Fields')).not.toHaveProperty('description');
+        // lines() PRINTS ROLE, NAME, VALUE AND STATE ONLY, SO EVERY JOURNEY'S EXPECTED LINES ARE UNCHANGED BY IT
+        expect(screen.lines(screen.get('tabpanel', 'Fields')).some(screenLine => screenLine.includes('INVALID_FIELD'))).toBeFalse();
+
+    });
+
     test('reopen closes the cockpit and opens it again through the command activate() registered, keeping what the window saved (#579)', async () => {
 
         await journey.chooseTree('Lead-ONLY');

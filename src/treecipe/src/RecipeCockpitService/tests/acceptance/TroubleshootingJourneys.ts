@@ -52,6 +52,14 @@ async function startFieldDeploy(journey: RecipeCockpitJourney): Promise<void> {
 
     await chooseOrg(journey, SANDBOX_ORG_LABEL);
     await openTroubleshootingSubTab(journey, 'Fields');
+
+    // THE CARD'S COUNT LINE IS ITS BUTTON'S DESCRIPTION, AS A SCREEN READER READS IT AFTER THE NAME
+    await journey.step('the Fields card counts what Deploy fields sends before anything is asked', () => {
+        const deployCard = journey.screen().get('button', 'Deploy fields & dependencies…');
+        expectEqual((deployCard.description ?? '').endsWith(' 6 CustomField and 1 CustomObject; 5 standard fields never deployed; 2 custom fields with no readable source file.'), true,
+            `The Deploy fields card's count line, at the end of its description: ${JSON.stringify(deployCard.description)}`);
+    });
+
     await journey.click('button', 'Deploy fields & dependencies…');
     await journey.click('button', /^Components 7/);
 
@@ -247,9 +255,10 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
                 }], 'The assignment requests');
             });
 
-            await journey.step('the notification gives each set its own outcome', () => {
-                const notificationTexts = journey.notifications.map(notification => notification.text).join(' | ');
-                expectEqual(['SDT_Account_thru_OtherChildObject_c', 'Account_Tree_Access', 'You do not have access to assign this permission set.'].every(part => notificationTexts.includes(part)), true, `The notification: ${notificationTexts}`);
+            await journey.step('one notification gives each set its own outcome: the refused one with its reason, then the one assigned', () => {
+                expectEqual(journey.notifications.map(notification => notification.text), [
+                    `Account_Tree_Access could not be assigned to ${SANDBOX_USERNAME} in ${SANDBOX_ORG_LABEL} · ${SANDBOX_USERNAME}: You do not have access to assign this permission set. Assigned: SDT_Account_thru_OtherChildObject_c.`
+                ], 'The notifications');
             });
 
         }

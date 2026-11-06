@@ -2,6 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RecipeCockpitJourney } from './RecipeCockpitJourney';
 import { IFakeCliAnswer } from './RecipeCockpitJourneyFakes';
+import { expectEqual, fileChangesSince } from './TreecipeTabWorkspace';
+
+export { expectEqual, fileChangesSince };
 
 /*
     The workspace #579's Troubleshooting journeys open, and what the org and the sf CLI answer there.
@@ -90,12 +93,6 @@ export async function openTroubleshootingSubTab(journey: RecipeCockpitJourney, s
     await journey.click('tab', subTabName);
 }
 
-export function expectEqual(actual: unknown, expected: unknown, what: string) {
-    if ( JSON.stringify(actual) !== JSON.stringify(expected) ) {
-        throw new Error(`${what}: expected ${JSON.stringify(expected)}, but got ${JSON.stringify(actual)}.`);
-    }
-}
-
 export function confirmationLines(journey: RecipeCockpitJourney): string[] {
     const screen = journey.screen();
     const confirmations = [...screen.findAll('dialog'), ...screen.findAll('alertdialog')];
@@ -103,11 +100,6 @@ export function confirmationLines(journey: RecipeCockpitJourney): string[] {
         throw new Error(`expected one confirmation on screen, but ${confirmations.length} are.`);
     }
     return screen.lines(confirmations[0]);
-}
-
-// THE FILES A STEP WROTE OR REMOVED, AS "written <path>" / "removed <path>"
-export function fileChangesSince(journey: RecipeCockpitJourney, fileChangeCountBefore: number): string[] {
-    return journey.fileChanges.slice(fileChangeCountBefore).map(fileChange => `${fileChange.change} ${fileChange.relativePath}`);
 }
 
 // A RUN FILE'S NAME CARRIES THE CLOCK (yyyyMMdd-HHmmss-…), SO IT IS FOUND AMONG THE FILES WRITTEN, NOT NAMED

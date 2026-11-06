@@ -5,10 +5,10 @@
 Slice C of epic #576. No source file changes, and nothing a user sees changes. These journeys must pass unchanged when #566 moves the Troubleshooting and Query host code and #574 moves the CLI gate.
 
 - **Nine Troubleshooting journeys** (`TroubleshootingJourneys.ts`), each on a cockpit of its own:
-  - **Deploy fields… through the CLI:** the confirmation counts and lists the 7 components, the `package.xml` under `RunArtifacts/OrgOperations/<username>/` names them, the CLI is run once as `project deploy start --json --target-org … --manifest <that file>` in the workspace, one notification with **View output** opens the output, and a History row reads Succeeded;
+  - **Deploy fields… through the CLI:** the Fields card counts `6 CustomField and 1 CustomObject` before anything is asked, the confirmation counts and lists the 7 components, the `package.xml` under `RunArtifacts/OrgOperations/<username>/` names them, the CLI is run once as `project deploy start --json --target-org … --manifest <that file>` in the workspace, one notification with **View output** opens the output, and a History row reads Succeeded;
   - **Deploy fields… with `metadataDeployMethod: jsforce`:** one zip holding `package.xml` and the objects goes through `metadata.deploy`, its status is read once by Id, no CLI runs, and the same notification and History row follow;
   - **Retrieve validation rules…:** the org is listed through `metadata.list`, the confirmation says one local file is overwritten, the CLI retrieves by `--manifest`, and the list is redrawn from the files with the new rule;
-  - **Assign permission sets to me…:** a multi-select of the project's sets, one `PermissionSetAssignment` request carrying both rows, and each set's own outcome in the notification;
+  - **Assign permission sets to me…:** a multi-select of the project's sets, one `PermissionSetAssignment` request carrying both rows, and one notification naming the refused set with its reason, then the one assigned;
   - **Generate permission set…:** the tree's `SDT_` file under `SDT_Treecipe/` is rewritten with create and read on its objects, and **Copy deploy command** copies `sf project deploy start --metadata PermissionSet:…`;
   - **TODO's:** Remove takes line 42 out of the recipe, and Restore puts the file back byte for byte;
   - **unhappy paths:** a deploy to a production org is refused before any process with a warning; a retrieve with no org chosen asks once, and dismissing it runs nothing; a CLI answer with a failed component gives a warning naming it and a History row marked Failed.
@@ -16,7 +16,8 @@ Slice C of epic #576. No source file changes, and nothing a user sees changes. T
 - **The harness gained**, each tested on its own:
   - `journey.cli`, the fake Salesforce CLI every `sf` call in a step goes to;
   - the fake org's `callAnswer` for the Metadata API and `requestGet`, and `sobject(x).create` beside `insert`;
-  - `open(fixture, { overlays })`, `reopen()` and `answerQuickPickMany(labels)`.
+  - `open(fixture, { overlays })`, `reopen()` and `answerQuickPickMany(labels)`;
+  - a screen node's `description`, the shown text its `aria-describedby` points at, as a screen reader reads it after the name (an action card's count line). `lines()` does not print it.
 - **`troubleshootingConfigOverlay/`** holds only the `treecipe.config.json` the Validation Rules sub-tab needs, copied over `treeWorkspace` and `metadataDeployWorkspace`.
 
 ## [3.192.8] - Tests: Treecipe tab and generate-and-insert journeys drive the Recipe Cockpit end to end (#578)

@@ -26,6 +26,8 @@ export interface IScreenNode {
     name: string;
     // A COMBOBOX'S SHOWN OPTION, A TEXTBOX'S TEXT
     value?: string;
+    // WHAT A SCREEN READER READS AFTER THE NAME: THE SHOWN TEXT aria-describedby POINTS AT (#579, AN ACTION CARD'S COUNT LINE). SET ONLY WHEN THERE IS SOME
+    description?: string;
     states: string[];
     children: IScreenNode[];
 }
@@ -154,6 +156,12 @@ export class RecipeCockpitScreen {
             node.value = shownOption ? this.shownTextOf(shownOption) : '';
         }
         if ( role === 'textbox' || role === 'searchbox' ) { node.value = String(element.value); }
+        if ( element.attributes['aria-describedby'] ) {
+            const description = this.referencedElements(element.attributes['aria-describedby'])
+                .filter(describingElement => this.isShown(describingElement))
+                .map(describingElement => this.shownTextOf(describingElement)).filter(describingText => !!describingText).join(' ').trim();
+            if ( description ) { node.description = description; }
+        }
 
         this.elementByNode.set(node, element);
         return [node];

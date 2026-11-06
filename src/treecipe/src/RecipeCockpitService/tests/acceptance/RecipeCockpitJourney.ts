@@ -176,11 +176,8 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     /*
         Copies the fixture to a temp folder of its own, so a write in one journey never reaches another,
-        and opens the cockpit on the copy.
-    */
-    /*
-        overlays are copied over the fixture in order, as the cockpit's unit suites copy
-        metadataDeployWorkspace over treeWorkspace (#579): a workspace no single fixture holds.
+        and opens the cockpit on the copy. overlays are copied over it in order, as the cockpit's unit
+        suites copy metadataDeployWorkspace over treeWorkspace (#579): a workspace no single fixture holds.
     */
     async open(fixtureName: string, openOptions: { overlays?: string[] } = {}): Promise<this> {
 
@@ -291,7 +288,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
         if ( this.homePath ) { jest.spyOn(os, 'homedir').mockReturnValue(this.homePath); }
         // NO sf PROCESS EVER STARTS IN A JOURNEY: EVERY CALL GOES TO journey.cli, RE-SPIED FOR THE SAME REASON
         jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli')
-            .mockImplementation((cliArguments, _registerCancellation, _timeoutMilliseconds, projectOptions) => this.cli.run(cliArguments, projectOptions) as ReturnType<typeof PicklistDependencyCheckService.runSalesforceCli>);
+            .mockImplementation((cliArguments, _registerCancellation, _timeoutMilliseconds, projectOptions) => this.cli.run(cliArguments, projectOptions));
 
         try {
             return await stepAction();
