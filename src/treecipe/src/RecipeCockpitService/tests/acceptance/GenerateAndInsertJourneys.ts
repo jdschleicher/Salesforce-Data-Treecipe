@@ -2,13 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL } from '../../RecipeCockpitService';
 import { RecipeCockpitJourney } from './RecipeCockpitJourney';
-import { INSERT_ORG_LABEL, insertsSent } from './TreecipeTabJourneys';
-import { GENERATE_AND_INSERT_BUTTON_NAME, TREE_NAME, expectEqual, writtenDatasetFolder } from './TreecipeTabWorkspace';
+import { GENERATE_AND_INSERT_BUTTON_NAME, INSERT_ORG_LABEL, TREE_NAME, expectEqual, insertsSent, writtenDatasetFolder } from './TreecipeTabWorkspace';
 
 /*
     Generate fake data and insert (#578): the happy path into a sandbox, and the four ways it must stop
     short -- a production org, no org chosen, Cancel in the confirmation, and a record Salesforce rejects
-    when all-or-none is off. Each on its own copy of treecipeTabWorkspace.
+    when all-or-none is off. Each on its own copy of treecipeTabWorkspace. The forged insertTree into
+    production has two controls (#599): the same message into qa does open the confirmation, and one
+    naming a tree no card shows is refused into qa too, so the sandbox-only rule is what stops it.
 */
 
 const CONFIRMATION_TITLE = `Generate ${TREE_NAME} and insert it into qa (qa@example.com.qa)?`;
@@ -186,6 +187,53 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
                 const screen = journey.screen();
                 expectEqual(screen.get('tab', RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL).states, ['selected'], 'The Troubleshooting tab');
                 expectEqual(screen.get('tab', /^Validation Rules/).states, ['selected'], 'The Validation Rules sub-tab');
+            });
+
+        }
+    },
+
+    {
+        name: 'a forged insertTree into qa, the production journey\'s positive control: it opens the confirmation, and Cancel generates, writes and sends nothing',
+        run: async journey => {
+
+            await journey.click('button', 'Choose org…');
+            await journey.pickOrg(INSERT_ORG_LABEL);
+            const fileChangeCountBefore = journey.fileChanges.length;
+            await journey.forgePanelMessage({ command: 'insertTree', treeKey: TREE_NAME });
+
+            await journey.step('the forged insertTree opens the insert confirmation, and nothing is sent yet', () => {
+                journey.screen().get('alertdialog', CONFIRMATION_TITLE);
+                expectEqual(insertCallCount(journey), 0, 'Inserts sent before the confirmation is answered');
+            });
+
+            await journey.answerConfirmation('Cancel');
+
+            await journey.step('nothing is generated, written or sent after Cancel', () => {
+                expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'commands.executeCommand').map(hostCall => hostCall.args[0]), [], 'Commands run');
+                expectEqual(insertCallCount(journey), 0, 'Inserts sent');
+                expectEqual(journey.fileChanges.slice(fileChangeCountBefore), [], 'Files written');
+                expectEqual(journey.screen().findAll('alertdialog').length, 0, 'Confirmations on screen');
+            });
+
+        }
+    },
+
+    {
+        name: 'a forged insertTree naming a tree no card shows, into qa: it asks nothing and sends nothing',
+        run: async journey => {
+
+            await journey.click('button', 'Choose org…');
+            await journey.pickOrg(INSERT_ORG_LABEL);
+            const orgCallCountBefore = journey.org.calls.length;
+            const fileChangeCountBefore = journey.fileChanges.length;
+            await journey.forgePanelMessage({ command: 'insertTree', treeKey: 'No-Such-Tree' });
+
+            await journey.step('the forged insertTree for an unknown tree asks nothing and sends nothing', () => {
+                expectEqual(journey.org.calls.slice(orgCallCountBefore).map(orgCall => orgCall.call), [], 'Calls on an org after the forged message');
+                expectEqual(journey.screen().findAll('alertdialog').length, 0, 'Confirmations on screen');
+                expectEqual(journey.prompts, [], 'Quick picks and input boxes');
+                expectEqual(journey.notifications, [], 'Notifications');
+                expectEqual(journey.fileChanges.slice(fileChangeCountBefore), [], 'Files written');
             });
 
         }

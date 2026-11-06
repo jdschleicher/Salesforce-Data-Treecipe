@@ -94,3 +94,29 @@ export function writtenDatasetFolder(journey: RecipeCockpitJourney, fileChangeCo
     }
     return datasetFolders[0];
 }
+
+export const INSERT_ORG_LABEL = 'qa';
+
+// THE GENERATE BUTTON, THE ORG, THE CONFIRMATION AND ALL-OR-NONE, AS A READER ANSWERS THEM; THE DATA SET FOLDER IT WROTE
+export async function generateAndInsert(journey: RecipeCockpitJourney, allOrNoneLabel = 'AllOrNone: TRUE'): Promise<string> {
+    const fileChangeCountBefore = journey.fileChanges.length;
+    await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+    if ( journey.prompts.some(prompt => prompt.isWaiting && prompt.kind === 'quickPick' && prompt.offeredLabels.includes(INSERT_ORG_LABEL)) ) {
+        await journey.answerQuickPick(INSERT_ORG_LABEL);
+    }
+    await journey.answerConfirmation('Generate and insert');
+    await journey.answerQuickPick(allOrNoneLabel);
+    return writtenDatasetFolder(journey, fileChangeCountBefore);
+}
+
+export function filteredRecipeOf(journey: RecipeCockpitJourney, datasetFolder: string): string {
+    return readWorkspaceFile(journey, `${datasetFolder}/BaseArtifactFiles/filteredRecipe-${RECIPE_RELATIVE_PATH.split('/').pop()}`);
+}
+
+// EACH insert THE ORG WAS SENT, IN ORDER: ITS OBJECT AND THE RECORDS IT CARRIED
+export function insertsSent(journey: RecipeCockpitJourney): Array<{ objectApiName: string; records: Array<Record<string, unknown>> }> {
+    return journey.org.calls
+        .map(orgCall => ({ match: /^connection\.sobject\((.+)\)\.insert$/.exec(orgCall.call), orgCall }))
+        .filter(entry => entry.match)
+        .map(entry => ({ objectApiName: entry.match![1], records: entry.orgCall.args[0] as Array<Record<string, unknown>> }));
+}
