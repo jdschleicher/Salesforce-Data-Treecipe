@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Legacy_Inactive</fullName>
+    <active>false</active>
+    <errorConditionFormula>ISBLANK(Legacy_Code__c)</errorConditionFormula>
+    <errorDisplayField>Legacy_Code__c</errorDisplayField>
+    <errorMessage>Legacy_Inactive failed</errorMessage>
+</ValidationRule>

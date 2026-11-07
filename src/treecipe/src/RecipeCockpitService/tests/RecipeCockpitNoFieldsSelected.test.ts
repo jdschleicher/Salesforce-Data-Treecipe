@@ -316,6 +316,8 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             expect(panel.isHidden(messageOf(panel, 'Contact'))).toBeFalse();
             expect(detailsOf(panel, 'Contact').length).toBeGreaterThan(0);
             expect(detailsOf(panel, 'Contact').every((element: any) => element.classList.contains('noFieldsSelectedHidden'))).toBeTrue();
+            // #612's "Get latest object detail" button is a header detail too, so it hides with the rest
+            expect(detailsOf(panel, 'Contact').some((element: any) => element.classList.contains('treeObjectRefresh'))).toBeTrue();
             expect(panel.findAll(headerOf(panel, 'Contact'), 'treeObjectToggle')[0].disabled).toBeFalsy();
 
             expect(contactInclude.disabled).toBeTrue();

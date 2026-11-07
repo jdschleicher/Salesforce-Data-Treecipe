@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.193.1] - Tests: the Recipe Cockpit's key screens compared as screenshots in real Chromium, so a CSS-only change is caught (#602)
+## [3.194.1] - Tests: the Recipe Cockpit's key screens compared as screenshots in real Chromium, so a CSS-only change is caught (#602)
 
 No source file changes, and nothing in the `.vsix` changes. #580's text baselines catch a control that moves, disappears or changes state; they cannot catch a change only CSS makes, such as a rule that hides a control, a colour, or the stylesheet moving into a `.css` file (#565 slice 4).
 
@@ -15,8 +15,33 @@ No source file changes, and nothing in the `.vsix` changes. #580's text baseline
   - `workflowFiles.test.js` checks the CI step's path filter, its `REQUIRE_COCKPIT_SCREENSHOTS` and the upload.
 - `captureRecipeCockpitScreenshots.js` now exports its page setup (`openShellDocument`) and runs only when called directly; the guide's pictures come out byte for byte as before. `jest.config.js` leaves `developmentSupportScripts/` out of coverage, since a test now loads it but it is a tool, not extension code.
 - Design note: `RecipeCockpitService/DESIGN.md`, Acceptance journeys.
-- **Merged `main` (3.192.17 and 3.193.0); this entry is now 3.193.1.** `help-section.png` is re-taken with `UPDATE_COCKPIT_SCREENSHOTS=1`, because #611 added a line to the ? help: the screen is 45 pixels taller, and no other screenshot changes. The merge also removes the #589 flow guard (`.claude/settings.json`, `.claude/hooks/`), as main did in 3.192.17.
+- **Merged `main` (3.192.17, 3.193.0 and 3.194.0); this entry is now 3.194.1.** `help-section.png` is re-taken with `UPDATE_COCKPIT_SCREENSHOTS=1`, because #611 added a line to the ? help: the screen is 45 pixels taller, and no other screenshot changes. The merge also removes the #589 flow guard (`.claude/settings.json`, `.claude/hooks/`), as main did in 3.192.17.
 - **The font check's test no longer needs a Chromium:** it points `CHROMIUM_EXECUTABLE_PATH` at a file that exists, because the Chromium check runs first and CI's main test step has none. It failed there on the branch before the merge as well.
+
+## [3.194.0] - Recipe Cockpit: "Get latest object detail from target org" on each object row (#612)
+
+To pick up one object's org changes you had to open the Treecipe Adapter (a whole subtree, fields only) or run a Troubleshooting retrieve for the whole tree, which writes straight into the project. Then you worked out the recipe lines yourself. Each Treecipe tab object row now ends with **Get latest object detail from target org**.
+
+- **Step 1:** the org, through the cockpit's own org picker (any org: nothing is written to it), and what to compare: **Fields**, **Validation rules**, **Record types**, **Global value sets**. **Next** is disabled with none ticked.
+- **Step 2:** one retrieve of the object (and the global value sets its fields use) into a new `RunArtifacts/OrgOperations/<username>/<time>-object-refresh` staging folder, never the project, with **Cancel**. The CLI and the jsforce retrieve both stop on it.
+- **Step 3:** one folded group per kind, titled with what is new and changed (or **Up to date**). Opened, a table of its items: name, new or changed, type, what changed (`length: 50 → 255`, `Rating__c: +Cold`, `values: +North`) and what the recipe gets. **Select all**, **Select none**, then **Apply**.
+- **Apply** asks once in the panel, then plans again and refuses if anything ticked would now write something the review did not show. It copies the ticked files into the project, then writes only their recipe lines; every other line stays byte-identical.
+  - An item whose file cannot be copied writes no recipe line, and the notification names it.
+  - A field gets the value the recipe's own backend writes for it, faker-js or snowfakery, as Generate Treecipe writes it. A changed field's line is rewritten; a new one is added.
+  - A field's line carries every active validation rule the org holds on it, unless the field's rule checkbox is off, so a rewritten line never drops a constraint.
+  - A validation rule rewrites its field's line only when the recipe has one; otherwise its row says to tick the field, so a rule never adds a field the project lacks.
+  - A global value set rewrites each of the object's picklist lines that uses it, its values through the backend's escaper.
+  - A pinned field, a formula, a lookup, a dependent picklist, and every field of an object with record type sections keep their lines; the row says why. A record type copies its file only, and the notification points at **Regenerate with record types**.
+  - Nothing the project holds and the org does not is listed or deleted.
+- **Cancel** at any step changes nothing; the staging folder and the package.xml it wrote are removed, as they are when the panel is closed before an Apply. An Apply keeps them.
+- Each staged validation rule is read and analysed once per comparison, not once per rule.
+- While it applies, the Troubleshooting deploys and retrieves, the Adapter's Apply, Generate Treecipe and a record type regenerate wait, and it waits for them.
+- **Code:** `RecipeCockpitObjectRefresh.ts` (no vscode) compares and plans; `RecipeCockpitObjectRefreshDialog.ts` holds the panel half. `RecipeCockpitOrgChangeDetection.copyMetadataFiles` copies any metadata file the way `copyFieldFiles` did, and `buildStagingFolderPath` takes an operation name.
+- **Tests:** `RecipeCockpitObjectRefresh.test.ts` (each kind new, changed, unchanged and unreadable, each rule that keeps a line, both backends, a byte-for-byte recipe check, and the hostile picklist values through each escaper), `RecipeCockpitObjectRefreshPanel.test.ts` (router, the host against a faked CLI, Cancel, the lock, the dialog in the panel harness) and the `ObjectRefreshJourneys` acceptance journey. The rendered baselines gain the row button and the help line.
+- The **?** help and `docs/RECIPE-COCKPIT-GUIDE.md` describe it; three guide screenshots are re-taken.
+- Design note: `RecipeCockpitService/DESIGN.md`, under The Treecipe tab.
+- **Merged `main` (3.192.17 and 3.193.0); this entry is now 3.194.0.** The "Get latest object detail from target org" button is added before #611 captures an object row's header details, so it follows #611's rule: an object with no fields ticked hides it with the rest of the header and shows `no fields selected` in red. `RecipeCockpitObjectRefreshPanel.test.ts` now finds the button as the row's last visible element, and `RecipeCockpitNoFieldsSelected.test.ts` checks the button hides with the header. The merge also removes the #589 flow guard (`.claude/settings.json`, `.claude/hooks/`), as main did in 3.192.17.
+
 
 ## [3.193.0] - Recipe Cockpit: an object with no fields ticked generates no records, and its row says so in red (#611)
 

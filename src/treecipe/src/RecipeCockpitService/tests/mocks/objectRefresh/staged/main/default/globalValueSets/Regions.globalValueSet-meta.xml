@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>East</fullName>
+        <default>false</default>
+        <label>East</label>
+    </customValue>
+    <customValue>
+        <fullName>West</fullName>
+        <default>false</default>
+        <label>West</label>
+    </customValue>
+    <customValue>
+        <fullName>North</fullName>
+        <default>false</default>
+        <label>North</label>
+    </customValue>
+    <customValue>
+        <fullName>Old</fullName>
+        <default>false</default>
+        <isActive>false</isActive>
+        <label>Old</label>
+    </customValue>
+    <masterLabel>Regions</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>

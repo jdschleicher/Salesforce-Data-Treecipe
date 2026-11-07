@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Business</fullName>
+    <active>true</active>
+    <label>Business</label>
+    <picklistValues>
+        <picklist>Rating__c</picklist>
+        <values>
+            <fullName>Hot</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Warm</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Cold</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>

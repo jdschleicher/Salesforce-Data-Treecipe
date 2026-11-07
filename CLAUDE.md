@@ -165,6 +165,8 @@ src/
     │   ├── RecipeCockpitMetadataDeployPackage.ts # Deploys without the CLI (#505): Metadata API zip and jsforce deploy; no vscode
     │   ├── RecipeCockpitTreeUpdaterQuery.ts  # Treecipe Adapter load (#416, #444): the plan and one SELECT per object; no vscode
     │   ├── RecipeCockpitOrgChangeDetection.ts # Treecipe Adapter's Retrieve latest metadata (#445, #447): staging folder and field comparison
+    │   ├── RecipeCockpitObjectRefresh.ts     # Get latest object detail from target org (#612): one object compared kind by kind, ticked items applied; no vscode
+    │   ├── RecipeCockpitObjectRefreshDialog.ts # Its row button and host-driven dialog (#612), interpolated into the shell
     │   ├── RecipeCockpitAdaptedDataset.ts    # What a landed Adapter update leaves (#448): adapted data set and recipe; no vscode
     │   ├── RecipeCockpitRunArtifacts.ts      # Where a tree's run files live (#470): RunArtifacts folders and writers
     │   ├── RecipeCockpitDatasetJourney.ts    # A data set row's insert journey (#471)
