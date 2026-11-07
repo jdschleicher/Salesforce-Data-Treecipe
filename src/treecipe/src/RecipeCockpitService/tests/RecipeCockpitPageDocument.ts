@@ -43,10 +43,11 @@ export class RecipeCockpitPageDocument {
         let documentHtml = shellHtml.substring(0, scriptStart) + shellHtml.substring(scriptEnd + '</script>'.length);
 
         for ( const [rootId, rootElement] of Object.entries(rootsById) ) {
-            const rootMarkup = new RegExp(`<div id="${rootId}"[^>]*>[^<]*</div>`, 'g');
+            // ONLY id AND class ARE ALLOWED ON A ROOT: ANY OTHER ATTRIBUTE THE SHELL GAVE IT WOULD BE LOST IN THE REPLACEMENT
+            const rootMarkup = new RegExp(`<div id="${rootId}"(?: class="[^"]*")?>[^<]*</div>`, 'g');
             const matchCount = (documentHtml.match(rootMarkup) ?? []).length;
             if ( matchCount !== 1 ) {
-                throw new Error(`The panel document has ${matchCount} <div id="${rootId}"> holding only text, where it should have one: update RecipeCockpitPageDocument for the shell's new markup.`);
+                throw new Error(`The panel document has ${matchCount} <div id="${rootId}"> with only an id and a class and holding only text, where it should have one: update RecipeCockpitPageDocument for the shell's new markup.`);
             }
             documentHtml = documentHtml.replace(rootMarkup, () => this.serializeElement(rootElement, { id: rootId }));
         }

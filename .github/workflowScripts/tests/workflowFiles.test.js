@@ -29,7 +29,7 @@ describe('every GitHub Actions workflow file', () => {
 
         expect(stepNamed('Install dependencies').run).toBe('npm ci --ignore-scripts');
         const pathFilter = stepNamed('Find whether this pull request touches the Recipe Cockpit');
-        expect(pathFilter.run).toContain('src/treecipe/src/RecipeCockpitService/ src/treecipe/src/CockpitKit/');
+        expect(pathFilter.run).toContain('src/treecipe/src/RecipeCockpitService/ src/treecipe/src/CockpitKit/ developmentSupportScripts/recipe-cockpit-screenshots/ package.json package-lock.json');
         expect(stepNamed('Install Chromium for the cockpit screenshots').run).toContain('playwright install --with-deps chromium');
         const comparison = stepNamed('Compare the Recipe Cockpit screenshots in Chromium');
         expect(comparison.env.REQUIRE_COCKPIT_SCREENSHOTS).toBe('1');

@@ -1,3 +1,4 @@
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IBaselineScreen } from './CockpitBaselines';
@@ -28,7 +29,7 @@ interface IPlaywright {
     guide's pictures on, at deviceScaleFactor 1.
 
     UPDATE_COCKPIT_SCREENSHOTS=1 rewrites the PNGs, and the PR then says what a reader now sees
-    differently. With no Chromium, or not on Linux, the comparison is skipped with a message naming
+    differently. With no Chromium, no DejaVu Sans, or not on Linux, the comparison is skipped with a message naming
     what is missing; REQUIRE_COCKPIT_SCREENSHOTS=1 (the CI step) turns that into a failure.
 */
 
@@ -42,13 +43,16 @@ export const FAILED_SCREENSHOTS_FOLDER = path.join(REPOSITORY_ROOT, 'node_module
 
 /*
     The tolerance (#602): a pixel differs when any channel is more than CHANNEL_TOLERANCE out of 255
-    away, and a screen fails when more than MAXIMUM_DIFFERING_PIXEL_RATIO of its pixels differ. The
-    ratio absorbs antialiasing, which moves few pixels a long way; the channel tolerance stays low
-    because a palette token nudged a shade moves every pixel a little (--sdt-page #F4F7F6 to #FFF4E0
-    is 22 at most, and passed a tolerance of 24).
+    away, and a screen fails when more than MAXIMUM_DIFFERING_PIXELS differ. The count absorbs
+    antialiasing, which moves few pixels a long way; the channel tolerance stays low because a palette
+    token nudged a shade moves every pixel a little (--sdt-page #F4F7F6 to #FFF4E0 is 22 at most, and
+    passed a tolerance of 24). The count is fixed, not a share of the page: 0.2% let the 5,400 px tall
+    Query tab lose its 1,272-pixel favourite button unnoticed.
 */
 export const CHANNEL_TOLERANCE = 8;
-export const MAXIMUM_DIFFERING_PIXEL_RATIO = 0.002;
+export const MAXIMUM_DIFFERING_PIXELS = 100;
+// THE FONT THE SHELL'S FONT STACK PUTS FIRST; THE PNGs WERE DRAWN WITH IT, SO A MACHINE WITHOUT IT DRAWS DIFFERENT TEXT
+const SCREENSHOT_FONT_FAMILY = 'DejaVu Sans';
 
 interface ICaptureScript {
     RecipeCockpitScreenshots: {
@@ -87,6 +91,16 @@ export class CockpitScreenshots {
             return `The Recipe Cockpit screenshot comparison (#602) is skipped: there is no Chromium at ${executablePath || '(no path)'}. Run "npx playwright install chromium", or set CHROMIUM_EXECUTABLE_PATH.`;
         }
 
+        let matchedFontFamily = '';
+        try {
+            matchedFontFamily = childProcess.execFileSync('fc-match', ['-f', '%{family}', SCREENSHOT_FONT_FAMILY], { encoding: 'utf8' });
+        } catch (fontMatchError) {
+            return `The Recipe Cockpit screenshot comparison (#602) is skipped: fc-match (fontconfig) is not installed, so whether ${SCREENSHOT_FONT_FAMILY} is here cannot be told. Install fontconfig and the DejaVu fonts.`;
+        }
+        if ( !matchedFontFamily.split(',').includes(SCREENSHOT_FONT_FAMILY) ) {
+            return `The Recipe Cockpit screenshot comparison (#602) is skipped: the PNGs are drawn with ${SCREENSHOT_FONT_FAMILY}, and this machine has none (fontconfig offers ${matchedFontFamily || 'nothing'}). Install the DejaVu fonts (fonts-dejavu-core).`;
+        }
+
         return undefined;
 
     }
@@ -107,6 +121,7 @@ export class CockpitScreenshots {
         let documentHtml: string;
         try {
             const panelDocument = journey.panelDocument();
+            // THE JOURNEY TYPES ITS PAGE WITHOUT CLASSES SO NO JOURNEY READS ONE; THE ELEMENTS ARE THE HARNESS'S, WHICH CARRY THEM
             documentHtml = RecipeCockpitPageDocument.buildDocumentHtml(panelDocument.shellHtml, panelDocument.rootsById as unknown as Record<string, IFakePageElement>);
         } finally {
             await journey.close();
@@ -124,7 +139,7 @@ export class CockpitScreenshots {
     }
 
     // COMPARED ON A CANVAS IN THE SAME CHROMIUM, SO THE ONLY DEPENDENCY THIS NEEDS IS PLAYWRIGHT
-    static async compare(browser: IBrowser, expectedPng: Buffer, actualPng: Buffer): Promise<IScreenshotComparison> {
+    static async compare(browser: IBrowser, expectedPng: Buffer, actualPng: Buffer, isDiffImageWanted = true): Promise<IScreenshotComparison> {
 
         if ( Buffer.compare(expectedPng, actualPng) === 0 ) {
             return { differingPixelCount: 0, pixelCount: 0 };
@@ -134,7 +149,7 @@ export class CockpitScreenshots {
         try {
             // THIS FUNCTION RUNS IN CHROMIUM AS ITS SOURCE TEXT, SO NOTHING THE BUILD ADDS MAY REACH IT: NO async (THE ES6 BUILD
             // TURNS await INTO AN __awaiter HELPER) AND NO COVERAGE COUNTERS (istanbul ignore)
-            const comparison = await browserPage.evaluate(/* istanbul ignore next */ ({ expectedBase64, actualBase64, channelTolerance }) => {
+            const comparison = await browserPage.evaluate(/* istanbul ignore next */ ({ expectedBase64, actualBase64, channelTolerance, isDiffImageWanted }) => {
                 const browserGlobals = globalThis as any;
                 const decode = (base64: string) => browserGlobals.fetch('data:image/png;base64,' + base64)
                     .then((response: any) => response.blob())
@@ -163,6 +178,9 @@ export class CockpitScreenshots {
                             diffImage.data.set([gray, gray, gray, 64], byteIndex);
                         }
                     }
+                    if ( !isDiffImageWanted ) {
+                        return { sizeMismatch: undefined as string | undefined, differingPixelCount, pixelCount: actual.width * actual.height, diffBase64: '' };
+                    }
                     diffContext.putImageData(diffImage, 0, 0);
                     return diffCanvas.convertToBlob({ type: 'image/png' })
                         .then((diffBlob: any) => diffBlob.arrayBuffer())
@@ -172,7 +190,7 @@ export class CockpitScreenshots {
                             return { sizeMismatch: undefined as string | undefined, differingPixelCount, pixelCount: actual.width * actual.height, diffBase64: browserGlobals.btoa(diffBinary) as string };
                         });
                 });
-            }, { expectedBase64: expectedPng.toString('base64'), actualBase64: actualPng.toString('base64'), channelTolerance: CHANNEL_TOLERANCE });
+            }, { expectedBase64: expectedPng.toString('base64'), actualBase64: actualPng.toString('base64'), channelTolerance: CHANNEL_TOLERANCE, isDiffImageWanted });
 
             return {
                 differingPixelCount: comparison.differingPixelCount,
@@ -187,7 +205,7 @@ export class CockpitScreenshots {
     }
 
     static isWithinTolerance(comparison: IScreenshotComparison): boolean {
-        return !comparison.sizeMismatch && comparison.differingPixelCount <= comparison.pixelCount * MAXIMUM_DIFFERING_PIXEL_RATIO;
+        return !comparison.sizeMismatch && comparison.differingPixelCount <= MAXIMUM_DIFFERING_PIXELS;
     }
 
     // undefined WHEN THE SCREEN LOOKS AS CHECKED IN; OTHERWISE WHAT TO SAY. WRITES THE ACTUAL AND DIFF PNGs WHEN asked TO KEEP THEM
@@ -198,7 +216,7 @@ export class CockpitScreenshots {
             return `screenshots/${screenName}.png does not exist. Run with UPDATE_COCKPIT_SCREENSHOTS=1 to write it.`;
         }
 
-        const comparison = await this.compare(browser, fs.readFileSync(checkedInFilePath), actualPng);
+        const comparison = await this.compare(browser, fs.readFileSync(checkedInFilePath), actualPng, options.keepFailedImages);
         if ( this.isWithinTolerance(comparison) ) {
             return undefined;
         }
@@ -212,7 +230,7 @@ export class CockpitScreenshots {
         }
 
         const howItDiffers = comparison.sizeMismatch
-            ?? `${comparison.differingPixelCount} of ${comparison.pixelCount} pixels differ, over the ${MAXIMUM_DIFFERING_PIXEL_RATIO * 100}% tolerance`;
+            ?? `${comparison.differingPixelCount} of ${comparison.pixelCount} pixels differ, over the tolerance of ${MAXIMUM_DIFFERING_PIXELS}`;
         return `The ${screenName} screen does not look like screenshots/${screenName}.png: ${howItDiffers}.${keptImagesNote} If the change is intended, run with UPDATE_COCKPIT_SCREENSHOTS=1 and say in the PR what a reader now sees differently.`;
 
     }

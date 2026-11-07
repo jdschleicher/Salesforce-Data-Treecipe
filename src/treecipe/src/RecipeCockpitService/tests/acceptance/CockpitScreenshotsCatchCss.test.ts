@@ -61,6 +61,18 @@ const missingChromium = CockpitScreenshots.findMissingChromium();
 
     }, 120000);
 
+    // visibility: hidden MOVES NOTHING ELSE, SO ONLY THE BUTTON'S OWN PIXELS DIFFER -- ON THE 5,400 px QUERY TAB AS ON THE SHORTEST SCREEN
+    test('hiding a tree card\'s favourite button without moving the layout fails every screenshot that shows it, however tall', async () => {
+
+        editShell('</style>', 'button.treeFavorite { visibility: hidden; }\n</style>');
+
+        const expected = screensWhoseBaseline(baselineText => /^\s*button "Mark .* as a favorite"/m.test(baselineText));
+        expect(expected).toContain('query-tab');
+        expect(expected.length).toBeLessThan(BASELINE_SCREENS.length);
+        expect(await screensThatDiffer()).toEqual(expected);
+
+    }, 120000);
+
     test('changing the palette\'s dialog backdrop fails exactly the screenshots with a confirmation open', async () => {
 
         editShell('--sdt-dialog-backdrop: rgba(51, 51, 51, 0.55);', '--sdt-dialog-backdrop: rgba(180, 30, 30, 0.55);');

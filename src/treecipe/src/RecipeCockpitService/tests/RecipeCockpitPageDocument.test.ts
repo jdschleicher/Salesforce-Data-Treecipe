@@ -68,7 +68,13 @@ describe('RecipeCockpitPageDocument.buildDocumentHtml', () => {
     test('refuses a shell whose root is missing, naming it, rather than drawing a page half filled', () => {
         const shellHtml = '<html><body><div id="cockpitBody"></div><script nonce="n">x</script></body></html>';
         expect(() => RecipeCockpitPageDocument.buildDocumentHtml(shellHtml, { cockpitMeta: fakeElement('div') }))
-            .toThrow('The panel document has 0 <div id="cockpitMeta"> holding only text');
+            .toThrow('The panel document has 0 <div id="cockpitMeta"> with only an id and a class');
+    });
+
+    test('refuses a root that carries an attribute besides id and class, which the replacement would lose', () => {
+        const shellHtml = '<html><body><div id="cockpitBody" hidden></div><script nonce="n">x</script></body></html>';
+        expect(() => RecipeCockpitPageDocument.buildDocumentHtml(shellHtml, { cockpitBody: fakeElement('div') }))
+            .toThrow('The panel document has 0 <div id="cockpitBody"> with only an id and a class');
     });
 
     test('refuses a shell with no nonced script', () => {

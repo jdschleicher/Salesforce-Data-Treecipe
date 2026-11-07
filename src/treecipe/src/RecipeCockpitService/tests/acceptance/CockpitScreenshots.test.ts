@@ -1,6 +1,7 @@
 jest.mock('vscode', () => require('./RecipeCockpitJourneyFakes').journeyVscodeModule, { virtual: true });
 jest.mock('@salesforce/core', () => require('./RecipeCockpitJourneyFakes').journeySalesforceCoreModule);
 
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BASELINE_SCREENS } from './CockpitBaselines';
@@ -24,6 +25,12 @@ describe('the screenshot comparison says what it needs (#602)', () => {
 
     test('a machine that is not Linux is named in the message', () => {
         expect(CockpitScreenshots.findMissingChromium('darwin')).toContain('this machine is darwin');
+    });
+
+    test('a machine without the font the PNGs were drawn with is named, with the font fontconfig offers instead', () => {
+        const execFileSync = childProcess.execFileSync;
+        jest.spyOn(childProcess, 'execFileSync').mockImplementation(((command: string, ...rest: unknown[]) => command === 'fc-match' ? 'Inter' : (execFileSync as Function)(command, ...rest)) as typeof childProcess.execFileSync);
+        expect(CockpitScreenshots.findMissingChromium('linux')).toContain('the PNGs are drawn with DejaVu Sans, and this machine has none (fontconfig offers Inter)');
     });
 
     test('a Chromium that is not there is named by its path', () => {
