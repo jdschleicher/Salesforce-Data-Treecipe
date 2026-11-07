@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.192.15] - "Run Treecipe Initiation Setup" now re-runs the command that needed it (#101)
+
+When a command failed because `treecipe.config.json` was missing, the notification's **Run Treecipe Initiation Setup** button ran setup and stopped there. The command you had asked for never ran, and nothing said you had to run it again.
+
+- **Once setup writes a config file, the original command runs again** with no arguments, as it would from the Command Palette.
+  - `treecipe.initiateConfiguration` now settles with the config file it wrote. Recovery waits for it, so setup and the re-run never overlap.
+  - Nothing is re-run when you dismiss the objects-folder or faker-service pick, when setup fails (its own error notification shows, as before), or when the failed command was setup itself.
+  - Dismissing the notification or choosing Report Issue works as before.
+- **One map from command name to command ID:** `ErrorHandlingService.commandIdByCommandName`. Every `commandName` a command passes to `handleCapturedError` is a method name. The map gives each one its `treecipe.*` ID: it is frozen, has no prototype, and a name with no entry re-runs nothing.
+- **Tests:**
+  - `CommandIdByCommandName.test.ts` reads every name passed to `handleCapturedError` from the source. It fails on a name with no entry, an entry no caller passes, or an ID that `package.json` does not declare.
+  - `ErrorHandlingService.test.ts` covers the re-run order, cancel, a failing setup, a failing re-run, setup itself, unmapped names (`__proto__` and `constructor` among them) and a dismissed notification.
+
 ## [3.192.14] - faker-js data sets no longer end dates, numbers and phones with a line break (#593)
 
 Generate Treecipe writes Phone, Number, Percent, Date, DateTime, Time, Geolocation and every precision/scale field as a YAML `|` block. YAML ends a `|` block with a line break, and Run Faker by Recipe kept it, so every such value in `collectionsApi-<Object>.json` ended with `\n` (`"Date__c": "2025-09-08\n"`).
