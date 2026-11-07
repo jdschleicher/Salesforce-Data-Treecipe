@@ -19,14 +19,18 @@ import { faker } from '@faker-js/faker';
 
 type DirectoryEntry = [string, number];
 
+type DirectoryListingOrder = 'sorted' | 'reversed';
+
 /*
-    readDirectory lists in the file system's order on a real machine, and today that order reaches the
-    output: listing the same folders in reverse renumbers the relationship trees and reorders fields.
-    Listed sorted here, so these expected files hold on every machine.
+    readDirectory lists in the file system's order on a real machine, and generation reads every folder
+    in name order whatever that order is (#592). A run lists sorted or reversed, and both must write
+    the same expected files.
 */
 const mockDirectoryListing = {
+    listingOrder: 'sorted' as DirectoryListingOrder,
     order(directoryEntries: DirectoryEntry[]): DirectoryEntry[] {
-        return [...directoryEntries].sort(([firstName], [secondName]) => ( firstName < secondName ? -1 : ( firstName > secondName ? 1 : 0 ) ));
+        const sortedEntries = [...directoryEntries].sort(([firstName], [secondName]) => ( firstName < secondName ? -1 : ( firstName > secondName ? 1 : 0 ) ));
+        return mockDirectoryListing.listingOrder === 'reversed' ? sortedEntries.reverse() : sortedEntries;
     }
 };
 
@@ -325,6 +329,20 @@ describe('Generate Treecipe and Run Faker by Recipe write exactly the golden fil
     }, 120000);
 
     // A NEW TEMP WORKSPACE, A NEW ACTIVATION AND THE SAME SEED: NOTHING CARRIED OVER FROM THE FIRST RUN MAY CHANGE A BYTE
+    // THE SAME EXPECTED FILES, WITH EVERY FOLDER LISTED BACKWARDS: THE FILE SYSTEM'S ORDER NEVER REACHES A RECIPE OR A DATA SET (#592)
+    test.each(GOLDEN_RUNS)('$runName, with every folder listed in reverse order', async (goldenRun) => {
+
+        mockDirectoryListing.listingOrder = 'reversed';
+        try {
+            const generatedFiles = await runGenerationCommands(goldenRun);
+            expect(generatedFiles.size).toBeGreaterThan(0);
+            failOnGoldenMismatch(compareWithGoldenFiles(goldenRun.runName, readGoldenFiles(goldenRun.runName), generatedFiles));
+        } finally {
+            mockDirectoryListing.listingOrder = 'sorted';
+        }
+
+    }, 120000);
+
     test('a second faker-js run in a row writes the same files as the first', async () => {
 
         const firstRunFiles = await runGenerationCommands(GOLDEN_RUNS[0]);

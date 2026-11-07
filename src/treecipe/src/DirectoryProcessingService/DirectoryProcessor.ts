@@ -192,6 +192,21 @@ export class DirectoryProcessor {
 
   }
 
+  /*
+    readDirectory lists in the file system's order, which differs between machines and file systems,
+    so every folder generation reads is put in name order here, once, with < and never localeCompare:
+    the same metadata writes the same recipes everywhere (#592).
+  */
+  static async readDirectoryInNameOrder(directoryUri: vscode.Uri): Promise<[string, vscode.FileType][]> {
+
+    const directoryEntries = await vscode.workspace.fs.readDirectory(directoryUri);
+    if ( !Array.isArray(directoryEntries) ) {
+      return directoryEntries;
+    }
+    return [...directoryEntries].sort(([firstName], [secondName]) => RecordTypeService.compareByCodeUnit(firstName, secondName));
+
+  }
+
   async processDirectory(directoryPathUri: vscode.Uri,
                           objectInfoWrapper: ObjectInfoWrapper,
                           generationProgress?: IRecipeGenerationProgress,
@@ -200,7 +215,7 @@ export class DirectoryProcessor {
     DirectoryProcessor.throwIfCancellationRequested(generationProgress);
 
     const isTopLevelOfScan = generationProgress !== undefined && scanCount === undefined;
-    const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
+    const entries = await DirectoryProcessor.readDirectoryInNameOrder(directoryPathUri);
     if (entries === undefined || entries.length === 0) {
       // base case for recursion -- prevents empty directories causing null reference errors
       vscode.window.showWarningMessage('No entries found in directory: ' + directoryPathUri.fsPath);
@@ -426,7 +441,7 @@ export class DirectoryProcessor {
       - the variable names are intended to convey and support at-a-glance understanding w/out having to click through
       - for additional details like what brought this detailed breakdown about and performance advantages see chatgpt discussion here: https://chatgpt.com/share/6772ab2f-76c8-800a-a60a-893985a8d264
     */
-    const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
+    const vsCodeDirectoryTuples = await DirectoryProcessor.readDirectoryInNameOrder(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
     let compoundFieldInfos: FieldInfo[] = [];
@@ -482,7 +497,7 @@ export class DirectoryProcessor {
   }
 
   /*
-    Fields arrive in readDirectory's order, so a dependent picklist can sort above its controller
+    Fields arrive in file name order, so a dependent picklist can sort above its controller
     (DependentPicklist__c before Picklist__c). Both backends evaluate a record's fields top to bottom:
     faker-js then cannot find the controller's value and snowfakery picks a dependent value the
     controller does not allow (#462). Each controller is moved directly above the first dependent it
@@ -635,10 +650,9 @@ export class DirectoryProcessor {
     }
 
     const validationRulesDirectoryUri = vscode.Uri.joinPath(objectDirectoryUri, VALIDATION_RULES_DIRECTORY_NAME);
-    const ruleFileNames = ( await vscode.workspace.fs.readDirectory(validationRulesDirectoryUri) ?? [] )
+    const ruleFileNames = ( await DirectoryProcessor.readDirectoryInNameOrder(validationRulesDirectoryUri) ?? [] )
       .filter(([fileName, entryType]) => entryType === vscode.FileType.File && ValidationRuleAnalyzerService.isValidationRuleFileName(fileName))
-      .map(([fileName]) => fileName)
-      .sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ));
+      .map(([fileName]) => fileName);
 
     const analyses: IValidationRuleAnalysis[] = [];
     for ( const ruleFileName of ruleFileNames ) {

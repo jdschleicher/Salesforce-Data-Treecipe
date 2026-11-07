@@ -243,13 +243,20 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
     */
     describe("a masterLabel that collides with another set's full name", () => {
 
-        test("given a collision, the set that owns the name as its full name wins", async () => {
+        /*
+            Other_Set sorts before Zone_Values, so reading in name order alone would let its label
+            take the name; every full name is registered before any label (#592). Both listing
+            orders give the same answer.
+        */
+        test.each([
+            ['the owner listed first', ['Zone_Values.globalValueSet-meta.xml', 'Other_Set.globalValueSet-meta.xml']],
+            ['the owner listed last', ['Other_Set.globalValueSet-meta.xml', 'Zone_Values.globalValueSet-meta.xml']]
+        ])("given a collision with %s, the set that owns the name as its full name wins", async (unusedListingOrder, listedFileNames) => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockResolvedValue([
-                ['Zone_Values.globalValueSet-meta.xml', vscode.FileType.File],
-                ['Other_Set.globalValueSet-meta.xml', vscode.FileType.File]
-            ] as any);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockResolvedValue(
+                listedFileNames.map(fileName => [fileName, vscode.FileType.File]) as any
+            );
 
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
@@ -265,6 +272,24 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             await globalValueSetSingleton.initialize('./colliding');
 
             expect(globalValueSetSingleton.getPicklistValueMaps()['Zone_Values']).toEqual(['owned']);
+
+        });
+
+        test("given two sets with the same masterLabel, the set whose file name sorts first owns the label in either listing order", async () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockImplementation(async (uri, fileName) => `<?xml version="1.0"?><GlobalValueSet><customValue><fullName>${fileName.split('.')[0]}</fullName></customValue><masterLabel>Shared Label</masterLabel></GlobalValueSet>`);
+
+            const labelOwnerByListing = [];
+            for ( const listedFileNames of [['A_Set.globalValueSet-meta.xml', 'B_Set.globalValueSet-meta.xml'], ['B_Set.globalValueSet-meta.xml', 'A_Set.globalValueSet-meta.xml']] ) {
+                jest.spyOn(vscode.workspace.fs, 'readDirectory').mockResolvedValue(listedFileNames.map(fileName => [fileName, vscode.FileType.File]) as any);
+                await globalValueSetSingleton.initialize('./colliding');
+                labelOwnerByListing.push(globalValueSetSingleton.getPicklistValueMaps()['Shared Label']);
+            }
+
+            expect(labelOwnerByListing).toEqual([['A_Set'], ['A_Set']]);
 
         });
 
