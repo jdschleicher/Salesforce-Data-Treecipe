@@ -47,38 +47,87 @@ export class RelationshipService {
 
   }
 
+  /*
+    An object's level is its longest path from a root once every cycle is cut at the lookup that
+    closes it (#104). A cycle has no insert order that satisfies every lookup in it, so one lookup
+    per cycle stays a TODO; a depth-first walk in name order, roots first, picks the lookup that
+    closes the cycle, and every other lookup is levelled as in an acyclic graph. Each object and
+    lookup is walked once, so the cost grows with the graph, not with the paths through it.
+  */
   private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper, relatedObjects: Set<string>): void {
 
-    // Find and process top-level objects (those with no parents or only self-references)
-    for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+    const objectNamesInNameOrder = RelationshipService.sortByCodeUnit(
+      [...relatedObjects].filter(objectName => objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail)
+    );
+    const rootObjectNames = objectNamesInNameOrder.filter(objectName =>
+      this.isTopLevelObjectWithNoExternalParents(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail)
+    );
 
-      const isRelatedObjectToBeProcessed = relatedObjects.has(objectName);
-      if (isRelatedObjectToBeProcessed
-        && !objectInfo.RelationshipDetail.isProcessed) {
+    const walk: CycleCuttingWalk = {
+      objectNamesOnPath: new Set<string>(),
+      walkedObjectNames: new Set<string>(),
+      objectsInFinishOrder: []
+    };
 
-        if (this.isTopLevelObjectWithNoExternalParents(objectInfo.RelationshipDetail)) {
+    for (const startObjectName of [...rootObjectNames, ...objectNamesInNameOrder]) {
+      if (!walk.walkedObjectNames.has(startObjectName)) {
+        this.walkCuttingCycleClosingLookups(objectInfoWrapper, startObjectName, walk);
+      }
+    }
 
-          this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
+    const objectsInInsertOrder = [...walk.objectsInFinishOrder].reverse();
 
-        }
+    objectsInInsertOrder.forEach(({ objectName }) => {
+      const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail;
+      relationshipDetail.level = 0;
+      relationshipDetail.isProcessed = true;
+    });
 
+    objectsInInsertOrder.forEach(({ objectName, acyclicChildObjectNames }) => {
+      const parentLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
+      acyclicChildObjectNames.forEach(childObjectName => {
+        const childRelationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[childObjectName].RelationshipDetail;
+        childRelationshipDetail.level = Math.max(childRelationshipDetail.level, parentLevel + 1);
+      });
+    });
+
+  }
+
+  private walkCuttingCycleClosingLookups(objectInfoWrapper: ObjectInfoWrapper, objectName: string, walk: CycleCuttingWalk): void {
+
+    walk.walkedObjectNames.add(objectName);
+    walk.objectNamesOnPath.add(objectName);
+
+    const childObjectToFieldReferences = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.childObjectToFieldReferences;
+    const childObjectNames = RelationshipService.sortByCodeUnit(
+      Object.keys(childObjectToFieldReferences).filter(childObjectName =>
+        childObjectName !== objectName && objectInfoWrapper.ObjectToObjectInfoMap[childObjectName]?.RelationshipDetail
+      )
+    );
+
+    const acyclicChildObjectNames: string[] = [];
+    for (const childObjectName of childObjectNames) {
+
+      const lookupClosesCycle = walk.objectNamesOnPath.has(childObjectName);
+      if (lookupClosesCycle) {
+        continue;
+      }
+
+      acyclicChildObjectNames.push(childObjectName);
+      if (!walk.walkedObjectNames.has(childObjectName)) {
+        this.walkCuttingCycleClosingLookups(objectInfoWrapper, childObjectName, walk);
       }
 
     }
 
-    for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+    walk.objectNamesOnPath.delete(objectName);
+    walk.objectsInFinishOrder.push({ objectName, acyclicChildObjectNames });
 
-      const isRelatedObjectToBeProcessed = relatedObjects.has(objectName);
+  }
 
-      if (isRelatedObjectToBeProcessed
-        && !objectInfo.RelationshipDetail.isProcessed) {
-
-        this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
-
-      }
-
-    }
-
+  // Code-unit order, never localeCompare, so levels never depend on the machine.
+  private static sortByCodeUnit(objectNames: string[]): string[] {
+    return objectNames.sort((first, second) => (first < second ? -1 : first > second ? 1 : 0));
   }
 
   private isTopLevelObjectWithNoExternalParents(relationshipDetail: RelationshipDetail): boolean {
@@ -95,76 +144,6 @@ export class RelationshipService {
 
     return topLevelObjectScenarioMet;
 
-  }
-
-  /**
-   * Recursively calculate levels, ensuring parents are always at lower or equal levels than children
-   */
-  private calculateLevelsRecursively(
-    objectInfoWrapper: ObjectInfoWrapper,
-    objectName: string,
-    proposedLevel: number,
-    visited: Set<string> = new Set()
-  ): void {
-
-    const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
-
-    if (!relationshipDetail) {
-      return;
-    }
-
-    // Handle circular references
-    if (visited.has(objectName)) {
-      return;
-    }
-
-    // Update level if this is higher than current level
-    if (relationshipDetail.level < proposedLevel) {
-      relationshipDetail.level = proposedLevel;
-    }
-
-    relationshipDetail.isProcessed = true;
-
-    /*
-      Added before descending and removed after, rather than handing each child a COPY of the
-      set. The set holds exactly the current path either way -- a child never sees what a
-      sibling's subtree visited, because that subtree removes its own entries on the way out --
-      so the cycle guard behaves identically and the per-child allocation is gone.
-
-      That allocation is what made this method a memory problem rather than merely a slow one.
-      On a layered graph -- the shape an org has when several objects share a child lookup --
-      42 objects produce 7,174,452 recursive calls, each of which was copying the visited set.
-      That allocation rate is what exhausted a 4 GB heap in CI.
-
-      The traversal is still exponential in depth, because an object reachable by many paths is
-      re-walked once per path. Skipping a re-walk that cannot raise a level would fix that, and
-      it is NOT done here: it changes the levels a CYCLIC graph settles on, and those levels
-      decide the insertion order of generated recipes. A differential run over 600 random graphs
-      showed 1,531 level differences, all of them in graphs containing a cycle. That is a
-      behaviour change needing its own issue and its own fixture, not a side effect of a
-      memory fix.
-    */
-    visited.add(objectName);
-
-    // Process all child objects at the next level
-    const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
-
-    for (const childObjectName of childObjectKeys) {
-
-      if (childObjectName !== objectName) { // Skip self-references
-
-        this.calculateLevelsRecursively(
-          objectInfoWrapper,
-          childObjectName,
-          relationshipDetail.level + 1,
-          visited
-        );
-
-      }
-
-    }
-
-    visited.delete(objectName);
   }
 
   /**
@@ -874,6 +853,13 @@ export class RelationshipService {
 
   }
 
+}
+
+// One depth-first walk of a tree: the lookups it keeps (every one but those that close a cycle) and the order objects finish in
+interface CycleCuttingWalk {
+  objectNamesOnPath: Set<string>;
+  walkedObjectNames: Set<string>;
+  objectsInFinishOrder: { objectName: string; acyclicChildObjectNames: string[] }[];
 }
 
 export interface RelationshipDetail {
