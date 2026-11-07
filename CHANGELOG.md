@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.192.15] - faker-js Number, Percent and Currency fields wider than 15 digits keep every digit (#594)
+## [3.192.17] - faker-js Number, Percent and Currency fields wider than 15 digits keep every digit (#594)
 
 A Number, Percent or Currency field with 16 or more digits left of the decimal (`precision - scale`, up to 18) got a faker-js recipe that returns a JavaScript double, which holds only about 15 digits. The low digits came out rounded (`"Current_Inventory__c": "930336130220814000"`), and a currency's cents came out `.00`.
 
@@ -15,6 +15,38 @@ A Number, Percent or Currency field with 16 or more digits left of the decimal (
   - `FakerJSRecipeService.test.ts` expects the new expression for its 18-digit Number and Currency. Three fixtures take the new expression on their wide-field lines and nothing else, because each is held to what Generate Treecipe writes today: the Recipe Cockpit's writer fixtures `recipe-fakerjs--RelationshipTree_1.yml` and `recipe-fakerjs-nested--RelationshipTree_1.yml` (byte for byte), and `preV3291-recipe-fakerjs--RelationshipTree_1.yml` (except its bare record-type variant lines).
   - The faker-js golden files are rewritten with `UPDATE_GOLDEN=1`. In the recipes, only the wide fields' lines change. The data sets of the two trees with wide fields (`Account-thru-Order_Item__c`, `Product2-ONLY`) change beyond those fields, as above. Every other tree and every snowfakery golden file is unchanged.
 - Design note: `RecipeFakerService.ts/DESIGN.md`.
+
+## [3.192.16] - "Run Treecipe Initiation Setup" now re-runs the command that needed it (#101)
+
+When a command failed because `treecipe.config.json` was missing, the notification's **Run Treecipe Initiation Setup** button ran setup and stopped there. The command you had asked for never ran, and nothing said you had to run it again.
+
+- **Once setup writes a config file, the original command runs again** with no arguments, as it would from the Command Palette.
+  - `treecipe.initiateConfiguration` now settles with the config file it wrote. Recovery waits for it, so setup and the re-run never overlap.
+  - Nothing is re-run when you dismiss the objects-folder or faker-service pick, when setup fails (its own error notification shows, as before), or when the failed command was setup itself.
+  - Dismissing the notification or choosing Report Issue works as before.
+- **One map from command name to command ID:** `ErrorHandlingService.commandIdByCommandName`. Every `commandName` a command passes to `handleCapturedError` is a method name. The map gives each one its `treecipe.*` ID: it is frozen, has no prototype, and a name with no entry re-runs nothing.
+- **Tests:**
+  - `CommandIdByCommandName.test.ts` reads every name passed to `handleCapturedError` from the source. It fails on a name with no entry, an entry no caller passes, or an ID that `package.json` does not declare. It also fails on a call or a `commandName` declaration written in a shape it cannot read, so a caller cannot drop out of the map unnoticed (found in code review).
+  - `ErrorHandlingService.test.ts` covers the re-run order, cancel, a failing setup, a failing re-run, setup itself, unmapped names (`__proto__` and `constructor` among them) and a dismissed notification.
+
+## [3.192.15] - Relationship levels are computed in one walk, and a lookup cycle is cut at one stable place (#104)
+
+Generate Treecipe gives every object in a relationship tree a level, and the level decides the insert order in the tree's recipe and, in faker-js, which parent an object nests under. The walk that computed levels visited an object once per path that reached it. On 42 objects in 14 layers, where every object looks up the whole layer above, that was 7,174,452 calls on the extension host thread.
+
+- **One walk now visits each object once.** It cuts each lookup cycle at the lookup that closes it, then gives each object its longest path from a root. Each object and lookup is visited once.
+  - The walk is depth-first. It starts from the root objects in name order, then from any object not yet reached, also in name order, and visits children in name order. A lookup back to an object already on the walk's path is the lookup that closes a cycle.
+  - A cycle has no insert order that satisfies every lookup in it, so exactly one lookup per cycle stays a `REFERENCE ID REQUIRED` TODO. Every other lookup is levelled as in a graph with no cycle.
+  - Rejected alternative: putting every object in a cycle on the same level. That would make every lookup in a cycle a TODO, the common `Account ⇄ Contact` pair included.
+- **What changes for you — a behaviour change in generated recipe order, for lookup cycles only:**
+  - A project with no lookup cycle gets the same levels, recipes and data sets as before. The golden files are unchanged.
+  - A cycle reached by a single path keeps its levels, for example `A ⇄ B`, `A → B → C → A`, or a cycle hanging off a root.
+  - A cycle reached by more than one path now settles once. The old walk climbed again on each extra path, and its answer depended on the order the object map was filled in. One graph got `A 0, B 3` in one order and `A 1, B 4` in another. Levels now depend on object names alone.
+  - Where that moves an object's level, the next Generate Treecipe can reorder the tree's objects, nest a faker-js child under a different parent, and move which lookup of the cycle stays a TODO. For example, `Case__c ⇄ Escalation__c` under `Account` now keeps `Case__c.Escalation__c` as the TODO and nests `Escalation__c` under `Case__c`, the reverse of before.
+- **Tests:**
+  - `RelationshipService.levelsDifferential.test.ts` keeps the old walk as a reference. On 600 seeded random acyclic graphs, every object gets the same level from both.
+  - `RelationshipService.test.ts` pins a two-object cycle, a three-object cycle, a cycle with a tail, a cycle reached by two paths, and independence from map order. It also checks that the 42-object, 14-layer graph walks each object exactly once.
+  - The #98 tests now call the new walk. The `nestedFriends` cycle test is updated on purpose to the new cut.
+- Design note: `RelationshipService/DESIGN.md`.
 
 ## [3.192.14] - faker-js data sets no longer end dates, numbers and phones with a line break (#593)
 
