@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.192.15] - faker-js Number, Percent and Currency fields wider than 15 digits keep every digit (#594)
+
+A Number, Percent or Currency field with 16 or more digits left of the decimal (`precision - scale`, up to 18) got a faker-js recipe that returns a JavaScript double, which holds only about 15 digits. The low digits came out rounded (`"Current_Inventory__c": "930336130220814000"`), and a currency's cents came out `.00`.
+
+- **Such a field now draws its digits as a BigInt:** `faker.number.bigInt({min: 0n, max: 99…9n})`, followed by `'.'` and `scale` random digits when the field has a scale. Every value is exact and fits the field.
+  - A field with 15 or fewer left digits keeps exactly the expression it had.
+  - A validation-rule constraint is unchanged: a constrained number was already limited to 15 digits.
+  - Snowfakery is unchanged; its integers were already exact.
+- **What changes for you:** the next Generate Treecipe writes the new expression for wide fields only. A recipe you already generated keeps its old expression, and its old rounding, until you regenerate it.
+- **Seeded runs:** the new expression draws more random numbers, so a run with a fixed faker seed gives different values for every field generated after the first wide field.
+- **Tests:**
+  - `FakerJSRecipeFakerService.wideNumeric.test.ts` holds the narrow fields' recipes byte for byte and the wide fields' new expression. It also generates 1,000 values per wide shape: all fit the field, and they are not mostly multiples of 10 or `.00`. A field with scale greater than precision still throws.
+  - The faker-js golden files are rewritten with `UPDATE_GOLDEN=1`. In the recipes, only the wide fields' lines change. The data sets of the two trees with wide fields (`Account-thru-Order_Item__c`, `Product2-ONLY`) change beyond those fields, as above. Every other tree and every snowfakery golden file is unchanged.
+- Design note: `RecipeFakerService.ts/DESIGN.md`.
+
 ## [3.192.14] - faker-js data sets no longer end dates, numbers and phones with a line break (#593)
 
 Generate Treecipe writes Phone, Number, Percent, Date, DateTime, Time, Geolocation and every precision/scale field as a YAML `|` block. YAML ends a `|` block with a line break, and Run Faker by Recipe kept it, so every such value in `collectionsApi-<Object>.json` ended with `\n` (`"Date__c": "2025-09-08\n"`).

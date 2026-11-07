@@ -659,9 +659,31 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return `${this.openingRecipeSyntax} faker.lorem.text(${length}).substring(0, ${length}) ${this.closingRecipeSyntax}`;
     }
 
+    /*
+        A double holds every whole number up to 15 digits; past that faker.number.int and
+        faker.finance.amount round away the low digits and the cents (#594). A wider field draws
+        its digits as a BigInt, as snowfakery's arbitrary-precision integers already do.
+    */
+    static readonly MAX_DIGITS_LEFT_OF_DECIMAL_A_DOUBLE_HOLDS = 15;
+
+    private buildExactDigitsRecipeValue(digitsLeftOfDecimal: number, scale: number): string {
+
+        const wholeDigits = `faker.number.bigInt({min: 0n, max: ${'9'.repeat(digitsLeftOfDecimal)}n})`;
+        const exactDigitsExpression = scale === 0
+            ? `${wholeDigits}.toString()`
+            : `${wholeDigits} + '.' + faker.string.numeric({length: ${scale}, allowLeadingZeros: true})`;
+
+        return `|
+            ${this.openingRecipeSyntax} ${exactDigitsExpression} ${this.closingRecipeSyntax}`;
+
+    }
+
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
 
         const effectiveScale = scale ?? 0;
+        if ( precision - effectiveScale > FakerJSRecipeFakerService.MAX_DIGITS_LEFT_OF_DECIMAL_A_DOUBLE_HOLDS ) {
+            return this.buildExactDigitsRecipeValue(precision - effectiveScale, effectiveScale);
+        }
         const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
         if (effectiveScale === 0) {
@@ -678,6 +700,9 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         // Special handling for currency fields - use full precision as left_digits
 
         const effectiveScale = scale ?? 0;
+        if ( precision - effectiveScale > FakerJSRecipeFakerService.MAX_DIGITS_LEFT_OF_DECIMAL_A_DOUBLE_HOLDS ) {
+            return this.buildExactDigitsRecipeValue(precision - effectiveScale, effectiveScale);
+        }
         const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
         return `|
