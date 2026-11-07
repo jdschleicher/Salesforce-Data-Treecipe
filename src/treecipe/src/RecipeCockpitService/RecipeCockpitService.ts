@@ -277,7 +277,8 @@ export const RECIPE_COCKPIT_REFRESH_ORGS_LABEL = 'Refresh orgs';
 export const RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = 'parent excluded';
 export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections depend on it';
 export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
-export const RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING = 'every field unticked — records are generated with no fields set';
+// AN OBJECT WITH NO FIELD TICKED IS NOT GENERATED (#611, REVERSING #220'S RECORDS WITH NO FIELDS SET): THE ROW SAYS THIS IN PLACE OF ITS CONTROLS
+export const RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE = 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED';
 export const RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = 'All fields';
 // THE OBJECT'S "Standard fields" BOX (#477): EVERY FIELD WHOSE API NAME DOES NOT END IN THE CUSTOM SUFFIX
 export const RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = 'Standard fields';
@@ -508,6 +509,7 @@ export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR = ' → ';
 export const RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS = 'No objects';
 export const RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX = ' (excluded)';
 export const RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ' (auto-excluded)';
+export const RECIPE_COCKPIT_TREE_PICKER_NO_FIELDS_SELECTED_SUFFIX = ' (no fields selected)';
 export const RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX = ' (impacted)';
 // A LIST LONGER THAN ONE LINE IS CUT WITH "…" AND OPENED BY ITS TOGGLE (#464)
 export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL = 'Show all';
@@ -609,6 +611,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         items: [
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
+            'No fields selected: an object with every field unticked generates no records. Its row shows NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED in red in place of its nickname, friends and count, and its chain link turns red and cannot be clicked. Its children are left out with it, as for an excluded object. Tick any field to bring it back.',
             'Record counts: each object\'s row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend\'s count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set. Beside it, ↗ and a rule\'s name open that rule\'s .validationRule-meta.xml file at its formula, for each rule the field names, applied or not.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
@@ -4026,17 +4029,19 @@ export class RecipeCockpitService {
     */
     static buildTreeObjectSelection(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
                                     tree: IRecipeCockpitTreeViewModel,
-                                    directlyExcludedObjectApiNames: ReadonlySet<string> | undefined): IRecipeCockpitTreeObjectSelectionViewModel | undefined {
+                                    directlyExcludedObjectApiNames: ReadonlySet<string> | undefined,
+                                    noFieldsSelectedObjectApiNames: ReadonlySet<string> = new Set()): IRecipeCockpitTreeObjectSelectionViewModel | undefined {
 
         const selectableObjectApiNames = this.collectSelectableObjectApiNames(objectsByApiName, tree);
         const directlyExcluded = selectableObjectApiNames.filter(objectApiName => directlyExcludedObjectApiNames?.has(objectApiName));
+        const noFieldsSelected = selectableObjectApiNames.filter(objectApiName => noFieldsSelectedObjectApiNames.has(objectApiName));
 
-        if ( directlyExcluded.length === 0 ) {
+        if ( directlyExcluded.length === 0 && noFieldsSelected.length === 0 ) {
             return undefined;
         }
 
         const drawnTreeObjects = tree.objects.filter(treeObject => treeObject.iterationNickname === undefined && objectsByApiName.has(treeObject.objectApiName));
-        const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection(drawnTreeObjects, directlyExcluded);
+        const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection(drawnTreeObjects, directlyExcluded, noFieldsSelected);
         const drawnObjectApiNames = new Set(drawnTreeObjects.map(treeObject => treeObject.objectApiName));
         const excludedObjectApiNames = new Set(objectSelection.exclusions.map(exclusion => exclusion.objectApiName));
 
@@ -4046,6 +4051,50 @@ export class RecipeCockpitService {
             includedObjectCount: [...drawnObjectApiNames].filter(objectApiName => !excludedObjectApiNames.has(objectApiName)).length,
             objectCount: drawnObjectApiNames.size
         };
+
+    }
+
+    /*
+        An object with every field unticked is cut off like an excluded one (#611), and cutting it off
+        locks its children's lookups to it, which can leave a child with no field ticked: repeated
+        until no new object is cut off. The set only grows, so it ends within the tree's object count.
+    */
+    static applyTreeObjectAndFieldSelection(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
+                                            tree: IRecipeCockpitTreeViewModel,
+                                            directlyExcludedObjectApiNames: ReadonlySet<string> | undefined,
+                                            storedFieldsByObject: ReadonlyMap<string, ReadonlySet<string>> | undefined): void {
+
+        const noFieldsSelectedObjectApiNames = new Set<string>();
+
+        for ( ;; ) {
+
+            const objectSelection = this.buildTreeObjectSelection(objectsByApiName, tree, directlyExcludedObjectApiNames, noFieldsSelectedObjectApiNames);
+            if ( objectSelection ) {
+                tree.objectSelection = objectSelection;
+            } else {
+                delete tree.objectSelection;
+            }
+
+            const fieldSelection = this.buildTreeFieldSelection(objectsByApiName, tree, storedFieldsByObject);
+            if ( fieldSelection ) {
+                tree.fieldSelection = fieldSelection;
+            } else {
+                delete tree.fieldSelection;
+            }
+
+            const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
+            const newlyCutOff = this.listTreeOccurrences(objectsByApiName, tree)
+                .filter(occurrence => !occurrence.objectViewModel.isIterationOccurrence
+                                        && !excludedObjectApiNames.has(occurrence.objectApiName)
+                                        && this.findObjectFieldSelection(tree, occurrence.objectViewModel)?.isEveryFieldExcluded)
+                .map(occurrence => occurrence.objectApiName);
+
+            if ( newlyCutOff.length === 0 ) {
+                return;
+            }
+            newlyCutOff.forEach(objectApiName => noFieldsSelectedObjectApiNames.add(objectApiName));
+
+        }
 
     }
 
@@ -4079,17 +4128,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            const objectSelection = this.buildTreeObjectSelection(objectsByApiName, tree, excludedObjectApiNamesByFolderName.get(tree.folderName));
-
-            if ( objectSelection ) {
-                tree.objectSelection = objectSelection;
-            }
-
-            const fieldSelection = this.buildTreeFieldSelection(objectsByApiName, tree, excludedFieldApiNamesByFolderName.get(tree.folderName));
-
-            if ( fieldSelection ) {
-                tree.fieldSelection = fieldSelection;
-            }
+            this.applyTreeObjectAndFieldSelection(objectsByApiName, tree, excludedObjectApiNamesByFolderName.get(tree.folderName), excludedFieldApiNamesByFolderName.get(tree.folderName));
 
             const objectCounts = this.buildTreeObjectCounts(objectsByApiName, tree, objectCountsByFolderName.get(tree.folderName));
 
@@ -4993,9 +5032,39 @@ export class RecipeCockpitService {
         return ( tree?.objectSelection?.exclusions ?? [] ).map(exclusion => exclusion.objectApiName);
     }
 
+    // AN ITERATION IS NO PART OF THE OBJECT CASCADE (#467), SO ONE WITH NO FIELD TICKED IS LEFT OUT ON ITS OWN, BY ITS OCCURRENCE KEY (#611)
+    static listNoFieldsSelectedIterationKeys(tree: IRecipeCockpitTreeViewModel | undefined): string[] {
+
+        const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
+        const iterationKeys = new Set(( tree?.objects ?? [] )
+            .filter(treeObject => treeObject.iterationNickname !== undefined)
+            .map(treeObject => RecipeCockpitRecipeWriter.buildOccurrenceKey(treeObject.objectApiName, treeObject.iterationNickname)));
+
+        return ( tree?.fieldSelection?.objects ?? [] )
+            .filter(objectFieldSelection => objectFieldSelection.isEveryFieldExcluded && !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
+            .map(objectFieldSelection => RecipeCockpitRecipeWriter.buildOccurrenceKey(objectFieldSelection.objectApiName, objectFieldSelection.nickname))
+            .filter(occurrenceKey => iterationKeys.has(occurrenceKey));
+
+    }
+
+    static listNoFieldsSelectedObjectApiNames(tree: IRecipeCockpitTreeViewModel | undefined): string[] {
+        return ( tree?.objectSelection?.exclusions ?? [] ).filter(exclusion => exclusion.kind === 'noFieldsSelected').map(exclusion => exclusion.objectApiName);
+    }
+
+    // A LEFT-OUT OBJECT'S FIELDS CANNOT BE CHANGED, EXCEPT ONE LEFT OUT FOR HAVING NONE TICKED (#611): TICKING ONE BRINGS IT BACK
+    static listFieldReadOnlyObjectApiNames(tree: IRecipeCockpitTreeViewModel | undefined): string[] {
+        return ( tree?.objectSelection?.exclusions ?? [] ).filter(exclusion => exclusion.kind !== 'noFieldsSelected').map(exclusion => exclusion.objectApiName);
+    }
+
     private static async setObjectIncluded(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             panelAction: { treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }) {
+
+        // AN OBJECT WITH NO FIELD TICKED (#611) IS LEFT OUT UNTIL ONE IS: ITS CHAIN LINK IS A STATUS, NOT A BUTTON
+        const postedTree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
+        if ( this.listNoFieldsSelectedObjectApiNames(postedTree).includes(panelAction.objectApiName) ) {
+            return;
+        }
 
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const excludedObjectApiNames = treeSelections.excludedObjectApiNamesByFolderName.get(panelAction.folderName) ?? new Set<string>();
@@ -5023,7 +5092,7 @@ export class RecipeCockpitService {
         const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
         const tree = resolved?.tree;
 
-        if ( !tree || this.listExcludedObjectApiNames(tree).includes(panelAction.objectApiName) ) {
+        if ( !tree || this.listFieldReadOnlyObjectApiNames(tree).includes(panelAction.objectApiName) ) {
             return;
         }
 
@@ -5070,7 +5139,7 @@ export class RecipeCockpitService {
         const tree = resolved?.tree;
         const objectViewModel = resolved?.occurrence.objectViewModel;
 
-        if ( !tree || !objectViewModel || this.listExcludedObjectApiNames(tree).includes(panelAction.objectApiName) ) {
+        if ( !tree || !objectViewModel || this.listFieldReadOnlyObjectApiNames(tree).includes(panelAction.objectApiName) ) {
             return;
         }
 
@@ -6483,8 +6552,10 @@ export class RecipeCockpitService {
             .filter(treeObject => treeObject.iterationNickname === undefined)
             .forEach(treeObject => parentLookupsByObjectApiName.set(treeObject.objectApiName, treeObject.parentLookups.map(parentLookup => ({ ...parentLookup }))));
 
+        const noFieldsSelectedIterationKeys = this.listNoFieldsSelectedIterationKeys(tree);
         const filterResult = RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
             excludedObjectApiNames: excludedObjectApiNames,
+            ...( noFieldsSelectedIterationKeys.length > 0 ? { excludedOccurrenceKeys: noFieldsSelectedIterationKeys } : {} ),
             parentLookupsByObjectApiName: parentLookupsByObjectApiName,
             levelsByObjectApiName: objectLevelsByApiName,
             excludedFieldApiNamesByObject: excludedFieldApiNamesByObject,
@@ -16921,6 +16992,7 @@ export class RecipeCockpitService {
         const exclusionLines = byInsertOrder(tree.objectSelection?.exclusions ?? [], exclusion => exclusion.objectApiName)
             .map(exclusion => exclusion.kind === 'autoExcluded'
                 ? `${exclusion.objectApiName}: not generated, ${exclusion.excludedParentObjectApiName ? `auto-excluded with its parent ${exclusion.excludedParentObjectApiName}` : 'auto-excluded with its parent'}`
+                : exclusion.kind === 'noFieldsSelected' ? `${exclusion.objectApiName}: not generated, no fields selected`
                 : `${exclusion.objectApiName}: not generated, excluded`);
 
         const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
@@ -21192,6 +21264,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeGlyph { display: block; width: 2.1rem; height: 2.1rem; }
     .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
+    .treeGlyph.noFieldsSelected path { stroke: var(--sdt-removed); stroke-width: 3; }
     .treeGlyph.autoExcluded path { stroke-dasharray: 2 2.5; }
     .treeGlyph.impacted path { stroke: var(--sdt-changed); }
     .treeExclusion { font-size: 0.85em; }
@@ -21315,8 +21388,9 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
     .fieldEditorInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
     .fieldEditorHint { font-size: 0.85em; }
     .fieldEditorRefusal { color: var(--sdt-removed); font-size: 0.9em; }
-    .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
-    .treeFieldWarning { color: var(--sdt-changed); }
+    .treeFieldNote { position: relative; z-index: 2; font-size: 0.85em; }
+    .treeNoFieldsSelected { color: var(--sdt-removed); font-weight: bold; }
+    .noFieldsSelectedHidden { display: none !important; }
     .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject { min-height: 1.9rem; padding: 0.2rem 0.6rem; }
     .treeUseOrgRecord { min-height: 1.9rem; padding: 0.2rem 0.6rem; }
     .treeLookupDecision { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
@@ -21915,6 +21989,7 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const TREE_PICKER_NO_OBJECTS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS)};
     const TREE_PICKER_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX)};
     const TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX)};
+    const TREE_PICKER_NO_FIELDS_SELECTED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_NO_FIELDS_SELECTED_SUFFIX)};
     const TREE_PICKER_IMPACTED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX)};
     const TREE_PICKER_OBJECTS_SHOW_ALL = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL)};
     const TREE_PICKER_OBJECTS_SHOW_LESS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS)};
@@ -21996,7 +22071,7 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     const VALIDATION_RULE_SOURCE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX)};
     const VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL)};
     const VALIDATION_RULE_SOURCE_TITLE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX)};
-    const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
+    const NO_FIELDS_SELECTED_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE)};
     const SELECT_ALL_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL)};
     const STANDARD_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_LABEL)};
     const CUSTOM_FIELD_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX)};
@@ -22650,7 +22725,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             if (objectIndex > 0) { listElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const suffix = !exclusion ? ( hasOwnKey(impactsByObjectApiName, objectApiName) ? TREE_PICKER_IMPACTED_SUFFIX : '' )
-                : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
+                : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX
+                : exclusion.kind === 'noFieldsSelected' ? TREE_PICKER_NO_FIELDS_SELECTED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
             const friendLabels = hasOwnKey(friendLabelsByObjectApiName, objectApiName) ? friendLabelsByObjectApiName[objectApiName] : [];
             const friendText = friendLabels.length > 0 ? ' (' + friendLabels.join(', ') + ')' : '';
             listElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + friendText + suffix));
@@ -24157,6 +24233,21 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
+    // AN OBJECT LEFT OUT FOR HAVING NO FIELD TICKED (#611) KEEPS ITS BOXES: TICKING ONE IS HOW IT COMES BACK
+    function findFieldLockingExclusion(tree, objectApiName) {
+        const exclusion = findObjectExclusion(tree, objectApiName);
+        return exclusion && exclusion.kind !== 'noFieldsSelected' ? exclusion : null;
+    }
+
+    // EVERYTHING AFTER THE OBJECT'S NAME GIVES WAY TO ONE RED MESSAGE; THE ▸ STAYS, SO A FIELD CAN BE TICKED AGAIN
+    function drawNoFieldsSelected(treeObjectState, isNoFieldsSelected) {
+        treeObjectState.headerDetailElements.forEach(function (detailElement) {
+            if (isNoFieldsSelected) { detailElement.classList.add('noFieldsSelectedHidden'); } else { detailElement.classList.remove('noFieldsSelectedHidden'); }
+        });
+        if (isNoFieldsSelected) { treeObjectState.noFieldsSelectedElement.classList.remove('hidden'); } else { treeObjectState.noFieldsSelectedElement.classList.add('hidden'); }
+        if (isNoFieldsSelected) { treeObjectState.element.classList.add('noFieldsSelected'); } else { treeObjectState.element.classList.remove('noFieldsSelected'); }
+    }
+
     function formatTreeCount(treeState) {
 
         const objectSelection = treeState.tree.objectSelection;
@@ -24197,13 +24288,18 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const objectApiName = treeObjectState.object.objectApiName;
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const isAutoExcluded = !!exclusion && exclusion.kind === 'autoExcluded';
+            const isNoFieldsSelected = !!exclusion && exclusion.kind === 'noFieldsSelected';
             const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
+            const excludedParent = isAutoExcluded ? findObjectExclusion(tree, exclusion.excludedParentObjectApiName) : null;
+            const excludedParentState = excludedParent && excludedParent.kind === 'noFieldsSelected' ? ' has no fields selected' : ' excluded';
 
-            if (exclusion) { treeObjectState.element.classList.add('excluded'); } else { treeObjectState.element.classList.remove('excluded'); }
+            // A ROW WITH NO FIELD TICKED IS NOT DIMMED: ITS RED MESSAGE IS WHAT THE READER MUST SEE (#611)
+            if (exclusion && !isNoFieldsSelected) { treeObjectState.element.classList.add('excluded'); } else { treeObjectState.element.classList.remove('excluded'); }
 
             treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact)
                 : !exclusion ? ''
-                : isAutoExcluded ? 'auto-excluded — parent ' + exclusion.excludedParentObjectApiName + ' excluded'
+                : isAutoExcluded ? 'auto-excluded — parent ' + exclusion.excludedParentObjectApiName + excludedParentState
+                : isNoFieldsSelected ? 'not generated — ' + objectApiName + ' has no fields selected'
                 : 'excluded';
             if (exclusion || impact) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
 
@@ -24226,10 +24322,11 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             treeObjectState.glyphElement.setAttribute('class', 'treeGlyph ' + glyphKind);
             treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : impact ? TREE_IMPACTED_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
             includeElement.setAttribute('aria-pressed', exclusion ? 'false' : 'true');
-            includeElement.disabled = isAutoExcluded || isRefused;
+            includeElement.disabled = isAutoExcluded || isNoFieldsSelected || isRefused;
 
             const title = isRefused ? objectApiName + ' is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded'
-                : isAutoExcluded ? 'Excluded because parent ' + exclusion.excludedParentObjectApiName + ' is excluded'
+                : isNoFieldsSelected ? 'No fields selected, so no records will be generated. Tick a field to include it'
+                : isAutoExcluded ? 'Excluded because parent ' + exclusion.excludedParentObjectApiName + ( excludedParent && excludedParent.kind === 'noFieldsSelected' ? ' has no fields selected' : ' is excluded' )
                 : exclusion ? 'Excluded — click to include'
                 : impact ? 'Included — ' + describeObjectImpact(impact) + ', so ' + impact.fieldApiNames.join(', ') + ( impact.fieldApiNames.length === 1 ? ' is' : ' are' ) + ' left out. Click to exclude'
                 : 'Included — click to exclude';
@@ -24322,7 +24419,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const objectApiName = treeObjectState.object.objectApiName;
         const fieldApiName = fieldState.field.fieldApiName;
         const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
+        const isObjectExcluded = !!findFieldLockingExclusion(tree, objectApiName);
         const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
         const isExcluded = isTreeFieldUnticked(objectFieldSelection, fieldApiName);
 
@@ -24643,11 +24740,12 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
-        const isEveryFieldExcluded = !!objectFieldSelection && objectFieldSelection.isEveryFieldExcluded && !isObjectExcluded;
+        const exclusion = findObjectExclusion(tree, objectApiName);
+        const isEveryFieldUnticked = !!objectFieldSelection && !!objectFieldSelection.isEveryFieldExcluded;
+        // THE HOST LEAVES THE OBJECT OUT AS noFieldsSelected; AN ITERATION IS NO PART OF THE CASCADE, SO ITS OWN FIELDS DECIDE
+        const isNoFieldsSelected = exclusion ? exclusion.kind === 'noFieldsSelected' && ( !treeObjectState.isIteration || isEveryFieldUnticked ) : isEveryFieldUnticked;
 
-        treeObjectState.fieldWarningElement.textContent = isEveryFieldExcluded ? EVERY_FIELD_UNTICKED_WARNING : '';
-        if (isEveryFieldExcluded) { treeObjectState.fieldWarningElement.classList.remove('hidden'); } else { treeObjectState.fieldWarningElement.classList.add('hidden'); }
+        drawNoFieldsSelected(treeObjectState, isNoFieldsSelected);
 
         if (treeObjectState.isBodyBuilt) {
             treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
@@ -24730,7 +24828,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
+        const isObjectExcluded = !!findFieldLockingExclusion(tree, objectApiName);
         const counts = { all: { untickable: 0, ticked: 0 }, standard: { untickable: 0, ticked: 0 } };
 
         treeObjectState.fieldStates.forEach(function (fieldState) {
@@ -24867,7 +24965,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     // THE REASON IT IS OFF, OR '' WITH HOW MANY ROWS IT HIDES: ONE COUNT PER DRAW
     function readHideUnselectedState(treeObjectState) {
-        if (findObjectExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return { reason: describeExcludedObjectFields(treeObjectState.object.objectApiName), unselectedCount: 0 }; }
+        if (findFieldLockingExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return { reason: describeExcludedObjectFields(treeObjectState.object.objectApiName), unselectedCount: 0 }; }
         const unselectedCount = countUnselectedFields(treeObjectState);
         return { reason: unselectedCount === 0 ? NO_UNSELECTED_FIELDS_NOTE : '', unselectedCount: unselectedCount };
     }
@@ -26197,7 +26295,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             countElement: createElement('span', 'treeObjectCount muted'),
             lookupsElement: createElement('span', 'treeLookups muted'),
             exclusionElement: createElement('span', 'treeExclusion muted hidden'),
-            fieldWarningElement: createElement('span', 'treeFieldWarning hidden'),
+            noFieldsSelectedElement: createElement('span', 'treeNoFieldsSelected hidden', NO_FIELDS_SELECTED_MESSAGE),
+            headerDetailElements: [],
             includeElement: null,
             glyphElement: null,
             glyphPathElement: null,
@@ -26272,6 +26371,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         objectHeaderElement.appendChild(toggleElement);
 
         objectHeaderElement.appendChild(buildSourceLink('treeObjectName', object.objectApiName, object.recipeFilePath, object.lineNumber));
+        const nameChildCount = objectHeaderElement.children.length;
 
         // FILLED WHEN THE CARD'S TREECIPE TAB IS BUILT, SINCE WHETHER IT OPENS A LIST DEPENDS ON THE WHOLE CARD (#380)
         if (nicknameOfObject(object)) {
@@ -26299,10 +26399,12 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         }
 
         objectHeaderElement.appendChild(treeObjectState.exclusionElement);
-        objectHeaderElement.appendChild(treeObjectState.fieldWarningElement);
         objectHeaderElement.appendChild(treeObjectState.countElement);
 
         if (object.iteration) { appendAddFriendControls(treeKey, object, objectHeaderElement); }
+
+        treeObjectState.headerDetailElements = Array.prototype.slice.call(objectHeaderElement.children, nameChildCount);
+        objectHeaderElement.appendChild(treeObjectState.noFieldsSelectedElement);
 
         objectElement.appendChild(objectHeaderElement);
         objectElement.appendChild(treeObjectState.bodyElement);

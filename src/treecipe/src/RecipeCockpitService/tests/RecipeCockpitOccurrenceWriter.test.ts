@@ -90,6 +90,72 @@ describe('RecipeCockpitRecipeWriter, a setting for one occurrence (#467)', () =>
 
         });
 
+        // #611: AN ITERATION WITH NO FIELD TICKED IS LEFT OUT ON ITS OWN, ITS OBJECT KEPT
+        it('leaves out one nicknamed occurrence with excludedOccurrenceKeys, and every other line byte-identical (faker-js)', () => {
+
+            const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(FIXTURE_TEXT, {
+                excludedObjectApiNames: [],
+                excludedOccurrenceKeys: [ITERATION_KEY],
+                parentLookupsByObjectApiName: LOOKUPS
+            }));
+
+            expect(readAccounts(filtered.recipeText).map(account => account.nickname)).toEqual(['Account_NickName']);
+            expect(filtered.droppedObjectApiNames).toEqual([]);
+            expect(filtered.recipeText.split('\n')[0]).toBe(`# Recipe Cockpit -- a filtered copy of this tree's recipe, leaving out: Account (${ITERATION_NICKNAME})`);
+            const iterationStart = FIXTURE_TEXT.indexOf('    # Account (Child iteration');
+            const iterationEnd = FIXTURE_TEXT.indexOf('# Lead (Parents: none)');
+            expect(filtered.recipeText.split('\n').slice(1).join('\n')).toBe(FIXTURE_TEXT.slice(0, iterationStart) + FIXTURE_TEXT.slice(iterationEnd - 1));
+
+        });
+
+        it('leaves out one nicknamed top-level occurrence of a snowfakery recipe', () => {
+
+            const snowfakeryText = [
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  count: 1',
+                '  fields:',
+                '    Name: ${{fake.Company}}',
+                '',
+                '- object: Account',
+                '  nickname: Account_child_NickName',
+                '  count: 1',
+                '  fields:',
+                '    Name: ${{fake.Company}}',
+                '    ParentId:',
+                '      reference: Account_NickName',
+                ''
+            ].join('\n');
+
+            const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(snowfakeryText, {
+                excludedObjectApiNames: [],
+                excludedOccurrenceKeys: [ITERATION_KEY],
+                parentLookupsByObjectApiName: LOOKUPS
+            }));
+
+            expect(readAccounts(filtered.recipeText).map(account => account.nickname)).toEqual(['Account_NickName']);
+            expect(filtered.recipeText.split('\n').slice(1).join('\n')).toBe(snowfakeryText.slice(0, snowfakeryText.indexOf('- object: Account\n  nickname: Account_child_NickName')));
+
+        });
+
+        it('never leaves out a first occurrence by its key, and refuses a key with no nickname', () => {
+
+            const firstOccurrenceKept = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(FIXTURE_TEXT, {
+                excludedObjectApiNames: [],
+                excludedOccurrenceKeys: [RecipeCockpitRecipeWriter.buildOccurrenceKey('Account', 'Account_NickName')],
+                parentLookupsByObjectApiName: LOOKUPS
+            }));
+            expect(firstOccurrenceKept.recipeText).toBe(FIXTURE_TEXT);
+
+            const refused = RecipeCockpitRecipeWriter.buildFilteredRecipe(FIXTURE_TEXT, {
+                excludedObjectApiNames: [],
+                excludedOccurrenceKeys: ['Account'],
+                parentLookupsByObjectApiName: LOOKUPS
+            });
+            expect(refused).toMatchObject({ isFiltered: false, refusal: { reason: 'invalid-object-api-name' } });
+
+        });
+
         it('takes an occurrence\'s own entry over its object\'s, and the object\'s for every other occurrence', () => {
 
             const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(FIXTURE_TEXT, {
