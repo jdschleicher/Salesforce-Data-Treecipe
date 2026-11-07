@@ -56,7 +56,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
 
             // below expect assert will not work without spy
-            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent);
+            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent, expect.objectContaining({ listener: expect.any(Function) }));
 
             expect(expressionEvalSpy).toHaveBeenCalledTimes(4); // count is set to 2 and there are 2 fields that have to be evaluated, (2x2=4)
 
@@ -87,7 +87,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
 
             // below assert will not work without yaml spy
-            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent);
+            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent, expect.objectContaining({ listener: expect.any(Function) }));
 
             const parsedResult = JSON.parse(result);
 
@@ -112,7 +112,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
 
             // below assert will not work without yaml spy
-            expect(yaml.load).toHaveBeenCalledWith(mockVariableYamlContent);
+            expect(yaml.load).toHaveBeenCalledWith(mockVariableYamlContent, expect.objectContaining({ listener: expect.any(Function) }));
 
             const parsedResult = JSON.parse(result);
 
