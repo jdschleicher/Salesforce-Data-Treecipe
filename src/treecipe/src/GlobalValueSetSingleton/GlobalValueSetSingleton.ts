@@ -7,7 +7,7 @@ import * as xml2js from 'xml2js';
 
 interface ILoadedGlobalValueSet {
     fileName: string;
-    fileXML: any;
+    masterLabel: unknown;
     picklistValues: string[];
 }
 
@@ -111,7 +111,7 @@ export class GlobalValueSetSingleton {
 
                 if ( picklistValuesFromGlobalValueSet ) {
 
-                    loadedGlobalValueSets.push({ fileName, fileXML, picklistValues: picklistValuesFromGlobalValueSet });
+                    loadedGlobalValueSets.push({ fileName, masterLabel: fileXML?.GlobalValueSet?.masterLabel?.[0], picklistValues: picklistValuesFromGlobalValueSet });
 
                 }
 
@@ -150,8 +150,8 @@ export class GlobalValueSetSingleton {
             this.addGlobalValueSetUnlessNameIsTaken(GlobalValueSetSingleton.getGlobalValueSetFullNameByFileName(fileName), picklistValues);
         });
 
-        loadedGlobalValueSets.forEach(({ fileXML, picklistValues }) => {
-            this.addGlobalValueSetUnlessNameIsTaken(fileXML?.GlobalValueSet?.masterLabel?.[0], picklistValues);
+        loadedGlobalValueSets.forEach(({ masterLabel, picklistValues }) => {
+            this.addGlobalValueSetUnlessNameIsTaken(masterLabel, picklistValues);
         });
 
     }

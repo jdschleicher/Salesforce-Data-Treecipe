@@ -323,7 +323,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
         The only name inside the file is masterLabel, an admin editable display label -- keying by it
         alone left a set whose label had ever been renamed unreachable from the field referencing it.
     */
-    describe("addGlobalValueSetUnderEveryNameItIsReferencedBy", () => {
+    describe("addGlobalValueSetsUnderEveryNameTheyAreReferencedBy", () => {
 
         test("given a global value set whose masterLabel differs from its full name, resolves under both names", async () => {
 

@@ -328,7 +328,6 @@ describe('Generate Treecipe and Run Faker by Recipe write exactly the golden fil
 
     }, 120000);
 
-    // A NEW TEMP WORKSPACE, A NEW ACTIVATION AND THE SAME SEED: NOTHING CARRIED OVER FROM THE FIRST RUN MAY CHANGE A BYTE
     // THE SAME EXPECTED FILES, WITH EVERY FOLDER LISTED BACKWARDS: THE FILE SYSTEM'S ORDER NEVER REACHES A RECIPE OR A DATA SET (#592)
     test.each(GOLDEN_RUNS)('$runName, with every folder listed in reverse order', async (goldenRun) => {
 
@@ -343,6 +342,7 @@ describe('Generate Treecipe and Run Faker by Recipe write exactly the golden fil
 
     }, 120000);
 
+    // A NEW TEMP WORKSPACE, A NEW ACTIVATION AND THE SAME SEED: NOTHING CARRIED OVER FROM THE FIRST RUN MAY CHANGE A BYTE
     test('a second faker-js run in a row writes the same files as the first', async () => {
 
         const firstRunFiles = await runGenerationCommands(GOLDEN_RUNS[0]);

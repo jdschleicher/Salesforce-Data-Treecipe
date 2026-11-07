@@ -200,6 +200,7 @@ export class DirectoryProcessor {
   static async readDirectoryInNameOrder(directoryUri: vscode.Uri): Promise<[string, vscode.FileType][]> {
 
     const directoryEntries = await vscode.workspace.fs.readDirectory(directoryUri);
+    // NOT A LISTING: HANDED BACK AS IS, SO EACH CALLER'S OWN EMPTY-LISTING CHECK STILL DECIDES WHAT HAPPENS
     if ( !Array.isArray(directoryEntries) ) {
       return directoryEntries;
     }
