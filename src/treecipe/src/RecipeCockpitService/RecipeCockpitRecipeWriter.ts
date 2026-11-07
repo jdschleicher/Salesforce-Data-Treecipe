@@ -181,6 +181,8 @@ export interface IRecipeFilterLookup {
 */
 export interface IRecipeFilterRequest {
     excludedObjectApiNames: readonly string[];
+    // ONE NICKNAMED OCCURRENCE LEFT OUT WITH WHAT ITS friends: BLOCK HOLDS, ITS OBJECT KEPT (#611: AN ITERATION WITH NO FIELD TICKED)
+    excludedOccurrenceKeys?: readonly string[];
     parentLookupsByObjectApiName: ReadonlyMap<string, readonly IRecipeFilterLookup[]>;
     levelsByObjectApiName?: ReadonlyMap<string, number>;
     excludedFieldApiNamesByObject?: ReadonlyMap<string, readonly string[]>;
@@ -2780,6 +2782,12 @@ export class RecipeCockpitRecipeWriter {
             return refuseFilter('invalid-object-api-name', `"${invalidObjectApiName}" is not an object api name.`, invalidObjectApiName);
         }
 
+        const invalidOccurrenceKey = ( filterRequest.excludedOccurrenceKeys ?? [] ).find(occurrenceKey => !this.isOccurrenceKey(occurrenceKey) || !occurrenceKey.includes('\n'));
+        if ( invalidOccurrenceKey !== undefined ) {
+            return refuseFilter('invalid-object-api-name', 'An occurrence to leave out is not an object api name and a nickname.');
+        }
+        const excludedOccurrences = ( filterRequest.excludedOccurrenceKeys ?? [] ).map(occurrenceKey => this.parseOccurrenceKey(occurrenceKey));
+
         // THE NAMES GO INTO THE COPY'S HEADER COMMENT, SO EACH IS HELD TO THE API NAME RULE BEFORE ANYTHING IS WRITTEN
         const excludedFieldsByObject = new Map<string, Set<string>>();
         for ( const [objectApiName, fieldApiNames] of filterRequest.excludedFieldApiNamesByObject ?? new Map<string, readonly string[]>() ) {
@@ -2885,7 +2893,7 @@ export class RecipeCockpitRecipeWriter {
         }
 
         // NOTHING EXCLUDED, NO COUNT SET AND NO VALUE FIXED IS THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 && constrainedExpressionsByObject.size === 0 && unconstrainedValuesByObject.size === 0 ) {
+        if ( excludedObjectApiNames.size === 0 && excludedOccurrences.length === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 && constrainedExpressionsByObject.size === 0 && unconstrainedValuesByObject.size === 0 ) {
             return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [], appliedUnconstrainedValues: [] };
         }
 
@@ -2902,12 +2910,19 @@ export class RecipeCockpitRecipeWriter {
             }
         });
 
+        // NEVER A FIRST OCCURRENCE: THAT IS THE OBJECT ITSELF, LEFT OUT ONLY BY excludedObjectApiNames
+        const excludedOccurrenceObjects = excludedOccurrences
+            .map(occurrence => this.findOccurrenceByNickname(scannedObjects, occurrence.objectApiName, occurrence.nickname as string))
+            .filter((scannedObject): scannedObject is IScannedObject => !!scannedObject && firstOccurrencesByApiName.get(scannedObject.objectApiName) !== scannedObject);
+        const excludedOccurrenceHeaderIndexes = new Set(excludedOccurrenceObjects.map(scannedObject => scannedObject.headerIndex));
+
         // FILE ORDER IS PARENTS BEFORE FRIENDS, SO A PARENT'S FATE IS DECIDED BEFORE ITS FRIENDS ASK
         const droppedHeaderIndexes = new Set<number>();
         const objectsToMove: IScannedObject[] = [];
         scannedObjects.forEach(scannedObject => {
             const isParentDropped = scannedObject.parentHeaderIndex !== undefined && droppedHeaderIndexes.has(scannedObject.parentHeaderIndex);
-            if ( excludedObjectApiNames.has(scannedObject.objectApiName) || ( isParentDropped && firstOccurrencesByApiName.get(scannedObject.objectApiName) !== scannedObject ) ) {
+            if ( excludedObjectApiNames.has(scannedObject.objectApiName) || excludedOccurrenceHeaderIndexes.has(scannedObject.headerIndex)
+                    || ( isParentDropped && firstOccurrencesByApiName.get(scannedObject.objectApiName) !== scannedObject ) ) {
                 droppedHeaderIndexes.add(scannedObject.headerIndex);
             } else if ( isParentDropped ) {
                 objectsToMove.push(scannedObject);
@@ -3278,13 +3293,14 @@ export class RecipeCockpitRecipeWriter {
         };
 
         const droppedObjectApiNames = [...new Set(scannedObjects
-            .filter(scannedObject => droppedHeaderIndexes.has(scannedObject.headerIndex))
+            .filter(scannedObject => droppedHeaderIndexes.has(scannedObject.headerIndex) && !excludedOccurrenceHeaderIndexes.has(scannedObject.headerIndex))
             .map(scannedObject => scannedObject.objectApiName))];
 
         // AN OCCURRENCE'S OWN CHANGE NAMES IT (#467): "Account (Account_child_NickName).Name"
         const describeScoped = (scoped: { objectApiName: string; nickname?: string }) => ( scoped.nickname === undefined ? scoped.objectApiName : `${scoped.objectApiName} (${scoped.nickname})` );
+        const droppedOccurrenceNames = excludedOccurrenceObjects.map(scannedObject => describeScoped({ objectApiName: scannedObject.objectApiName, nickname: scannedObject.nicknames[0] }));
         const leftOutParts = [
-            ...( droppedObjectApiNames.length > 0 ? [droppedObjectApiNames.join(', ')] : [] ),
+            ...( droppedObjectApiNames.length > 0 || droppedOccurrenceNames.length > 0 ? [[...droppedObjectApiNames, ...droppedOccurrenceNames].join(', ')] : [] ),
             ...( droppedFields.length > 0 ? [`fields ${droppedFields.map(droppedField => `${describeScoped(droppedField)}.${droppedField.fieldApiName}`).join(', ')}`] : [] )
         ];
         const headerParts = [

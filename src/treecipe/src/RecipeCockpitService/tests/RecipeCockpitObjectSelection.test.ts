@@ -50,6 +50,21 @@ describe('RecipeCockpitObjectSelection.computeObjectSelection (#219)', () => {
 
     });
 
+    // #611: AN OBJECT WITH NO FIELD TICKED IS CUT OFF LIKE AN EXCLUDED ONE, UNDER ITS OWN KIND
+    test('an object with no fields selected cuts off its children like an excluded one, and a chain-link exclusion outranks it', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['Contact'], ['Opportunity', 'Contact', 'NotInTree__c']);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Contact', kind: 'excluded' },
+            { objectApiName: 'Opportunity', kind: 'noFieldsSelected' },
+            { objectApiName: 'ChildOpps__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Opportunity' }
+        ]);
+        expect(selection.disabledLookups).toEqual([{ objectApiName: 'Case', fieldApiName: 'ContactId', parentObjectApiName: 'Contact' }]);
+        expect(selection.includedObjectCount).toBe(3);
+
+    });
+
     test('a descendant with another included parent stays included, with its lookup to the excluded parent disabled', () => {
 
         const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['Contact']);

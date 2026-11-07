@@ -17,14 +17,14 @@
     DisplayUrl: ${{faker.internet.url()}}
     ExternalId: ${{faker.string.uuid()}}
     Cost__c: |
-            ${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}
+            ${{ faker.number.bigInt({min: 0n, max: 9999999999999999n}) + '.' + faker.string.numeric({length: 2, allowLeadingZeros: true}) }}
     Current_Inventory__c: |
-            ${{ faker.number.int({min: 0, max: 999999999999999999}) }}
+            ${{ faker.number.bigInt({min: 0n, max: 999999999999999999n}).toString() }}
     ExternalDataSourceId: ### TODO -- REFERENCE ID REQUIRED
     Lifespan_Months__c: |
-            ${{ faker.number.int({min: 0, max: 999999999999999999}) }}
+            ${{ faker.number.bigInt({min: 0n, max: 999999999999999999n}).toString() }}
     Maintenance_Cycle__c: |
-            ${{ faker.number.int({min: 0, max: 999999999999999999}) }}
+            ${{ faker.number.bigInt({min: 0n, max: 999999999999999999n}).toString() }}
     Replacement_Part__c: ${{ faker.datatype.boolean() }}
     SellerId: ### TODO -- REFERENCE ID REQUIRED
     SourceProductId: ### TODO -- REFERENCE ID REQUIRED

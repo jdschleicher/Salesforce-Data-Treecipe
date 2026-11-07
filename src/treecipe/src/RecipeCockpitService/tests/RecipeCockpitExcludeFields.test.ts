@@ -25,7 +25,6 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
@@ -1167,17 +1166,6 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(checkboxOf(panel, contact, 'LastName').disabled).toBeTrue();
             expect(checkboxOf(panel, contact, 'AccountId').disabled).toBeTrue();
             expect(checkboxOf(panel, contact, 'AccountId').attributes.title).toBe('Contact is excluded, so its fields are read-only');
-
-        });
-
-        it('warns on the row when every field is unticked', () => {
-
-            const panel = drawRecipe(recipe => untick(recipe, { Contact: ['LastName', 'AccountId'] }));
-            const warningElement = panel.findAll(objectNamed(panel, 'Contact').children[0], 'treeFieldWarning')[0];
-
-            expect(warningElement.textContent).toBe(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING);
-            expect(panel.isHidden(warningElement)).toBeFalse();
-            expect(panel.isHidden(panel.findAll(objectNamed(panel, 'Account').children[0], 'treeFieldWarning')[0])).toBeTrue();
 
         });
 

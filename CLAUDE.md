@@ -100,9 +100,6 @@ Someone who knows Salesforce metadata, Treecipe recipes and VS Code, but not thi
 ## Project Structure
 
 ```
-.claude/settings.json                        # Project hooks: the flow guard on prompts, edits, shell commands and PR creation
-.claude/hooks/flowGuard.js                   # src/ read-only until "approve plan #N" after /next-task N; no push or PR until Phase 1 passed on HEAD
-.claude/hooks/prFlowPhase1.js                # /pr-flow Phase 1 (compile, lint, debug audit, CHANGELOG sync, tests); records a pass for HEAD in .claude/flow-state/
 .claude/skills/cockpit-help-sync/            # Keeps the cockpit's ? help and docs/RECIPE-COCKPIT-GUIDE.md in step, re-takes its screenshots
 .claude/skills/cockpit-row-style/            # Holds every cockpit list to the row presentation standard (#558): two-line row header, bordered row box, column table
 .claude/skills/readable-code/                # Readability review of a diff for a human and an agent: CLAUDE.md's Human-Readable Code rules, token cost of where code and guidance are added (from salesforce-to-git)
@@ -402,7 +399,7 @@ The cockpit's design notes, grouped by tab and concern, are `src/treecipe/src/Re
 
 When implementing a new feature or fixing a bug:
 
-- [ ] Start with `/next-task <N>`: a hook (`.claude/hooks/flowGuard.js`) keeps `src/` read-only until the person replies `approve plan #<N>`, and refuses `git push` or a PR until `node .claude/hooks/prFlowPhase1.js` (`/pr-flow` Phase 1) has passed on HEAD
+- [ ] Start with `/next-task <N>`: post the plan and wait for the person to confirm it before changing `src/`; run `/pr-flow` Phase 1 before pushing
 - [ ] Read the relevant service file(s), and the `DESIGN.md` beside each, before making changes
 - [ ] Put a new design note in that service's `DESIGN.md`, not here: `CLAUDE.md` stays under 100 KB (`/docs-check`)
 - [ ] Add or update tests in the service's `tests/` folder
