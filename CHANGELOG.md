@@ -16,6 +16,7 @@ No source file changes, and nothing in the `.vsix` changes. #580's text baseline
 - `captureRecipeCockpitScreenshots.js` now exports its page setup (`openShellDocument`) and runs only when called directly; the guide's pictures come out byte for byte as before. `jest.config.js` leaves `developmentSupportScripts/` out of coverage, since a test now loads it but it is a tool, not extension code.
 - Design note: `RecipeCockpitService/DESIGN.md`, Acceptance journeys.
 - **Merged `main` (3.192.17 and 3.193.0); this entry is now 3.193.1.** `help-section.png` is re-taken with `UPDATE_COCKPIT_SCREENSHOTS=1`, because #611 added a line to the ? help: the screen is 45 pixels taller, and no other screenshot changes. The merge also removes the #589 flow guard (`.claude/settings.json`, `.claude/hooks/`), as main did in 3.192.17.
+- **The font check's test no longer needs a Chromium:** it points `CHROMIUM_EXECUTABLE_PATH` at a file that exists, because the Chromium check runs first and CI's main test step has none. It failed there on the branch before the merge as well.
 
 ## [3.193.0] - Recipe Cockpit: an object with no fields ticked generates no records, and its row says so in red (#611)
 

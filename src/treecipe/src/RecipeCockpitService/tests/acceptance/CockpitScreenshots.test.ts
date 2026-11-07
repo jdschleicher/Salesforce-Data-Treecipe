@@ -30,7 +30,14 @@ describe('the screenshot comparison says what it needs (#602)', () => {
     test('a machine without the font the PNGs were drawn with is named, with the font fontconfig offers instead', () => {
         const execFileSync = childProcess.execFileSync;
         jest.spyOn(childProcess, 'execFileSync').mockImplementation(((command: string, ...rest: unknown[]) => command === 'fc-match' ? 'Inter' : (execFileSync as Function)(command, ...rest)) as typeof childProcess.execFileSync);
-        expect(CockpitScreenshots.findMissingChromium('linux')).toContain('the PNGs are drawn with DejaVu Sans, and this machine has none (fontconfig offers Inter)');
+        // ANY FILE THAT EXISTS PASSES THE CHROMIUM CHECK, WHICH RUNS FIRST: CI'S MAIN TEST STEP HAS NO CHROMIUM
+        const executablePathBefore = process.env.CHROMIUM_EXECUTABLE_PATH;
+        process.env.CHROMIUM_EXECUTABLE_PATH = process.execPath;
+        try {
+            expect(CockpitScreenshots.findMissingChromium('linux')).toContain('the PNGs are drawn with DejaVu Sans, and this machine has none (fontconfig offers Inter)');
+        } finally {
+            if ( executablePathBefore === undefined ) { delete process.env.CHROMIUM_EXECUTABLE_PATH; } else { process.env.CHROMIUM_EXECUTABLE_PATH = executablePathBefore; }
+        }
     });
 
     test('a Chromium that is not there is named by its path', () => {
