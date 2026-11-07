@@ -693,15 +693,18 @@ describe('a lookup to a second parent that is not an ancestor (#189)', () => {
 
         const recipeEntries = yaml.load(recipeContent) as LoadedRecipeEntry[];
 
-        // Case__c AND Escalation__c LOOK EACH OTHER UP: THE ONE AT THE HIGHER LEVEL IS NESTED UNDER THE OTHER, WHOSE LOOKUP BACK STAYS A TODO
-        expect(findEntry(recipeEntries, 'Escalation__c').friends.map(friend => friend.object)).toEqual(['Case__c']);
-        expect(recipeContent).toContain(`        Case__c: ${RelationshipService.referenceIdRequiredTodo} -- Case__c\n`);
-        expect(findEntry(recipeEntries, 'Escalation__c').fields.Case__c).toBeNull();
-        expect(findEntry(recipeEntries, 'Case__c').fields).toEqual({
+        /*
+            Case__c AND Escalation__c LOOK EACH OTHER UP. The cycle is cut at the lookup that closes it
+            in a name-order walk (#104): Account reaches Case__c before Escalation__c, so Case__c's
+            lookup back to Escalation__c stays a TODO, and Escalation__c nests under Case__c.
+        */
+        expect(findEntry(recipeEntries, 'Case__c').friends.map(friend => friend.object)).toEqual(['Escalation__c']);
+        expect(recipeContent).toContain(`      Escalation__c: ${RelationshipService.referenceIdRequiredTodo} -- Escalation__c\n`);
+        expect(findEntry(recipeEntries, 'Case__c').fields.Escalation__c).toBeNull();
+        expect(findEntry(recipeEntries, 'Escalation__c').fields).toEqual({
             Name: '${{ faker.company.name() }}',
             Account__c: 'Account_NickName',
-            Contact__c: 'Contact_NickName',
-            Escalation__c: 'Escalation__c_NickName'
+            Case__c: 'Case__c_NickName'
         });
 
     });
