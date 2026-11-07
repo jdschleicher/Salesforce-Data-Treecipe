@@ -22,16 +22,7 @@ Each phase gates on the previous. If Phase 1 fails, stop.
 
 ## Phase 1 — Pre-Commit Checks
 
-**Commit first, then run the Phase 1 script** — the flow guard (`.claude/hooks/flowGuard.js`, wired in `.claude/settings.json`) refuses `git push`, `gh pr create` and the GitHub tools' PR creation until Phase 1 has passed on the exact HEAD commit with nothing uncommitted:
-
-```bash
-git add <changed files by name> && git commit   # 2a's commit, done now so the checks run on HEAD
-node .claude/hooks/prFlowPhase1.js
-```
-
-Run the script with the Bash tool's `timeout` at `1200000` (or `run_in_background`): the test suite takes about four minutes, and the tool's two-minute default kills it before a pass is recorded. The script runs 1a–1e below, stops at the first failure, and records the pass in `.claude/flow-state/` only when every one passes; nothing else can write that record. A fix after a failure is a new commit, and the script runs again. 1f and 1g need judgement, so they stay with you, as below. Do NOT invoke `/pre-commit` as a sub-skill.
-
-The checks the script runs, for reference:
+Run these checks inline with Bash tools. Do NOT invoke `/pre-commit` as a sub-skill — execute each check directly. Run the test suite with the Bash tool's `timeout` at `1200000` (or `run_in_background`): it takes about four minutes, and the tool's two-minute default kills it.
 
 **1a. TypeScript compile:**
 ```bash

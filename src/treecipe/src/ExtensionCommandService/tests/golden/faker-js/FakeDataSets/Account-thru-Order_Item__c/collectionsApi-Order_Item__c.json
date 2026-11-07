@@ -7,11 +7,11 @@
         "referenceId": "Order_Item__c_Reference_1__Order_Item__c_Order__c_Account_NickName"
       },
       "Order__c": "Order__c_Account_NickName",
-      "Price__c": "324754",
+      "Price__c": "551923",
       "Product__c": "Product__c_Product_Family__c_NickName",
-      "Qty_L__c": "6",
-      "Qty_M__c": "746",
-      "Qty_S__c": "438"
+      "Qty_L__c": "304",
+      "Qty_M__c": "677",
+      "Qty_S__c": "976"
     }
   ]
 }
