@@ -582,6 +582,56 @@ describe('RecipeCockpitService, Get latest object detail from target org (#612)'
             expect(recipeText()).toBe(recipeBefore);
 
         });
+
+        it('closes as cancelled, removing what it staged, when Cancel arrives while the files are compared', async () => {
+
+            const { RecipeCockpitObjectRefresh } = await import('../RecipeCockpitObjectRefresh');
+            const realCompare = RecipeCockpitObjectRefresh.compareStagedObject.bind(RecipeCockpitObjectRefresh);
+            jest.spyOn(RecipeCockpitObjectRefresh, 'compareStagedObject').mockImplementation(async (comparisonRequest) => {
+                await receivedMessageHandler({ command: 'cancelObjectRefresh', refreshId: lastRefreshState().refreshId });
+                return realCompare(comparisonRequest);
+            });
+
+            await openAndRetrieve(['fields']);
+
+            expect(warnings()).toEqual(['Getting the latest detail of Account from qa · qa@example.com.qa was cancelled. Nothing in the project or the recipe changed.']);
+            expect(refreshStates().map(state => state.step)).not.toContain('review');
+            expect(objectRefreshFolders()).toEqual([]);
+
+        });
+
+        it('removes what it staged when the panel is closed at the review', async () => {
+
+            await openAndRetrieve(['fields']);
+            expect(objectRefreshFolders()).toHaveLength(1);
+
+            const disposePanel = (vscode.window.createWebviewPanel as jest.Mock).mock.results[0].value.onDidDispose.mock.calls[0][0];
+            disposePanel();
+
+            expect(objectRefreshFolders()).toEqual([]);
+
+        });
+
+        it('removes only the package.xml it wrote when that name had to differ, never one it did not write', async () => {
+
+            const { RecipeCockpitMetadataDeploy } = await import('../RecipeCockpitMetadataDeploy');
+            let takenPackageXmlPath = '';
+            let writtenPackageXmlPath = '';
+            jest.spyOn(RecipeCockpitMetadataDeploy, 'writePackageXml').mockImplementation((_location, packageXmlFilePath: string, packageXml: string) => {
+                takenPackageXmlPath = packageXmlFilePath;
+                writtenPackageXmlPath = packageXmlFilePath.replace(/-package\.xml$/, '-2-package.xml');
+                fs.writeFileSync(takenPackageXmlPath, 'another run\'s package.xml');
+                fs.writeFileSync(writtenPackageXmlPath, packageXml);
+                return writtenPackageXmlPath;
+            });
+
+            await openAndRetrieve(['fields']);
+            await send({ command: 'cancelObjectRefresh', refreshId: lastRefreshState().refreshId });
+
+            expect(fs.existsSync(writtenPackageXmlPath)).toBe(false);
+            expect(fs.readFileSync(takenPackageXmlPath, 'utf-8')).toBe('another run\'s package.xml');
+
+        });
     });
 
     describe('the panel', () => {

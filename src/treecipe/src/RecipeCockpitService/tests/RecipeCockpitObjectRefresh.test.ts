@@ -263,13 +263,16 @@ describe('RecipeCockpitObjectRefresh (#612)', () => {
 
         });
 
-        it.each(BACKENDS)('writes an active single-field rule\'s constrained value in the %s backend, and says why any other rule changes the project only', async (backend) => {
+        // THE RECIPE WITH A Score__c LINE, SO A RULE ON IT HAS A LINE TO REWRITE
+        const recipeWithScore = (backend: Backend) => RECIPE_BY_BACKEND[backend].replace('    Regions__c: ### TODO -- NO PICKLIST VALUES\n', '    Regions__c: ### TODO -- NO PICKLIST VALUES\n    Score__c: ${{ old }}\n');
 
-            const { items } = await compare({ kinds: ['validationRules'] }, {}, backend);
+        it.each(BACKENDS)('rewrites the line of the field an active single-field rule constrains in the %s backend, and says why any other rule changes the project only', async (backend) => {
+
+            const { items } = await compare({ kinds: ['validationRules'] }, { recipeText: recipeWithScore(backend) }, backend);
 
             expect(itemNamed(items, 'validationRules', 'Score_Max')).toMatchObject({
-                recipeNote: 'Adds a Score__c line to the recipe.',
-                recipeChanges: [{ operation: 'insert', fieldApiName: 'Score__c' }]
+                recipeNote: 'Rewrites the recipe line of Score__c.',
+                recipeChanges: [{ operation: 'replace', fieldApiName: 'Score__c' }]
             });
             expect(itemNamed(items, 'validationRules', 'Score_Max')!.recipeChanges[0].valueText).toContain(backend === 'faker-js' ? 'faker.number.int({min: 0, max: 500})' : 'random_int(min=0, max=500)');
             expect(itemNamed(items, 'validationRules', 'Score_Max')!.recipeChanges[0].valueText).toContain('### Driven by ValidationRule "Score_Max"');
@@ -279,12 +282,33 @@ describe('RecipeCockpitObjectRefresh (#612)', () => {
 
         });
 
+        it('never adds a line for a field the recipe lacks, so the recipe never names what the project lacks: it points at the field item instead', async () => {
+
+            const { items } = await compare({ kinds: ['validationRules'] });
+
+            expect(itemNamed(items, 'validationRules', 'Score_Max')).toMatchObject({
+                recipeNote: 'Score__c is not in the recipe: only the project file changes. Tick Score__c under Fields to add it with this rule applied.',
+                recipeChanges: []
+            });
+
+        });
+
+        it.each(BACKENDS)('writes a field\'s own line in the %s backend with its active rules in the org applied, unless they are switched off on its row', async (backend) => {
+
+            const constrained = await compare({ kinds: ['fields'] }, {}, backend);
+            expect(itemNamed(constrained.items, 'fields', 'Score__c')!.recipeChanges[0].valueText).toContain('### Driven by ValidationRule "Score_Max"');
+
+            const rulesOff = await compare({ kinds: ['fields'] }, { validationRulesOffFieldApiNames: new Set(['Score__c']) }, backend);
+            expect(itemNamed(rulesOff.items, 'fields', 'Score__c')!.recipeChanges[0].valueText).not.toContain('Driven by');
+
+        });
+
         it('leaves the field\'s line when its rules are switched off on its row, or it is pinned', async () => {
 
-            const rulesOff = await compare({ kinds: ['validationRules'] }, { validationRulesOffFieldApiNames: new Set(['Score__c']) });
+            const rulesOff = await compare({ kinds: ['validationRules'] }, { recipeText: recipeWithScore('snowfakery'), validationRulesOffFieldApiNames: new Set(['Score__c']) });
             expect(itemNamed(rulesOff.items, 'validationRules', 'Score_Max')).toMatchObject({ recipeNote: OBJECT_REFRESH_RECIPE_NOTES.rulesOff, recipeChanges: [] });
 
-            const pinned = await compare({ kinds: ['validationRules'] }, { pinnedFieldApiNames: new Set(['Score__c']) });
+            const pinned = await compare({ kinds: ['validationRules'] }, { recipeText: recipeWithScore('snowfakery'), pinnedFieldApiNames: new Set(['Score__c']) });
             expect(itemNamed(pinned.items, 'validationRules', 'Score_Max')).toMatchObject({ recipeNote: `Score__c: ${OBJECT_REFRESH_RECIPE_NOTES.pinned}`, recipeChanges: [] });
 
         });
@@ -444,7 +468,7 @@ describe('RecipeCockpitObjectRefresh (#612)', () => {
         it.each(BACKENDS)('writes only the ticked items\' lines into a %s recipe, every other line byte-identical', async (backend) => {
 
             const { items } = await compare({}, {}, backend);
-            const ticked = items.filter(item => ['Is_Priority__c', 'Score_Max', 'Regions'].includes(item.name));
+            const ticked = items.filter(item => ['Is_Priority__c', 'Score__c', 'Regions'].includes(item.name));
             const recipeText = RECIPE_BY_BACKEND[backend];
 
             const outcome = RecipeCockpitObjectRefresh.applyRecipeChanges(recipeText, 'Account', undefined, ticked);

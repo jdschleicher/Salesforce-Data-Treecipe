@@ -10,11 +10,13 @@ To pick up one object's org changes you had to open the Treecipe Adapter (a whol
 - **Apply** asks once in the panel, then plans again and refuses if anything ticked would now write something the review did not show. It copies the ticked files into the project, then writes only their recipe lines; every other line stays byte-identical.
   - An item whose file cannot be copied writes no recipe line, and the notification names it.
   - A field gets the value the recipe's own backend writes for it, faker-js or snowfakery, as Generate Treecipe writes it. A changed field's line is rewritten; a new one is added.
-  - A validation rule rewrites its field with every active rule on it applied, unless the field's rule checkbox is off.
+  - A field's line carries every active validation rule the org holds on it, unless the field's rule checkbox is off, so a rewritten line never drops a constraint.
+  - A validation rule rewrites its field's line only when the recipe has one; otherwise its row says to tick the field, so a rule never adds a field the project lacks.
   - A global value set rewrites each of the object's picklist lines that uses it, its values through the backend's escaper.
   - A pinned field, a formula, a lookup, a dependent picklist, and every field of an object with record type sections keep their lines; the row says why. A record type copies its file only, and the notification points at **Regenerate with record types**.
   - Nothing the project holds and the org does not is listed or deleted.
-- **Cancel** at any step changes nothing; the staging folder is removed. An Apply keeps it.
+- **Cancel** at any step changes nothing; the staging folder and the package.xml it wrote are removed, as they are when the panel is closed before an Apply. An Apply keeps them.
+- Each staged validation rule is read and analysed once per comparison, not once per rule.
 - While it applies, the Troubleshooting deploys and retrieves, the Adapter's Apply, Generate Treecipe and a record type regenerate wait, and it waits for them.
 - **Code:** `RecipeCockpitObjectRefresh.ts` (no vscode) compares and plans; `RecipeCockpitObjectRefreshDialog.ts` holds the panel half. `RecipeCockpitOrgChangeDetection.copyMetadataFiles` copies any metadata file the way `copyFieldFiles` did, and `buildStagingFolderPath` takes an operation name.
 - **Tests:** `RecipeCockpitObjectRefresh.test.ts` (each kind new, changed, unchanged and unreadable, each rule that keeps a line, both backends, a byte-for-byte recipe check, and the hostile picklist values through each escaper), `RecipeCockpitObjectRefreshPanel.test.ts` (router, the host against a faked CLI, Cancel, the lock, the dialog in the panel harness) and the `ObjectRefreshJourneys` acceptance journey. The rendered baselines gain the row button and the help line.

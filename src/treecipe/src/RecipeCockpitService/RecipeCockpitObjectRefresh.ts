@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as xml2js from 'xml2js';
 
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { IValidationRuleFieldConstraint, ValidationRuleAnalyzerService } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
+import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, ValidationRuleAnalyzerService } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { IMetadataDeployComponent, METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import { IOrgMetadataFileCopy, IOrgStagedFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
@@ -229,9 +229,9 @@ export class RecipeCockpitObjectRefresh {
         const stagedFields = await this.readFieldDetails(workspaceRoot, [stagingRelativePath], objectApiName);
         const stagedValueSetValues = kinds.includes('globalValueSets') ? await this.readValueSetValuesUnder(resolvedWorkspaceRoot, [stagingRelativePath]) : new Map<string, string[]>();
         // A PICKLIST ON A GLOBAL VALUE SET IS WRITTEN FROM THE ORG'S VALUES WHEN THEY WERE RETRIEVED, ELSE FROM THE PROJECT'S
-        const valueSetValuesForExpressions = new Map([...await this.readValueSetValuesUnder(resolvedWorkspaceRoot, packageDirectoryPaths), ...stagedValueSetValues]);
+        const valueSetValuesForExpressions = new Map([...await this.readValueSetValuesUnder(resolvedWorkspaceRoot, packageDirectoryPaths, request.valueSetNames), ...stagedValueSetValues]);
         const recipeScan = this.scanRecipeObject(request.recipeContext, objectApiName);
-        const recipeService = request.recipeContext.expressionSource;
+        const stagedRuleAnalyses = await this.analyzeStagedRules(stagedObjectFolderPaths);
 
         const comparison: IObjectRefreshComparison = {
             isRetrieved: stagedObjectFolderPaths.length > 0 || stagedValueSetValues.size > 0,
@@ -240,7 +240,7 @@ export class RecipeCockpitObjectRefresh {
             unreadableCountByKind: { fields: 0, validationRules: 0, recordTypes: 0, globalValueSets: 0 }
         };
 
-        const fieldRecipeContext: IFieldRecipeContext = { request: request, recipeScan: recipeScan, recipeService: recipeService, stagedFields: stagedFields, stagedValueSetValues: stagedValueSetValues, valueSetValuesForExpressions: valueSetValuesForExpressions };
+        const fieldRecipeContext: IFieldRecipeContext = { request: request, recipeScan: recipeScan, expressionSource: request.recipeContext.expressionSource, stagedRuleAnalyses: stagedRuleAnalyses, stagedFields: stagedFields, stagedValueSetValues: stagedValueSetValues, valueSetValuesForExpressions: valueSetValuesForExpressions };
 
         for ( const kind of OBJECT_REFRESH_KINDS.filter(candidateKind => kinds.includes(candidateKind)) ) {
             if ( kind === 'fields' ) {
@@ -327,7 +327,9 @@ export class RecipeCockpitObjectRefresh {
     /*
         A field's recipe line, by the first rule that holds, each with why; the value is what the
         recipe's OWN backend writes after "Field: " for the staged file, as Generate Treecipe writes
-        it (a "|" block or a quoted scalar where the backend needs one).
+        it (a "|" block or a quoted scalar where the backend needs one), with the field's active rules
+        in the org applied as Generate Treecipe applies a project's (#324) unless they are switched
+        off on its row (#325), so a rewritten line never drops a constraint.
     */
     private static decideFieldRecipe(fieldApiName: string, fieldRecipeContext: IFieldRecipeContext): IFieldRecipeDecision {
 
@@ -335,7 +337,7 @@ export class RecipeCockpitObjectRefresh {
             { name: 'record type sections', holds: ruleInput => ruleInput.recipeScan.hasRecordTypeSections, recipeNote: OBJECT_REFRESH_RECIPE_NOTES.recordTypeSections },
             { name: 'pinned', holds: ruleInput => ruleInput.request.recipeContext.pinnedFieldApiNames.has(ruleInput.fieldApiName), recipeNote: OBJECT_REFRESH_RECIPE_NOTES.pinned },
             { name: 'object not in recipe', holds: ruleInput => !ruleInput.recipeScan.isObjectInRecipe, recipeNote: OBJECT_REFRESH_RECIPE_NOTES.notInRecipe },
-            { name: 'no backend', holds: ruleInput => ruleInput.recipeService === undefined, recipeNote: OBJECT_REFRESH_RECIPE_NOTES.noBackend },
+            { name: 'no backend', holds: ruleInput => ruleInput.expressionSource === undefined, recipeNote: OBJECT_REFRESH_RECIPE_NOTES.noBackend },
             { name: 'formula', holds: ruleInput => ruleInput.stagedField?.isFormula === true, recipeNote: OBJECT_REFRESH_RECIPE_NOTES.formula },
             { name: 'lookup', holds: ruleInput => ( ruleInput.stagedField?.referenceTo ?? '' ) !== '', recipeNote: OBJECT_REFRESH_RECIPE_NOTES.lookup },
             { name: 'dependent picklist', holds: ruleInput => ( ruleInput.stagedField?.controllingField ?? '' ) !== '', recipeNote: OBJECT_REFRESH_RECIPE_NOTES.dependentPicklist }
@@ -354,10 +356,17 @@ export class RecipeCockpitObjectRefresh {
             return { recipeNote: OBJECT_REFRESH_RECIPE_NOTES.noExpression, recipeChanges: [] };
         }
 
+        const fieldConstraints = fieldRecipeContext.request.recipeContext.validationRulesOffFieldApiNames.has(fieldApiName)
+            ? []
+            : fieldRecipeContext.stagedRuleAnalyses.constraintsByLowerFieldName.get(fieldApiName.toLowerCase()) ?? [];
+        const constrainedValue = fieldConstraints.length > 0 && stagedField && fieldRecipeContext.expressionSource
+            ? fieldRecipeContext.expressionSource.applyValidationRules(this.toXmlFieldDetail(stagedField, fieldRecipeContext), recipeValue, fieldConstraints, {}).recipeValue
+            : recipeValue;
+
         const isInRecipe = fieldRecipeContext.recipeScan.fieldApiNames.has(fieldApiName);
         return {
             recipeNote: isInRecipe ? OBJECT_REFRESH_RECIPE_NOTES.rewritesLine : OBJECT_REFRESH_RECIPE_NOTES.addsLine,
-            recipeChanges: [{ operation: isInRecipe ? 'replace' : 'insert', fieldApiName: fieldApiName, valueText: recipeValue }]
+            recipeChanges: [{ operation: isInRecipe ? 'replace' : 'insert', fieldApiName: fieldApiName, valueText: constrainedValue }]
         };
 
     }
@@ -407,7 +416,7 @@ export class RecipeCockpitObjectRefresh {
 
             const componentName = localFile?.componentName ?? stagedFile.componentName;
             const recipeDecision = childFileKind.kind === 'validationRules'
-                ? await this.decideValidationRuleRecipe(stagedXml as string, stagedFile, stagedRoot, stagedObjectFolderPaths, fieldRecipeContext)
+                ? this.decideValidationRuleRecipe(stagedFile, stagedRoot, fieldRecipeContext)
                 : { recipeNote: OBJECT_REFRESH_RECIPE_NOTES.recordType, recipeChanges: [] };
 
             comparison.items.push({
@@ -433,22 +442,21 @@ export class RecipeCockpitObjectRefresh {
     }
 
     /*
-        A validation rule's recipe line: the field it constrains, with EVERY active rule the staged
-        object holds on that field applied as Generate Treecipe applies them (#324), so a ticked rule
-        never undoes another. Refused as a field line is (pinned, sections, ...), and when the rule
-        is inactive, not a single-field shape, or switched off on the field's row (#325).
+        A validation rule's recipe line: its field's own line, which carries every active rule the org
+        holds on it (decideFieldRecipe). It only REWRITES a line the recipe has: a field the recipe
+        lacks is added by ticking the field itself, whose file the Apply copies first, so the recipe
+        never names a field the project lacks. Refused as a field line is (pinned, sections, ...), and
+        when the rule is inactive, not a single-field shape, or switched off on the field's row (#325).
     */
-    private static async decideValidationRuleRecipe(stagedXml: string,
-                                                    stagedFile: IComponentFile,
-                                                    stagedRoot: Record<string, unknown>,
-                                                    stagedObjectFolderPaths: readonly string[],
-                                                    fieldRecipeContext: IFieldRecipeContext): Promise<IFieldRecipeDecision> {
+    private static decideValidationRuleRecipe(stagedFile: IComponentFile,
+                                              stagedRoot: Record<string, unknown>,
+                                              fieldRecipeContext: IFieldRecipeContext): IFieldRecipeDecision {
 
         if ( this.readText(stagedRoot.active) !== 'true' ) {
             return { recipeNote: OBJECT_REFRESH_RECIPE_NOTES.ruleInactive, recipeChanges: [] };
         }
 
-        const analysis = await ValidationRuleAnalyzerService.analyzeValidationRuleXml(stagedXml, path.basename(stagedFile.filePath));
+        const analysis = fieldRecipeContext.stagedRuleAnalyses.analysesByLowerRuleName.get(stagedFile.componentName.toLowerCase());
         const constraint = analysis?.constraint;
         if ( !constraint ) {
             return { recipeNote: `Not a rule a recipe can apply${analysis?.notAppliedReason ? `: ${RecipeCockpitOrgChangeDetection.cutForDisplay(RecipeCockpitOrgChangeDetection.toSingleLine(analysis.notAppliedReason))}` : ''}. Only the project file changes.`, recipeChanges: [] };
@@ -460,38 +468,52 @@ export class RecipeCockpitObjectRefresh {
             return { recipeNote: OBJECT_REFRESH_RECIPE_NOTES.rulesOff, recipeChanges: [] };
         }
 
+        if ( !fieldRecipeContext.recipeScan.fieldApiNames.has(fieldApiName) ) {
+            return { recipeNote: `${fieldApiName} is not in the recipe: only the project file changes. Tick ${fieldApiName} under Fields to add it with this rule applied.`, recipeChanges: [] };
+        }
+
         const fieldDecision = this.decideFieldRecipe(fieldApiName, fieldRecipeContext);
-        const unconstrainedChange = fieldDecision.recipeChanges[0];
-        const stagedField = fieldRecipeContext.stagedFields.get(fieldApiName.toLowerCase());
-        if ( !unconstrainedChange || !stagedField || !fieldRecipeContext.recipeService ) {
+        if ( fieldDecision.recipeChanges.length === 0 ) {
             return { recipeNote: `${fieldApiName}: ${fieldDecision.recipeNote}`, recipeChanges: [] };
         }
 
-        const fieldConstraints = await this.readFieldRuleConstraints(stagedObjectFolderPaths, fieldApiName);
-        const fieldRecipe = fieldRecipeContext.recipeService.applyValidationRules(this.toXmlFieldDetail(stagedField, fieldRecipeContext), unconstrainedChange.valueText, fieldConstraints, {});
-        const isInRecipe = fieldRecipeContext.recipeScan.fieldApiNames.has(fieldApiName);
-
-        return {
-            recipeNote: isInRecipe ? `Rewrites the recipe line of ${fieldApiName}.` : `Adds a ${fieldApiName} line to the recipe.`,
-            recipeChanges: [{ operation: isInRecipe ? 'replace' : 'insert', fieldApiName: fieldApiName, valueText: fieldRecipe.recipeValue }]
-        };
+        return { recipeNote: `Rewrites the recipe line of ${fieldApiName}.`, recipeChanges: fieldDecision.recipeChanges };
 
     }
 
-    private static async readFieldRuleConstraints(stagedObjectFolderPaths: readonly string[], fieldApiName: string): Promise<IValidationRuleFieldConstraint[]> {
+    /*
+        Every staged validation rule file read and analysed ONCE per comparison, yielding as the
+        other loops do: what the rule items and every field line read, so neither re-reads a rule.
+        An inactive rule has no analysis (analyzeValidationRuleXml answers undefined) and constrains nothing.
+    */
+    private static async analyzeStagedRules(stagedObjectFolderPaths: readonly string[]): Promise<IStagedRuleAnalyses> {
 
         const ruleFiles = this.listComponentFiles(stagedObjectFolderPaths.map(folderPath => path.join(folderPath, OBJECT_CHILD_FILE_KINDS.validationRules.subfolderName)), OBJECT_CHILD_FILE_KINDS.validationRules.fileSuffix);
-        const fieldConstraints: IValidationRuleFieldConstraint[] = [];
+        const stagedRuleAnalyses: IStagedRuleAnalyses = { analysesByLowerRuleName: new Map(), constraintsByLowerFieldName: new Map() };
+        let readFileCount = 0;
 
-        for ( const ruleFile of ruleFiles.values() ) {
-            const ruleXml = RecipeCockpitOrgChangeDetection.readMetadataFileText(ruleFile.filePath);
-            const constraint = ruleXml === undefined ? undefined : ( await ValidationRuleAnalyzerService.analyzeValidationRuleXml(ruleXml, path.basename(ruleFile.filePath)) )?.constraint;
-            if ( constraint && constraint.fieldReference.toLowerCase() === fieldApiName.toLowerCase() ) {
-                fieldConstraints.push(constraint);
+        for ( const [lowerRuleName, ruleFile] of ruleFiles ) {
+
+            readFileCount++;
+            if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                await new Promise(resolve => setImmediate(resolve));
             }
+
+            const ruleXml = RecipeCockpitOrgChangeDetection.readMetadataFileText(ruleFile.filePath);
+            const analysis = ruleXml === undefined ? undefined : await ValidationRuleAnalyzerService.analyzeValidationRuleXml(ruleXml, path.basename(ruleFile.filePath));
+            if ( !analysis ) {
+                continue;
+            }
+
+            stagedRuleAnalyses.analysesByLowerRuleName.set(lowerRuleName, analysis);
+            if ( analysis.constraint ) {
+                const lowerFieldName = analysis.constraint.fieldReference.toLowerCase();
+                stagedRuleAnalyses.constraintsByLowerFieldName.set(lowerFieldName, [...( stagedRuleAnalyses.constraintsByLowerFieldName.get(lowerFieldName) ?? [] ), analysis.constraint]);
+            }
+
         }
 
-        return fieldConstraints;
+        return stagedRuleAnalyses;
 
     }
 
@@ -642,13 +664,18 @@ export class RecipeCockpitObjectRefresh {
 
     }
 
-    // EVERY GLOBAL VALUE SET UNDER THE FOLDERS GIVEN THAT CAN BE READ, BY LOWER-CASED NAME
-    private static async readValueSetValuesUnder(resolvedWorkspaceRoot: string, relativeFolderPaths: readonly string[]): Promise<Map<string, string[]>> {
+    // EVERY GLOBAL VALUE SET UNDER THE FOLDERS GIVEN THAT CAN BE READ -- ONLY THOSE NAMED, WHEN NAMES ARE GIVEN -- BY LOWER-CASED NAME
+    private static async readValueSetValuesUnder(resolvedWorkspaceRoot: string, relativeFolderPaths: readonly string[], valueSetNames?: readonly string[]): Promise<Map<string, string[]>> {
 
         const valueSetValues = new Map<string, string[]>();
         const valueSetFiles = this.listComponentFiles(RecipeCockpitMetadataDeploy.findMetadataFolderPaths(resolvedWorkspaceRoot, relativeFolderPaths, GLOBAL_VALUE_SET_FOLDER_NAME), GLOBAL_VALUE_SET_FILE_SUFFIX);
 
+        const askedLowerNames = valueSetNames ? new Set(valueSetNames.map(valueSetName => valueSetName.toLowerCase())) : undefined;
+
         for ( const [lowerValueSetName, valueSetFile] of valueSetFiles ) {
+            if ( askedLowerNames && !askedLowerNames.has(lowerValueSetName) ) {
+                continue;
+            }
             const values = await this.readValueSetValues(valueSetFile.filePath);
             if ( values ) {
                 valueSetValues.set(lowerValueSetName, values);
@@ -682,7 +709,7 @@ export class RecipeCockpitObjectRefresh {
 
         let recipeValue: unknown;
         try {
-            recipeValue = fieldRecipeContext.recipeService?.getRecipeFakeValueByXMLFieldDetail(this.toXmlFieldDetail(stagedField, fieldRecipeContext), {});
+            recipeValue = fieldRecipeContext.expressionSource?.getRecipeFakeValueByXMLFieldDetail(this.toXmlFieldDetail(stagedField, fieldRecipeContext), {});
         } catch {
             return undefined;
         }
@@ -827,10 +854,17 @@ interface IRecipeObjectScan {
 interface IFieldRecipeContext {
     request: IObjectRefreshComparisonRequest;
     recipeScan: IRecipeObjectScan;
-    recipeService: IObjectRefreshExpressionSource | undefined;
+    expressionSource: IObjectRefreshExpressionSource | undefined;
+    // EACH ACTIVE STAGED RULE ANALYSED ONCE: ITS ANALYSIS BY LOWER-CASED RULE NAME, AND ITS CONSTRAINT BY LOWER-CASED FIELD
+    stagedRuleAnalyses: IStagedRuleAnalyses;
     stagedFields: ReadonlyMap<string, IOrgStagedFieldDetail>;
     stagedValueSetValues: ReadonlyMap<string, string[]>;
     valueSetValuesForExpressions: ReadonlyMap<string, string[]>;
+}
+
+interface IStagedRuleAnalyses {
+    analysesByLowerRuleName: Map<string, IValidationRuleAnalysis>;
+    constraintsByLowerFieldName: Map<string, IValidationRuleFieldConstraint[]>;
 }
 
 interface IFieldRecipeRuleInput extends IFieldRecipeContext {

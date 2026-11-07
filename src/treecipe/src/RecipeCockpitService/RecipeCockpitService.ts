@@ -1877,6 +1877,8 @@ interface IRecipeCockpitObjectRefreshSession {
     stateMessage: IRecipeCockpitObjectRefreshStateMessage;
     cancellation: IRecipeCockpitPanelCancellation;
     stagingFolderPath?: string;
+    // THE package.xml AS WRITTEN, WHICH MAY BE A -<n> NAME WHEN THE FIRST WAS TAKEN, SO A DISCARD REMOVES ONLY ITS OWN
+    packageXmlFilePath?: string;
     comparisonRequest?: IObjectRefreshComparisonRequest;
     plannedItems?: IObjectRefreshPlannedItem[];
 }
@@ -7017,6 +7019,11 @@ export class RecipeCockpitService {
                 // THE LAST PLACE SAVED IS WRITTEN NOW RATHER THAN DROPPED WITH THE TIMER -- THE NEXT OPEN READS IT
                 this.flushPanelPlacePersist();
                 this.cancelPendingConfirmation();
+                // A DIALOG LEFT OPEN STAGED FILES NO ONE WILL APPLY; ONE STILL RETRIEVING OR APPLYING ENDS ITSELF (#612)
+                const objectRefreshStep = this.recipeCockpitPanelState.objectRefreshSession?.stateMessage.step;
+                if ( objectRefreshStep === 'choose' || objectRefreshStep === 'review' || objectRefreshStep === 'confirming' ) {
+                    this.discardObjectRefreshStaging(this.recipeCockpitPanelState);
+                }
                 this.recipeCockpitMessageSubscription?.dispose();
                 this.recipeCockpitMessageSubscription = undefined;
                 this.recipeCockpitPanel = undefined;
@@ -7354,7 +7361,7 @@ export class RecipeCockpitService {
         panelState.adapterOrgOnlyFields = undefined;
         // AN OPEN "Get latest object detail" DIALOG (#612) WAS FOR THE OLD MODEL; ONE STILL RETRIEVING OR APPLYING ENDS ITSELF
         const objectRefreshStep = panelState.objectRefreshSession?.stateMessage.step;
-        if ( objectRefreshStep === 'choose' || objectRefreshStep === 'review' ) {
+        if ( objectRefreshStep === 'choose' || objectRefreshStep === 'review' || objectRefreshStep === 'confirming' ) {
             this.discardObjectRefreshStaging(panelState);
             panelState.objectRefreshSession = undefined;
         }
@@ -12062,17 +12069,22 @@ export class RecipeCockpitService {
     // A CANCELLED OR ABANDONED RETRIEVE LEAVES NOTHING BEHIND; A FOLDER THAT IS NOT A PLAIN ONE UNDER treecipe/ IN THIS WORKSPACE IS LEFT ALONE
     private static discardObjectRefreshStaging(panelState: IRecipeCockpitPanelState) {
 
-        const stagingFolderPath = panelState.objectRefreshSession?.stagingFolderPath;
+        const session = panelState.objectRefreshSession;
+        const stagingFolderPath = session?.stagingFolderPath;
         if ( !stagingFolderPath ) {
             return;
         }
-        panelState.objectRefreshSession.stagingFolderPath = undefined;
+        const packageXmlFilePath = session.packageXmlFilePath;
+        session.stagingFolderPath = undefined;
+        session.packageXmlFilePath = undefined;
 
         try {
             RecipeCockpitOrgChangeDetection.toOutputDirectoryArgument(panelState.workspaceRoot, stagingFolderPath);
             if ( fs.lstatSync(stagingFolderPath).isDirectory() && SfdxProjectService.isPathContainedInWorkspace(stagingFolderPath, panelState.workspaceRoot) ) {
                 fs.rmSync(stagingFolderPath, { recursive: true, force: true });
-                fs.rmSync(RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), { force: true });
+            }
+            if ( packageXmlFilePath && fs.lstatSync(packageXmlFilePath).isFile() && SfdxProjectService.isPathContainedInWorkspace(packageXmlFilePath, panelState.workspaceRoot) ) {
+                fs.rmSync(packageXmlFilePath, { force: true });
             }
         } catch {
             // NOTHING TO REMOVE, OR NOTHING THIS MAY REMOVE
@@ -12154,6 +12166,7 @@ export class RecipeCockpitService {
             const writtenPackageXmlFilePath = runArtifactsLocation && session.stagingFolderPath
                 ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(session.stagingFolderPath), RecipeCockpitObjectRefresh.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot)))
                 : undefined;
+            session.packageXmlFilePath = writtenPackageXmlFilePath;
             if ( !session.stagingFolderPath || !writtenPackageXmlFilePath ) {
                 warn(`Nothing was retrieved for ${objectLabel}: the staging folder could not be made under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
                 this.closeObjectRefresh(cockpitPanel, panelState, session, false);
@@ -12208,6 +12221,13 @@ export class RecipeCockpitService {
             recipeContext: this.readObjectRefreshRecipeContext(panelState, tree, objectApiName, nickname)
         };
         const comparison = await RecipeCockpitObjectRefresh.compareStagedObject(session.comparisonRequest);
+
+        // A CANCEL CAN ARRIVE WHILE THE FILES ARE COMPARED, AFTER THE RETRIEVE HAS ENDED
+        if ( session.cancellation.isRequested ) {
+            warn(`Getting the latest detail of ${objectLabel} from ${orgLabel} was cancelled. Nothing in the project or the recipe changed.`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
 
         if ( !isClickStillCurrent() ) {
             this.closeObjectRefresh(cockpitPanel, panelState, session, false);
