@@ -14,7 +14,17 @@ A Number, Percent or Currency field with 16 or more digits left of the decimal (
   - `FakerJSRecipeFakerService.wideNumeric.test.ts` holds the narrow fields' recipes byte for byte and the wide fields' new expression. It also generates 1,000 values per wide shape: all fit the field, and they are not mostly multiples of 10 or `.00`. A field with scale greater than precision still throws.
   - `FakerJSRecipeService.test.ts` expects the new expression for its 18-digit Number and Currency. Three fixtures take the new expression on their wide-field lines and nothing else, because each is held to what Generate Treecipe writes today: the Recipe Cockpit's writer fixtures `recipe-fakerjs--RelationshipTree_1.yml` and `recipe-fakerjs-nested--RelationshipTree_1.yml` (byte for byte), and `preV3291-recipe-fakerjs--RelationshipTree_1.yml` (except its bare record-type variant lines).
   - The faker-js golden files are rewritten with `UPDATE_GOLDEN=1`. In the recipes, only the wide fields' lines change. The data sets of the two trees with wide fields (`Account-thru-Order_Item__c`, `Product2-ONLY`) change beyond those fields, as above. Every other tree and every snowfakery golden file is unchanged.
-- Design note: `RecipeFakerService.ts/DESIGN.md`.
+- Design note: `RecipeFakerService.ts/DESIGN.md`. It now also says which snowfakery helper each type uses, and records a separate snowfakery bug left unchanged: Number and Percent with a scale pass the nines, not the digit count, as `left_digits`.
+
+### Repo tooling: the #589 flow guard is removed
+
+A merge of `main` left conflict markers in `package.json`. The guard's hooks run `node`, which will not start while `package.json` is invalid JSON, and every hook failed closed: every command and edit was refused, including the edit that would have fixed the conflict, and the session was locked out.
+
+- **Removed:** `.claude/settings.json` (it held only the guard's hooks), `.claude/hooks/flowGuard.js`, `.claude/hooks/prFlowPhase1.js` and the `.claude/flow-state/` entry in `.gitignore`.
+- **`/pr-flow`:** Phase 1 runs its checks (compile, tests, lint, debug audit, CHANGELOG version sync, dual-backend and supply-chain judgement) as steps the agent runs itself, as before 3.192.4.
+- **`/next-task`:** still asks for the plan to be confirmed and posts the approved Before / After to the issue. Any clear confirmation from the person approves the plan; no exact phrase or hook is needed.
+- `CLAUDE.md`'s Project Structure and Implementation Checklist no longer mention the hooks.
+- Merged `main` (3.192.15 for #104, 3.192.16 for #101). The golden files are unchanged by the merge.
 
 ## [3.192.16] - "Run Treecipe Initiation Setup" now re-runs the command that needed it (#101)
 
