@@ -132,6 +132,13 @@ export interface IOrgFieldFileCopy {
     targetFilePath: string;
 }
 
+// ANY ONE FILE A COPY WRITES (#612); HOST-ONLY, NEVER POSTED
+export interface IOrgMetadataFileCopy {
+    componentLabel: string;
+    stagedFilePath: string;
+    targetFilePath: string;
+}
+
 interface IFieldFileComparison {
     objectApiName: string;
     fieldApiName: string;
@@ -233,16 +240,19 @@ export class RecipeCockpitOrgChangeDetection {
 
     /*
         <tree folder>/RunArtifacts/OrgOperations/<username>/<yyyyMMdd-HHmmss>-adapter-retrieve
-        (#470): where a staging folder is made. Undefined when the folder name could name another
+        (#470), or -<operationName> (#612's object-refresh): where a staging folder is made. Undefined when the folder name could name another
         folder or the path would land outside the workspace.
     */
-    static buildStagingFolderPath(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, orgUsername: string, date: Date): string | undefined {
+    static buildStagingFolderPath(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation,
+                                  orgUsername: string,
+                                  date: Date,
+                                  operationName: string = ORG_CHANGE_RETRIEVE_OPERATION_NAME): string | undefined {
 
         if ( !ScratchOrgService.isUsableOrgOperationFolderName(orgUsername) ) {
             return undefined;
         }
 
-        const stagingFolderPath = path.join(RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'OrgOperations'), orgUsername, `${ScratchOrgService.buildCompactTimestamp(date)}-${ORG_CHANGE_RETRIEVE_OPERATION_NAME}`);
+        const stagingFolderPath = path.join(RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'OrgOperations'), orgUsername, `${ScratchOrgService.buildCompactTimestamp(date)}-${operationName}`);
 
         return SfdxProjectService.isPathContainedInWorkspace(stagingFolderPath, runArtifactsLocation.workspaceRoot) ? stagingFolderPath : undefined;
 
@@ -416,7 +426,7 @@ export class RecipeCockpitOrgChangeDetection {
 
     private static async readStagedNameField(objectFilePath: string | undefined): Promise<Omit<IOrgStagedFieldDetail, 'objectApiName'> | undefined> {
 
-        const objectXml = objectFilePath ? this.readFieldFileText(objectFilePath) : undefined;
+        const objectXml = objectFilePath ? this.readMetadataFileText(objectFilePath) : undefined;
         if ( objectXml === undefined ) {
             return undefined;
         }
@@ -491,50 +501,64 @@ export class RecipeCockpitOrgChangeDetection {
     */
     static copyFieldFiles(workspaceRoot: string, fieldFileCopies: readonly IOrgFieldFileCopy[]): { copiedCount: number; failures: string[] } {
 
+        return this.copyMetadataFiles(workspaceRoot, fieldFileCopies.map(fieldFileCopy => ({
+            componentLabel: `${fieldFileCopy.objectApiName}.${fieldFileCopy.fieldApiName}`,
+            stagedFilePath: fieldFileCopy.stagedFilePath,
+            targetFilePath: fieldFileCopy.targetFilePath
+        })));
+
+    }
+
+    /*
+        The same copy for any retrieved metadata file (#612): a validation rule, a record type or a
+        global value set as well as a field. componentLabel names the file in a failure.
+    */
+    static copyMetadataFiles(workspaceRoot: string, metadataFileCopies: readonly IOrgMetadataFileCopy[]): { copiedCount: number; failures: string[] } {
+
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const failures: string[] = [];
         let copiedCount = 0;
 
-        fieldFileCopies.forEach(fieldFileCopy => {
+        metadataFileCopies.forEach(metadataFileCopy => {
 
-            const fieldName = `${fieldFileCopy.objectApiName}.${fieldFileCopy.fieldApiName}`;
-            const fieldText = this.readFieldFileText(fieldFileCopy.stagedFilePath);
+            const componentLabel = metadataFileCopy.componentLabel;
+            const fileText = this.readMetadataFileText(metadataFileCopy.stagedFilePath);
 
-            if ( fieldText === undefined ) {
-                failures.push(`${fieldName}: the retrieved file could not be read`);
+            if ( fileText === undefined ) {
+                failures.push(`${componentLabel}: the retrieved file could not be read`);
                 return;
             }
 
-            const targetFolderPath = path.dirname(fieldFileCopy.targetFilePath);
+            const targetFolderPath = path.dirname(metadataFileCopy.targetFilePath);
             let existingAncestorPath = targetFolderPath;
             while ( !fs.existsSync(existingAncestorPath) && path.dirname(existingAncestorPath) !== existingAncestorPath ) {
                 existingAncestorPath = path.dirname(existingAncestorPath);
             }
 
             if ( !SfdxProjectService.isPathContainedInWorkspace(existingAncestorPath, resolvedWorkspaceRoot) ) {
-                failures.push(`${fieldName}: its folder is not inside this workspace`);
+                failures.push(`${componentLabel}: its folder is not inside this workspace`);
                 return;
             }
 
-            const temporaryFilePath = `${fieldFileCopy.targetFilePath}.${process.pid}-${Date.now()}.tmp`;
+            const temporaryFilePath = `${metadataFileCopy.targetFilePath}.${process.pid}-${Date.now()}.tmp`;
             try {
                 fs.mkdirSync(targetFolderPath, { recursive: true });
                 if ( !SfdxProjectService.isPathContainedInWorkspace(targetFolderPath, resolvedWorkspaceRoot) ) {
-                    failures.push(`${fieldName}: its folder is not inside this workspace`);
+                    failures.push(`${componentLabel}: its folder is not inside this workspace`);
                     return;
                 }
                 // lstat, NOT existsSync: A LINK THAT POINTS NOWHERE "DOES NOT EXIST" YET IS STILL NOT A PLAIN FILE
-                const targetStat = fs.lstatSync(fieldFileCopy.targetFilePath, { throwIfNoEntry: false });
+                const targetStat = fs.lstatSync(metadataFileCopy.targetFilePath, { throwIfNoEntry: false });
                 if ( targetStat && !targetStat.isFile() ) {
-                    failures.push(`${fieldName}: the project file is not a plain file, so it was left as it is`);
+                    failures.push(`${componentLabel}: the project file is not a plain file, so it was left as it is`);
                     return;
                 }
-                fs.writeFileSync(temporaryFilePath, fieldText, { encoding: 'utf-8', flag: 'wx' });
-                fs.renameSync(temporaryFilePath, fieldFileCopy.targetFilePath);
+                fs.writeFileSync(temporaryFilePath, fileText, { encoding: 'utf-8', flag: 'wx' });
+                fs.renameSync(temporaryFilePath, metadataFileCopy.targetFilePath);
                 copiedCount++;
             } catch (copyError) {
                 fs.rmSync(temporaryFilePath, { force: true });
-                failures.push(`${fieldName}: ${this.toSingleLine(copyError instanceof Error ? copyError.message : String(copyError)).slice(0, DIFFERENCE_VALUE_MAX_LENGTH)}`);
+                failures.push(`${componentLabel}: ${this.toSingleLine(copyError instanceof Error ? copyError.message : String(copyError)).slice(0, DIFFERENCE_VALUE_MAX_LENGTH)}`);
             }
 
         });
@@ -884,7 +908,7 @@ export class RecipeCockpitOrgChangeDetection {
     // ONE FIELD FILE, READ THROUGH ONE HANDLE THAT REFUSES A LINK, HELD TO A SIZE AND PARSED; UNDEFINED WHEN IT CANNOT BE
     private static async readComparedField(filePath: string): Promise<IReadField | undefined> {
 
-        const fieldXml = this.readFieldFileText(filePath);
+        const fieldXml = this.readMetadataFileText(filePath);
 
         if ( fieldXml === undefined ) {
             return undefined;
@@ -951,8 +975,8 @@ export class RecipeCockpitOrgChangeDetection {
 
     }
 
-    // A FIELD FILE'S TEXT, READ THROUGH ONE HANDLE THAT REFUSES A LINK AND HELD TO A SIZE; UNDEFINED WHEN IT CANNOT BE
-    private static readFieldFileText(filePath: string): string | undefined {
+    // A METADATA FILE'S TEXT, READ THROUGH ONE HANDLE THAT REFUSES A LINK AND HELD TO A SIZE; UNDEFINED WHEN IT CANNOT BE
+    static readMetadataFileText(filePath: string): string | undefined {
 
         try {
             const fileHandle = fs.openSync(filePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
@@ -982,11 +1006,11 @@ export class RecipeCockpitOrgChangeDetection {
     }
 
     // WHAT IS SHOWN IS CUT, NEVER WHAT IS COMPARED: TWO VALUES DIFFERING PAST THE CUT ARE STILL CHANGED
-    private static cutForDisplay(value: string): string {
+    static cutForDisplay(value: string): string {
         return value.length > DIFFERENCE_VALUE_MAX_LENGTH ? `${value.slice(0, DIFFERENCE_VALUE_MAX_LENGTH)}…` : value;
     }
 
-    private static toSingleLine(text: string): string {
+    static toSingleLine(text: string): string {
         return text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').trim();
     }
 

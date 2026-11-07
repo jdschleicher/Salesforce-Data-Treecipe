@@ -148,6 +148,8 @@ import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdate
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, IOrgStagedFieldDetail, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
 import { RecipeService } from '../RecipeService/RecipeService';
+import { RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT, RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT, RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STYLES } from './RecipeCockpitObjectRefreshDialog';
+import { IObjectRefreshComparisonRequest, IObjectRefreshItem, IObjectRefreshPlannedItem, OBJECT_REFRESH_KIND_LABELS, OBJECT_REFRESH_KINDS, OBJECT_REFRESH_OPERATION_NAME, ObjectRefreshKind, RecipeCockpitObjectRefresh } from './RecipeCockpitObjectRefresh';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
@@ -626,6 +628,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Create <parent> in recipe, on a lookup that is still a TODO: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe it can instead become the parent of the child\'s whole block, which moves under it. A parent with no template, such as a custom object, draws it disabled and says why.',
             'Use existing <parent> from org…, beside it: pick any connected org, then search the parent or enter a record Id, which is checked in that org. The Id is written as the lookup\'s value and the row shows org record and the org; the insert checks the Id exists in the org it inserts into. Clear, under the pencil, puts the TODO back.',
+            'Get latest object detail from target org, at the end of an object\'s row: pick the org and what to compare (fields, validation rules, record types, global value sets), then Next retrieves that object and lists what is new or changed against your project, kind by kind. Tick what to apply: those files are copied into your project, then only their recipe lines are added or rewritten, and every other line stays as it was. Cancel at any step changes nothing; a new record type\'s section is written by Regenerate with record types.',
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
@@ -1294,6 +1297,10 @@ export interface IRecipeRecordTypeBlocks {
 */
 export interface IRecipeCockpitPanelMessage {
     command?: string;
+    // GET LATEST OBJECT DETAIL (#612): THE OPEN DIALOG'S ID, THE KINDS TICKED IN STEP 1 AND THE INDEXES OF THE ITEMS TICKED IN STEP 3
+    refreshId?: unknown;
+    kinds?: unknown;
+    itemIndexes?: unknown;
     // A RULE'S FILE (#560): THE RULE A DRAWN ROW NAMES, AND THE VALIDATION RULES LIST AN ACK SAYS WAS DRAWN
     ruleName?: unknown;
     listSequence?: unknown;
@@ -1838,6 +1845,53 @@ export interface IRecipeCockpitTreeQueryResultMessage {
     disabled, and treeKey names the card clicked. How it went is a VS Code notification. Stored and
     replayed, like a query run's.
 */
+/*
+    The "Get latest object detail from target org" dialog (#612), as the host drives it: choose the
+    kinds, retrieving, review (one group per kind, items by index), confirming (the dialog steps
+    aside for the in-panel confirmation), applying, closed. Names and text only, never a path.
+*/
+export type RecipeCockpitObjectRefreshStep = 'choose' | 'retrieving' | 'review' | 'confirming' | 'applying' | 'closed';
+
+export interface IRecipeCockpitObjectRefreshGroup {
+    kind: ObjectRefreshKind;
+    label: string;
+    unchangedCount: number;
+    unreadableCount: number;
+    // EACH ITEM'S INDEX IS ITS PLACE IN EVERY GROUP'S ITEMS, IN ORDER
+    items: IObjectRefreshItem[];
+}
+
+export interface IRecipeCockpitObjectRefreshStateMessage {
+    command: 'objectRefreshState';
+    refreshId: string;
+    renderSequence: number;
+    treeKey: string;
+    objectApiName: string;
+    nickname?: string;
+    step: RecipeCockpitObjectRefreshStep;
+    kinds: ObjectRefreshKind[];
+    orgLabel?: string;
+    groups?: IRecipeCockpitObjectRefreshGroup[];
+    tickedItemIndexes?: number[];
+}
+
+// ONE OPEN DIALOG; HOST-ONLY BEYOND ITS stateMessage
+interface IRecipeCockpitObjectRefreshSession {
+    stateMessage: IRecipeCockpitObjectRefreshStateMessage;
+    cancellation: IRecipeCockpitPanelCancellation;
+    stagingFolderPath?: string;
+    // THE package.xml AS WRITTEN, WHICH MAY BE A -<n> NAME WHEN THE FIRST WAS TAKEN, SO A DISCARD REMOVES ONLY ITS OWN
+    packageXmlFilePath?: string;
+    comparisonRequest?: IObjectRefreshComparisonRequest;
+    plannedItems?: IObjectRefreshPlannedItem[];
+}
+
+// A CANCEL FROM THE PANEL ITSELF, BESIDE THE PROGRESS NOTIFICATION'S OWN
+export interface IRecipeCockpitPanelCancellation {
+    isRequested: boolean;
+    onRequested?: () => void;
+}
+
 export interface IRecipeCockpitUpdaterLoadStateMessage {
     command: 'updaterLoadState';
     isRunning: boolean;
@@ -2582,6 +2636,15 @@ export const RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON = 'No field file is new
 export const RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL = 'Apply files';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL = 'Nothing was started: the Treecipe Adapter is applying retrieved files to this project. Try again when it ends.';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL = 'Nothing was applied: a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
+
+// "Get latest object detail from target org" (#612): THE ROW'S BUTTON, THE DIALOG'S STEPS AND WHAT EACH REFUSES WITH
+export const RECIPE_COCKPIT_OBJECT_REFRESH_LABEL = 'Get latest object detail from target org';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_CONFIRM_LABEL = 'Apply to project and recipe';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_ORG_PLACEHOLDER = 'Choose the org to get the latest object detail from';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL = 'Nothing was retrieved: an insert, a Treecipe Adapter run, a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_BUSY_REFUSAL = 'Nothing was applied: an insert, a Treecipe Adapter run, a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL = 'Nothing was started: Get latest object detail is applying retrieved files to this project. Try again when it ends.';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_CHANGED_REFUSAL = 'Nothing was applied: the retrieved files, the project or the recipe changed since the review, so what it listed is no longer what would be written. Get the latest object detail again.';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
@@ -2701,6 +2764,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
                                         | IRecipeCockpitAdapterMetadataChangesMessage
+                                        | IRecipeCockpitObjectRefreshStateMessage
                                         | IRecipeCockpitAdapterChildBlockMessage
                                         | IRecipeCockpitAdapterChildPreviewMessage
                                         | IRecipeCockpitUpdaterValuesMessage
@@ -3046,6 +3110,12 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
     | { kind: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; objectApiNames: string[]; isOrgPrompted: boolean }
     | { kind: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: number }
+    // "Get latest object detail from target org" (#612): THE ROW ON SCREEN, THEN ONLY THE OPEN DIALOG'S ID, KINDS AND ITEM INDEXES
+    | { kind: 'openObjectRefresh'; treeKey: string; renderSequence: number; objectApiName: string; nickname?: string }
+    | { kind: 'startObjectRefresh'; refreshId: string; kinds: ObjectRefreshKind[] }
+    | { kind: 'cancelObjectRefresh'; refreshId: string }
+    | { kind: 'applyObjectRefresh'; refreshId: string; itemIndexes: number[] }
+    | { kind: 'refuseObjectRefresh'; refusalText: string; hostMessage?: IRecipeCockpitObjectRefreshStateMessage }
     | { kind: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }
     | { kind: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
     // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
@@ -3171,6 +3241,8 @@ export interface IRecipeCockpitPanelState {
     // THE LAST "Retrieve latest metadata" (#445): WHAT IT POSTED, REPLAYED WHILE ITS MODEL IS ON SCREEN, AND THE STAGING FOLDER IT READ (HOST-ONLY)
     adapterMetadataChangesMessage?: IRecipeCockpitAdapterMetadataChangesMessage;
     adapterRetrieveStagingFolderPath?: string;
+    // THE OPEN "Get latest object detail" DIALOG (#612), REPLAYED WHILE IT RETRIEVES OR APPLIES
+    objectRefreshSession?: IRecipeCockpitObjectRefreshSession;
     // THE FIELDS ONLY THE ORG HOLDS THAT IT OFFERED (#446), BY "<object>\n<field>": WHAT LOAD, GENERATE AND UPDATE ACCEPT BEYOND THE RECIPE'S FIELDS (HOST-ONLY)
     adapterOrgOnlyFields?: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
     // THE NEW CHILD OBJECT BEING ADDED (#447) AND ITS LAST PREVIEW, REPLAYED WHILE THEIR MODEL IS ON SCREEN; THE FIELD MODELS AND RECORDS ARE HELD ON THE CLASS
@@ -7018,6 +7090,11 @@ export class RecipeCockpitService {
                 // THE LAST PLACE SAVED IS WRITTEN NOW RATHER THAN DROPPED WITH THE TIMER -- THE NEXT OPEN READS IT
                 this.flushPanelPlacePersist();
                 this.cancelPendingConfirmation();
+                // A DIALOG LEFT OPEN STAGED FILES NO ONE WILL APPLY; ONE STILL RETRIEVING OR APPLYING ENDS ITSELF (#612)
+                const objectRefreshStep = this.recipeCockpitPanelState.objectRefreshSession?.stateMessage.step;
+                if ( objectRefreshStep === 'choose' || objectRefreshStep === 'review' || objectRefreshStep === 'confirming' ) {
+                    this.discardObjectRefreshStaging(this.recipeCockpitPanelState);
+                }
                 this.recipeCockpitMessageSubscription?.dispose();
                 this.recipeCockpitMessageSubscription = undefined;
                 this.recipeCockpitPanel = undefined;
@@ -7353,6 +7430,12 @@ export class RecipeCockpitService {
         panelState.adapterMetadataChangesMessage = undefined;
         panelState.adapterRetrieveStagingFolderPath = undefined;
         panelState.adapterOrgOnlyFields = undefined;
+        // AN OPEN "Get latest object detail" DIALOG (#612) WAS FOR THE OLD MODEL; ONE STILL RETRIEVING OR APPLYING ENDS ITSELF
+        const objectRefreshStep = panelState.objectRefreshSession?.stateMessage.step;
+        if ( objectRefreshStep === 'choose' || objectRefreshStep === 'review' || objectRefreshStep === 'confirming' ) {
+            this.discardObjectRefreshStaging(panelState);
+            panelState.objectRefreshSession = undefined;
+        }
         this.setUpdaterValuesMessage(panelState, undefined);
         this.clearHeldUpdaterRecords();
         // AND EVERY PREVIEW'S RECORD LINKS (#556), WHOSE RECORDS WENT WITH THEM
@@ -8096,6 +8179,34 @@ export class RecipeCockpitService {
             case 'applyAdapterRetrievedFiles':
 
                 await this.applyAdapterRetrievedFilesFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'openObjectRefresh':
+
+                this.openObjectRefresh(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'startObjectRefresh':
+
+                await this.startObjectRefresh(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'cancelObjectRefresh':
+
+                this.cancelObjectRefresh(cockpitPanel, panelState);
+                return;
+
+            case 'applyObjectRefresh':
+
+                await this.applyObjectRefresh(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'refuseObjectRefresh':
+
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
+                if ( panelAction.hostMessage ) {
+                    this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                }
                 return;
 
             case 'prepareAdapterChild':
@@ -11934,7 +12045,418 @@ export class RecipeCockpitService {
         return this.isMetadataDeployInFlight
             || this.isMetadataRetrieveInFlight
             || !!panelState.wireLookupStateMessage
-            || panelState.isGenerateTreecipeInFlight;
+            || panelState.isGenerateTreecipeInFlight
+            || this.isApplyingObjectRefresh(panelState);
+    }
+
+    // GET LATEST OBJECT DETAIL'S APPLY WRITES METADATA FILES AND THE RECIPE (#612), SO WHAT READS OR WRITES THEM WAITS, AS FOR THE ADAPTER'S (#445)
+    static isApplyingObjectRefresh(panelState: IRecipeCockpitPanelState): boolean {
+        return panelState.objectRefreshSession?.stateMessage.step === 'applying';
+    }
+
+    // WHY A RUN WAITS FOR AN APPLY OF RETRIEVED FILES, THE ADAPTER'S OR GET LATEST OBJECT DETAIL'S; UNDEFINED WHEN NONE RUNS
+    static findRetrievedFilesApplyRefusal(panelState: IRecipeCockpitPanelState): string | undefined {
+        return this.isApplyingAdapterFiles(panelState) ? RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL
+            : this.isApplyingObjectRefresh(panelState) ? RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL
+            : undefined;
+    }
+
+    /*
+        "Get latest object detail from target org" (#612). The dialog is the host's: each step is a
+        state it posts, and the panel answers only under the dialog's id. Step 1 starts on the
+        Target Org Manager selection, which the dialog's own org picker changes.
+    */
+    private static openObjectRefresh(cockpitPanel: vscode.WebviewPanel,
+                                     panelState: IRecipeCockpitPanelState,
+                                     openAction: Extract<RecipeCockpitPanelAction, { kind: 'openObjectRefresh' }>) {
+
+        this.discardObjectRefreshStaging(panelState);
+
+        const stateMessage: IRecipeCockpitObjectRefreshStateMessage = {
+            command: 'objectRefreshState',
+            refreshId: crypto.randomUUID(),
+            renderSequence: openAction.renderSequence,
+            treeKey: openAction.treeKey,
+            objectApiName: openAction.objectApiName,
+            ...( openAction.nickname !== undefined ? { nickname: openAction.nickname } : {} ),
+            step: 'choose',
+            kinds: [...OBJECT_REFRESH_KINDS]
+        };
+
+        panelState.objectRefreshSession = { stateMessage: stateMessage, cancellation: { isRequested: false } };
+        this.postToPanel(cockpitPanel, stateMessage);
+
+    }
+
+    // THE OPEN DIALOG AT THE STEP GIVEN, FOR THE MODEL ON SCREEN, WHEN THE PANEL NAMED IT BY ITS ID
+    private static findOpenObjectRefreshSession(panelState: IRecipeCockpitPanelState, refreshId: unknown, step: RecipeCockpitObjectRefreshStep): IRecipeCockpitObjectRefreshSession | undefined {
+
+        const session = panelState.objectRefreshSession;
+
+        return session
+                && typeof refreshId === 'string'
+                && refreshId === session.stateMessage.refreshId
+                && session.stateMessage.step === step
+                && session.stateMessage.renderSequence === panelState.recipeDataMessage?.renderSequence
+            ? session
+            : undefined;
+
+    }
+
+    // WHAT HOLDS A RETRIEVE OR AN APPLY BACK: ANYTHING ELSE THAT HOLDS THE ORG SELECTION, OR READS OR WRITES THE PROJECT'S METADATA OR RECIPE
+    private static findObjectRefreshBusyRefusal(panelState: IRecipeCockpitPanelState, refusalText: string): string | undefined {
+
+        const isBusy = !!panelState.insertStateMessage
+            || panelState.updaterLoadStateMessage?.isRunning === true
+            || panelState.scratchOrgStateMessage?.isRunning === true
+            || panelState.permissionSetAssignStateMessage?.isRunning === true
+            || this.isSelectionHeldByPromptOrUpdater(panelState)
+            || this.isApplyHeldByAnotherRun(panelState);
+
+        return isBusy ? refusalText : undefined;
+
+    }
+
+    private static postObjectRefreshState(cockpitPanel: vscode.WebviewPanel, session: IRecipeCockpitObjectRefreshSession, stateChange: Partial<IRecipeCockpitObjectRefreshStateMessage>) {
+
+        const { tickedItemIndexes: _previousTicks, ...previousState } = session.stateMessage;
+        session.stateMessage = { ...previousState, ...stateChange };
+        this.postToPanel(cockpitPanel, session.stateMessage);
+
+    }
+
+    private static closeObjectRefresh(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, session: IRecipeCockpitObjectRefreshSession, isStagingKept: boolean) {
+
+        if ( !isStagingKept ) {
+            this.discardObjectRefreshStaging(panelState);
+        }
+        this.postObjectRefreshState(cockpitPanel, session, { step: 'closed' });
+        if ( panelState.objectRefreshSession === session ) {
+            panelState.objectRefreshSession = undefined;
+        }
+
+    }
+
+    // A CANCELLED OR ABANDONED RETRIEVE LEAVES NOTHING BEHIND; A FOLDER THAT IS NOT A PLAIN ONE UNDER treecipe/ IN THIS WORKSPACE IS LEFT ALONE
+    private static discardObjectRefreshStaging(panelState: IRecipeCockpitPanelState) {
+
+        const session = panelState.objectRefreshSession;
+        const stagingFolderPath = session?.stagingFolderPath;
+        if ( !stagingFolderPath ) {
+            return;
+        }
+        const packageXmlFilePath = session.packageXmlFilePath;
+        session.stagingFolderPath = undefined;
+        session.packageXmlFilePath = undefined;
+
+        try {
+            RecipeCockpitOrgChangeDetection.toOutputDirectoryArgument(panelState.workspaceRoot, stagingFolderPath);
+            if ( fs.lstatSync(stagingFolderPath).isDirectory() && SfdxProjectService.isPathContainedInWorkspace(stagingFolderPath, panelState.workspaceRoot) ) {
+                fs.rmSync(stagingFolderPath, { recursive: true, force: true });
+            }
+            if ( packageXmlFilePath && fs.lstatSync(packageXmlFilePath).isFile() && SfdxProjectService.isPathContainedInWorkspace(packageXmlFilePath, panelState.workspaceRoot) ) {
+                fs.rmSync(packageXmlFilePath, { force: true });
+            }
+        } catch {
+            // NOTHING TO REMOVE, OR NOTHING THIS MAY REMOVE
+        }
+
+    }
+
+    private static cancelObjectRefresh(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+
+        const session = panelState.objectRefreshSession;
+        if ( !session ) {
+            return;
+        }
+
+        // A RETRIEVE ENDS ITSELF ONCE CANCELLED, AND CLOSES THE DIALOG ONCE IT HAS
+        if ( session.stateMessage.step === 'retrieving' ) {
+            session.cancellation.isRequested = true;
+            session.cancellation.onRequested?.();
+            return;
+        }
+
+        this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+
+    }
+
+    private static async startObjectRefresh(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            startAction: Extract<RecipeCockpitPanelAction, { kind: 'startObjectRefresh' }>) {
+
+        const session = panelState.objectRefreshSession as IRecipeCockpitObjectRefreshSession;
+        const { treeKey, objectApiName, nickname } = session.stateMessage;
+        const workspaceRoot = panelState.workspaceRoot;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const tree = clickedRecipeDataMessage.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                            && panelState.objectRefreshSession === session;
+        const warn = (warningText: string) => VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(warningText));
+        const objectLabel = this.describeOccurrence(objectApiName, nickname);
+
+        this.postObjectRefreshState(cockpitPanel, session, { step: 'retrieving', kinds: startAction.kinds });
+
+        let packageDirectoryPaths: string[];
+        let defaultPackageDirectoryPath: string;
+        try {
+            packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+            defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
+        } catch (projectError) {
+            warn(`Nothing was retrieved for ${objectLabel}: ${this.describeThrown(projectError)}`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        const orgDetail = await this.resolveSelectedReadOrg(cockpitPanel, panelState, 'Nothing was retrieved', RECIPE_COCKPIT_OBJECT_REFRESH_ORG_PLACEHOLDER,
+            RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL, RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE, 'isOrgPromptOpen');
+
+        if ( !orgDetail || !isClickStillCurrent() || session.cancellation.isRequested || !tree ) {
+            if ( isClickStillCurrent() && !session.cancellation.isRequested ) {
+                this.postObjectRefreshState(cockpitPanel, session, { step: 'choose' });
+            } else {
+                this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            }
+            return;
+        }
+
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        this.postObjectRefreshState(cockpitPanel, session, { orgLabel: orgLabel });
+
+        const valueSetNames = await RecipeCockpitObjectRefresh.listObjectValueSetNames(workspaceRoot, packageDirectoryPaths, objectApiName);
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, clickedRecipeDataMessage.recipe, tree);
+        let components: IMetadataDeployComponent[];
+        let retrieveArguments: string[];
+        try {
+            components = RecipeCockpitObjectRefresh.buildRetrieveComponents(objectApiName, startAction.kinds, valueSetNames);
+            const plannedStagingFolderPath = runArtifactsLocation ? RecipeCockpitOrgChangeDetection.buildStagingFolderPath(runArtifactsLocation, orgDetail.username, new Date(), OBJECT_REFRESH_OPERATION_NAME) : undefined;
+            session.stagingFolderPath = runArtifactsLocation && plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(runArtifactsLocation, plannedStagingFolderPath) : undefined;
+            const writtenPackageXmlFilePath = runArtifactsLocation && session.stagingFolderPath
+                ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(session.stagingFolderPath), RecipeCockpitObjectRefresh.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot)))
+                : undefined;
+            session.packageXmlFilePath = writtenPackageXmlFilePath;
+            if ( !session.stagingFolderPath || !writtenPackageXmlFilePath ) {
+                warn(`Nothing was retrieved for ${objectLabel}: the staging folder could not be made under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
+                this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+                return;
+            }
+            retrieveArguments = RecipeCockpitOrgChangeDetection.buildRetrieveArguments(
+                RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenPackageXmlFilePath),
+                RecipeCockpitOrgChangeDetection.toOutputDirectoryArgument(workspaceRoot, session.stagingFolderPath),
+                orgDetail.username
+            );
+        } catch (argumentError) {
+            warn(`Nothing was retrieved for ${objectLabel}: ${this.describeThrown(argumentError)}`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        const retrieveRun = await this.runCancellableRetrieve(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: getting the latest detail of ${objectLabel} from ${orgLabel}`),
+            retrieveArguments,
+            workspaceRoot,
+            { orgUsername: orgDetail.username, components: components, destination: { kind: 'staging', stagingFolderPath: session.stagingFolderPath } },
+            session.cancellation
+        );
+
+        if ( retrieveRun.isCancelled || session.cancellation.isRequested ) {
+            warn(`Getting the latest detail of ${objectLabel} from ${orgLabel} was cancelled. Nothing in the project or the recipe changed.`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        const retrieveRead = RecipeCockpitOrgChangeDetection.readRetrieveSucceeded(retrieveRun.invocation, retrieveRun.payload);
+        if ( 'failureMessage' in retrieveRead ) {
+            warn(`The latest detail of ${objectLabel} could not be retrieved from ${orgLabel}: ${retrieveRead.failureMessage}`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        if ( !isClickStillCurrent() ) {
+            warn(`The latest detail of ${objectLabel} was retrieved, but the run on screen changed meanwhile, so nothing was listed. Get it again.`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        session.comparisonRequest = {
+            workspaceRoot: workspaceRoot,
+            packageDirectoryPaths: packageDirectoryPaths,
+            defaultPackageDirectoryPath: defaultPackageDirectoryPath,
+            stagingFolderPath: session.stagingFolderPath,
+            objectApiName: objectApiName,
+            kinds: startAction.kinds,
+            valueSetNames: valueSetNames,
+            recipeContext: this.readObjectRefreshRecipeContext(panelState, tree, objectApiName, nickname)
+        };
+        const comparison = await RecipeCockpitObjectRefresh.compareStagedObject(session.comparisonRequest);
+
+        // A CANCEL CAN ARRIVE WHILE THE FILES ARE COMPARED, AFTER THE RETRIEVE HAS ENDED
+        if ( session.cancellation.isRequested ) {
+            warn(`Getting the latest detail of ${objectLabel} from ${orgLabel} was cancelled. Nothing in the project or the recipe changed.`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        if ( !isClickStillCurrent() ) {
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        if ( !comparison.isRetrieved ) {
+            warn(`${orgLabel} returned nothing for ${objectLabel}, so nothing was listed. Check that the object exists in that org.`);
+            this.closeObjectRefresh(cockpitPanel, panelState, session, false);
+            return;
+        }
+
+        session.plannedItems = comparison.items;
+        this.postObjectRefreshState(cockpitPanel, session, {
+            step: 'review',
+            groups: startAction.kinds.map(kind => ({
+                kind: kind,
+                label: OBJECT_REFRESH_KIND_LABELS[kind],
+                unchangedCount: comparison.unchangedCountByKind[kind],
+                unreadableCount: comparison.unreadableCountByKind[kind],
+                items: comparison.items.filter(item => item.kind === kind).map(item => this.toPostedObjectRefreshItem(item))
+            }))
+        });
+
+    }
+
+    // AN ITEM AS THE PANEL SEES IT: NEVER ITS FILES OR THE LINES IT WRITES
+    private static toPostedObjectRefreshItem(item: IObjectRefreshPlannedItem): IObjectRefreshItem {
+        return { kind: item.kind, name: item.name, status: item.status, detail: item.detail, differences: [...item.differences], recipeNote: item.recipeNote };
+    }
+
+    // THE CARD'S RECIPE FILE AS IT IS NOW, ITS BACKEND, AND WHAT THE OCCURRENCE PINS OR SWITCHES OFF
+    private static readObjectRefreshRecipeContext(panelState: IRecipeCockpitPanelState, tree: IRecipeCockpitTreeViewModel, objectApiName: string, nickname: string | undefined): IObjectRefreshComparisonRequest['recipeContext'] {
+
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
+        const recipeText = recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ? fs.readFileSync(recipeFilePath, 'utf-8') : undefined;
+        const fakerService = recipeText === undefined ? undefined : this.readTreeFakerService(panelState, tree.treeKey);
+        const isOccurrence = (reference: { objectApiName: string; nickname?: string }) => reference.objectApiName === objectApiName && reference.nickname === nickname;
+
+        return {
+            recipeText: recipeText,
+            expressionSource: fakerService === undefined ? undefined : new RecipeService(fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService()),
+            // SET ONLY FOR AN OCCURRENCE OF AN OBJECT WITH iterations; AN OBJECT WRITTEN ONCE IS ITS FIRST OCCURRENCE
+            ...( nickname !== undefined ? { objectNickname: nickname } : {} ),
+            pinnedFieldApiNames: new Set(( tree.fixedValues ?? [] ).filter(isOccurrence).map(fixedValue => fixedValue.fieldApiName)),
+            validationRulesOffFieldApiNames: new Set(( tree.validationRulesOff ?? [] ).filter(isOccurrence).map(fieldReference => fieldReference.fieldApiName))
+        };
+
+    }
+
+    /*
+        Apply: the ticked items asked once in the panel (the dialog steps aside), then planned again
+        from the files and the recipe as they are NOW and refused if any ticked item would write
+        anything but what the review showed. The project's files are copied first, then only those
+        items' recipe lines are written; one notification says what landed.
+    */
+    private static async applyObjectRefresh(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            applyAction: Extract<RecipeCockpitPanelAction, { kind: 'applyObjectRefresh' }>) {
+
+        const session = panelState.objectRefreshSession as IRecipeCockpitObjectRefreshSession;
+        const { treeKey, objectApiName, nickname, orgLabel } = session.stateMessage;
+        const reviewedItems = applyAction.itemIndexes.map(itemIndex => ( session.plannedItems as IObjectRefreshPlannedItem[] )[itemIndex]);
+        const objectLabel = this.describeOccurrence(objectApiName, nickname);
+        const backToReview = () => this.postObjectRefreshState(cockpitPanel, session, { step: 'review', tickedItemIndexes: [...applyAction.itemIndexes] });
+        const recipeLineCount = reviewedItems.reduce((lineCount, item) => lineCount + item.recipeChanges.length, 0);
+
+        this.postObjectRefreshState(cockpitPanel, session, { step: 'confirming' });
+
+        const confirmation = await this.confirmInPanel(
+            `Apply ${reviewedItems.length} ${reviewedItems.length === 1 ? 'item' : 'items'} from ${orgLabel ?? 'the org'} to ${objectLabel}?`,
+            {
+                summary: [`This copies ${reviewedItems.length} retrieved ${reviewedItems.length === 1 ? 'file' : 'files'} into the project, then writes ${recipeLineCount} ${recipeLineCount === 1 ? 'line' : 'lines'} of the recipe. Every other file, and every other line of the recipe, is left as it is.`],
+                sections: OBJECT_REFRESH_KINDS
+                    .map(kind => ({ kind: kind, items: reviewedItems.filter(item => item.kind === kind) }))
+                    .filter(kindItems => kindItems.items.length > 0)
+                    .map(kindItems => ({
+                        title: OBJECT_REFRESH_KIND_LABELS[kindItems.kind],
+                        count: kindItems.items.length,
+                        lines: kindItems.items.map(item => `${item.name} (${item.status}): ${item.recipeNote}`)
+                    }))
+            },
+            RECIPE_COCKPIT_OBJECT_REFRESH_CONFIRM_LABEL
+        );
+
+        if ( panelState.objectRefreshSession !== session ) {
+            return;
+        }
+
+        if ( confirmation !== RECIPE_COCKPIT_OBJECT_REFRESH_CONFIRM_LABEL ) {
+            backToReview();
+            return;
+        }
+
+        const busyRefusal = this.findObjectRefreshBusyRefusal(panelState, RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_BUSY_REFUSAL);
+        const comparisonRequest = session.comparisonRequest as IObjectRefreshComparisonRequest;
+        const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        if ( busyRefusal || !tree ) {
+            VSCodeWorkspaceService.showWarningMessage(busyRefusal ?? RECIPE_COCKPIT_OBJECT_REFRESH_CHANGED_REFUSAL);
+            backToReview();
+            return;
+        }
+
+        // PLANNED AGAIN AFTER THE CONFIRMATION: EVERY FILE AND THE RECIPE CAN HAVE CHANGED WHILE IT WAS OPEN
+        const replanned = await RecipeCockpitObjectRefresh.compareStagedObject({ ...comparisonRequest, recipeContext: this.readObjectRefreshRecipeContext(panelState, tree, objectApiName, nickname) });
+        const describeItem = (item: IObjectRefreshPlannedItem) => JSON.stringify([item.kind, item.name, item.status, item.differences, item.recipeChanges, item.fileCopy]);
+        const replannedByDescription = new Map(replanned.items.map(item => [describeItem(item), item] as const));
+        const confirmedItems = reviewedItems.map(item => replannedByDescription.get(describeItem(item)));
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+
+        if ( confirmedItems.some(item => item === undefined) || panelState.objectRefreshSession !== session ) {
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_OBJECT_REFRESH_CHANGED_REFUSAL);
+            backToReview();
+            return;
+        }
+
+        this.postObjectRefreshState(cockpitPanel, session, { step: 'applying' });
+
+        let copyOutcome = { copiedCount: 0, failures: [] as string[] };
+        let recipeOutcome: { writtenLineCount: number; refusals: string[] } = { writtenLineCount: 0, refusals: [] };
+        try {
+            await this.runRecipeLookupWrite(cockpitPanel, panelState, treeKey, async () => {
+                // AN ITEM WHOSE FILE DID NOT LAND WRITES NO RECIPE LINE, SO THE RECIPE NEVER NAMES WHAT THE PROJECT LACKS
+                const copiedItems = ( confirmedItems as IObjectRefreshPlannedItem[] ).filter(item => {
+                    const itemCopy = RecipeCockpitOrgChangeDetection.copyMetadataFiles(panelState.workspaceRoot, [item.fileCopy]);
+                    copyOutcome = { copiedCount: copyOutcome.copiedCount + itemCopy.copiedCount, failures: [...copyOutcome.failures, ...itemCopy.failures] };
+                    return itemCopy.copiedCount === 1;
+                });
+                const recipeItems = copiedItems.filter(item => item.recipeChanges.length > 0);
+                if ( recipeItems.length > 0 && recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
+                    const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+                    const applied = RecipeCockpitObjectRefresh.applyRecipeChanges(recipeText, objectApiName, comparisonRequest.recipeContext.objectNickname, recipeItems);
+                    recipeOutcome = applied;
+                    if ( applied.recipeText !== recipeText ) {
+                        fs.writeFileSync(recipeFilePath, applied.recipeText);
+                    }
+                }
+                return copyOutcome.copiedCount > 0 || recipeOutcome.writtenLineCount > 0;
+            });
+        } finally {
+            this.closeObjectRefresh(cockpitPanel, panelState, session, true);
+        }
+
+        const offersRecordTypeRegenerate = ( confirmedItems as IObjectRefreshPlannedItem[] ).some(item => item.offersRecordTypeRegenerate);
+        const failures = [...copyOutcome.failures, ...recipeOutcome.refusals];
+        const outcomeText = [
+            `${objectLabel}: copied ${copyOutcome.copiedCount} ${copyOutcome.copiedCount === 1 ? 'file' : 'files'} from ${orgLabel ?? 'the org'} into the project and wrote ${recipeOutcome.writtenLineCount} recipe ${recipeOutcome.writtenLineCount === 1 ? 'line' : 'lines'}.`,
+            ...( failures.length > 0 ? [`Not written: ${failures.join('; ')}.`] : [] ),
+            ...( offersRecordTypeRegenerate ? ['A record type changed: use Regenerate with record types on the card to write its section.'] : [] )
+        ].join(' ');
+        const escapedOutcomeText = RecipeYamlScalar.escapeForNotification(outcomeText);
+
+        if ( failures.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(escapedOutcomeText);
+        } else {
+            VSCodeWorkspaceService.showInformationMessage(escapedOutcomeText);
+        }
+
     }
 
     private static async applyAdapterRetrievedFilesFromPanel(cockpitPanel: vscode.WebviewPanel,
@@ -14114,8 +14636,9 @@ export class RecipeCockpitService {
                 || this.isMetadataRetrieveInFlight ) {
             return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
         }
-        if ( this.isApplyingAdapterFiles(currentPanelState) ) {
-            return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
+        const retrievedFilesApplyRefusal = this.findRetrievedFilesApplyRefusal(currentPanelState);
+        if ( retrievedFilesApplyRefusal ) {
+            return refuse(retrievedFilesApplyRefusal);
         }
 
         let orgTypeDetail: IOrgTypeDetail | undefined;
@@ -14636,8 +15159,9 @@ export class RecipeCockpitService {
         if ( currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning || this.isMetadataDeployInFlight ) {
             return refuse(RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL);
         }
-        if ( this.isApplyingAdapterFiles(currentPanelState) ) {
-            return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
+        const retrievedFilesApplyRefusal = this.findRetrievedFilesApplyRefusal(currentPanelState);
+        if ( retrievedFilesApplyRefusal ) {
+            return refuse(retrievedFilesApplyRefusal);
         }
 
         const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
@@ -14798,7 +15322,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        if ( panelState.isGenerateTreecipeInFlight || panelState.insertStateMessage || this.isApplyingAdapterFiles(panelState) ) {
+        if ( panelState.isGenerateTreecipeInFlight || panelState.insertStateMessage || this.isApplyingAdapterFiles(panelState) || this.isApplyingObjectRefresh(panelState) ) {
             VSCodeWorkspaceService.showWarningMessage('Generate Treecipe was not started: a generation, an insert or an Apply of retrieved files is running. Run it once that has finished.');
             return;
         }
@@ -15402,10 +15926,11 @@ export class RecipeCockpitService {
     private static async runCancellableRetrieve(progressTitle: string,
                                                 cliArguments: string[],
                                                 workspaceRoot: string,
-                                                jsforceRetrieve: { orgUsername: string; components: IMetadataDeployComponent[]; destination: MetadataRetrieveDestination }): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean; isNothingWritten?: boolean; payload: Record<string, unknown> | undefined }> {
+                                                jsforceRetrieve: { orgUsername: string; components: IMetadataDeployComponent[]; destination: MetadataRetrieveDestination },
+                                                panelCancellation?: IRecipeCockpitPanelCancellation): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean; isNothingWritten?: boolean; payload: Record<string, unknown> | undefined }> {
 
         if ( RecipeCockpitMetadataRetrievePackage.readRetrieveMethod(ConfigurationService.getExtensionConfigValue(METADATA_RETRIEVE_METHOD_SETTING)) === 'cli' ) {
-            const cliRun = await this.runCancellableCli(progressTitle, cliArguments, METADATA_RETRIEVE_TIMEOUT_MILLISECONDS, workspaceRoot, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES);
+            const cliRun = await this.runCancellableCli(progressTitle, cliArguments, METADATA_RETRIEVE_TIMEOUT_MILLISECONDS, workspaceRoot, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, panelCancellation);
             return { ...cliRun, payload: ScratchOrgService.readCliJsonPayload(cliRun.invocation) };
         }
 
@@ -15418,7 +15943,7 @@ export class RecipeCockpitService {
             cancellable: true
         }, async (_progress, cancellationToken) => {
 
-            const isCancellationRequested = () => cancellationToken.isCancellationRequested;
+            const isCancellationRequested = () => cancellationToken.isCancellationRequested || panelCancellation?.isRequested === true;
 
             let retrieveConnection: Connection;
             try {
@@ -15482,7 +16007,8 @@ export class RecipeCockpitService {
                                             cliArguments: string[],
                                             timeoutMilliseconds: number,
                                             workspaceRoot: string,
-                                            maxBufferBytes: number = PERMISSION_SET_MAX_BUFFER_BYTES): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean }> {
+                                            maxBufferBytes: number = PERMISSION_SET_MAX_BUFFER_BYTES,
+                                            panelCancellation?: IRecipeCockpitPanelCancellation): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean }> {
 
         let isCancelled = false;
 
@@ -15493,16 +16019,20 @@ export class RecipeCockpitService {
         }, async (_progress, cancellationToken) => {
 
             let killCurrentProcess: (() => void) | undefined;
-            cancellationToken.onCancellationRequested(() => {
+            const cancel = () => {
                 isCancelled = true;
                 killCurrentProcess?.();
-            });
+            };
+            cancellationToken.onCancellationRequested(cancel);
+            if ( panelCancellation ) {
+                panelCancellation.onRequested = cancel;
+            }
 
             return await PicklistDependencyCheckService.runSalesforceCli(
                 cliArguments,
                 (killChildProcess: () => void) => {
                     killCurrentProcess = killChildProcess;
-                    if ( cancellationToken.isCancellationRequested ) {
+                    if ( cancellationToken.isCancellationRequested || panelCancellation?.isRequested ) {
                         isCancelled = true;
                         killChildProcess();
                     }
@@ -17252,6 +17782,7 @@ export class RecipeCockpitService {
                 if ( panelState.isGenerateTreecipeInFlight
                         || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) )
                         || this.isApplyingAdapterFiles(panelState)
+                        || this.isApplyingObjectRefresh(panelState)
                         || typeof treeKey !== 'string'
                         || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
                         || !recordTypeSelection ) {
@@ -18219,8 +18750,9 @@ export class RecipeCockpitService {
                     return { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
-                if ( this.isApplyingAdapterFiles(panelState) ) {
-                    return { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL, hostMessage: notRunning };
+                const retrievedFilesApplyRefusal = this.findRetrievedFilesApplyRefusal(panelState);
+                if ( retrievedFilesApplyRefusal ) {
+                    return { kind: 'refuseMetadataRetrieve', refusalText: retrievedFilesApplyRefusal, hostMessage: notRunning };
                 }
 
                 return { kind: 'retrieveTreeMetadata', treeKey: treeKey, retrieveKind: retrieveKind };
@@ -18272,8 +18804,9 @@ export class RecipeCockpitService {
                     return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
                 }
 
-                if ( this.isApplyingAdapterFiles(panelState) ) {
-                    return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
+                const retrievedFilesApplyRefusal = this.findRetrievedFilesApplyRefusal(panelState);
+                if ( retrievedFilesApplyRefusal ) {
+                    return refuse(retrievedFilesApplyRefusal);
                 }
 
                 if ( orgIndex === undefined || orgIndex === null ) {
@@ -18630,6 +19163,97 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+
+            }
+
+            /*
+                "Get latest object detail from target org" (#612). Open: a row the model on screen
+                draws on a card with a folder, never an iteration. Every later message names only
+                the open dialog's id -- with the kinds from the fixed list, or the indexes of the
+                items it was shown -- never an object, a path, an org or a value.
+            */
+            case 'openObjectRefresh': {
+
+                const { treeKey, renderSequence, objectApiName, nickname } = panelMessage;
+                const runningState = panelState.objectRefreshSession?.stateMessage;
+
+                if ( runningState && ( runningState.step === 'retrieving' || runningState.step === 'applying' || runningState.step === 'confirming' ) ) {
+                    return { kind: 'refuseObjectRefresh', refusalText: RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL, hostMessage: runningState };
+                }
+
+                const recipeDataMessage = panelState.recipeDataMessage;
+                const resolved = typeof treeKey === 'string' && typeof objectApiName === 'string'
+                    ? this.resolvePostedOccurrence(recipeDataMessage?.recipe, treeKey, objectApiName, nickname)
+                    : undefined;
+
+                if ( !resolved
+                        || !recipeDataMessage
+                        || renderSequence !== recipeDataMessage.renderSequence
+                        || !resolved.tree.folderName
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(resolved.tree.treeKey)
+                        || resolved.occurrence.objectViewModel.isIterationOccurrence
+                        || !SalesforceApiName.isApiName(resolved.occurrence.objectApiName) ) {
+                    return undefined;
+                }
+
+                return {
+                    kind: 'openObjectRefresh',
+                    treeKey: resolved.tree.treeKey,
+                    renderSequence: recipeDataMessage.renderSequence,
+                    objectApiName: resolved.occurrence.objectApiName,
+                    ...this.withOccurrenceNickname(resolved.occurrence)
+                };
+
+            }
+
+            case 'startObjectRefresh': {
+
+                const session = this.findOpenObjectRefreshSession(panelState, panelMessage.refreshId, 'choose');
+                const postedKinds: unknown = panelMessage.kinds;
+
+                if ( !session || !Array.isArray(postedKinds) || postedKinds.length === 0 || !postedKinds.every(postedKind => RecipeCockpitObjectRefresh.isKind(postedKind)) ) {
+                    return undefined;
+                }
+
+                const busyRefusal = this.findObjectRefreshBusyRefusal(panelState, RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL);
+                if ( busyRefusal ) {
+                    return { kind: 'refuseObjectRefresh', refusalText: busyRefusal, hostMessage: session.stateMessage };
+                }
+
+                return { kind: 'startObjectRefresh', refreshId: session.stateMessage.refreshId, kinds: OBJECT_REFRESH_KINDS.filter(kind => ( postedKinds as unknown[] ).includes(kind)) };
+
+            }
+
+            case 'cancelObjectRefresh': {
+
+                const session = panelState.objectRefreshSession;
+
+                return session && panelMessage.refreshId === session.stateMessage.refreshId && session.stateMessage.step !== 'applying'
+                    ? { kind: 'cancelObjectRefresh', refreshId: session.stateMessage.refreshId }
+                    : undefined;
+
+            }
+
+            case 'applyObjectRefresh': {
+
+                const session = this.findOpenObjectRefreshSession(panelState, panelMessage.refreshId, 'review');
+                const postedIndexes: unknown = panelMessage.itemIndexes;
+                const itemCount = session?.plannedItems?.length ?? 0;
+
+                if ( !session
+                        || !Array.isArray(postedIndexes)
+                        || postedIndexes.length === 0
+                        || !postedIndexes.every(itemIndex => Number.isSafeInteger(itemIndex) && itemIndex >= 0 && itemIndex < itemCount)
+                        || new Set(postedIndexes).size !== postedIndexes.length ) {
+                    return undefined;
+                }
+
+                const busyRefusal = this.findObjectRefreshBusyRefusal(panelState, RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_BUSY_REFUSAL);
+                if ( busyRefusal ) {
+                    return { kind: 'refuseObjectRefresh', refusalText: busyRefusal, hostMessage: { ...session.stateMessage, tickedItemIndexes: [...postedIndexes as number[]] } };
+                }
+
+                return { kind: 'applyObjectRefresh', refreshId: session.stateMessage.refreshId, itemIndexes: [...postedIndexes as number[]].sort((first, second) => first - second) };
 
             }
 
@@ -19186,6 +19810,12 @@ export class RecipeCockpitService {
 
         if ( panelState.updaterLoadStateMessage ) {
             replayMessages.push(panelState.updaterLoadStateMessage);
+        }
+
+        // A RELOADED DOCUMENT HAS NO DIALOG: ONLY A RUN STILL GOING IS DRAWN AGAIN, SO ITS CANCEL STAYS IN REACH
+        const objectRefreshState = panelState.objectRefreshSession?.stateMessage;
+        if ( objectRefreshState && ( objectRefreshState.step === 'retrieving' || objectRefreshState.step === 'applying' ) ) {
+            replayMessages.push(objectRefreshState);
         }
 
         if ( panelState.updaterRecordsMessage && panelState.updaterRecordsMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
@@ -21802,6 +22432,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .githubGlyph path { fill: var(--sdt-on-header-muted); }
     .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }
 ${COCKPIT_KIT_CONFIRM_DIALOG_STYLES}
+${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STYLES}
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             transition: none !important;
@@ -21827,6 +22458,10 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
     const cockpitMetaElement = document.getElementById('cockpitMeta');
     const cockpitDialogHostElement = document.getElementById('cockpitDialogHost');
 ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
+${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
+    const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
+    const OBJECT_REFRESH_KINDS = ${JSON.stringify(OBJECT_REFRESH_KINDS)};
+    const OBJECT_REFRESH_KIND_LABELS = ${JSON.stringify(OBJECT_REFRESH_KIND_LABELS)};
     const CHANGELOG_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHANGELOG_LINK_LABEL)};
     const GITHUB_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX)};
     const GITHUB_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_PATH)};
@@ -26402,6 +27037,11 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         objectHeaderElement.appendChild(treeObjectState.countElement);
 
         if (object.iteration) { appendAddFriendControls(treeKey, object, objectHeaderElement); }
+
+        // LAST ON THE ROW (#612): A CARD WITH A FOLDER, NEVER AN ITERATION, WHICH IS THE SAME OBJECT
+        if (tree.folderName && !object.iteration) {
+            objectHeaderElement.appendChild(buildObjectRefreshButton(treeKey, object));
+        }
 
         treeObjectState.headerDetailElements = Array.prototype.slice.call(objectHeaderElement.children, nameChildCount);
         objectHeaderElement.appendChild(treeObjectState.noFieldsSelectedElement);
@@ -33026,6 +33666,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         openNicknameMenu = null;
         // THE HOST ANSWERS AN OPEN CONFIRMATION CANCEL WHEN IT POSTS A NEW MODEL, AND A FAILURE TO DRAW ENDS IT TOO
         closeConfirmDialog(false);
+        closeObjectRefreshDialog(false);
         disableHelpToggle();
         helpSectionElement = null;
         helpSummaryElement = null;
@@ -33199,6 +33840,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
 ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
+${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT}
 
     function focusElement(element) {
         if (element && typeof element.focus === 'function') { element.focus(); }
@@ -33294,6 +33936,11 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'confirmRequest') {
             renderConfirmRequest(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'objectRefreshState') {
+            renderObjectRefreshState(hostMessage);
             return;
         }
 

@@ -297,6 +297,15 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
         });
 
+        it('names the staging folder after another operation when one is given (#612)', () => {
+
+            const location = buildTreeRunArtifactsLocation('/workspace');
+
+            expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'qa@example.com.qa', new Date(2026, 9, 23, 10, 0, 0), 'object-refresh'))
+                .toBe(path.join(location.treeFolderPath, 'RunArtifacts', 'OrgOperations', 'qa@example.com.qa', '20261023-100000-object-refresh'));
+
+        });
+
         it('retrieves into the staging folder only, never a package directory', () => {
 
             expect(RecipeCockpitOrgChangeDetection.buildRetrieveArguments('treecipe/OrgOperations/qa/1-adapter-retrieve-package.xml', 'treecipe/OrgOperations/qa/1-adapter-retrieve', 'qa@example.com.qa')).toEqual([
@@ -491,6 +500,24 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
                 jest.spyOn(fs, 'renameSync').mockImplementation(() => { throw thrownValue; });
                 expect(RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, [{ objectApiName: 'Account', fieldApiName: 'Is_Priority__c', status: 'new', stagedFilePath, targetFilePath }]))
                     .toEqual({ copiedCount: 0, failures: ['Account.Is_Priority__c: disk full'] });
+            });
+
+        });
+
+        it('copies any retrieved metadata file into a folder it makes, naming a failure by the component it was given (#612)', async () => {
+
+            await withWorkspaceCopy(async (workspaceRoot, stagingFolderPath) => {
+                const stagedRuleFilePath = path.join(stagingFolderPath, 'Budget_Positive.validationRule-meta.xml');
+                fs.writeFileSync(stagedRuleFilePath, '<ValidationRule><fullName>Budget_Positive</fullName></ValidationRule>\n');
+                const targetRuleFilePath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'validationRules', 'Budget_Positive.validationRule-meta.xml');
+
+                const copyResult = RecipeCockpitOrgChangeDetection.copyMetadataFiles(workspaceRoot, [
+                    { componentLabel: 'Account.Budget_Positive', stagedFilePath: stagedRuleFilePath, targetFilePath: targetRuleFilePath },
+                    { componentLabel: 'Regions', stagedFilePath: path.join(stagingFolderPath, 'missing.globalValueSet-meta.xml'), targetFilePath: path.join(workspaceRoot, 'force-app', 'Regions.globalValueSet-meta.xml') }
+                ]);
+
+                expect(copyResult).toEqual({ copiedCount: 1, failures: ['Regions: the retrieved file could not be read'] });
+                expect(fs.readFileSync(targetRuleFilePath, 'utf-8')).toBe(fs.readFileSync(stagedRuleFilePath, 'utf-8'));
             });
 
         });

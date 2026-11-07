@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Two_Fields</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND(ISBLANK(Legacy_Code__c), Score__c &gt; 1)</errorConditionFormula>
+    <errorDisplayField>Legacy_Code__c</errorDisplayField>
+    <errorMessage>Two_Fields failed</errorMessage>
+</ValidationRule>
