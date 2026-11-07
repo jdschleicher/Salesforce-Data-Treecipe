@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.193.0] - Recipe Cockpit: an object with no fields ticked generates no records, and its row says so in red (#611)
+
+Since #220, unticking every field of an object on the Treecipe tab still generated its records, with no fields set. The only sign was a small "every field unticked" warning on the row.
+
+- **No records for an object with no field ticked.** The cockpit's generate, and generate-and-insert, leave the object out of the filtered recipe, in both faker-js and snowfakery, like an object excluded by its chain link.
+  - Its children follow it out as they would for an excluded parent. A child no other included parent keeps is auto-excluded, and reads "auto-excluded — parent Contact has no fields selected". A child another parent keeps stays, with its lookup to the object cut.
+  - Because the object is left out, the tree insert skips it too, and `datasetSource.json` lists it under `excludedObjectApiNames`. The insert confirmation's Left out section says "not generated, no fields selected".
+  - A self-lookup copy (an iteration) with no field ticked is left out on its own, with what is nested under it; the object's other occurrences stay.
+- **The row.** Everything after the object's name gives way to **NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED** in bold red: the nickname, friends, record count, lookups and notes. The chain link turns red and cannot be clicked, and the row is not dimmed. The ▸ and **All fields** stay, so ticking any one field brings the object, its children and its stored count back. The tree picker lists it as "(no fields selected)".
+- **What does not change:** a card with no object left out with every field unticked generates and posts exactly as before. An object excluded by its chain link stays "excluded". The recipe file is never written.
+- **Tests:** `RecipeCockpitNoFieldsSelected.test.ts` (cascade, handlers, filtered recipe, panel row), a new `RecipeCockpitObjectSelection` case, the writer's `excludedOccurrenceKeys` in `RecipeCockpitOccurrenceWriter.test.ts`, and a faker-js journey in `acceptance/TreecipeTabJourneys.ts`.
+- Help, `docs/RECIPE-COCKPIT-GUIDE.md` and `RecipeCockpitService/DESIGN.md` describe it.
+
 ## [3.192.17] - faker-js Number, Percent and Currency fields wider than 15 digits keep every digit (#594)
 
 A Number, Percent or Currency field with 16 or more digits left of the decimal (`precision - scale`, up to 18) got a faker-js recipe that returns a JavaScript double, which holds only about 15 digits. The low digits came out rounded (`"Current_Inventory__c": "930336130220814000"`), and a currency's cents came out `.00`.

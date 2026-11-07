@@ -11,6 +11,9 @@
     included. A self-lookup is never "another parent" -- the object cannot keep itself. What is
     left is AUTO-excluded, and it is never stored: including the parent again brings back exactly
     what it cut off, while what the reader excluded stays excluded.
+
+    An object whose every field is unticked (#611) is cut off the same way, as noFieldsSelected:
+    no record is generated for it, so it is no parent. A chain-link exclusion outranks it.
 */
 
 export interface IObjectSelectionLookup {
@@ -23,7 +26,7 @@ export interface IObjectSelectionTreeObject {
     parentLookups: readonly IObjectSelectionLookup[];
 }
 
-export type ObjectSelectionExclusionKind = 'excluded' | 'autoExcluded';
+export type ObjectSelectionExclusionKind = 'excluded' | 'noFieldsSelected' | 'autoExcluded';
 
 /*
     excludedParentObjectApiName is set on an auto-excluded object: the parent its label names,
@@ -51,7 +54,9 @@ export interface IObjectSelection {
 
 export class RecipeCockpitObjectSelection {
 
-    static computeObjectSelection(treeObjects: readonly IObjectSelectionTreeObject[], directlyExcludedObjectApiNames: Iterable<string>): IObjectSelection {
+    static computeObjectSelection(treeObjects: readonly IObjectSelectionTreeObject[],
+                                    directlyExcludedObjectApiNames: Iterable<string>,
+                                    noFieldsSelectedObjectApiNames: Iterable<string> = []): IObjectSelection {
 
         // EVERY STEP BELOW IS LINEAR IN THE TREE: A WIDE ROOT WITH THOUSANDS OF CHILDREN IS WHAT A GENERATED TREE CAN BE
         const lookupsByObjectApiName = new Map<string, IObjectSelectionLookup[]>();
@@ -69,7 +74,9 @@ export class RecipeCockpitObjectSelection {
         });
 
         const objectApiNames = [...lookupsByObjectApiName.keys()];
-        const directlyExcluded = new Set([...directlyExcludedObjectApiNames].filter(objectApiName => lookupsByObjectApiName.has(objectApiName)));
+        const excludedByChainLink = new Set([...directlyExcludedObjectApiNames].filter(objectApiName => lookupsByObjectApiName.has(objectApiName)));
+        const noFieldsSelected = new Set([...noFieldsSelectedObjectApiNames].filter(objectApiName => lookupsByObjectApiName.has(objectApiName) && !excludedByChainLink.has(objectApiName)));
+        const directlyExcluded = new Set([...excludedByChainLink, ...noFieldsSelected]);
 
         const parentsByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, [...new Set(( lookupsByObjectApiName.get(objectApiName) ?? [] )
             .map(lookup => lookup.parentObjectApiName)
@@ -115,7 +122,7 @@ export class RecipeCockpitObjectSelection {
             .filter(objectApiName => !included.has(objectApiName))
             .map(objectApiName => {
                 if ( directlyExcluded.has(objectApiName) ) {
-                    return { objectApiName: objectApiName, kind: 'excluded' };
+                    return { objectApiName: objectApiName, kind: noFieldsSelected.has(objectApiName) ? 'noFieldsSelected' : 'excluded' };
                 }
                 const [excludedParentObjectApiName] = parentsOf(objectApiName).slice().sort((left, right) => (
                     Number(directlyExcluded.has(right)) - Number(directlyExcluded.has(left)) || ( left < right ? -1 : left > right ? 1 : 0 )
