@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Region_Owner__c</fullName>
+    <referenceTo>Contact</referenceTo>
+    <relationshipName>Region_Owner</relationshipName>
+    <label>Region Owner</label>
+    <type>Lookup</type>
+</CustomField>
