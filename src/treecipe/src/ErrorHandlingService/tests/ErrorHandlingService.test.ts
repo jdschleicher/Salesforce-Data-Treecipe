@@ -152,6 +152,114 @@ describe('ErrorHandlingService', () => {
 
         });
 
+        describe('re-running the original command after setup (#101)', () => {
+
+            const configurationFilePath = '/workspace/treecipe/treecipe.config.json';
+            let showErrorMessageMock: jest.Mock;
+            let executeCommandMock: jest.Mock;
+
+            beforeEach(() => {
+                showErrorMessageMock = vscode.window.showErrorMessage as jest.Mock;
+                showErrorMessageMock.mockResolvedValueOnce('Run Treecipe Initiation Setup');
+                executeCommandMock = vscode.commands.executeCommand as jest.Mock;
+            });
+
+            it('given setup wrote a config, re-runs the original command by its id only after setup settles', async () => {
+
+                const executionOrder: string[] = [];
+                executeCommandMock.mockImplementation(async (commandId: string) => {
+                    executionOrder.push(`start ${commandId}`);
+                    await new Promise(resolve => setImmediate(resolve));
+                    executionOrder.push(`end ${commandId}`);
+                    return commandId === 'treecipe.initiateConfiguration' ? configurationFilePath : undefined;
+                });
+
+                await ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'generatePicklistDependencyTests');
+
+                expect(executeCommandMock.mock.calls).toEqual([
+                    ['treecipe.initiateConfiguration'],
+                    ['treecipe.generatePicklistDependencyTests']
+                ]);
+                expect(executionOrder).toEqual([
+                    'start treecipe.initiateConfiguration',
+                    'end treecipe.initiateConfiguration',
+                    'start treecipe.generatePicklistDependencyTests',
+                    'end treecipe.generatePicklistDependencyTests'
+                ]);
+
+            });
+
+            it('given a pick was dismissed and setup wrote nothing, does not re-run and shows no error', async () => {
+
+                executeCommandMock.mockResolvedValue(undefined);
+
+                await ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'generateRecipeFromConfigurationDetail');
+
+                expect(executeCommandMock.mock.calls).toEqual([['treecipe.initiateConfiguration']]);
+                expect(showErrorMessageMock).toHaveBeenCalledTimes(1);
+
+            });
+
+            it('given setup rejects, does not re-run and nothing escapes', async () => {
+
+                executeCommandMock.mockRejectedValue(new Error('setup blew up'));
+                jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+                await expect(ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'runFakerGenerationByRecipeFile')).resolves.toBeUndefined();
+
+                expect(executeCommandMock.mock.calls).toEqual([['treecipe.initiateConfiguration']]);
+
+            });
+
+            it('given the original command was setup itself, runs setup once and does not loop', async () => {
+
+                executeCommandMock.mockResolvedValue(configurationFilePath);
+
+                await ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'initiateTreecipeConfigurationSetup');
+
+                expect(executeCommandMock.mock.calls).toEqual([['treecipe.initiateConfiguration']]);
+
+            });
+
+            it.each(['notAMappedCommand', '__proto__', 'constructor', 'toString'])('given the unmapped command name %s, runs setup and re-runs nothing', async (unmappedCommandName) => {
+
+                executeCommandMock.mockResolvedValue(configurationFilePath);
+
+                await expect(ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), unmappedCommandName)).resolves.toBeUndefined();
+
+                expect(executeCommandMock.mock.calls).toEqual([['treecipe.initiateConfiguration']]);
+
+            });
+
+            it('given the re-run itself rejects, nothing escapes', async () => {
+
+                executeCommandMock.mockImplementation(async (commandId: string) => {
+                    if (commandId === 'treecipe.initiateConfiguration') {
+                        return configurationFilePath;
+                    }
+                    throw new Error('re-run blew up');
+                });
+                jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+                await expect(ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'openRecipeCockpit')).resolves.toBeUndefined();
+
+                expect(executeCommandMock.mock.calls).toEqual([['treecipe.initiateConfiguration'], ['treecipe.openRecipeCockpit']]);
+
+            });
+
+        });
+
+        it('given the notification is dismissed, runs no command and opens nothing', async () => {
+
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValueOnce(undefined);
+
+            await ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'generatePicklistDependencyTests');
+
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+            expect(vscode.env.openExternal).not.toHaveBeenCalled();
+
+        });
+
         it('given the typed missing-config error, still routes to the missing-config flow', () => {
 
             const handleMissingTreecipeConfigSetupSpy = jest.spyOn(ErrorHandlingService, 'handleMissingTreecipeConfigSetup')

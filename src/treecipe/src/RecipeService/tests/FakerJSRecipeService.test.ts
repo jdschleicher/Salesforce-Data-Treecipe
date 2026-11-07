@@ -191,7 +191,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
             const expectedFakerJSExpressionForNumber = `|
-            \${{ faker.number.int({min: 0, max: 999999999999999999}) }}`;
+            \${{ faker.number.bigInt({min: 0n, max: 999999999999999999n}).toString() }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
 
             const actualFakerJSForNumber = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
@@ -203,7 +203,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
             const expectedFakerJSExpressionForCurrency = `|
-            \${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}`;
+            \${{ faker.number.bigInt({min: 0n, max: 9999999999999999n}) + '.' + faker.string.numeric({length: 2, allowLeadingZeros: true}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualFakerJSForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 

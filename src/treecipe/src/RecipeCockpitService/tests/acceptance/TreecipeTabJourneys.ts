@@ -57,6 +57,51 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
     },
 
     {
+        name: 'untick every field of an object (#611): its row says no records will be generated, its children follow it out, and Generate writes and sends the tree without them',
+        run: async journey => {
+
+            await journey.click('button', 'Show or hide the fields of Contact');
+            await journey.click('checkbox', /^All fields of Contact: /);
+
+            await journey.step('Contact\'s row shows only the red message, its chain link is a disabled status, and Visit__c names why it is out', () => {
+                const screen = journey.screen();
+                screen.get('text', 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED');
+                const contactLink = screen.get('button', 'Contact: No fields selected, so no records will be generated. Tick a field to include it');
+                expectEqual(contactLink.states.includes('disabled'), true, 'Contact\'s chain link is disabled');
+                screen.get('text', 'Contact (Account_NickName-1) (no fields selected)');
+                const screenNames = screen.all().map(node => node.name);
+                expectEqual(screenNames.filter(name => /^Contact_NickName(?!-)|Account_NickName-1, friend|^Create \d+ Contact record/.test(name)), [], 'Contact\'s nickname, friend chip and record count');
+                screen.get('text', 'auto-excluded — parent Contact has no fields selected');
+                screen.get('button', 'Visit__c: Excluded because parent Contact has no fields selected');
+                screen.get('text', '1 of 3 objects · 51 fields');
+            });
+
+            const datasetFolder = await generateAndInsert(journey);
+
+            await journey.step('the filtered recipe and the data set source leave Contact and Visit__c out', () => {
+                expectEqual(recipeObjectNames(filteredRecipeOf(journey, datasetFolder)), ['Account'], 'The objects of the filtered recipe');
+                const datasetSource = JSON.parse(readWorkspaceFile(journey, `${datasetFolder}/BaseArtifactFiles/datasetSource.json`));
+                expectEqual(datasetSource.excludedObjectApiNames, ['Contact', 'Visit__c'], 'datasetSource.json excludedObjectApiNames');
+                expectEqual(readWorkspaceFile(journey, RECIPE_RELATIVE_PATH), readFixtureFile(RECIPE_RELATIVE_PATH), 'The recipe file');
+            });
+
+            await journey.step('only Account is sent', () => {
+                expectEqual(insertsSent(journey).map(insert => insert.objectApiName), ['Account'], 'The objects inserted, in order');
+            });
+
+            await journey.click('checkbox', 'LastName: Unticked — click to generate this field');
+
+            await journey.step('one ticked field brings Contact and Visit__c back', () => {
+                const screen = journey.screen();
+                expectEqual(screen.findAll('text', 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED').length, 0, 'The red message is gone');
+                screen.get('button', 'Contact: Included — click to exclude');
+                screen.get('button', 'Visit__c: Included — click to exclude');
+            });
+
+        }
+    },
+
+    {
         name: 'untick a field: All fields reads mixed, RecordTypeId stays ticked, and the generated recipe drops the field',
         run: async journey => {
 

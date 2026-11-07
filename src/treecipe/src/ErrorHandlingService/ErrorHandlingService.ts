@@ -14,7 +14,7 @@ export class ErrorHandlingService {
         // A THROWN STRING, null OR undefined HAS NO MESSAGE, AND READING ONE MUST NOT THROW FROM INSIDE THE ERROR HANDLER
         const capturedMessage = (error as { message?: unknown } | null | undefined)?.message;
         if ( typeof capturedMessage === 'string' && capturedMessage.startsWith(this.expectedMissingConfigError)) {
-            this.handleMissingTreecipeConfigSetup(error, executedCommand);
+            void this.handleMissingTreecipeConfigSetup(error, executedCommand);
         } else {
             
             this.handleGenericError(error, executedCommand);
@@ -119,7 +119,27 @@ ${stackTrace}
 
     }
 
-    static handleMissingTreecipeConfigSetup(error: unknown, executedCommand: string) {
+    static readonly initiateConfigurationCommandId = 'treecipe.initiateConfiguration';
+
+    /*
+        The commandName every handleCapturedError caller passes is a method name, not a command id.
+        After "Run Treecipe Initiation Setup" writes a config, the command the user first ran is
+        re-run by its id from here. CommandIdByCommandName.test.ts fails on a caller missing from it.
+    */
+    static readonly commandIdByCommandName: Readonly<Record<string, string>> = Object.freeze(Object.assign(Object.create(null) as Record<string, string>, {
+        initiateTreecipeConfigurationSetup: 'treecipe.initiateConfiguration',
+        generateRecipeFromConfigurationDetail: 'treecipe.generateTreecipe',
+        runFakerGenerationByRecipeFile: 'treecipe.runFakerByRecipe',
+        insertDataSetBySelectedDirectory: 'treecipe.insertDataSetBySelectedDirectory',
+        changeFakerImplementationService: 'treecipe.changeFakerImplementationService',
+        generatePicklistDependencyTests: 'treecipe.generatePicklistDependencyTests',
+        runPicklistDependencyCheck: 'treecipe.runPicklistDependencyCheck',
+        openPicklistDependencyExplorer: 'treecipe.openPicklistDependencyExplorer',
+        updatePicklistDependencyMetadata: 'treecipe.updatePicklistDependencyMetadata',
+        openRecipeCockpit: 'treecipe.openRecipeCockpit'
+    }));
+
+    static async handleMissingTreecipeConfigSetup(error: unknown, executedCommand: string): Promise<void> {
 
         const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
         const missingConfigurationMessage = "Expected treecipe and config file missing";
@@ -127,27 +147,53 @@ ${stackTrace}
         const staleSettingNotice = error instanceof MissingTreecipeConfigurationError && error.staleSettingNotice
             ? RecipeYamlScalar.escapeForNotification(error.staleSettingNotice)
             : undefined;
-        vscode.window.showErrorMessage(
+        const selection = await vscode.window.showErrorMessage(
             staleSettingNotice ? `${missingConfigurationMessage}. ${staleSettingNotice}` : missingConfigurationMessage,
             runInitiateTreecipeConfiguration,
             this.reportIssueButton
+        );
 
-        ).then(selection => {
+        if (selection === this.reportIssueButton) {
 
-            if (selection === this.reportIssueButton) {
+            const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
+            const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
+            const githubIssueBuiltTemplateUrl = this.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
+            vscode.env.openExternal(vscode.Uri.parse(githubIssueBuiltTemplateUrl));
 
-                const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
-                const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
-                const githubIssueBuiltTemplateUrl = this.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
-                vscode.env.openExternal(vscode.Uri.parse(githubIssueBuiltTemplateUrl));
+        } else if ( selection === runInitiateTreecipeConfiguration ) {
 
-            } else if ( selection === runInitiateTreecipeConfiguration ) {
+            await this.initiateConfigurationThenRerun(executedCommand);
 
-                vscode.commands.executeCommand('treecipe.initiateConfiguration');
+        }
 
+    }
+
+    /*
+        treecipe.initiateConfiguration settles with the config file it wrote, or undefined when a pick
+        was dismissed or the setup failed -- that failure has its own notification. Not throwing is
+        not success, so only a written path re-runs the command, with no arguments, as the palette would.
+    */
+    static async initiateConfigurationThenRerun(executedCommand: string): Promise<void> {
+
+        try {
+
+            const configurationFilePath: unknown = await vscode.commands.executeCommand(this.initiateConfigurationCommandId);
+            const configurationWasWritten = typeof configurationFilePath === 'string' && configurationFilePath.length > 0;
+            const originalCommandId = Object.prototype.hasOwnProperty.call(this.commandIdByCommandName, executedCommand)
+                ? this.commandIdByCommandName[executedCommand]
+                : undefined;
+
+            if (configurationWasWritten && originalCommandId && originalCommandId !== this.initiateConfigurationCommandId) {
+                await vscode.commands.executeCommand(originalCommandId);
             }
 
-        });
+        } catch (rerunError) {
+
+            // EVERY treecipe COMMAND REPORTS ITS OWN FAILURES; THIS ONLY KEEPS A REJECTION FROM ESCAPING UNHANDLED
+            console.error(`Treecipe: configuration setup or re-running ${executedCommand} failed`, rerunError);
+
+        }
+
     }
 
     /**
