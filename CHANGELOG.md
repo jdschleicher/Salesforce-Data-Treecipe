@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.192.14] - faker-js data sets no longer end dates, numbers and phones with a line break (#593)
+
+Generate Treecipe writes Phone, Number, Percent, Date, DateTime, Time, Geolocation and every precision/scale field as a YAML `|` block. YAML ends a `|` block with a line break, and Run Faker by Recipe kept it, so every such value in `collectionsApi-<Object>.json` ended with `\n` (`"Date__c": "2025-09-08\n"`).
+
+- **The fix is where faker-js loads a recipe:** `FakerJSRecipeProcessor.loadRecipeYaml` drops that one line break from a `|` block that holds a `${{ … }}` expression.
+  - Text around the expression and the line breaks inside a multi-line block stay.
+  - `|+`, `|-`, `>` and quoted values, and blocks with no expression, load exactly as written.
+- **What changes for you:** recipes you already generated give clean values on the next Run Faker by Recipe, with no regeneration. Recipe files are unchanged, and snowfakery is unchanged: its recipes contain no `|` blocks.
+- **Tests:**
+  - `FakerJSRecipeProcessor.literalBlockLineBreak.test.ts` covers each header shape that loses the line break and each value that must not. It also runs a recipe in the shape written before this fix, and an expression that throws, which still reports `FakerJSExpressionEvaluationError`.
+  - The header check reads a comment to its line end in one step. The first version split a run of `#` in 2^n ways, so 28 `#` before a quoted value held Run Faker by Recipe for 9 seconds, and a few more would hang it. Found in code review; a test holds it.
+  - The faker-js `FakeDataSets/` golden files are rewritten with `UPDATE_GOLDEN=1`. The only change is the 54 removed `\n`. Recipe golden files and every snowfakery golden file are unchanged.
+- **`/next-task`:** a plan now opens with a Before / After visual: mermaid diagrams for a code path, a table of examples for output. Once the plan is approved, that section is posted to the issue as a comment.
+- Design note: `RecipeFakerService.ts/DESIGN.md`.
+
 ## [3.192.13] - Generate Treecipe writes the same recipes on every machine: objects and fields are read in name order (#592)
 
 Generate Treecipe used object folders and field files in the order the file system listed them, and that order differs between machines and file systems. On the golden test's metadata, a reversed listing changed 34 of its 53 files: relationship trees were renumbered, objects moved between `RelationshipTree_N` labels, fields were reordered, and the seeded faker-js data differed.
