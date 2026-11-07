@@ -10,7 +10,7 @@ When a command failed because `treecipe.config.json` was missing, the notificati
   - Dismissing the notification or choosing Report Issue works as before.
 - **One map from command name to command ID:** `ErrorHandlingService.commandIdByCommandName`. Every `commandName` a command passes to `handleCapturedError` is a method name. The map gives each one its `treecipe.*` ID: it is frozen, has no prototype, and a name with no entry re-runs nothing.
 - **Tests:**
-  - `CommandIdByCommandName.test.ts` reads every name passed to `handleCapturedError` from the source. It fails on a name with no entry, an entry no caller passes, or an ID that `package.json` does not declare.
+  - `CommandIdByCommandName.test.ts` reads every name passed to `handleCapturedError` from the source. It fails on a name with no entry, an entry no caller passes, or an ID that `package.json` does not declare. It also fails on a call or a `commandName` declaration written in a shape it cannot read, so a caller cannot drop out of the map unnoticed (found in code review).
   - `ErrorHandlingService.test.ts` covers the re-run order, cancel, a failing setup, a failing re-run, setup itself, unmapped names (`__proto__` and `constructor` among them) and a dismissed notification.
 
 ## [3.192.14] - faker-js data sets no longer end dates, numbers and phones with a line break (#593)

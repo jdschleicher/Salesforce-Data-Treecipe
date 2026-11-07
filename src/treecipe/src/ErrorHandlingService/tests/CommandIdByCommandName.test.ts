@@ -25,7 +25,10 @@ function listServiceSourceFiles(directoryPath: string): string[] {
 }
 
 const handleCapturedErrorCall = /ErrorHandlingService\.handleCapturedError\(\s*[\w.]+\s*,\s*([^)]*?)\s*\)/g;
+// EVERY MENTION OF handleCapturedError( BUT ITS OWN DECLARATION, SO A CALL SHAPED UNLIKE handleCapturedErrorCall FAILS INSTEAD OF BEING SKIPPED
+const anyHandleCapturedErrorCall = /(?<!static )\bhandleCapturedError\b['"`]?\]?\s*\(/g;
 const commandNameDeclaration = /const commandName = '(\w+)';/g;
+const anyCommandNameDeclaration = /\b(?:const|let|var)\s+commandName\b/g;
 
 function findCapturedCommandNames(): { commandNames: Set<string>; unreadableArguments: string[] } {
 
@@ -35,12 +38,23 @@ function findCapturedCommandNames(): { commandNames: Set<string>; unreadableArgu
 
     for (const sourceFilePath of sourceFilePaths) {
         const sourceText = fs.readFileSync(sourceFilePath, 'utf-8');
+        const relativeSourcePath = path.relative(repositoryRoot, sourceFilePath);
+        const readableCallCount = [...sourceText.matchAll(handleCapturedErrorCall)].length;
+        const callCount = [...sourceText.matchAll(anyHandleCapturedErrorCall)].length;
+        if (readableCallCount !== callCount) {
+            unreadableArguments.push(`${relativeSourcePath}: ${callCount - readableCallCount} handleCapturedError call(s) not written as ErrorHandlingService.handleCapturedError(error, 'name' | commandName)`);
+        }
+        const literalDeclarationCount = [...sourceText.matchAll(commandNameDeclaration)].length;
+        const declarationCount = [...sourceText.matchAll(anyCommandNameDeclaration)].length;
+        if (literalDeclarationCount !== declarationCount) {
+            unreadableArguments.push(`${relativeSourcePath}: ${declarationCount - literalDeclarationCount} commandName declaration(s) not written as const commandName = '<name>';`);
+        }
         for (const [, commandNameArgument] of sourceText.matchAll(handleCapturedErrorCall)) {
             const literalCommandName = /^'(\w+)'$/.exec(commandNameArgument);
             if (literalCommandName) {
                 commandNames.add(literalCommandName[1]);
             } else if (commandNameArgument !== 'commandName') {
-                unreadableArguments.push(`${path.relative(repositoryRoot, sourceFilePath)}: ${commandNameArgument}`);
+                unreadableArguments.push(`${relativeSourcePath}: ${commandNameArgument}`);
             }
         }
         for (const [, declaredCommandName] of sourceText.matchAll(commandNameDeclaration)) {
