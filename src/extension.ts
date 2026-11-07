@@ -38,10 +38,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	// THE RECIPE COCKPIT SHOWS IT AT THE TOP RIGHT (#333)
 	RecipeCockpitService.setExtensionVersion(context.extension?.packageJSON?.version);
 
+	// RETURNED SO executeCommand SETTLES WITH THE CONFIG FILE WRITTEN -- MISSING-CONFIG RECOVERY RE-RUNS THE ORIGINAL COMMAND ON IT (#101)
 	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.initiateTreecipeConfigurationSetup();
-		
+		return extensionCommandService.initiateTreecipeConfigurationSetup();
 	});
 
 	// RETURNED SO executeCommand SETTLES WHEN GENERATION DOES -- THE RECIPE COCKPIT RELOADS THE RUN IT WROTE

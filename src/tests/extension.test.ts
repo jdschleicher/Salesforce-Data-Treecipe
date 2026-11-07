@@ -229,6 +229,22 @@ describe('activate', () => {
 
     });
 
+    // MISSING-CONFIG RECOVERY AWAITS executeCommand AND RE-RUNS THE ORIGINAL COMMAND ONLY ON THE PATH IT SETTLES WITH (#101)
+    it('returns the setup from the Initiate Configuration handler, so recovery can wait for the config file it wrote', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const setup = Promise.resolve('/workspace/treecipe/treecipe.config.json');
+        jest.spyOn(ExtensionCommandService.prototype, 'initiateTreecipeConfigurationSetup').mockReturnValue(setup);
+
+        await activate(buildExtensionContext() as never);
+
+        const [, initiateConfigurationHandler] = (vscode.commands.registerCommand as jest.Mock).mock.calls
+            .find(registerCall => registerCall[0] === 'treecipe.initiateConfiguration');
+
+        expect(initiateConfigurationHandler()).toBe(setup);
+
+    });
+
     // THE COCKPIT'S Regenerate SUPPRESSES GENERATION'S COMPLETION TOAST THROUGH THIS ARGUMENT (#206), SO A HANDLER THAT DROPS IT SHOWS THE TOAST AGAIN
     it('passes its argument to Generate Treecipe, so the Recipe Cockpit can suppress the completion notification', async () => {
 
