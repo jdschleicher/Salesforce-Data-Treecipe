@@ -10,6 +10,7 @@ Generate Treecipe writes Phone, Number, Percent, Date, DateTime, Time, Geolocati
 - **What changes for you:** recipes you already generated give clean values on the next Run Faker by Recipe, with no regeneration. Recipe files are unchanged, and snowfakery is unchanged: its recipes contain no `|` blocks.
 - **Tests:**
   - `FakerJSRecipeProcessor.literalBlockLineBreak.test.ts` covers each header shape that loses the line break and each value that must not. It also runs a recipe in the shape written before this fix, and an expression that throws, which still reports `FakerJSExpressionEvaluationError`.
+  - The header check reads a comment to its line end in one step. The first version split a run of `#` in 2^n ways, so 28 `#` before a quoted value held Run Faker by Recipe for 9 seconds, and a few more would hang it. Found in code review; a test holds it.
   - The faker-js `FakeDataSets/` golden files are rewritten with `UPDATE_GOLDEN=1`. The only change is the 54 removed `\n`. Recipe golden files and every snowfakery golden file are unchanged.
 - **`/next-task`:** a plan now opens with a Before / After visual: mermaid diagrams for a code path, a table of examples for output. Once the plan is approved, that section is posted to the issue as a comment.
 - Design note: `RecipeFakerService.ts/DESIGN.md`.

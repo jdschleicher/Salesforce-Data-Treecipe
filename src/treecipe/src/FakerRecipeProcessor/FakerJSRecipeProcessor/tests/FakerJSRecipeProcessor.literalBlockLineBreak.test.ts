@@ -43,6 +43,26 @@ describe('FakerJSRecipeProcessor.loadRecipeYaml', () => {
 
     });
 
+    // THE HEADER CHECK BACKTRACKED 2^n TIMES ON A RUN OF n `#`: 22 TOOK OVER 100 ms, 28 TAKES SECONDS.
+    // A REGEX CANNOT BE INTERRUPTED, SO A LONGER RUN WOULD HANG THE SUITE RATHER THAN FAIL IT.
+    test('a long comment before a quoted value loads at once, as written', () => {
+
+        const recipeYaml = `- object: Account\n  fields:\n    Name: ${'#'.repeat(28)}\n      "\${{ faker.company.name() }}\\n"\n`;
+
+        const loadStartedAt = Date.now();
+        const loadedRecipe = FakerJSRecipeProcessor.loadRecipeYaml(recipeYaml) as Array<{ fields: Record<string, unknown> }>;
+
+        expect(Date.now() - loadStartedAt).toBeLessThan(1000);
+        expect(loadedRecipe[0].fields.Name).toBe('${{ faker.company.name() }}\n');
+
+    });
+
+    test('a comment between the key and the `|` header still drops the line break', () => {
+
+        expect(loadFieldValue("# a phone\n      |\n      ${{ faker.phone.number() }}\n")).toBe('${{ faker.phone.number() }}');
+
+    });
+
     test('reads a `|` block the same in a var and in a nested friends block', () => {
 
         const recipeYaml = [

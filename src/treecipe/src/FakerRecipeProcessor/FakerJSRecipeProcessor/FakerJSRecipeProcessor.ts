@@ -13,8 +13,9 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     static regExpressionForSurroundingFakerJSSyntax = /\${{(.*?)}}/g;
 
     // A `|` HEADER THAT CLIPS: AN OPTIONAL INDENTATION DIGIT, NO `+` OR `-`. A NODE OPENS AT THE SPACE
-    // AFTER ITS `:` OR `-`, AND MAY CARRY A TAG OR ANCHOR BEFORE THE HEADER.
-    static clipLiteralBlockHeader = /(?:[ \t\r\n]|#[^\r\n]*)*(?:[!&][^ \t\r\n]*[ \t\r\n]+)*\|[1-9]?(?=[ \t\r\n#]|$)/y;
+    // AFTER ITS `:` OR `-`, AND MAY CARRY A TAG OR ANCHOR BEFORE THE HEADER. A COMMENT RUNS TO ITS LINE END
+    // IN ONE STEP: `#[^\r\n]*` ALONE SPLITS A RUN OF `#` 2^n WAYS AND HANGS ON A RECIPE FROM A CLONED REPO.
+    static readonly clipLiteralBlockHeader = /(?:[ \t\r\n]|#[^\r\n]*(?![^\r\n]))*(?:[!&][^ \t\r\n]*[ \t\r\n]+)*\|[1-9]?(?=[ \t\r\n#]|$)/y;
 
     /*
         Generate Treecipe writes numbers, dates, phones and geolocations as `|` blocks, and YAML ends a `|`
