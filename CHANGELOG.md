@@ -12,6 +12,7 @@ A Number, Percent or Currency field with 16 or more digits left of the decimal (
 - **Seeded runs:** the new expression draws more random numbers, so a run with a fixed faker seed gives different values for every field generated after the first wide field.
 - **Tests:**
   - `FakerJSRecipeFakerService.wideNumeric.test.ts` holds the narrow fields' recipes byte for byte and the wide fields' new expression. It also generates 1,000 values per wide shape: all fit the field, and they are not mostly multiples of 10 or `.00`. A field with scale greater than precision still throws.
+  - `FakerJSRecipeService.test.ts` expects the new expression for its 18-digit Number and Currency. The Recipe Cockpit's writer fixture `recipe-fakerjs--RelationshipTree_1.yml`, held byte-identical to the first generated tree, gets the same five lines. The nested and pre-3.29.1 fixtures keep the old expression: they stand for recipes generated before.
   - The faker-js golden files are rewritten with `UPDATE_GOLDEN=1`. In the recipes, only the wide fields' lines change. The data sets of the two trees with wide fields (`Account-thru-Order_Item__c`, `Product2-ONLY`) change beyond those fields, as above. Every other tree and every snowfakery golden file is unchanged.
 - Design note: `RecipeFakerService.ts/DESIGN.md`.
 
