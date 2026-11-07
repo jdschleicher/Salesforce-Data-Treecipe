@@ -3456,6 +3456,20 @@ describe('ExtensionCommandService', () => {
                 jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(configurationFilePath);
                 showCreatedFilesNotificationSpy.mockReturnValue(new Promise(() => undefined));
 
+                await expect(new ExtensionCommandService().initiateTreecipeConfigurationSetup()).resolves.toBe(configurationFilePath);
+
+            });
+
+            // MISSING-CONFIG RECOVERY RE-RUNS THE ORIGINAL COMMAND ONLY ON A WRITTEN PATH (#101)
+            test('resolves to the config file written, or undefined when a pick was dismissed or the write failed', async () => {
+
+                const createConfigurationFileSpy = jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(configurationFilePath);
+                await expect(new ExtensionCommandService().initiateTreecipeConfigurationSetup()).resolves.toBe(configurationFilePath);
+
+                createConfigurationFileSpy.mockResolvedValue(undefined);
+                await expect(new ExtensionCommandService().initiateTreecipeConfigurationSetup()).resolves.toBeUndefined();
+
+                createConfigurationFileSpy.mockRejectedValue(new Error('EACCES'));
                 await expect(new ExtensionCommandService().initiateTreecipeConfigurationSetup()).resolves.toBeUndefined();
 
             });

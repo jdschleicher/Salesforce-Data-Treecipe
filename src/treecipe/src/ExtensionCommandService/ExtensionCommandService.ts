@@ -154,7 +154,8 @@ interface IPicklistDependencyGenerationResult {
 
 export class ExtensionCommandService {
     
-    async initiateTreecipeConfigurationSetup() {
+    // RESOLVES TO THE CONFIG FILE IT WROTE, OR undefined -- MISSING-CONFIG RECOVERY RE-RUNS THE ORIGINAL COMMAND ONLY ON A PATH (#101)
+    async initiateTreecipeConfigurationSetup(): Promise<string | undefined> {
 
         try {
 
@@ -164,11 +165,13 @@ export class ExtensionCommandService {
                 TreecipeSideBarService.refresh();
                 this.showConfigurationCreatedNotification(configurationFilePath);
             }
+            return configurationFilePath;
 
         } catch(error) {
 
             const commandName = 'initiateTreecipeConfigurationSetup';
             ErrorHandlingService.handleCapturedError(error, commandName);
+            return undefined;
 
         }
 

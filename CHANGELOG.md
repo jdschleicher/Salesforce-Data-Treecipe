@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.192.16] - "Run Treecipe Initiation Setup" now re-runs the command that needed it (#101)
+
+When a command failed because `treecipe.config.json` was missing, the notification's **Run Treecipe Initiation Setup** button ran setup and stopped there. The command you had asked for never ran, and nothing said you had to run it again.
+
+- **Once setup writes a config file, the original command runs again** with no arguments, as it would from the Command Palette.
+  - `treecipe.initiateConfiguration` now settles with the config file it wrote. Recovery waits for it, so setup and the re-run never overlap.
+  - Nothing is re-run when you dismiss the objects-folder or faker-service pick, when setup fails (its own error notification shows, as before), or when the failed command was setup itself.
+  - Dismissing the notification or choosing Report Issue works as before.
+- **One map from command name to command ID:** `ErrorHandlingService.commandIdByCommandName`. Every `commandName` a command passes to `handleCapturedError` is a method name. The map gives each one its `treecipe.*` ID: it is frozen, has no prototype, and a name with no entry re-runs nothing.
+- **Tests:**
+  - `CommandIdByCommandName.test.ts` reads every name passed to `handleCapturedError` from the source. It fails on a name with no entry, an entry no caller passes, or an ID that `package.json` does not declare. It also fails on a call or a `commandName` declaration written in a shape it cannot read, so a caller cannot drop out of the map unnoticed (found in code review).
+  - `ErrorHandlingService.test.ts` covers the re-run order, cancel, a failing setup, a failing re-run, setup itself, unmapped names (`__proto__` and `constructor` among them) and a dismissed notification.
+
 ## [3.192.15] - Relationship levels are computed in one walk, and a lookup cycle is cut at one stable place (#104)
 
 Generate Treecipe gives every object in a relationship tree a level, and the level decides the insert order in the tree's recipe and, in faker-js, which parent an object nests under. The walk that computed levels visited an object once per path that reached it. On 42 objects in 14 layers, where every object looks up the whole layer above, that was 7,174,452 calls on the extension host thread.
