@@ -5,6 +5,12 @@ import { XmlFileProcessor } from "../XMLProcessingService/XmlFileProcessor";
 
 import * as xml2js from 'xml2js';
 
+interface ILoadedGlobalValueSet {
+    fileName: string;
+    masterLabel: unknown;
+    picklistValues: string[];
+}
+
 export class GlobalValueSetSingleton {
 
     private static instance: GlobalValueSetSingleton | null = null;
@@ -75,7 +81,12 @@ export class GlobalValueSetSingleton {
         */
         this.globalValueSets = Object.create(null);
 
-        for (const [fileName, fileTypeEnum] of globalValueSetFileEntryTuples) {
+        // NAME ORDER (WITH "<"), NOT THE FILE SYSTEM'S, SO TWO SETS THAT CLAIM ONE LABEL RESOLVE THE SAME WAY ON EVERY MACHINE (#592); ONE FOLDER NEVER LISTS A NAME TWICE
+        const globalValueSetFileEntriesInNameOrder = [...globalValueSetFileEntryTuples]
+            .sort(([firstFileName], [secondFileName]) => ( firstFileName < secondFileName ? -1 : 1 ));
+        const loadedGlobalValueSets: ILoadedGlobalValueSet[] = [];
+
+        for (const [fileName, fileTypeEnum] of globalValueSetFileEntriesInNameOrder) {
 
             if ( XmlFileProcessor.isXMLFileType(fileName, fileTypeEnum) ) {
 
@@ -100,7 +111,7 @@ export class GlobalValueSetSingleton {
 
                 if ( picklistValuesFromGlobalValueSet ) {
 
-                    this.addGlobalValueSetUnderEveryNameItIsReferencedBy(fileName, fileXML, picklistValuesFromGlobalValueSet);
+                    loadedGlobalValueSets.push({ fileName, masterLabel: fileXML?.GlobalValueSet?.masterLabel?.[0], picklistValues: picklistValuesFromGlobalValueSet });
 
                 }
 
@@ -111,6 +122,8 @@ export class GlobalValueSetSingleton {
             }
 
         }
+
+        this.addGlobalValueSetsUnderEveryNameTheyAreReferencedBy(loadedGlobalValueSets);
 
     }
 
@@ -126,31 +139,30 @@ export class GlobalValueSetSingleton {
         Both names are registered rather than one being chosen, so a lookup by either resolves. They
         collapse to a single entry wherever they agree, which is why this reads as no change at all for
         a set that never diverged.
+
+        Every full name is registered before any masterLabel, so a set always owns its own full name:
+        when one set's label equals another's file name, the label yields whichever file is read first
+        (#592). Two labels that collide go to the set whose file name sorts first.
     */
-    addGlobalValueSetUnderEveryNameItIsReferencedBy(globalValueSetFileName: string, fileXML: any, picklistValuesFromGlobalValueSet: string[]) {
+    addGlobalValueSetsUnderEveryNameTheyAreReferencedBy(loadedGlobalValueSets: ILoadedGlobalValueSet[]) {
 
-        const globalValueSetFullName = GlobalValueSetSingleton.getGlobalValueSetFullNameByFileName(globalValueSetFileName);
-        const globalValueSetMasterLabel = fileXML?.GlobalValueSet?.masterLabel?.[0];
-
-        [globalValueSetFullName, globalValueSetMasterLabel].forEach(globalValueSetName => {
-
-            if ( typeof globalValueSetName !== 'string' || globalValueSetName.trim() === '' ) {
-                return;
-            }
-
-            /*
-                The full name is registered first and wins. Two sets collide when one's masterLabel
-                equals another's file name, and last-write-wins would hand a field the WRONG value
-                universe with directory order deciding which -- a silent wrong answer. The alias
-                yields to the set that genuinely owns the name.
-            */
-            if ( globalValueSetName in this.globalValueSets ) {
-                return;
-            }
-
-            this.globalValueSets[globalValueSetName] = picklistValuesFromGlobalValueSet;
-
+        loadedGlobalValueSets.forEach(({ fileName, picklistValues }) => {
+            this.addGlobalValueSetUnlessNameIsTaken(GlobalValueSetSingleton.getGlobalValueSetFullNameByFileName(fileName), picklistValues);
         });
+
+        loadedGlobalValueSets.forEach(({ masterLabel, picklistValues }) => {
+            this.addGlobalValueSetUnlessNameIsTaken(masterLabel, picklistValues);
+        });
+
+    }
+
+    private addGlobalValueSetUnlessNameIsTaken(globalValueSetName: unknown, picklistValues: string[]) {
+
+        if ( typeof globalValueSetName !== 'string' || globalValueSetName.trim() === '' || globalValueSetName in this.globalValueSets ) {
+            return;
+        }
+
+        this.globalValueSets[globalValueSetName] = picklistValues;
 
     }
 

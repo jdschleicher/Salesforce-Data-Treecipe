@@ -13,7 +13,7 @@ Design notes moved out of CLAUDE.md (#563). Read this before changing the servic
   Each run works in its own `fs.mkdtemp` workspace and deletes it, so the repository is never written. Output is made deterministic in three ways:
   - **The clock.** Only `Date` is faked, at a fixed instant, and timers stay real because generation awaits file writes. Its folder timestamp and ISO form become `{TIMESTAMP}`, and the workspace path becomes `{WORKSPACE}`.
   - **faker.** `faker.seed(571)` before each Run Faker. With `@faker-js/faker` 9.7 that alone makes the data stable, so values are compared exactly, not by shape.
-  - **Directory order.** `readDirectory` lists each folder sorted. Today the order reaches the output: a reversed listing renumbers the relationship trees and reorders fields. So the expected files hold only for a sorted listing, and a real machine's order can still change a run.
+  - **Directory order.** Generation reads every folder in name order (#592), so the order `readDirectory` lists in never reaches the output. Each backend also runs with every folder listed in reverse, and must write the same expected files.
 
   The comparison is byte for byte, line endings included; `.gitattributes` marks `tests/golden/` `-text` so a checkout never rewrites them. faker-js nests every child under `friends:` (#46), so its run is also the nested-`friends:` run. Snowfakery compares generation only, since generating data needs its CLI.
 

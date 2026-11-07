@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.192.13] - Generate Treecipe writes the same recipes on every machine: objects and fields are read in name order (#592)
+
+Generate Treecipe used object folders and field files in the order the file system listed them, and that order differs between machines and file systems. On the golden test's metadata, a reversed listing changed 34 of its 53 files: relationship trees were renumbered, objects moved between `RelationshipTree_N` labels, fields were reordered, and the seeded faker-js data differed.
+
+- **Every folder is now read in name order**, sorted by code unit (`<`, never `localeCompare`). That covers object folders, field files and validation rule files. `DirectoryProcessor.readDirectoryInNameOrder` is the one place this happens.
+  - A controlling picklist still moves directly above the first dependent it controls (#462), and compound Address and Location fields still expand after the walk.
+- **Global value sets:** the `globalValueSets` folder is read in name order too, and every set's full name is registered before any `masterLabel`.
+  - Before this, when one set's label equalled another set's file name, whichever file was listed first kept the name. Fields could then get the wrong set's values. A set now always owns its own full name.
+  - When two labels collide, the set whose file name sorts first owns the label.
+- **What changes for you:** on a machine whose file system already lists folders sorted case-sensitively, nothing. Elsewhere, the next Generate Treecipe can renumber trees and reorder fields once, and from then on the output is stable. This includes Linux file systems that list in hash order, and NTFS or APFS when a project mixes upper- and lower-case names (`<` puts `Zeta__c` before `alpha__c`).
+- **Tests:**
+  - `GenerationCommands.golden.test.ts` runs both backends again with every folder listed in reverse. Both write the same `tests/golden/` files, which this change leaves untouched.
+  - `DirectoryProcessor.directoryOrder.test.ts` checks object and field order, upper case before lower case, a dependent picklist named above its controller, a stray file and an empty object folder. It runs with each backend, listed sorted, reversed and interleaved.
+  - `GlobalValueSetSingleton.test.ts` checks a full name against a colliding label, with the owner listed first and last, and two sets sharing one label.
+
 ## [3.192.12] - Tests: the panel harness copies every webview message as VS Code does, so the Data Sets journeys need no reopen (#604)
 
 No source file changes, and nothing a user sees changes. #604 turned out to be a harness artifact, not a cockpit bug.
