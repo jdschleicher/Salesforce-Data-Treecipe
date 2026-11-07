@@ -216,14 +216,6 @@ describe("Shared Relationship Service Tests", () => {
 
 
 
-    describe("calculateLevelsRecursively", () => {
-
-        test("given expected scenario, levels calculated as expected", () => {
-
-        });
-
-    });
-
     describe('BFS Relationship Tree - Building Foundation', () => {
         
 
@@ -305,9 +297,8 @@ describe("Shared Relationship Service Tests", () => {
             per path, and the method used to allocate a COPY of the visited set for every one of
             those walks -- 7,174,452 copies for 42 objects, which is what exhausted CI's heap.
 
-            The traversal is still exponential in depth; only the allocation is gone. This test
-            pins the LEVELS such a graph settles on, so the follow-up that makes it polynomial has
-            to preserve them rather than discover them.
+            #104 made the walk visit each object once; this test pins the LEVELS such a graph settles
+            on, which that change had to preserve.
         */
         test('INPUT: layered graph where every object references the whole next layer → OUTPUT: level equals layer depth', () => {
 
@@ -364,9 +355,8 @@ describe("Shared Relationship Service Tests", () => {
         });
 
         /*
-            The cycle guard is what the visited set is FOR, and swapping the per-child copy for
-            add-on-entry / remove-on-exit is only safe if it still holds. A two-object cycle is the
-            smallest graph that would recurse forever without it.
+            A two-object cycle is the smallest graph that would recurse forever without the walk's
+            on-path check.
         */
         test('INPUT: A and B referencing each other → OUTPUT: terminates rather than recursing forever', () => {
 
@@ -393,7 +383,7 @@ describe("Shared Relationship Service Tests", () => {
 
             const relationshipService = new RelationshipService();
 
-            (relationshipService as any).calculateLevelsRecursively(objectInfoWrapper, 'Cycle_A__c', 0, new Set<string>());
+            (relationshipService as any).calculateRelationshipLevels(objectInfoWrapper, new Set<string>(cyclicPairApiNames));
 
             expect(objectInfoWrapper.ObjectToObjectInfoMap['Cycle_A__c'].RelationshipDetail.level).toBe(0);
             expect(objectInfoWrapper.ObjectToObjectInfoMap['Cycle_B__c'].RelationshipDetail.level).toBe(1);
@@ -1207,6 +1197,95 @@ describe("Shared Relationship Service Tests", () => {
         });
 
     });
+});
+
+describe('relationship levels in a graph with cycles (#104)', () => {
+
+    /*
+        A cycle has no insert order that satisfies every lookup in it, so it is cut at the lookup
+        that closes it in a depth-first walk in name order, roots first; an object's level is then
+        its longest path from a root. Each lookup is written child -> parent.
+    */
+    type Lookup = [childObjectName: string, parentObjectName: string];
+
+    function calculateLevels(objectNamesInMapOrder: string[], lookups: Lookup[]): Record<string, number> {
+
+        const objectInfoWrapper = new ObjectInfoWrapper();
+        objectNamesInMapOrder.forEach(objectName => {
+            const objectInfo = new ObjectInfo(objectName);
+            objectInfo.RelationshipDetail = new RelationshipService().buildNewRelationshipDetail(objectName);
+            objectInfoWrapper.ObjectToObjectInfoMap[objectName] = objectInfo;
+        });
+        lookups.forEach(([childObjectName, parentObjectName]) => {
+            objectInfoWrapper.ObjectToObjectInfoMap[parentObjectName].RelationshipDetail.childObjectToFieldReferences[childObjectName] = [`${parentObjectName}__c`];
+            objectInfoWrapper.ObjectToObjectInfoMap[childObjectName].RelationshipDetail.parentObjectToFieldReferences[parentObjectName] = [`${parentObjectName}__c`];
+        });
+
+        (new RelationshipService() as any).calculateRelationshipLevels(objectInfoWrapper, new Set(objectNamesInMapOrder));
+
+        return Object.fromEntries(objectNamesInMapOrder.map(objectName => [objectName, objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level]));
+
+    }
+
+    test('a two-object cycle: the first name is level 0 and its lookup back is the one cut', () => {
+        expect(calculateLevels(['A__c', 'B__c'], [['B__c', 'A__c'], ['A__c', 'B__c']]))
+            .toEqual({ A__c: 0, B__c: 1 });
+    });
+
+    test('a three-object cycle: levels follow the cycle from the first name', () => {
+        expect(calculateLevels(['A__c', 'B__c', 'C__c'], [['B__c', 'A__c'], ['C__c', 'B__c'], ['A__c', 'C__c']]))
+            .toEqual({ A__c: 0, B__c: 1, C__c: 2 });
+    });
+
+    test('a cycle with a tail: the root is level 0 and the cycle hangs below it', () => {
+        expect(calculateLevels(['A__c', 'B__c', 'Root__c'], [['A__c', 'Root__c'], ['B__c', 'A__c'], ['A__c', 'B__c']]))
+            .toEqual({ Root__c: 0, A__c: 1, B__c: 2 });
+    });
+
+    test('a cycle reached by two paths settles once, rather than climbing on the second path', () => {
+        // The path-by-path walk gave B__c 3 here: it climbed again on the second path, A__c -> C__c -> B__c
+        expect(calculateLevels(['A__c', 'B__c', 'C__c'], [['B__c', 'A__c'], ['C__c', 'A__c'], ['C__c', 'B__c'], ['B__c', 'C__c']]))
+            .toEqual({ A__c: 0, B__c: 1, C__c: 2 });
+    });
+
+    // The path-by-path walk gave this graph A__c 0 or A__c 1, B__c 3 or B__c 4, by map order
+    test('the levels depend on names, never on the order the object map was filled in', () => {
+        const lookups: Lookup[] = [['B__c', 'A__c'], ['C__c', 'A__c'], ['C__c', 'B__c'], ['B__c', 'C__c'], ['D__c', 'C__c'], ['A__c', 'D__c']];
+        expect(calculateLevels(['D__c', 'C__c', 'B__c', 'A__c'], lookups))
+            .toEqual(calculateLevels(['A__c', 'B__c', 'C__c', 'D__c'], lookups));
+    });
+
+    /*
+        42 objects in 14 layers of 3, every object looking up the whole layer above: the
+        path-by-path walk made 7,174,452 recursive calls on this graph. Each object is now walked
+        once.
+    */
+    test('a deep layered graph walks each object once and levels it by its layer', () => {
+
+        const layerCount = 14;
+        const objectsPerLayer = 3;
+        const objectApiNameFor = (layer: number, index: number) => `L${String(layer).padStart(2, '0')}_O${index}__c`;
+
+        const objectNames: string[] = [];
+        const lookups: Lookup[] = [];
+        for (let layer = 0; layer < layerCount; layer++) {
+            for (let index = 0; index < objectsPerLayer; index++) {
+                objectNames.push(objectApiNameFor(layer, index));
+                for (let parentIndex = 0; layer > 0 && parentIndex < objectsPerLayer; parentIndex++) {
+                    lookups.push([objectApiNameFor(layer, index), objectApiNameFor(layer - 1, parentIndex)]);
+                }
+            }
+        }
+
+        const walkSpy = jest.spyOn(RelationshipService.prototype as any, 'walkCuttingCycleClosingLookups');
+
+        const levels = calculateLevels(objectNames, lookups);
+
+        expect(walkSpy).toHaveBeenCalledTimes(42);
+        objectNames.forEach(objectName => expect(levels[objectName]).toBe(Number(objectName.slice(1, 3))));
+
+    });
+
 });
 
 describe('a lookup whose parent is not a Salesforce api name (#164)', () => {
