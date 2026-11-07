@@ -665,7 +665,9 @@ describe('RecipeCockpitService, Get latest object detail from target org (#612)'
             const panel = drawTreecipe();
             const accountRow = panel.objectElements().find(objectElement => panel.objectNameOf(objectElement) === 'Account');
             const accountHeader = accountRow.children[0];
-            const accountButton = accountHeader.children[accountHeader.children.length - 1];
+            // #611's "no fields selected" message follows the header details, hidden while a field is ticked
+            const visibleHeaderChildren = accountHeader.children.filter(headerChild => !headerChild.classList.contains('hidden'));
+            const accountButton = visibleHeaderChildren[visibleHeaderChildren.length - 1];
 
             expect(accountButton.classList.contains('treeObjectRefresh')).toBe(true);
             expect(accountButton.textContent).toBe(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL);
