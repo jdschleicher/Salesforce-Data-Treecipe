@@ -21,6 +21,25 @@ describe('every GitHub Actions workflow file', () => {
         expect(workflowFileNames).toEqual(expect.arrayContaining(['build.yaml', 'release.yaml']));
     });
 
+    // #602: THE SCREENSHOT COMPARISON RUNS ONLY FOR A PR THAT TOUCHES THE COCKPIT, REQUIRES CHROMIUM THERE, AND KEEPS npm ci --ignore-scripts
+    test('build.yaml compares the cockpit screenshots, path-filtered and required, and uploads the images on a failure', () => {
+
+        const steps = yaml.load(fs.readFileSync(path.join(WORKFLOWS_DIRECTORY_PATH, 'build.yaml'), 'utf8')).jobs['Compile-and-Test-Salesforce-Data-Treecipe'].steps;
+        const stepNamed = (stepName) => steps.find(step => step.name === stepName);
+
+        expect(stepNamed('Install dependencies').run).toBe('npm ci --ignore-scripts');
+        const pathFilter = stepNamed('Find whether this pull request touches the Recipe Cockpit');
+        expect(pathFilter.run).toContain('src/treecipe/src/RecipeCockpitService/ src/treecipe/src/CockpitKit/');
+        expect(stepNamed('Install Chromium for the cockpit screenshots').run).toContain('playwright install --with-deps chromium');
+        const comparison = stepNamed('Compare the Recipe Cockpit screenshots in Chromium');
+        expect(comparison.env.REQUIRE_COCKPIT_SCREENSHOTS).toBe('1');
+        expect(comparison.if).toBe("steps.cockpitChanges.outputs.touched == 'true'");
+        const upload = stepNamed('Upload what Chromium drew and where it differs');
+        expect(upload.if).toContain('failure()');
+        expect(upload.with.path).toBe('node_modules/.cache/cockpit-screenshots/');
+
+    });
+
     describe.each(workflowFileNames)('%s', (workflowFileName) => {
 
         const workflowText = fs.readFileSync(path.join(WORKFLOWS_DIRECTORY_PATH, workflowFileName), 'utf8');

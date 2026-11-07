@@ -18,6 +18,8 @@ module.exports = {
         it. setupCoreModuleIsolation puts those back. See jestSetup/CoreModuleIsolation.ts for the
         CI heap failure that behaviour produced.
     */
+    // THE SCREENSHOT SCRIPTS ARE TOOLS A TEST BORROWS (#602), NOT EXTENSION CODE, SO THEY ARE NOT COUNTED
+    coveragePathIgnorePatterns: ['/node_modules/', '/developmentSupportScripts/'],
     setupFilesAfterEnv: ['jest-extended/all', '<rootDir>/jestSetup/setupCoreModuleIsolation.ts']
 
 };

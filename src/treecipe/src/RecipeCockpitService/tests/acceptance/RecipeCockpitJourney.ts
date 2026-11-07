@@ -154,6 +154,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
     private readonly stepStack: string[] = [];
     private failedStepPath: string | undefined;
     private page: PanelPage | undefined;
+    private assignedShellHtml = '';
     private panelMessageHandler: ((panelMessage: unknown) => unknown) | undefined;
     private readonly disposeHandlers: Array<() => void> = [];
     private hostToPanelQueue: unknown[] = [];
@@ -542,6 +543,20 @@ export class RecipeCockpitJourney implements IJourneyHost {
         );
     }
 
+    // THE DOCUMENT THE HOST ASSIGNED AND THE PAGE ITS SCRIPT HAS DRAWN, BY THE id EACH ROOT HAS IN THAT DOCUMENT (#602)
+    panelDocument(): { shellHtml: string; rootsById: Record<string, IPageElement> } {
+        const page = this.requirePage();
+        return {
+            shellHtml: this.assignedShellHtml,
+            rootsById: {
+                cockpitMeta: page.cockpitMetaElement,
+                loadStatus: page.loadStatusElement,
+                cockpitBody: page.cockpitBodyElement,
+                cockpitDialogHost: page.cockpitDialogHostElement
+            }
+        };
+    }
+
     optionLabelsOf(comboboxName: string): string[] {
         const screen = this.screen();
         return screen.findAll('option', undefined, screen.get('combobox', comboboxName)).map(option => option.name);
@@ -640,6 +655,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     // THE DOCUMENT THE HOST ASSIGNED IS THE ONE THAT RUNS, SO A HOST THAT ASSIGNS THE WRONG ONE FAILS A JOURNEY
     private startPage(assignedShellHtml: string) {
+        this.assignedShellHtml = assignedShellHtml;
         this.page = runPanelScript({ shellHtml: assignedShellHtml });
         this.hostToPanelQueue = [];
         this.deliveredPanelMessageCount = 0;

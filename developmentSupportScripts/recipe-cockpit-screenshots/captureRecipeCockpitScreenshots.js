@@ -120,7 +120,8 @@ class RecipeCockpitScreenshots {
 
     }
 
-    static async openCockpit(browser, recipe) {
+    // THE PAGE EVERY PICTURE IS TAKEN ON, ALSO THE ONE #602'S SCREENSHOT COMPARISON DRAWS A JOURNEY'S PAGE ON
+    static async openShellDocument(browser, documentHtml) {
 
         const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1, reducedMotion: 'reduce', bypassCSP: true });
 
@@ -128,9 +129,17 @@ class RecipeCockpitScreenshots {
             window.acquireVsCodeApi = () => ({ postMessage: () => undefined, getState: () => undefined, setState: () => undefined });
         });
         // A REAL ORIGIN RATHER THAN setContent'S about:blank, WHERE THE SHELL'S NONCED SCRIPT DID NOT RUN
-        await page.route(PAGE_URL, (route) => route.fulfill({ contentType: 'text/html', body: this.shellHtml }));
+        await page.route(PAGE_URL, (route) => route.fulfill({ contentType: 'text/html', body: documentHtml }));
         await page.goto(PAGE_URL, { waitUntil: 'load' });
         await page.addStyleTag({ content: VS_CODE_FONT_STYLE });
+
+        return page;
+
+    }
+
+    static async openCockpit(browser, recipe) {
+
+        const page = await this.openShellDocument(browser, this.shellHtml);
 
         await page.evaluate((hostMessages) => {
             hostMessages.forEach((hostMessage) => window.postMessage(hostMessage, '*'));
@@ -233,7 +242,11 @@ class RecipeCockpitScreenshots {
 
 }
 
-RecipeCockpitScreenshots.run().catch((runError) => {
-    console.error(runError && runError.message ? runError.message : runError);
-    process.exitCode = 1;
-});
+module.exports = { RecipeCockpitScreenshots };
+
+if (require.main === module) {
+    RecipeCockpitScreenshots.run().catch((runError) => {
+        console.error(runError && runError.message ? runError.message : runError);
+        process.exitCode = 1;
+    });
+}
