@@ -9,9 +9,7 @@ jest.mock('child_process', () => ({
     execFile: jest.fn()
 }));
 
-import * as fs from 'fs';
 
-import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../../ErrorHandlingService/ErrorHandlingService';
 
 jest.mock('vscode', () => ({
@@ -101,13 +99,6 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             }) as typeof execFile);
         };
 
-        const mockErrorCaptureDependencies = () => {
-            jest.spyOn(fs, 'writeFile').mockReturnValue();
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('rootMock/mock');
-            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockReturnValue();
-            jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockImplementation();
-        };
-
         test('should return generated fake data for an ordinary path, passing it as an argument with the 10 MB buffer', async () => {
             
             const expectedFakeData = { data: 'fake data' };
@@ -150,8 +141,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
         test('should capture and reject with the CLI message when snowfakery exits non zero', async () => {
             
-            mockErrorCaptureDependencies();
-            const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile');
+            const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile').mockImplementation(() => undefined);
 
             const expectedCliErrorMessage = 'Command failed: snowfakery path/to/recipe.yml --output-format json\nbad recipe';
             const cliErrorMock: ExecFileException = Object.assign(new Error(expectedCliErrorMessage), { code: 1 });
@@ -170,8 +160,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
         test('should capture and reject with an install hint when snowfakery cannot be spawned', async () => {
 
-            mockErrorCaptureDependencies();
-            const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile');
+            const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile').mockImplementation(() => undefined);
 
             const spawnError: ExecFileException = Object.assign(new Error('spawn snowfakery ENOENT'), { code: 'ENOENT' });
             mockExecFileCallback(spawnError, '');
