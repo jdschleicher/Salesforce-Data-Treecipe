@@ -247,7 +247,8 @@ src/
     ├── RunFakerConfirmation/
     │   └── RunFakerConfirmation.ts          # One-time tokens: the cockpit's confirmation stands in for Run Faker's modal (#255); imports only crypto
     ├── SalesforceApiName/
-    │   └── SalesforceApiName.ts             # The one api-name rule every metadata NAME is held to before it reaches a recipe; imports nothing
+    │   ├── SalesforceApiName.ts             # The one api-name rule every metadata NAME is held to before it reaches a recipe; imports nothing
+    │   └── tests/                           # SalesforceApiName.test.ts: "imports nothing"
     ├── SalesforceOrgService/
     │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection, connected-org listing, describe cache, org type and default org reads
     │   └── tests/

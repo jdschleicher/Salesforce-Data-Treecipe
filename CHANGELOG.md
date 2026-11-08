@@ -2,7 +2,7 @@
 
 ## [3.194.1] - Seven shared files move into their own leaf folders (#572, slice B of #570)
 
-Seven files that import no other service lived inside feature or engine folders, so each of their users counted as a dependent of the whole folder. That alone held 27 folders in one import cycle, `ExtensionCommandService ↔ RecipeCockpitService` among them. Nothing a user sees changes.
+Seven files that import no other service (`RecipeCockpitRunArtifacts` imports only `SfdxProjectService`, also layer 0) lived inside feature or engine folders, so each of their users counted as a dependent of the whole folder. That alone held 27 folders in one import cycle, `ExtensionCommandService ↔ RecipeCockpitService` among them. Nothing a user sees changes.
 
 - **Moved, class names kept, no shim left at an old path** (importing one fails `npm run compile`). All seven are layer 0:
 
@@ -16,6 +16,7 @@ Seven files that import no other service lived inside feature or engine folders,
   | `RecipeCockpitInsertFailureTriage.ts` and its test | `RecipeCockpitService/` | `InsertFailureTriage/` |
   | `RunFakerConfirmation.ts` | `ExtensionCommandService/` | `RunFakerConfirmation/` |
 
+- `SalesforceApiName` now has its own test, `SalesforceApiName/tests/SalesforceApiName.test.ts`, which checks that the module imports nothing. Until now only its header comment said so.
 - The writer's recipe fixtures stay in `RecipeCockpitService/tests/mocks/recipeWriter/`, which six cockpit and command suites also read.
 - **Layer test:** the seven folders are in `SERVICE_LAYERS` at layer 0, and the 16 `KNOWN_LAYER_VIOLATIONS` entries for #572 are gone. The largest cycle in the whole import graph drops from 27 folders to 15. Two new tests hold that: no cycle may hold more than 15 folders, and `ExtensionCommandService` and `RecipeCockpitService` are not in one cycle.
 - **Unchanged:** the golden files, every hostile-picklist suite's expectations (only their mock import paths changed) and the cockpit acceptance journeys.
