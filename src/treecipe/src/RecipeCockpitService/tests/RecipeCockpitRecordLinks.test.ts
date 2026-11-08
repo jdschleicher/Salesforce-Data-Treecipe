@@ -64,7 +64,7 @@ import {
     ORG_FRONT_DOOR_SINGLE_ACCESS_PATH
 } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';

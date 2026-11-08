@@ -29,14 +29,14 @@ import {
     RECIPE_COCKPIT_PICKLIST_RESET_LABEL,
     RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
-import { HOSTILE_PICKLIST_VALUES, INJECTION_MARKER, ORDINARY_PICKLIST_VALUES } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { HOSTILE_PICKLIST_VALUES, INJECTION_MARKER, ORDINARY_PICKLIST_VALUES } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { pinFieldInRecipeFile, restoreRecipeFiles } from './RecipeCockpitFixedValueFiles';

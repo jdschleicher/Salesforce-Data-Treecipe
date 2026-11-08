@@ -26,12 +26,12 @@ import {
     RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL,
     RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 

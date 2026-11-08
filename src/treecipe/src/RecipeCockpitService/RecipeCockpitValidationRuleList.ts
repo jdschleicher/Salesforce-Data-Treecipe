@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as xml2js from 'xml2js';
 
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VALIDATION_RULE_FILE_SUFFIX, VALIDATION_RULES_DIRECTORY_NAME, ValidationRuleAnalyzerService } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 

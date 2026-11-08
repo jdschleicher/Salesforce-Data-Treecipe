@@ -54,7 +54,7 @@ import {
     RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -63,7 +63,7 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 
 // A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)

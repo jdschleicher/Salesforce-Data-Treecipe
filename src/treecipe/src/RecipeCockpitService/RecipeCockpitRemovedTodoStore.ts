@@ -1,5 +1,5 @@
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { RecipeCockpitRecipeWriter, IRemovedTodoComment } from './RecipeCockpitRecipeWriter';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
+import { RecipeCockpitRecipeWriter, IRemovedTodoComment } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
     The removed-TODOs file (#391): <recipe>.removedTodos.json beside a recipe the Recipe Cockpit

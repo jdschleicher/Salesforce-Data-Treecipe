@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as xml2js from 'xml2js';
 
 import type { IOrgPermissionSet } from '../SalesforceOrgService/SalesforceOrgService';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
 

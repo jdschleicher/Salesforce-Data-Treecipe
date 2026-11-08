@@ -1,5 +1,5 @@
 import { RecipeFileOutput, RelationshipTree } from "../RelationshipService/RelationshipService";
-import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
+import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 import { ObjectInfo } from "./ObjectInfo";
 
 export class ObjectInfoWrapper {

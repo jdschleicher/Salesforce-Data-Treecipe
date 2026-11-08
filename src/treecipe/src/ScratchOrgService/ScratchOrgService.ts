@@ -6,7 +6,7 @@ import { Lifecycle, Org, ScratchOrgCache, ScratchOrgCreateOptions, ScratchOrgCre
 import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RecipeCockpitService/RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 
 // AN ALIAS THE CLI KEEPS IN ~/.sfdx/alias.json AND THE READER TYPES BACK: LONG ENOUGH FOR A NAME, SHORT ENOUGH FOR A PICKER
 export const SCRATCH_ORG_ALIAS_MAX_LENGTH = 80;

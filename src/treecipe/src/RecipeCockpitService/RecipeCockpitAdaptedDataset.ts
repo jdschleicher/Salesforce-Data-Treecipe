@@ -8,9 +8,9 @@ import {
     DatasetSourceService,
     IDatasetSourceAdaptation
 } from '../DatasetSourceService/DatasetSourceService';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { IAdaptedRecipeField, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { IAdaptedRecipeField, RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 
 // "<recipe>-adapted-20261025-143005.yml", WITH THE DATA SET'S "-<n>": A SIDE FILE, NEVER A TREE'S RECIPE (#448)
 const ADAPTED_RECIPE_FILE_NAME_PATTERN = /-adapted-\d{8}-\d{6}(?:-(?:[2-9]|[1-9]\d+))?\.ya?ml$/i;

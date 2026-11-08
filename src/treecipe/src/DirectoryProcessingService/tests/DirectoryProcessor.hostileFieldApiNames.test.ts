@@ -61,8 +61,8 @@ import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerSer
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { INJECTED_FIELD_API_NAME, INJECTION_MARKER } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { INJECTED_FIELD_API_NAME, INJECTION_MARKER } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 const HOSTILE_METADATA_PATH = path.join(__dirname, 'mocks', 'HostileFieldApiNameSalesforceMetadataDirectory');
 const HOSTILE_OBJECTS_PATH = path.join(HOSTILE_METADATA_PATH, 'objects');

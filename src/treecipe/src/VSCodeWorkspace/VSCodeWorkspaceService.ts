@@ -5,8 +5,8 @@ import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { RecipeCockpitRunArtifacts } from '../RecipeCockpitService/RecipeCockpitRunArtifacts';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 
 // WHAT A FAKER-JS RUN FOLDER AND ITS RECIPE FILES ARE NAMED WITH, AND A SNOWFAKERY ONE IS NOT
 export const FAKER_JS_RECIPE_INDICATOR = 'recipe-fakerjs';

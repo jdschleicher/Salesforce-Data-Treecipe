@@ -62,9 +62,9 @@ import {
     HOSTILE_PICKLIST_VALUES,
     INJECTED_FIELD_API_NAME,
     INJECTION_MARKER
-} from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+} from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 
 const HOSTILE_METADATA_PATH = path.join(__dirname, 'mocks', 'HostileSalesforceMetadataDirectory');

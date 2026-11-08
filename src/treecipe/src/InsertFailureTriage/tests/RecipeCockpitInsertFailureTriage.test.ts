@@ -3,7 +3,7 @@ jest.mock('vscode', () => ({}), { virtual: true });
 import * as fs from 'fs';
 import * as path from 'path';
 import { ALL_OR_NONE_ROLLED_BACK_STATUS_CODE, InsertFailureTroubleshootingSubTab, RecipeCockpitInsertFailureTriage } from '../RecipeCockpitInsertFailureTriage';
-import { RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from '../../RecipeCockpitService/RecipeCockpitService';
 import { INSERT_REQUEST_FAILED_STATUS_CODE } from '../../CollectionsApiService/CollectionsApiService';
 
 // #375: WHICH TROUBLESHOOTING SUB-TAB A FAILED TREE INSERT'S "Open Troubleshooting" OPENS

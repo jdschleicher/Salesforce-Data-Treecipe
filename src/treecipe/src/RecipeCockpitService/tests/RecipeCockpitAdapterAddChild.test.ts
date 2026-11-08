@@ -56,7 +56,7 @@ import {
     RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitRecordCreation } from '../RecipeCockpitRecordCreation';
 import { IOrgStagedFieldDetail, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

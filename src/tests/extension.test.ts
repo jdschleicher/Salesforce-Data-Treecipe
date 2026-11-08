@@ -35,7 +35,7 @@ import { activate } from '../extension';
 import { ConfigurationService } from '../treecipe/src/ConfigurationService/ConfigurationService';
 import { RecipeCockpitService } from '../treecipe/src/RecipeCockpitService/RecipeCockpitService';
 import { VSCodeWorkspaceService } from '../treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
-import { RunFakerConfirmation } from '../treecipe/src/ExtensionCommandService/RunFakerConfirmation';
+import { RunFakerConfirmation } from '../treecipe/src/RunFakerConfirmation/RunFakerConfirmation';
 import { ExtensionCommandService } from '../treecipe/src/ExtensionCommandService/ExtensionCommandService';
 import { TreecipeSideBarService } from '../treecipe/src/TreecipeSideBarService/TreecipeSideBarService';
 

@@ -9,9 +9,9 @@ import * as os from 'os';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
-import { RecipeCockpitRecipeWriter, IRemovedTodoComment, RecipeTodoRemoveResult, RecipeTodoRestoreResult } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, IRemovedTodoComment, RecipeTodoRemoveResult, RecipeTodoRestoreResult } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 /*
     Removing and restoring one TODO comment (#391). The generated fixtures carry almost no TODO a

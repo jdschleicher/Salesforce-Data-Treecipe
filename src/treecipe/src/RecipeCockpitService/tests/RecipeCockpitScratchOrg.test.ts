@@ -67,7 +67,7 @@ import { SalesforceOrgService, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../..
 import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { ORG_OPERATIONS_FOLDER_NAME, ScratchOrgService } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 

@@ -1,6 +1,6 @@
-import { RecordTypeWrapper } from '../../../../RecordTypeService/RecordTypesWrapper';
-import { IRecipeFakerService } from '../../../IRecipeFakerService';
-import { RecordTypeSelection } from '../../../../RecordTypeService/RecordTypeSelection';
+import { RecordTypeWrapper } from '../../../RecordTypeService/RecordTypesWrapper';
+import { IRecipeFakerService } from '../../../RecipeFakerService.ts/IRecipeFakerService';
+import { RecordTypeSelection } from '../../../RecordTypeService/RecordTypeSelection';
 
 /*
     Picklist values a metadata author controls, shaped to break out of a generated recipe. Shared by

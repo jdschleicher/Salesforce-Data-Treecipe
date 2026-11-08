@@ -7,7 +7,7 @@ import {
     RecipeCockpitQuery
 } from '../RecipeCockpitQuery';
 import { SOQLTemplateService } from '../../SOQLTemplateService/SOQLTemplateService';
-import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 
 import * as matchers from 'jest-extended';

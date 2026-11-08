@@ -24,7 +24,7 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITH_CONSTRAINTS
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter, RecipeFilterResult } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, RecipeFilterResult } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

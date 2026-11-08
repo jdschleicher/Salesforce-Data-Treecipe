@@ -2,11 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as xml2js from 'xml2js';
 
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { ISfdxPackageDirectory, SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { PERMISSION_SET_FILE_SUFFIX } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitQuery } from './RecipeCockpitQuery';
-import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 
 /*
     "Generate permission set…" (#306): one permission set per relationship tree, granting Create and

@@ -1,7 +1,7 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
-import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
-import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
+import { RecipeYamlScalar } from "../../RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../../RecipeFieldConstraint/RecipeFieldConstraint";
 import { IValidationRuleRegexAtom } from "../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {

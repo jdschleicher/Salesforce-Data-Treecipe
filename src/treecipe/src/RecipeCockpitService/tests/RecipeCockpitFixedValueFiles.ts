@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { IRecipeFixedValue, RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { IRecipeFixedValue, RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 
 /*

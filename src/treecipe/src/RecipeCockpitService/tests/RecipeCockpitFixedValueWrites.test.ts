@@ -52,10 +52,10 @@ import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryPr
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import { IPinnedFieldRestoreRequest, IRecipeFixedValue, RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { IPinnedFieldRestoreRequest, IRecipeFixedValue, RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, RecipeCockpitFixedValueStore, RECIPE_COCKPIT_FIXED_VALUE_FILE_VERSION } from '../RecipeCockpitFixedValueStore';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, '..', '..', 'DirectoryProcessingService', 'tests', 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 const VALIDATION_RULE_RUNS_PATH = path.join(__dirname, 'mocks', 'validationRuleWorkspace', 'treecipe', 'GeneratedRecipes');

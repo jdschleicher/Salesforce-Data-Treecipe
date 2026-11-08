@@ -26,7 +26,7 @@ import {
 } from '../RecipeCockpitService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

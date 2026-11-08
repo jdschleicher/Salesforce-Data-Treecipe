@@ -12,9 +12,9 @@ import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipePro
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { DatasetSourceService, IDatasetSourceFieldConstraint } from "../DatasetSourceService/DatasetSourceService";
 import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
-import { RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RecipeCockpitRunArtifacts } from '../RecipeCockpitService/RecipeCockpitRunArtifacts';
-import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
-import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
+import { RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
+import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
+import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason, PicklistDependencyTestRunCancelledError, IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
@@ -40,7 +40,7 @@ import {
 
 import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { TreecipeSideBarService } from '../TreecipeSideBarService/TreecipeSideBarService';
-import { RunFakerConfirmation } from './RunFakerConfirmation';
+import { RunFakerConfirmation } from '../RunFakerConfirmation/RunFakerConfirmation';
 
 import * as fs from 'fs';
 import * as os from 'os';

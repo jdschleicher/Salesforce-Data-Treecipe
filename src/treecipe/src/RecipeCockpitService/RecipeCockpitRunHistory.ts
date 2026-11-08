@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { DatasetInsertAttemptService } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
-import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 
 /*
     The Troubleshooting tab's History (#485): every Troubleshooting step taken for a tree, read from

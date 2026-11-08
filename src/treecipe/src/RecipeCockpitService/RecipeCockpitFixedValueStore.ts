@@ -1,5 +1,5 @@
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
+import { RecipeCockpitRecipeWriter, RecipeFixedValueKind } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
     The fixed-values file (#342): <recipe>.fixedValues.json beside a recipe the Recipe Cockpit wrote a

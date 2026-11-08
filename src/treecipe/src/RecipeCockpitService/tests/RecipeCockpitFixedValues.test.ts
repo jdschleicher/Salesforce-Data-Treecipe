@@ -44,12 +44,12 @@ import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
-import { IRecipeFixedValue, RecipeCockpitRecipeWriter, RecipeFilterResult } from '../RecipeCockpitRecipeWriter';
+import { IRecipeFixedValue, RecipeCockpitRecipeWriter, RecipeFilterResult } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
-import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { pinFieldInRecipeFile, restoreRecipeFiles } from './RecipeCockpitFixedValueFiles';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';

@@ -1,6 +1,6 @@
 
 import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, METADATA_RETRIEVE_PACKAGE_XML_TYPES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';

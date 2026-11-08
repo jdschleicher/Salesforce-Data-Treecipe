@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigurationService, MissingTreecipeConfigurationError } from '../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 
 export class ErrorHandlingService {
 

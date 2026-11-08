@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { StandardFieldParentReferenceMap } from '../StandardFieldParentReferenceMap';
-import { SalesforceApiName } from '../../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
 
 describe('StandardFieldParentReferenceMap (#400)', () => {
 

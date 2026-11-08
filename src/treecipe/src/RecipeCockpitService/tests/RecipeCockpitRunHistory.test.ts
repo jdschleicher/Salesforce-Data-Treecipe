@@ -13,10 +13,10 @@ import {
     RUN_HISTORY_STEP_LABELS,
     RecipeCockpitRunHistory
 } from '../RecipeCockpitRunHistory';
-import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
 import { METADATA_DEPLOY_OPERATION_BY_KIND } from '../RecipeCockpitMetadataDeploy';
 import { METADATA_RETRIEVE_OPERATION_BY_KIND } from '../RecipeCockpitMetadataRetrieve';
-import { FIXTURE_RUN_FOLDER_NAME, makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { FIXTURE_RUN_FOLDER_NAME, makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 
 const USERNAME = 'sandbox.user@example.com';
 

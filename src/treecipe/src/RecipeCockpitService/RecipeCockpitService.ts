@@ -93,10 +93,10 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { CreateParentRefusalReason, IAdaptedRecipeField, ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
+import { CreateParentRefusalReason, IAdaptedRecipeField, ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
 import {
     ICreateReadinessInput,
@@ -107,7 +107,7 @@ import {
 } from './RecipeCockpitRecordCreation';
 import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult, INSERT_RESULTS_FILE_MISSING_TEXT } from '../CollectionsApiService/CollectionsApiService';
 import { DatasetInsertAttemptService, InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
-import { RecipeCockpitInsertFailureTriage } from './RecipeCockpitInsertFailureTriage';
+import { RecipeCockpitInsertFailureTriage } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
 import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
 import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
@@ -115,7 +115,7 @@ import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService, ILegacyRecordCountResult } from '../DatasetSourceService/DatasetSourceService';
 import { IAdaptedObjectRecords, RecipeCockpitAdaptedDataset, RecipeCockpitAdaptedRunWrite } from './RecipeCockpitAdaptedDataset';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -128,7 +128,7 @@ import {
     RecipeCockpitTreeHistory
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
+import { RunFakerConfirmation } from '../RunFakerConfirmation/RunFakerConfirmation';
 import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, SCRATCH_ORG_DURATION_DAYS, SCRATCH_ORG_MAX_DURATION_DAYS, SCRATCH_ORG_MIN_DURATION_DAYS, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { INotificationCommandAction, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
@@ -141,7 +141,7 @@ import {
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
-import { IRecipeCockpitRunArtifactsLocation, RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation, RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { IRunHistoryStepRecord, RUN_HISTORY_STEP_LABELS, RunHistoryOutcome, RunHistoryRowStatus, RunHistoryStep, RecipeCockpitRunHistory } from './RecipeCockpitRunHistory';
 import { DATASET_JOURNEY_ENTRY_LIMIT, DatasetJourneyEntryKind, RecipeCockpitDatasetJourney } from './RecipeCockpitDatasetJourney';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';

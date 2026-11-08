@@ -4,9 +4,9 @@ import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProce
 import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
-import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
-import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../RecipeCockpitService/RecipeCockpitInsertFailureTriage";
+import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../InsertFailureTriage/RecipeCockpitInsertFailureTriage";
 import { DatasetInsertAttemptService } from "../DatasetInsertAttemptService/DatasetInsertAttemptService";
 
 import * as vscode from 'vscode';

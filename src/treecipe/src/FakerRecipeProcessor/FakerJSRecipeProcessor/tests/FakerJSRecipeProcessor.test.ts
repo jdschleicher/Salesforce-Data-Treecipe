@@ -9,7 +9,7 @@ import * as yaml from 'js-yaml';
 import { faker } from '@faker-js/faker';
 import { ProcessedYamlWrapper } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
 import { FakerJSRecipeFakerService } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
-import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { ErrorHandlingService } from '../../../ErrorHandlingService/ErrorHandlingService';
 import * as path from 'path';
 

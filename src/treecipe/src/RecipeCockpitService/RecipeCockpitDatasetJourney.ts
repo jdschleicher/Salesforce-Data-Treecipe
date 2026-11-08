@@ -3,8 +3,8 @@ import * as path from 'path';
 
 import { DatasetInsertAttemptService, IInsertAttemptRead } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
-import { ALL_OR_NONE_ROLLED_BACK_STATUS_CODE } from './RecipeCockpitInsertFailureTriage';
-import { IRecipeCockpitRunArtifactsLocation } from './RecipeCockpitRunArtifacts';
+import { ALL_OR_NONE_ROLLED_BACK_STATUS_CODE } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
+import { IRecipeCockpitRunArtifactsLocation } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { IRunHistoryRow, RecipeCockpitRunHistory, RunHistoryRowStatus, RunHistoryStep } from './RecipeCockpitRunHistory';
 
 /*

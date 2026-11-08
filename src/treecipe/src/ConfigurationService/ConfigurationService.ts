@@ -11,7 +11,7 @@ import path = require('path');
 import * as vscode from 'vscode';
 import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import {
     RECORD_TYPE_SELECTIONS_CONFIG_KEY,
     RECORD_TYPES_WHEN_SELECTION_SAVED_CONFIG_KEY,

@@ -110,12 +110,12 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 }
 
-import { RunFakerConfirmation } from '../RunFakerConfirmation';
+import { RunFakerConfirmation } from '../../RunFakerConfirmation/RunFakerConfirmation';
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES, SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE } from "../ExtensionCommandService";
 import { TreecipeSideBarService } from '../../TreecipeSideBarService/TreecipeSideBarService';
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
-import { RecipeYamlScalar } from "../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeYamlScalar } from "../../RecipeYamlScalar/RecipeYamlScalar";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField, IFrameworkScaffoldResult } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyTestRunCancelledError } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";

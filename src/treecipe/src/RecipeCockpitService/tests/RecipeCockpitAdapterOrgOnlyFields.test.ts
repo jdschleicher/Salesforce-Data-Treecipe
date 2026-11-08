@@ -59,8 +59,8 @@ import {
     RECIPE_COCKPIT_UPDATER_TAB_LABEL,
     RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
-import { HOSTILE_PICKLIST_VALUES } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
+import { HOSTILE_PICKLIST_VALUES } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { IOrgNewFieldDetail, IOrgObjectChanges, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

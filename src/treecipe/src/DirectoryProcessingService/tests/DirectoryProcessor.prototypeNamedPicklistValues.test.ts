@@ -59,7 +59,7 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { PicklistDependencyTestService, IPicklistDependencyCollectionResult } from '../../PicklistDependencyTestService/PicklistDependencyTestService';
 import { PicklistDependencyManifestService } from '../../PicklistDependencyManifestService/PicklistDependencyManifestService';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 const PROTOTYPE_METADATA_PATH = path.join(__dirname, 'mocks', 'PrototypeNamedSalesforceMetadataDirectory');
 const PROTOTYPE_OBJECTS_PATH = path.join(PROTOTYPE_METADATA_PATH, 'objects');

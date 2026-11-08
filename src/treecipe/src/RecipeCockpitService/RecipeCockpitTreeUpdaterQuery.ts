@@ -1,5 +1,5 @@
 import { RecipeCockpitQuery } from './RecipeCockpitQuery';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 
 // HOW LONG A WHERE CLAUSE THE READER TYPES FOR ONE OBJECT MAY BE
 export const RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH = 4000;

@@ -6,10 +6,10 @@ import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
-import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeFilterLookup, RecipeWriterRefusalReason, IScannedObject } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeFilterLookup, RecipeWriterRefusalReason, IScannedObject } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 import * as childProcess from 'child_process';
 

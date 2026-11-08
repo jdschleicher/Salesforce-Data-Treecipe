@@ -4,7 +4,7 @@ import { RecipeService } from "../RecipeService";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
-import { RecipeCockpitRecipeWriter } from "../../RecipeCockpitService/RecipeCockpitRecipeWriter";
+import { RecipeCockpitRecipeWriter } from "../../RecipeWriter/RecipeCockpitRecipeWriter";
 
 const buildFieldDetail = (fieldDetail: Partial<XMLFieldDetail>): XMLFieldDetail => Object.assign(new XMLFieldDetail(), { apiName: 'New_Field__c', fieldLabel: 'New Field', xmlMarkup: '', ...fieldDetail });
 

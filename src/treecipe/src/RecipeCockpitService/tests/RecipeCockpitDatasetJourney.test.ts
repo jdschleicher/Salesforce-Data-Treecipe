@@ -4,9 +4,9 @@ import * as path from 'path';
 
 import { DATASET_JOURNEY_ENTRY_LIMIT, DATASET_JOURNEY_RESULTS_BUDGET_SPENT_NOTE, DATASET_JOURNEY_RESULTS_FILE_MAX_BYTES, DATASET_JOURNEY_RESULTS_READ_BUDGET_BYTES, DATASET_JOURNEY_RESULTS_TOO_LARGE_NOTE, RecipeCockpitDatasetJourney } from '../RecipeCockpitDatasetJourney';
 import { DatasetInsertAttemptService, IInsertAttemptSummary, INSERT_ATTEMPT_SUMMARY_SCHEMA_VERSION } from '../../DatasetInsertAttemptService/DatasetInsertAttemptService';
-import { IRecipeCockpitRunArtifactsLocation } from '../RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
 import { RecipeCockpitRunHistory, RunHistoryOutcome, RunHistoryStep } from '../RecipeCockpitRunHistory';
-import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 
 /*
     #471: a data set's insert journey -- every insert attempt and every Troubleshooting step of its

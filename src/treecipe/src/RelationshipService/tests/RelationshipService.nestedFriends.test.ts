@@ -8,7 +8,7 @@ import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { ProcessedYamlWrapper } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
-import { RecipeCockpitRecipeWriter } from '../../RecipeCockpitService/RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 

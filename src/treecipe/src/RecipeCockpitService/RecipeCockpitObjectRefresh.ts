@@ -1,12 +1,12 @@
 import * as path from 'path';
 import * as xml2js from 'xml2js';
 
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, ValidationRuleAnalyzerService } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { IMetadataDeployComponent, METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import { IOrgMetadataFileCopy, IOrgStagedFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
-import { RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
     "Get latest object detail from target org" (#612): ONE object of a Treecipe tab row, retrieved

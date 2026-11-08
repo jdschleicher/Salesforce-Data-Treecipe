@@ -90,7 +90,7 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
     let removedTodoFilePath: string;
 
     const writeRemovedTodoFile = (recipeText: string, lineNumber: number, todoText: string) => {
-        const { RecipeCockpitRecipeWriter } = jest.requireActual('../RecipeCockpitRecipeWriter');
+        const { RecipeCockpitRecipeWriter } = jest.requireActual('../../RecipeWriter/RecipeCockpitRecipeWriter');
         const removeResult = RecipeCockpitRecipeWriter.removeTodoComment(recipeText, { lineNumber: lineNumber, todoText: todoText });
         fs.writeFileSync(recipeFilePath, removeResult.recipeText);
         fs.writeFileSync(removedTodoFilePath, RecipeCockpitRemovedTodoStore.serialize([removeResult.removed]));
