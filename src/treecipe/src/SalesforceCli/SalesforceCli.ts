@@ -4,8 +4,8 @@ import { ChildProcess, execFile, ExecFileOptionsWithStringEncoding } from 'child
 import type { OrgAuthorization } from '@salesforce/core';
 
 /*
-    The one place an sf process starts (#574 moved it here from PicklistDependencyCheckService, so
-    the platform layer can run the CLI without importing a feature). Every caller is listed in
+    The one place an sf process starts. It sits in the platform layer so the services below the
+    features can run the CLI without importing one. Every caller is listed in
     tests/SalesforceCliCallSites.test.ts.
 */
 

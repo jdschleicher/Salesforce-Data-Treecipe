@@ -43,7 +43,6 @@ export class ConfigurationService {
 
     private static readonly replacedStaleTreecipeConfigurationPaths = new Set<string>();
 
-
     static getExtensionConfigValue<extensionKey extends keyof ExtensionConfig>(key: extensionKey): ExtensionConfig[extensionKey] {
         
         const vsCodeWorkspaceConfig = vscode.workspace.getConfiguration(this.configSection);

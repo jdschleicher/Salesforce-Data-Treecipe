@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.194.3] - Follow-ups from #574's code review (epic #570)
+
+Nothing a user sees changes. This patch corrects one claim in 3.194.2 and adds tests for it.
+
+- **One change 3.194.2 did not name:** when VS Code reports an empty workspace folder list, an error capture now says "No workspace folder found" instead of failing with a TypeError. A new `ErrorHandlingService` test covers it.
+- **`ErrorHandlingService`'s own copies are pinned:** a new test, using fake timers, holds the capture file timestamp equal to `VSCodeWorkspaceService.getNowIsoDateTimestamp`, as the folder name was already held equal to `ConfigurationService`'s.
+- **`XmlFileProcessor.processXmlFieldContent`** carries, on its declaration, the note that every caller writes the capture file and rethrows, so a new caller sees it.
+- `SalesforceCli.ts`'s header says why the file sits in the platform layer, without the move's history, and a stray blank line is gone from `ConfigurationService.ts`.
+
 ## [3.194.2] - The platform layer stops importing features, and the sf CLI gate gets its own folder (#574, slice C of #570)
 
 After #572, 15 folders were still in one import cycle, closed by platform code importing upward. Nothing a user sees changes.
