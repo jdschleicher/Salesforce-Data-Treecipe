@@ -44,6 +44,7 @@ jest.mock('vscode', () => {
 
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor, IRecipeGenerationProgress, RecipeGenerationCancelledError } from '../DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
@@ -87,7 +88,7 @@ function writeMetadata(metadataPath: string): void {
 
 function mockConfiguration(createFakerService: () => IRecipeFakerService) {
 
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 

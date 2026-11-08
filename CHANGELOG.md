@@ -1,5 +1,28 @@
 # Change Log
 
+## [3.194.2] - The platform layer stops importing features, and the sf CLI gate gets its own folder (#574, slice C of #570)
+
+After #572, 15 folders were still in one import cycle, closed by platform code importing upward. Nothing a user sees changes.
+
+- **Tests first.** The first commit changes only tests and passes on unchanged source. The `ErrorHandlingService` and `SnowfakeryRecipeProcessor` suites had checked capture notifications through `VSCodeWorkspaceService` spies. They now assert at `vscode.window`: the text, that it is shown once, the opened file, and `Failed to open file`, escaped. A new `DirectoryProcessor.malformedFieldXml.test.ts` shows a malformed field file still writes one `generateRecipeError_<ts>.json` and warns once. Those expectations pass unchanged after the moves.
+- **Moved** (class names kept, no shim left at an old path):
+
+  | What | From | To |
+  |---|---|---|
+  | `runSalesforceCli`, `findSalesforceCliOnPath`, `getSalesforceCliExecutable`, the target-org identifier checks, `buildAuthenticatedOrgDetails`, `IAuthenticatedOrgDetail`, the invocation types | `PicklistDependencyCheckService` | `SalesforceCli/SalesforceCli.ts` (layer 1) |
+  | `SalesforceCliCallSites.test.ts` (the same call sites; `child_process` is now imported by `SalesforceCli.ts`) | `PicklistDependencyCheckService/tests/` | `SalesforceCli/tests/` |
+  | `getFakerImplementationByExtensionConfigSelection`, `getFakerRecipeProcessorByExtensionConfigSelection` | `ConfigurationService` | `FakerRecipeProcessor/RecipeFakerServiceFactory.ts` |
+  | `readSavedRecordTypeSelection`, `saveRecordTypeSelections`, `showRecordTypeSelectionWarningOnce` | `ConfigurationService` | `RecordTypeSelectionService/RecordTypeSelectionConfiguration.ts` |
+  | `MissingTreecipeConfigurationError` | `ConfigurationService` | `ErrorHandlingService/MissingTreecipeConfigurationError.ts` |
+  | `RelationshipDetail`, `RelationshipTree`, `OrderedRecipeStructure`, `RecipeFileOutput` and the types they use | `RelationshipService` | `ObjectInfoWrapper/RelationshipTypes.ts` |
+
+- **`ErrorHandlingService`** shows every notification through `vscode.window` and imports neither `ConfigurationService` nor `VSCodeWorkspaceService`. Every message, button, file name and folder is the same.
+- **`XmlFileProcessor`** only throws on a parse failure. `DirectoryProcessor` and `PicklistDependencyTestService` write the capture file, then rethrow. A new test covers the picklist spec path.
+- **The faker factory sits with the processors**, not in `RecipeFakerService.ts/` as the issue suggested. The processors already import the faker services, so placing it there would have made a new folder cycle.
+- **Layer test:** `SalesforceCli` is at layer 1, and the 13 `KNOWN_LAYER_VIOLATIONS` entries for #574 are gone. Two cycles remain, both #575's: `ObjectInfoWrapper ↔ RecordTypeService ↔ XMLProcessingService`, and `ConfigurationService ↔ VSCodeWorkspace`. The largest cycle drops from 15 folders to 3, and the cap now holds it there.
+- **Unchanged:** the golden files for both backends, the cockpit acceptance journeys and every notification expectation.
+- **Design notes:** a new `SalesforceCli/DESIGN.md`. The CLI-gate references in the Picklist, Cockpit and Scratch org notes, and the save/read references in the record type selection notes, name the new homes. CLAUDE.md's Project Structure and design-notes table do too.
+
 ## [3.194.1] - Seven shared files move into their own leaf folders (#572, slice B of #570)
 
 Seven files that import no other service (`RecipeCockpitRunArtifacts` imports only `SfdxProjectService`, also layer 0) lived inside feature or engine folders, so each of their users counted as a dependent of the whole folder. That alone held 27 folders in one import cycle, `ExtensionCommandService ↔ RecipeCockpitService` among them. Nothing a user sees changes.

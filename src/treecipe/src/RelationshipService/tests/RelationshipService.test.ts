@@ -1,9 +1,10 @@
-import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryProcessor';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { MockRelationshipService } from './mocks/MockRelationshipService';
 
-import { RelationshipDetail, RelationshipService, RelationshipTree } from '../RelationshipService';
+import { RelationshipService } from '../RelationshipService';
+import { RelationshipDetail, RelationshipTree } from '../../ObjectInfoWrapper/RelationshipTypes';
 import { ObjectInfo } from '../../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
 
@@ -82,7 +83,7 @@ describe("Shared Relationship Service Tests", () => {
 
         beforeAll(async() => {
 
-            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+            jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection')
                 .mockImplementation(() => new FakerJSRecipeFakerService());
 
             directoryProcessor = new DirectoryProcessor();

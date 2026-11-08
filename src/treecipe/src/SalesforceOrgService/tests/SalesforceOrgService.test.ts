@@ -45,7 +45,7 @@ import {
     PERMISSION_SET_QUERY_NAME_CHUNK_SIZE
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from './OrgConnectionPings';
 
 const ACCOUNT_DESCRIBE = JSON.parse(fs.readFileSync(path.join(__dirname, 'mocks', 'describeAccount.json'), 'utf-8'));
@@ -776,7 +776,7 @@ describe('SalesforceOrgService', () => {
 
         it('pings every authorization in process, by username, and starts no Salesforce CLI process (#502)', async () => {
 
-            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
+            const runSalesforceCliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli');
             answerOrgPings();
 
             await SalesforceOrgService.listConnectedOrgAuthorizations();
@@ -2194,7 +2194,7 @@ describe('SalesforceOrgService', () => {
 
         it('reads the authorization by username in process: no CLI, and getFields is never asked to decrypt', async () => {
 
-            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
+            const runSalesforceCliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli');
             const getFields = answerAuthInfoWith(readAuthFieldsFixture('authFieldsScratchOrg.json'));
 
             const scratchOrgDetail = await SalesforceOrgService.readScratchOrgDetail('test-fixture@example.com');

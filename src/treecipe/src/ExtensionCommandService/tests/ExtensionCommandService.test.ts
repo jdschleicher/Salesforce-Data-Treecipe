@@ -114,6 +114,8 @@ import { RunFakerConfirmation } from '../../RunFakerConfirmation/RunFakerConfirm
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES, SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE } from "../ExtensionCommandService";
 import { TreecipeSideBarService } from '../../TreecipeSideBarService/TreecipeSideBarService';
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
+import { RecordTypeSelectionConfiguration } from '../../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { RecipeYamlScalar } from "../../RecipeYamlScalar/RecipeYamlScalar";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -1680,7 +1682,7 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration')
                 .mockReturnValue('./force-app/main/default/objects');
             // NO SAVED RECORD TYPE SELECTION (#196): THE CONFIG ITSELF IS NOT READ BY THESE TESTS
-            jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
+            jest.spyOn(RecordTypeSelectionConfiguration, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             /*
@@ -1689,7 +1691,7 @@ describe('ExtensionCommandService', () => {
                 global value sets load -- silently, since the command catches. Stubbed so the run
                 actually reaches the walk these tests are about.
             */
-            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+            jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection')
                 .mockReturnValue(new FakerJSRecipeFakerService());
 
             jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory').mockResolvedValue({ runFolderPath: `${workspaceRoot}/treecipe/GeneratedRecipes/recipe-fakerjs-2026-10-08T12-00-00`, recipeFilePaths: [] });
@@ -2889,8 +2891,8 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
-            jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
-            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
+            jest.spyOn(RecordTypeSelectionConfiguration, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
+            jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
             jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
             jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
             createRecipeFilesSpy = jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory')
@@ -3012,11 +3014,11 @@ describe('ExtensionCommandService', () => {
             const savedSelectionOf = () => new SavedRecordTypeSelection([['Account', ['Partner']]], [['Account', ['Customer', 'Partner']]]);
 
             beforeEach(() => {
-                readSavedSpy = jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection');
+                readSavedSpy = jest.spyOn(RecordTypeSelectionConfiguration, 'readSavedRecordTypeSelection');
                 processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
                 (vscode.window.showWarningMessage as jest.Mock).mockReset();
                 (vscode.commands.executeCommand as jest.Mock).mockReset();
-                (ConfigurationService as any).shownRecordTypeSelectionWarnings.clear();
+                (RecordTypeSelectionConfiguration as any).shownRecordTypeSelectionWarnings.clear();
             });
 
             test('uses it without asking, says so, and offers Change record types', async () => {
@@ -3177,8 +3179,8 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
-            jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
-            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
+            jest.spyOn(RecordTypeSelectionConfiguration, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
+            jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
             jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
             processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
             createRecipeFilesSpy = jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory')

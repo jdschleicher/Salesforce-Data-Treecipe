@@ -1,7 +1,7 @@
 import { MermaidService } from '../MermaidService';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
-import { RelationshipDetail } from '../../RelationshipService/RelationshipService';
+import { RelationshipDetail } from '../../ObjectInfoWrapper/RelationshipTypes';
 
 import * as matchers from 'jest-extended';
 expect.extend(matchers);

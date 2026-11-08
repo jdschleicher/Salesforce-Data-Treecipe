@@ -19,7 +19,7 @@ import {
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
     TARGET_ORG_ENVIRONMENT_VARIABLE
 } from '../../../SalesforceOrgService/SalesforceOrgService';
-import { PicklistDependencyCheckService } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../../SalesforceCli/SalesforceCli';
 import {
     FakeOrgConnections,
     FakeSalesforceCli,
@@ -287,7 +287,7 @@ export class RecipeCockpitJourney implements IJourneyHost {
         // AGAIN AT EVERY STEP: restoreMocks REMOVES THE SPY BEFORE EACH TEST OF A SUITE THAT OPENED ITS JOURNEY ONCE
         if ( this.homePath ) { jest.spyOn(os, 'homedir').mockReturnValue(this.homePath); }
         // NO sf PROCESS EVER STARTS IN A JOURNEY: EVERY CALL GOES TO journey.cli, RE-SPIED FOR THE SAME REASON
-        jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli')
+        jest.spyOn(SalesforceCli, 'runSalesforceCli')
             .mockImplementation((cliArguments, _registerCancellation, _timeoutMilliseconds, projectOptions) => this.cli.run(cliArguments, projectOptions));
 
         try {

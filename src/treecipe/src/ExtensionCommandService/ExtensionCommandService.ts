@@ -1,4 +1,6 @@
 import { ConfigurationService, TreecipeConfigDetail } from "../ConfigurationService/ConfigurationService";
+import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
+import { RecipeFakerServiceFactory } from '../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor, IGeneratedRecipeRun, IRecipeGenerationProgress, RecipeGenerationCancelledError } from "../DirectoryProcessingService/DirectoryProcessor";
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
@@ -16,7 +18,8 @@ import { RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RecipeCockpitRunArtifacts } f
 import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
-import { PicklistDependencyCheckService, PicklistDependencyDeployReason, PicklistDependencyTestRunCancelledError, IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyDeployReason, PicklistDependencyTestRunCancelledError } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { IAuthenticatedOrgDetail } from "../SalesforceCli/SalesforceCli";
 import {
     PicklistDependencyExplorerService,
     IPicklistDependencyExplorerViewModel,
@@ -270,7 +273,7 @@ export class ExtensionCommandService {
             const generatedRecipesFolderFullPath = path.join(VSCodeWorkspaceService.getWorkspaceRoot(), expectedGeneratedRecipesFolderPath);
             const recipeSourceNames = DatasetSourceService.resolveRecipeSourceNames(generatedRecipesFolderFullPath, recipeFullFileNamePath);
 
-            let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+            let fakerRecipeProcessor:IFakerRecipeProcessor = RecipeFakerServiceFactory.getFakerRecipeProcessorByExtensionConfigSelection();
 
             const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(generationRecipeFilePath) as string;
 
@@ -645,7 +648,7 @@ export class ExtensionCommandService {
                 */
                 const savedRecordTypeSelection = ExtensionCommandService.hasRecordTypeSelectionOption(generateTreecipeOptions)
                     ? undefined
-                    : ConfigurationService.readSavedRecordTypeSelection();
+                    : RecordTypeSelectionConfiguration.readSavedRecordTypeSelection();
                 const recordTypeSelection = savedRecordTypeSelection ?? ExtensionCommandService.readRecordTypeSelection(generateTreecipeOptions);
 
                 const generatedRecipeRun = await this.runWithRecipeGenerationProgress(async (generationProgress) => {
@@ -724,7 +727,7 @@ export class ExtensionCommandService {
     static warnOfSavedRecordTypeSelectionReport(savedRecordTypeSelection: SavedRecordTypeSelection): void {
 
         const report = savedRecordTypeSelection.buildReport();
-        const warning = ConfigurationService.showRecordTypeSelectionWarningOnce(
+        const warning = RecordTypeSelectionConfiguration.showRecordTypeSelectionWarningOnce(
             SavedRecordTypeSelection.buildReportWarning(report),
             [CHANGE_RECORD_TYPES_ACTION_LABEL]
         );

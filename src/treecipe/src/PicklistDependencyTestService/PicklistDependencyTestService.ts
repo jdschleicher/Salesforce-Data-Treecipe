@@ -3,6 +3,7 @@ import { RecipeService } from '../RecipeService/RecipeService';
 import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
+import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
@@ -882,8 +883,12 @@ export class PicklistDependencyTestService {
             const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
             const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
 
-            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(fieldXmlContent, fileName);
-            fieldDetails.push(fieldDetail);
+            try {
+                fieldDetails.push(await XmlFileProcessor.processXmlFieldContent(fieldXmlContent, fileName));
+            } catch (fieldXmlError) {
+                ErrorHandlingService.createGenerateRecipeErrorCaptureFile(fieldXmlError, XmlFileProcessor.processXmlFieldContentCommandName);
+                throw fieldXmlError;
+            }
 
         }
 

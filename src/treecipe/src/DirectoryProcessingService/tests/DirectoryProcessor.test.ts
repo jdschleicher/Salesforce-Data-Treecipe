@@ -1,4 +1,5 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from "../DirectoryProcessor";
 
 import * as vscode from 'vscode';
@@ -50,7 +51,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
   
   beforeEach(() => {
   
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection')
       .mockImplementation(() => new SnowfakeryRecipeFakerService());
   
     directoryProcessor = new DirectoryProcessor();
@@ -1079,7 +1080,7 @@ describe('DirectoryProcessor FakerJS FakerService Implementation compound geoloc
 
   beforeEach(() => {
 
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection')
       .mockImplementation(() => new FakerJSRecipeFakerService());
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 
@@ -1162,7 +1163,7 @@ describe('DirectoryProcessor.orderControllingFieldsBeforeDependents', () => {
   let directoryProcessor: DirectoryProcessor;
 
   beforeEach(() => {
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new FakerJSRecipeFakerService());
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new FakerJSRecipeFakerService());
     directoryProcessor = new DirectoryProcessor();
   });
 

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as xml2js from 'xml2js';
 
-import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, SalesforceCli } from '../SalesforceCli/SalesforceCli';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
@@ -929,7 +929,7 @@ export class RecipeCockpitMetadataDeploy {
                 || !zipRelativePath.endsWith(METADATA_DEPLOY_ZIP_SUFFIX) ) {
             throw new Error('The metadata zip path is not a plain path inside the workspace, so nothing was deployed.');
         }
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+        SalesforceCli.assertValidTargetOrgIdentifier(orgUsername);
 
         return [
             'project', 'deploy', 'start',
@@ -945,7 +945,7 @@ export class RecipeCockpitMetadataDeploy {
     static buildMetadataDeployArguments(manifestRelativePath: string, orgUsername: string): string[] {
 
         this.assertPlainManifestPath(manifestRelativePath);
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+        SalesforceCli.assertValidTargetOrgIdentifier(orgUsername);
 
         return [
             'project', 'deploy', 'start',
@@ -958,7 +958,7 @@ export class RecipeCockpitMetadataDeploy {
 
     static buildCliRequiredMessage(): string {
 
-        return `The Salesforce CLI is required to deploy metadata, and "${PicklistDependencyCheckService.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
+        return `The Salesforce CLI is required to deploy metadata, and "${SalesforceCli.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
 
     }
 

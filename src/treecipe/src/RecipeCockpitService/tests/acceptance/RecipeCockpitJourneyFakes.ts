@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { CONNECTED_ORG_USERNAMES, FAILED_PING_MESSAGES_BY_USERNAME } from '../../../SalesforceOrgService/tests/OrgConnectionPings';
-import type { ISalesforceCliInvocationResult } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, SalesforceCli } from '../../../SalesforceCli/SalesforceCli';
 
 /*
     The two modules a journey fakes (#577): vscode, and @salesforce/core. Every function here is a plain
@@ -464,7 +464,7 @@ export class FakeOrgConnections {
 }
 
 /*
-    The Salesforce CLI (#579), faked where every sf process starts: PicklistDependencyCheckService.runSalesforceCli.
+    The Salesforce CLI (#579), faked where every sf process starts: SalesforceCli.runSalesforceCli.
     Each call is recorded as the argv the cockpit built and the folder it runs in, and answered by
     the journey's answer for that argv. One with no answer comes back as a CLI that could not be
     started, its message naming the argv, so a journey that reaches it reads which answer is missing.

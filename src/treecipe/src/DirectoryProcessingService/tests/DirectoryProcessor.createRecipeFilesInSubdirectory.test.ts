@@ -1,4 +1,5 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from "../DirectoryProcessor";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { RelationshipService } from "../../RelationshipService/RelationshipService";
@@ -52,7 +53,7 @@ describe('DirectoryProcessor.createRecipeFilesInSubdirectory', () => {
         workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-generate-'));
         fs.mkdirSync(path.join(workspaceRoot, 'treecipe'));
 
-        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
+        jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
         jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue(isoDateTimestamp);
         jest.spyOn(SOQLTemplateService, 'generateSOQLTemplateMarkdownForTree').mockReturnValue('# soql');
         jest.spyOn(MermaidService, 'generateMermaidMarkdownForTree').mockReturnValue('# erd');

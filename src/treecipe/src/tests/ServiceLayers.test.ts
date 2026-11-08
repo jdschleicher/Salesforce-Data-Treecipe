@@ -26,6 +26,7 @@ export const SERVICE_LAYERS: Readonly<Record<string, number>> = {
     // 1 -- PLATFORM
     ConfigurationService: 1,
     ErrorHandlingService: 1,
+    SalesforceCli: 1,
     SalesforceOrgService: 1,
     VSCodeWorkspace: 1,
 
@@ -68,25 +69,10 @@ export const SERVICE_LAYERS: Readonly<Record<string, number>> = {
     #570 that removes it. The list only shrinks: a new violation fails, and so does an entry that no
     longer happens or is no longer a violation. Paths are named from src/treecipe/src.
 
-    The last two are same-layer imports that close a cycle no upward import explains; one edge per
+    Both remaining entries are same-layer imports that close a cycle no upward import explains; one edge per
     cycle is listed, and #575 removes the cycle.
 */
 export const KNOWN_LAYER_VIOLATIONS: readonly string[] = [
-
-    // #574: THE PLATFORM LAYER, AND THE sf CLI GATE OUT OF THE PICKLIST SERVICE
-    'CollectionsApiService/CollectionsApiService.ts → PicklistDependencyCheckService/PicklistDependencyCheckService.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → FakerRecipeProcessor/IFakerRecipeProcessor.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → RecipeFakerService.ts/IRecipeFakerService.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService.ts', // #574
-    'ConfigurationService/ConfigurationService.ts → RecordTypeSelectionService/SavedRecordTypeSelection.ts', // #574
-    'ObjectInfoWrapper/ObjectInfo.ts → RelationshipService/RelationshipService.ts', // #574
-    'ObjectInfoWrapper/ObjectInfoWrapper.ts → RelationshipService/RelationshipService.ts', // #574
-    'SalesforceOrgService/SalesforceOrgService.ts → PicklistDependencyCheckService/PicklistDependencyCheckService.ts', // #574
-    'ScratchOrgService/ScratchOrgService.ts → PicklistDependencyCheckService/PicklistDependencyCheckService.ts', // #574
-    'VSCodeWorkspace/VSCodeWorkspaceService.ts → PicklistDependencyCheckService/PicklistDependencyCheckService.ts', // #574
 
     // #575: THE METADATA MODEL CYCLE AND THE CONFIGURATION / WORKSPACE PAIR
     'ObjectInfoWrapper/ObjectInfo.ts → RecordTypeService/RecordTypesWrapper.ts', // #575
@@ -344,8 +330,8 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
     });
 
-    // 27 BEFORE #572 MOVED THE SEVEN DEPENDENCY-FREE FILES INTO LEAF FOLDERS; EACH LATER SLICE OF #570 LOWERS IT
-    const MOST_FOLDERS_IN_ONE_CYCLE = 15;
+    // 27 BEFORE #572, 15 BEFORE #574; WHAT REMAINS IS #575'S: ObjectInfoWrapper, RecordTypeService, XMLProcessingService
+    const MOST_FOLDERS_IN_ONE_CYCLE = 3;
 
     test(`no cycle in the whole import graph, listed violations included, holds more than ${MOST_FOLDERS_IN_ONE_CYCLE} folders`, () => {
 

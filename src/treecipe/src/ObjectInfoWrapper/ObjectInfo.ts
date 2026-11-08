@@ -1,6 +1,6 @@
 import { FieldInfo } from "./FieldInfo";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
-import { RelationshipDetail } from "../RelationshipService/RelationshipService";
+import { RelationshipDetail } from "./RelationshipTypes";
 import { IValidationRuleNotApplied } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class ObjectInfo {

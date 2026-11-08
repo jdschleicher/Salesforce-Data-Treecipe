@@ -1,5 +1,5 @@
 import { AuthInfo, Connection, Org, OrgAuthorization, StateAggregator } from '@salesforce/core';
-import { IAuthenticatedOrgDetail, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail, SalesforceCli } from '../SalesforceCli/SalesforceCli';
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
@@ -869,7 +869,7 @@ export class SalesforceOrgService {
     static async readScratchOrgDetail(username: string): Promise<IScratchOrgDetail | undefined> {
 
         // ALSO REFUSES EVERY "!", SO AuthInfo NEVER TAKES THE USERNAME FOR AN ACCESS TOKEN ("00D…!…")
-        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
+        if ( !SalesforceCli.isValidTargetOrgIdentifier(username) ) {
             return undefined;
         }
 
@@ -1096,7 +1096,7 @@ export class SalesforceOrgService {
 
         if ( authorization.error !== undefined
                 || typeof username !== 'string'
-                || !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
+                || !SalesforceCli.isValidTargetOrgIdentifier(username) ) {
             return 'notConnected';
         }
 
@@ -1169,7 +1169,7 @@ export class SalesforceOrgService {
             const hiddenReason = this.findHiddenOrgReason(authorization, connectedOrgStatusListing, isProductionExcluded);
 
             if ( hiddenReason ) {
-                const label = PicklistDependencyCheckService.readFirstAuthorizationAlias(authorization) || username;
+                const label = SalesforceCli.readFirstAuthorizationAlias(authorization) || username;
                 hiddenOrgs.push({ username: username, label: label, reason: hiddenReason });
                 return;
             }
@@ -1179,7 +1179,7 @@ export class SalesforceOrgService {
         });
 
         return {
-            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(usableAuthorizations),
+            orgDetails: SalesforceCli.buildAuthenticatedOrgDetails(usableAuthorizations),
             hiddenOrgs: hiddenOrgs,
             hiddenOrgReasonCounts: this.countHiddenOrgReasons(hiddenOrgs)
         };
@@ -1286,7 +1286,7 @@ export class SalesforceOrgService {
         const authorizations = await this.readFreshAuthorizations();
         const defaultAuthorization = this.findDefaultTargetOrgAuthorization(authorizations, workspaceRoot, homeDirectoryPath, environmentVariables);
         const authorization = identifier === undefined ? defaultAuthorization : this.findAuthorizationByIdentifier(authorizations, identifier);
-        const orgDetail = authorization ? PicklistDependencyCheckService.buildAuthenticatedOrgDetails([authorization])[0] : undefined;
+        const orgDetail = authorization ? SalesforceCli.buildAuthenticatedOrgDetails([authorization])[0] : undefined;
 
         if ( !orgDetail ) {
             return undefined;
@@ -1452,7 +1452,7 @@ export class SalesforceOrgService {
             const environmentValue = environmentVariables[environmentVariableName];
 
             if ( typeof environmentValue === 'string' && environmentValue.trim() !== '' ) {
-                return PicklistDependencyCheckService.isValidTargetOrgIdentifier(environmentValue.trim())
+                return SalesforceCli.isValidTargetOrgIdentifier(environmentValue.trim())
                     ? { identifier: environmentValue.trim(), configSource: 'environment' }
                     : undefined;
             }
@@ -1474,7 +1474,7 @@ export class SalesforceOrgService {
                 continue;
             }
 
-            return PicklistDependencyCheckService.isValidTargetOrgIdentifier(configuredValue)
+            return SalesforceCli.isValidTargetOrgIdentifier(configuredValue)
                 ? { identifier: configuredValue, configSource: configCandidate.configSource }
                 : undefined;
 
@@ -1519,7 +1519,7 @@ export class SalesforceOrgService {
         // THE ARGV NAMES THE USERNAME, SO A DEV HUB WHOSE ALIAS PASSES BUT WHOSE USERNAME DOES NOT IS NEVER OFFERED
         const connectedOrgListing = {
             ...connectedListing,
-            orgDetails: connectedListing.orgDetails.filter(orgDetail => PicklistDependencyCheckService.isValidTargetOrgIdentifier(orgDetail.username))
+            orgDetails: connectedListing.orgDetails.filter(orgDetail => SalesforceCli.isValidTargetOrgIdentifier(orgDetail.username))
         };
 
         const defaultDevHub = this.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, environmentVariables);

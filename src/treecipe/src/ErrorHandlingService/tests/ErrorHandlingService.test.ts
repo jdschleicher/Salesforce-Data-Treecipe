@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
-import { MissingTreecipeConfigurationError } from '../../ConfigurationService/ConfigurationService';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { MissingTreecipeConfigurationError } from '../MissingTreecipeConfigurationError';
 import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -317,6 +318,12 @@ describe('ErrorHandlingService', () => {
             expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder found');
             expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+        });
+
+        // ErrorHandlingService NAMES THE FOLDER ITSELF SO IT IMPORTS NO CONFIGURATION SERVICE (#574); THE TWO MUST NOT DRIFT
+        test('captures into the same GeneratedRecipes folder ConfigurationService names', () => {
+
+            expect(ErrorHandlingService.generatedRecipesFolderName).toBe(ConfigurationService.getGeneratedRecipesDefaultFolderName());
         });
 
         test('resolveErrorCaptureFolderPath returns undefined rather than a path containing "undefined"', () => {

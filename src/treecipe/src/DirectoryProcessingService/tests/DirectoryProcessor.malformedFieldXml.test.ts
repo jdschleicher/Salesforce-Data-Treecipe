@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 
@@ -40,7 +41,7 @@ describe('DirectoryProcessor -- a malformed field file reaches the user as one c
 
         workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-malformed-field-'));
         (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [{ uri: { fsPath: workspaceRoot } }];
-        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new FakerJSRecipeFakerService());
+        jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new FakerJSRecipeFakerService());
         jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
 
     });

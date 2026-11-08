@@ -47,7 +47,7 @@ import {
     ScratchOrgService,
     ScratchOrgSetupPhase
 } from '../ScratchOrgService';
-import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { IDevHubOrgDetail, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
 
 const MOCKS_PATH = path.join(__dirname, 'mocks');
@@ -794,7 +794,7 @@ describe('ScratchOrgService (#200)', () => {
             answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }]);
             const uncWorkspaceRoot = '\\\\wsl.localhost\\Ubuntu\\home\\me\\project';
             const scratchOrgPlan = { ...await resolvePlan(), workspaceRoot: uncWorkspaceRoot };
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
 
             const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, {
                 onPhase: () => undefined,

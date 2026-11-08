@@ -4,10 +4,11 @@ import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 
 
 export class XmlFileProcessor {
+
+  static readonly processXmlFieldContentCommandName = 'XMLFileProcessor.processXmlFieldContent';
 
   static async processXmlFieldContent(xmlContent: string, xmlFieldFileName: string): Promise<XMLFieldDetail> {
 
@@ -117,7 +118,6 @@ export class XmlFileProcessor {
 
     } catch (error) {
 
-      const executedCommand = "XMLFileProcessor.processXmlFieldContent";
       const customErrorMessage = `Error processing XML file: ${xmlFieldFileName} - ${error.message}`;
       
       const customXMLFieldError = new Error();
@@ -128,8 +128,7 @@ export class XmlFileProcessor {
 
       customXMLFieldError.cause = xmlFieldDetail;
 
-      ErrorHandlingService.createGenerateRecipeErrorCaptureFile(customXMLFieldError, executedCommand);
-      
+      // THE CALLER WRITES THE CAPTURE FILE (ErrorHandlingService.createGenerateRecipeErrorCaptureFile), SO THIS LAYER IMPORTS NO NOTIFICATION CODE (#574)
       throw customXMLFieldError;
       
     }

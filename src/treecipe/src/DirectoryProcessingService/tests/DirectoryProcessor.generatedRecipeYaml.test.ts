@@ -60,8 +60,10 @@ const sortDirectoryEntries = (directoryEntries: DirectoryEntry[]) => [...directo
 
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../DirectoryProcessor';
-import { RelationshipService, RecipeFileOutput } from '../../RelationshipService/RelationshipService';
+import { RelationshipService } from '../../RelationshipService/RelationshipService';
+import { RecipeFileOutput } from '../../ObjectInfoWrapper/RelationshipTypes';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -90,7 +92,7 @@ const PYYAML_CHECK = [
 
 async function processMockMetadata(createFakerService: () => IRecipeFakerService, recordTypeSelection?: RecordTypeSelection): Promise<ObjectInfoWrapper> {
 
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 
@@ -580,7 +582,7 @@ describe.each([
 
         test('an object whose fields are walked twice gets them appended to every block alike, as FullRecipe always has', async () => {
 
-            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+            jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
             jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
             jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
             const directoryProcessor = new DirectoryProcessor();
@@ -700,7 +702,7 @@ describe.each([
     let recipeFiles: RecipeFileOutput[];
 
     beforeAll(async () => {
-        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+        jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
         jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
         jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
         recipeFiles = (await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(VALIDATION_RULE_OBJECTS_PATH))).RecipeFiles;

@@ -49,9 +49,11 @@ jest.mock('vscode', () => {
 
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../../GlobalValueSetSingleton/GlobalValueSetSingleton';
-import { RelationshipService, RecipeFileOutput } from '../../RelationshipService/RelationshipService';
+import { RelationshipService } from '../../RelationshipService/RelationshipService';
+import { RecipeFileOutput } from '../../ObjectInfoWrapper/RelationshipTypes';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
@@ -78,7 +80,7 @@ type LoadedRecipeEntry = { object?: string, fields?: Record<string, unknown> };
 
 async function processHostileMetadata(createFakerService: () => IRecipeFakerService, recordTypeSelection?: RecordTypeSelection): Promise<ObjectInfoWrapper> {
 
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 

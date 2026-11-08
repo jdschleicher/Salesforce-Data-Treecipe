@@ -5,7 +5,7 @@ import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgServi
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
-import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { IAuthenticatedOrgDetail } from "../SalesforceCli/SalesforceCli";
 import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../InsertFailureTriage/RecipeCockpitInsertFailureTriage";
 import { DatasetInsertAttemptService } from "../DatasetInsertAttemptService/DatasetInsertAttemptService";
 

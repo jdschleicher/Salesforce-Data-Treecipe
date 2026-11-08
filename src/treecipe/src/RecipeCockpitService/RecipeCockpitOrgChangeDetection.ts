@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as xml2js from 'xml2js';
 
-import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, SalesforceCli } from '../SalesforceCli/SalesforceCli';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
@@ -314,7 +314,7 @@ export class RecipeCockpitOrgChangeDetection {
     static buildRetrieveArguments(manifestRelativePath: string, outputDirectoryRelativePath: string, orgUsername: string): string[] {
 
         RecipeCockpitMetadataDeploy.assertPlainManifestPath(manifestRelativePath, 'nothing was retrieved');
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+        SalesforceCli.assertValidTargetOrgIdentifier(orgUsername);
 
         if ( outputDirectoryRelativePath.startsWith('-') || !outputDirectoryRelativePath.startsWith('treecipe/') ) {
             throw new Error('The staging folder is not under treecipe/, so nothing was retrieved.');

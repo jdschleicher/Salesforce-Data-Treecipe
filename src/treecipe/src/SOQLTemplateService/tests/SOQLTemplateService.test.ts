@@ -2,7 +2,7 @@ import { SOQLTemplateService } from '../SOQLTemplateService';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ObjectInfo } from '../../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
-import { RelationshipDetail } from '../../RelationshipService/RelationshipService';
+import { RelationshipDetail } from '../../ObjectInfoWrapper/RelationshipTypes';
 
 import * as matchers from 'jest-extended';
 expect.extend(matchers);

@@ -62,7 +62,7 @@ import { IOrgStagedFieldDetail, RecipeCockpitOrgChangeDetection } from '../Recip
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
-import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
@@ -403,7 +403,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision').mockImplementation(async () => false);
 
             // EVERY RETRIEVE STAGES THE CHILD OBJECT'S FILES UNDER --output-dir
-            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
                 cliArgumentLists.push(cliArguments);
                 stageChildObject(path.join(workspaceRoot, cliArguments[cliArguments.indexOf('--output-dir') + 1]));
                 return { stdout: JSON.stringify({ status: 0, result: { success: true, files: [] } }), stderr: '', exitCode: 0 };
@@ -717,7 +717,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 await prepareDirectly();
                 expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: its retrieve was cancelled. Nothing in the project changed.`);
 
-                const cliSpy = PicklistDependencyCheckService.runSalesforceCli as unknown as jest.SpyInstance;
+                const cliSpy = SalesforceCli.runSalesforceCli as unknown as jest.SpyInstance;
                 cliSpy.mockImplementationOnce(async () => ({ stdout: JSON.stringify({ status: 1, message: 'INVALID_CROSS_REFERENCE_KEY' }), stderr: '', exitCode: 1 }));
                 await prepareDirectly();
                 expect(lastWarning()).toMatch(new RegExp(`^${CHILD_OBJECT} was not added: its metadata could not be retrieved from qa`));
@@ -935,7 +935,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under the tree's RunArtifacts folder in this workspace.`);
                 stagingPathSpy.mockRestore();
 
-                const cliSpy = PicklistDependencyCheckService.runSalesforceCli as unknown as jest.SpyInstance;
+                const cliSpy = SalesforceCli.runSalesforceCli as unknown as jest.SpyInstance;
                 cliSpy.mockImplementationOnce(async () => ({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }));
                 await prepareDirectly();
                 expect(lastWarning()).toMatch(new RegExp(`^${CHILD_OBJECT} was not added: its metadata could not be retrieved`));

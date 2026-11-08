@@ -1,4 +1,5 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
+import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { RecipeService } from '../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
@@ -6,6 +7,7 @@ import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 
 import * as fs from 'fs';
@@ -65,7 +67,7 @@ export class DirectoryProcessor {
   // THE RECORD TYPES THE USER CHOSE FOR THIS RUN (#193); UNDEFINED WRITES EVERY OBJECT'S DEFAULT, AS BEFORE
   private recordTypeSelection: RecordTypeSelection | undefined;
   constructor() {
-    const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
+    const selectedDataFakerService = RecipeFakerServiceFactory.getFakerImplementationByExtensionConfigSelection();
     this.isFakerJSServiceSelected = selectedDataFakerService instanceof FakerJSRecipeFakerService;
     this.recipeService = new RecipeService(selectedDataFakerService);
     this.relationshipService = new RelationshipService();
@@ -562,7 +564,13 @@ export class DirectoryProcessor {
                                     ruleConstraintsByField?: ReadonlyMap<string, IValidationRuleFieldConstraint[]>
                                   ):Promise<FieldInfo> {
 
-    let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
+    let fieldXMLDetail: XMLFieldDetail;
+    try {
+      fieldXMLDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
+    } catch (fieldXmlError) {
+      ErrorHandlingService.createGenerateRecipeErrorCaptureFile(fieldXmlError, XmlFileProcessor.processXmlFieldContentCommandName);
+      throw fieldXmlError;
+    }
     this.applyStandardFieldParentReference(fieldXMLDetail, associatedObjectName);
     const unconstrainedRecipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);
     const fieldRuleConstraints = typeof fieldXMLDetail.apiName === 'string'
