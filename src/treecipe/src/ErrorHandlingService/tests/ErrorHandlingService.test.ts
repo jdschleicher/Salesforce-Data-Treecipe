@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
+import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 jest.mock('vscode', () => ({
     
@@ -324,6 +325,28 @@ describe('ErrorHandlingService', () => {
         test('captures into the same GeneratedRecipes folder ConfigurationService names', () => {
 
             expect(ErrorHandlingService.generatedRecipesFolderName).toBe(ConfigurationService.getGeneratedRecipesDefaultFolderName());
+        });
+
+        // THE CAPTURE FILE NAME USES THE SAME STAMP AS EVERY OTHER FILE TREECIPE WRITES
+        test('stamps capture files exactly as VSCodeWorkspaceService.getNowIsoDateTimestamp does', () => {
+
+            jest.useFakeTimers({ now: new Date('2026-10-13T10:05:09.123Z') });
+            try {
+                expect(ErrorHandlingService.getCaptureFileTimestamp()).toBe('2026-10-13T10-05-09');
+                expect(ErrorHandlingService.getCaptureFileTimestamp()).toBe(VSCodeWorkspaceService.getNowIsoDateTimestamp());
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        // VS CODE CAN REPORT AN EMPTY LIST RATHER THAN undefined, AND THAT TOO MEANS NO FOLDER IS OPEN
+        test('given an empty workspace folder list, resolveErrorCaptureFolderPath answers undefined and says no folder is open', () => {
+
+            (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [];
+
+            expect(ErrorHandlingService.resolveErrorCaptureFolderPath('RecipeGenerationErrors')).toBeUndefined();
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder found');
         });
 
         test('resolveErrorCaptureFolderPath returns undefined rather than a path containing "undefined"', () => {

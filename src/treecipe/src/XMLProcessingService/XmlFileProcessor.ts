@@ -10,6 +10,12 @@ export class XmlFileProcessor {
 
   static readonly processXmlFieldContentCommandName = 'XMLFileProcessor.processXmlFieldContent';
 
+  /**
+   * Throws an XMLFieldProcessorError on a field file it cannot parse, and writes no capture file:
+   * this layer imports no notification code. Every caller catches it, calls
+   * ErrorHandlingService.createGenerateRecipeErrorCaptureFile(error, processXmlFieldContentCommandName)
+   * and rethrows, so the user gets the capture file whichever command parsed the field.
+   */
   static async processXmlFieldContent(xmlContent: string, xmlFieldFileName: string): Promise<XMLFieldDetail> {
 
     let xmlFieldDetail = new XMLFieldDetail();
@@ -128,7 +134,6 @@ export class XmlFileProcessor {
 
       customXMLFieldError.cause = xmlFieldDetail;
 
-      // THE CALLER WRITES THE CAPTURE FILE (ErrorHandlingService.createGenerateRecipeErrorCaptureFile), SO THIS LAYER IMPORTS NO NOTIFICATION CODE (#574)
       throw customXMLFieldError;
       
     }
