@@ -322,6 +322,11 @@ describe('ErrorHandlingService', () => {
         });
 
         // ErrorHandlingService NAMES THE FOLDER ITSELF SO IT IMPORTS NO CONFIGURATION SERVICE (#574); THE TWO MUST NOT DRIFT
+        test('captures into the same GeneratedRecipes folder ConfigurationService names', () => {
+
+            expect(ErrorHandlingService.generatedRecipesFolderName).toBe(ConfigurationService.getGeneratedRecipesDefaultFolderName());
+        });
+
         // THE CAPTURE FILE NAME USES THE SAME STAMP AS EVERY OTHER FILE TREECIPE WRITES
         test('stamps capture files exactly as VSCodeWorkspaceService.getNowIsoDateTimestamp does', () => {
 
@@ -334,12 +339,7 @@ describe('ErrorHandlingService', () => {
             }
         });
 
-        test('captures into the same GeneratedRecipes folder ConfigurationService names', () => {
-
-            expect(ErrorHandlingService.generatedRecipesFolderName).toBe(ConfigurationService.getGeneratedRecipesDefaultFolderName());
-        });
-
-        // VS CODE CAN REPORT AN EMPTY LIST RATHER THAN undefined; getWorkspaceRoot THREW A TypeError THERE, THIS SAYS NO FOLDER IS OPEN
+        // VS CODE CAN REPORT AN EMPTY LIST RATHER THAN undefined, AND THAT TOO MEANS NO FOLDER IS OPEN
         test('given an empty workspace folder list, resolveErrorCaptureFolderPath answers undefined and says no folder is open', () => {
 
             (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [];

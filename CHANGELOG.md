@@ -4,7 +4,7 @@
 
 Nothing a user sees changes. This patch corrects one claim in 3.194.2 and adds tests for it.
 
-- **One change 3.194.2 did not name:** when VS Code reports an empty workspace folder list, an error capture now says "No workspace folder found" instead of failing with a TypeError. A new `ErrorHandlingService` test covers it.
+- **One change 3.194.2 made but did not name:** since 3.194.2, when VS Code reports an empty workspace folder list, an error capture says "No workspace folder found" instead of failing with a TypeError. This patch adds the `ErrorHandlingService` test for it; the code is unchanged.
 - **`ErrorHandlingService`'s own copies are pinned:** a new test, using fake timers, holds the capture file timestamp equal to `VSCodeWorkspaceService.getNowIsoDateTimestamp`, as the folder name was already held equal to `ConfigurationService`'s.
 - **`XmlFileProcessor.processXmlFieldContent`** carries, on its declaration, the note that every caller writes the capture file and rethrows, so a new caller sees it.
 - `SalesforceCli.ts`'s header says why the file sits in the platform layer, without the move's history, and a stray blank line is gone from `ConfigurationService.ts`.
