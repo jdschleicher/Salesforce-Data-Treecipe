@@ -3,7 +3,7 @@ import * as path from 'path';
 
 import { Lifecycle, Org, ScratchOrgCache, ScratchOrgCreateOptions, ScratchOrgCreateResult, ScratchOrgLifecycleEvent, scratchOrgCreate, scratchOrgLifecycleEventName } from '@salesforce/core';
 
-import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, SalesforceCli } from '../SalesforceCli/SalesforceCli';
 import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
@@ -125,7 +125,7 @@ export interface IScratchOrgSetupHooks {
     (#358): what reaches the new org is the reader's to deploy. It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
     service owns the argv, the reading of the CLI's --json answer and the result files.
 
-    Every process goes through PicklistDependencyCheckService.runSalesforceCli -- execFile with an
+    Every process goes through SalesforceCli.runSalesforceCli -- execFile with an
     argv, no shell except the quoted one Windows' sf.cmd shim needs -- or, when the reader chooses
     it (#507), no process at all: @salesforce/core's scratchOrgCreate runs in the extension host. Nothing here ever runs
     "sf org delete": an org this creates is the reader's to keep or delete.
@@ -163,7 +163,7 @@ export class ScratchOrgService {
             return 'An alias cannot contain "@", which would read as a username.';
         }
 
-        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(alias)
+        if ( !SalesforceCli.isValidTargetOrgIdentifier(alias)
                 || !this.isUsableOrgOperationFolderName(alias)
                 || !/^[A-Za-z0-9]/.test(alias)
                 || alias.endsWith('.') ) {
@@ -294,8 +294,8 @@ export class ScratchOrgService {
 
     static buildScratchOrgCreateArguments(scratchOrgPlan: IScratchOrgPlan): string[] {
 
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.username);
+        SalesforceCli.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
+        SalesforceCli.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.username);
 
         return [
             'org', 'create', 'scratch',
@@ -316,7 +316,7 @@ export class ScratchOrgService {
     */
     static buildSourceDeployCommandText(username: string): string {
 
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
+        SalesforceCli.assertValidTargetOrgIdentifier(username);
 
         return `sf project deploy start --target-org ${username}`;
 
@@ -324,7 +324,7 @@ export class ScratchOrgService {
 
     static buildCliRequiredMessage(): string {
 
-        return `The Salesforce CLI ("${PicklistDependencyCheckService.getSalesforceCliExecutable()}") is required to create a scratch org, and it is not installed or not on PATH. Install it and try again.`;
+        return `The Salesforce CLI ("${SalesforceCli.getSalesforceCliExecutable()}") is required to create a scratch org, and it is not installed or not on PATH. Install it and try again.`;
 
     }
 
@@ -383,7 +383,7 @@ export class ScratchOrgService {
         const result = payload?.result;
         const username = result !== null && typeof result === 'object' ? ( result as Record<string, unknown> ).username : undefined;
 
-        if ( payload?.status === 0 && typeof username === 'string' && PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
+        if ( payload?.status === 0 && typeof username === 'string' && SalesforceCli.isValidTargetOrgIdentifier(username) ) {
             return { isCreated: true, username: username };
         }
 
@@ -578,7 +578,7 @@ export class ScratchOrgService {
 
         setupHooks.onPhase('creating');
 
-        const createInvocation = await PicklistDependencyCheckService.runSalesforceCli(
+        const createInvocation = await SalesforceCli.runSalesforceCli(
             this.buildScratchOrgCreateArguments(scratchOrgPlan),
             setupHooks.registerCancellation,
             undefined,
@@ -812,8 +812,8 @@ export class ScratchOrgService {
 
         const now = setupHooks.now ?? (() => new Date());
 
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.username);
+        SalesforceCli.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
+        SalesforceCli.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.username);
 
         setupHooks.onPhase('creating');
 
@@ -849,7 +849,7 @@ export class ScratchOrgService {
 
             const username = createResult?.username ?? createdUsername;
 
-            if ( typeof username !== 'string' || !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
+            if ( typeof username !== 'string' || !SalesforceCli.isValidTargetOrgIdentifier(username) ) {
                 return { kind: 'createFailed', failureMessage: '@salesforce/core reported the scratch org created but named no usable username for it.' };
             }
 
@@ -873,7 +873,7 @@ export class ScratchOrgService {
         } catch (createError: unknown) {
 
             const failureMessage = this.redactSecretText(this.readErrorDetail(createError));
-            const keptUsername = typeof createdUsername === 'string' && PicklistDependencyCheckService.isValidTargetOrgIdentifier(createdUsername)
+            const keptUsername = typeof createdUsername === 'string' && SalesforceCli.isValidTargetOrgIdentifier(createdUsername)
                 ? createdUsername
                 : undefined;
             const failurePayload = {

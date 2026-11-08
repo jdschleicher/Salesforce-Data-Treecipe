@@ -60,7 +60,7 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { answerOrgConnectionPings } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
@@ -971,8 +971,8 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             await openCockpitWithQaSelected();
             process.env.PATH = path.join(temporaryRoot, 'nowhere');
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
-            jest.spyOn(PicklistDependencyCheckService, 'isUncPath').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isUncPath').mockReturnValue(true);
 
             await assignPermissionSets();
 

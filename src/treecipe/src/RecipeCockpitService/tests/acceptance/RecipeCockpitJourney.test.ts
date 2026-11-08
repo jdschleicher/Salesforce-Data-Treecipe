@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { RecipeCockpitService, RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
-import { PicklistDependencyCheckService } from '../../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../../SalesforceCli/SalesforceCli';
 import { JOURNEY_ORG_PICKER_NAME, RecipeCockpitJourney } from './RecipeCockpitJourney';
 import { copyAsVsCodeDelivers } from '../RecipeCockpitPanelHarness';
 
@@ -304,8 +304,8 @@ describe('RecipeCockpitJourney (#577)', () => {
         journey.cli.answer = argv => argv[0] === '--version' ? { stdout: '@salesforce/cli/2.0.0', exitCode: 0 } : undefined;
 
         const [versionAnswer, unscriptedAnswer] = await journey.step('run the CLI twice', () => Promise.all([
-            PicklistDependencyCheckService.runSalesforceCli(['--version']),
-            PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, undefined, { workingDirectoryPath: journey.workspaceRoot })
+            SalesforceCli.runSalesforceCli(['--version']),
+            SalesforceCli.runSalesforceCli(['org', 'list', '--json'], undefined, undefined, { workingDirectoryPath: journey.workspaceRoot })
         ]));
 
         expect(versionAnswer).toEqual({ stdout: '@salesforce/cli/2.0.0', stderr: '', exitCode: 0 });

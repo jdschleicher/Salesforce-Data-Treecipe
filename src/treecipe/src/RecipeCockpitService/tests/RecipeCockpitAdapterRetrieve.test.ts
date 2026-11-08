@@ -64,7 +64,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
-import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
@@ -403,7 +403,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
             jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation((warningText: string) => { vscode.window.showWarningMessage(warningText); });
-            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
                 cliCalls.push(cliArguments);
                 return cliAnswer(cliArguments);
             });

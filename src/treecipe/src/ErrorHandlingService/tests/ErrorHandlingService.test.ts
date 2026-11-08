@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
-import { MissingTreecipeConfigurationError } from '../../ConfigurationService/ConfigurationService';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { MissingTreecipeConfigurationError } from '../MissingTreecipeConfigurationError';
 import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 
 jest.mock('vscode', () => ({
@@ -14,18 +14,30 @@ jest.mock('vscode', () => ({
         showErrorMessage: jest.fn().mockResolvedValue((message, ...buttons) => {
             return Promise.resolve(buttons);
         }),
+        showWarningMessage: jest.fn().mockResolvedValue(undefined),
+        showTextDocument: jest.fn().mockResolvedValue({}),
+    },
+    workspace: {
+        workspaceFolders: undefined,
+        openTextDocument: jest.fn((uri) => Promise.resolve({ uri })),
     },
     env: {
         openExternal: jest.fn(),
     },
     Uri: {
         parse: jest.fn((url) => ({ url })),
+        file: jest.fn((fsPath) => ({ fsPath })),
     },
     commands: {
         executeCommand: jest.fn(),
     }
     
 }), { virtual: true });
+
+// THE WORKSPACE A USER HAS OPEN, AS VS CODE REPORTS IT; undefined IS NO FOLDER OPEN
+const openWorkspaceFolder = (workspaceRoot: string | undefined) => {
+    (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = workspaceRoot ? [{ uri: { fsPath: workspaceRoot } }] : undefined;
+};
 
 describe('ErrorHandlingService', () => {
 
@@ -284,61 +296,68 @@ describe('ErrorHandlingService', () => {
             committed to this repository by accident before it was noticed.
         */
 
-        const captureWriters: [string, (error: Error, command: string) => void][] = [
-            ['createGenerateRecipeErrorCaptureFile', ErrorHandlingService.createGenerateRecipeErrorCaptureFile.bind(ErrorHandlingService)],
-            ['createGetRecipeFakerErrorCaptureFile', ErrorHandlingService.createGetRecipeFakerErrorCaptureFile.bind(ErrorHandlingService)],
-            ['createFakerExpressionEvaluationErrorCaptureFile', ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile.bind(ErrorHandlingService)]
+        const captureWriters: [string, (error: Error, command: string) => void, string][] = [
+            ['createGenerateRecipeErrorCaptureFile', ErrorHandlingService.createGenerateRecipeErrorCaptureFile.bind(ErrorHandlingService), 'No workspace folder found, so the recipe generation error could not be captured to a file.'],
+            ['createGetRecipeFakerErrorCaptureFile', ErrorHandlingService.createGetRecipeFakerErrorCaptureFile.bind(ErrorHandlingService), 'No workspace folder found, so the faker value error could not be captured to a file.'],
+            ['createFakerExpressionEvaluationErrorCaptureFile', ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile.bind(ErrorHandlingService), 'No workspace folder found, so the faker-js expression error could not be captured to a file.']
         ];
 
-        test.each(captureWriters)('%s creates no "undefined" directory and writes no file', (writerName, captureWriter) => {
+        beforeEach(() => openWorkspaceFolder(undefined));
 
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+        test.each(captureWriters)('%s creates no "undefined" directory, writes no file and says why', (_writerName, captureWriter, expectedWarning) => {
+
             const makeDirectorySpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(jest.fn());
             const writeFileSpy = jest.spyOn(fs, 'writeFile').mockImplementation(jest.fn() as never);
-            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(jest.fn());
 
             captureWriter(new Error('boom'), 'treecipe.generateTreecipe');
 
             expect(makeDirectorySpy).not.toHaveBeenCalled();
             expect(writeFileSpy).not.toHaveBeenCalled();
-            expect(warningSpy).toHaveBeenCalledWith(expect.stringContaining('No workspace folder found'));
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expectedWarning);
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('No workspace folder found');
+            expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+        });
+
+        // ErrorHandlingService NAMES THE FOLDER ITSELF SO IT IMPORTS NO CONFIGURATION SERVICE (#574); THE TWO MUST NOT DRIFT
+        test('captures into the same GeneratedRecipes folder ConfigurationService names', () => {
+
+            expect(ErrorHandlingService.generatedRecipesFolderName).toBe(ConfigurationService.getGeneratedRecipesDefaultFolderName());
         });
 
         test('resolveErrorCaptureFolderPath returns undefined rather than a path containing "undefined"', () => {
-
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
 
             expect(ErrorHandlingService.resolveErrorCaptureFolderPath('RecipeGenerationErrors')).toBeUndefined();
         });
 
         test('resolveErrorCaptureFolderPath builds the path under the workspace root when one exists', () => {
 
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('/tmp/some-workspace');
+            openWorkspaceFolder('/tmp/some-workspace');
 
             const resolvedPath = ErrorHandlingService.resolveErrorCaptureFolderPath('RecipeGenerationErrors');
 
-            expect(resolvedPath).toContain('/tmp/some-workspace/treecipe/');
-            expect(resolvedPath).toContain('RecipeGenerationErrors');
-            expect(resolvedPath).not.toContain('undefined');
+            expect(resolvedPath).toBe('/tmp/some-workspace/treecipe/GeneratedRecipes/RecipeGenerationErrors');
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
         });
 
     });
 
     describe('error capture files in an open workspace', () => {
 
-        const captureWriters: [string, (error: Error, command: string) => void, string][] = [
-            ['createGenerateRecipeErrorCaptureFile', ErrorHandlingService.createGenerateRecipeErrorCaptureFile.bind(ErrorHandlingService), 'generateRecipeError_'],
-            ['createGetRecipeFakerErrorCaptureFile', ErrorHandlingService.createGetRecipeFakerErrorCaptureFile.bind(ErrorHandlingService), 'getFakerJSValueError'],
-            ['createFakerExpressionEvaluationErrorCaptureFile', ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile.bind(ErrorHandlingService), 'fakerJSExpressionError']
+        const captureWriters: [string, (error: Error, command: string) => void, string, string, string][] = [
+            ['createGenerateRecipeErrorCaptureFile', ErrorHandlingService.createGenerateRecipeErrorCaptureFile.bind(ErrorHandlingService), 'RecipeGenerationErrors', 'generateRecipeError_2026-10-13T10-00-00.json', 'XMLFileProcessor error captured in file: generateRecipeError_2026-10-13T10-00-00.json'],
+            ['createGetRecipeFakerErrorCaptureFile', ErrorHandlingService.createGetRecipeFakerErrorCaptureFile.bind(ErrorHandlingService), 'RecipeGenerationErrors', 'getFakerJSValueError2026-10-13T10-00-00.json', 'XMLFileProcessor error captured in file: getFakerJSValueError2026-10-13T10-00-00.json'],
+            ['createFakerExpressionEvaluationErrorCaptureFile', ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile.bind(ErrorHandlingService), 'FakerJSExpressionErrors', 'fakerJSExpressionError2026-10-13T10-00-00.json', 'faker-js expression error captured in: treecipe.generateTreecipe']
         ];
 
-        test.each(captureWriters)('%s creates its folder, writes the error as JSON, says so and opens the file', async (_writerName, captureWriter, fileNamePrefix) => {
+        afterEach(() => jest.useRealTimers());
+
+        test.each(captureWriters)('%s creates its folder, writes the error as JSON, says so once and opens the file', async (_writerName, captureWriter, errorsFolderName, expectedFileName, expectedWarning) => {
 
             const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-error-capture-'));
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
-            jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-10-13T10-00-00');
-            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(jest.fn());
-            const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            openWorkspaceFolder(workspaceRoot);
+            jest.useFakeTimers({ now: new Date('2026-10-13T10:00:00.000Z'), doNotFake: ['setTimeout', 'setImmediate', 'nextTick', 'queueMicrotask'] });
 
             try {
 
@@ -346,15 +365,40 @@ describe('ErrorHandlingService', () => {
                 captureWriter(capturedError, 'treecipe.generateTreecipe');
                 await new Promise(resolve => setTimeout(resolve, 20));
 
-                const errorsFolderPath = ErrorHandlingService.resolveErrorCaptureFolderPath(
-                    fileNamePrefix === 'fakerJSExpressionError' ? ErrorHandlingService.getFakerJSExpressionErrorsFolderName() : ErrorHandlingService.getRecipeGenerationErrorsFolderName()
-                );
+                const errorsFolderPath = `${workspaceRoot}/treecipe/GeneratedRecipes/${errorsFolderName}`;
                 const writtenFileNames = fs.readdirSync(errorsFolderPath);
 
-                expect(writtenFileNames).toEqual([`${fileNamePrefix}2026-10-13T10-00-00.json`]);
-                expect(JSON.parse(fs.readFileSync(`${errorsFolderPath}/${writtenFileNames[0]}`, 'utf-8'))).toEqual({ detail: 'what went wrong' });
-                expect(warningSpy).toHaveBeenCalledTimes(1);
-                expect(openSpy).toHaveBeenCalledWith(`${errorsFolderPath}/${writtenFileNames[0]}`);
+                expect(writtenFileNames).toEqual([expectedFileName]);
+                expect(JSON.parse(fs.readFileSync(`${errorsFolderPath}/${expectedFileName}`, 'utf-8'))).toEqual({ detail: 'what went wrong' });
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expectedWarning);
+                expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+                expect(vscode.workspace.openTextDocument).toHaveBeenCalledTimes(1);
+                expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith({ fsPath: `${errorsFolderPath}/${expectedFileName}` });
+                expect(vscode.window.showTextDocument).toHaveBeenCalledTimes(1);
+
+            } finally {
+                fs.rmSync(workspaceRoot, { recursive: true, force: true });
+            }
+
+        });
+
+        test('given the capture file cannot be opened, says so with the path escaped', async () => {
+
+            const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-error-capture-[x](command:evil)-'));
+            openWorkspaceFolder(workspaceRoot);
+            (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValueOnce(new Error('cannot open'));
+
+            try {
+
+                ErrorHandlingService.createGenerateRecipeErrorCaptureFile(new Error('boom'), 'treecipe.generateTreecipe');
+                await new Promise(resolve => setTimeout(resolve, 20));
+
+                expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+                const [shownMessage] = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0];
+                expect(shownMessage).toStartWith('Failed to open file: ');
+                expect(shownMessage).toContain('cannot open');
+                expect(shownMessage).not.toContain('[x](command:evil)');
 
             } finally {
                 fs.rmSync(workspaceRoot, { recursive: true, force: true });

@@ -35,8 +35,9 @@ import {
     CockpitConfirmDialog
 } from '../CockpitKit/CockpitConfirmDialog';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
-import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, SalesforceCli } from '../SalesforceCli/SalesforceCli';
 import {
     IPermissionSetAssignmentConnection,
     IPermissionSetAssignmentPlan,
@@ -9010,7 +9011,7 @@ export class RecipeCockpitService {
         });
 
         try {
-            ConfigurationService.saveRecordTypeSelections(recordTypeSelection, recordTypesWhenSelectionSaved);
+            RecordTypeSelectionConfiguration.saveRecordTypeSelections(recordTypeSelection, recordTypesWhenSelectionSaved);
             return true;
         } catch (saveError) {
             const failureReason = saveError instanceof Error ? saveError.message : String(saveError);
@@ -16028,7 +16029,7 @@ export class RecipeCockpitService {
                 panelCancellation.onRequested = cancel;
             }
 
-            return await PicklistDependencyCheckService.runSalesforceCli(
+            return await SalesforceCli.runSalesforceCli(
                 cliArguments,
                 (killChildProcess: () => void) => {
                     killCurrentProcess = killChildProcess;

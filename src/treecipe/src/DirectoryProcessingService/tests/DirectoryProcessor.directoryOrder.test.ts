@@ -47,6 +47,7 @@ const mockDirectoryListing = {
 
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
@@ -137,7 +138,7 @@ describe.each([
         objectsPath = path.join(workspacePath, 'objects');
         writeObjectsDirectory(objectsPath);
 
-        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+        jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
         jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
         jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 

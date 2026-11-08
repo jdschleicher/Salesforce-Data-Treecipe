@@ -30,7 +30,7 @@ import { ExtensionCommandService } from '../../ExtensionCommandService/Extension
 import { RecipeService } from '../../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
-import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecordTypeSelectionConfiguration } from '../../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 
 /*
     The Record types tab (#195): each tree card lists the objects it draws that have two or more
@@ -492,7 +492,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('given Remember this selection, saves the selection with every record type its objects had, then regenerates with it (#196)', async () => {
 
-            const saveSpy = jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockReturnValue('/config');
+            const saveSpy = jest.spyOn(RecordTypeSelectionConfiguration, 'saveRecordTypeSelections').mockReturnValue('/config');
 
             await openAndDraw();
             await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] }, isRemembered: true });
@@ -510,7 +510,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('given Use defaults with Remember this selection, forgets the saved selection', async () => {
 
-            const saveSpy = jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockReturnValue('/config');
+            const saveSpy = jest.spyOn(RecordTypeSelectionConfiguration, 'saveRecordTypeSelections').mockReturnValue('/config');
 
             await openAndDraw();
             await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {}, isRemembered: true });
@@ -522,7 +522,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('saves nothing without Remember this selection', async () => {
 
-            const saveSpy = jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockReturnValue('/config');
+            const saveSpy = jest.spyOn(RecordTypeSelectionConfiguration, 'saveRecordTypeSelections').mockReturnValue('/config');
 
             await openAndDraw();
             await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] } });
@@ -533,7 +533,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('given the save fails, warns with the reason escaped and still regenerates', async () => {
 
-            jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockImplementation(() => { throw new Error('EACCES [x](command:y)'); });
+            jest.spyOn(RecordTypeSelectionConfiguration, 'saveRecordTypeSelections').mockImplementation(() => { throw new Error('EACCES [x](command:y)'); });
             (vscode.window.showWarningMessage as jest.Mock).mockClear();
 
             await openAndDraw();

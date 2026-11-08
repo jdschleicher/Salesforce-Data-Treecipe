@@ -1054,7 +1054,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(lastWarning()).toEqual({ text: expect.stringContaining('is not installed or not on PATH'), actions: [] });
 
             deployHandler = () => ({ stdout: '', error: Object.assign(new Error('killed'), { code: null, signal: 'SIGTERM', killed: true }) });
-            jest.spyOn(require('../../PicklistDependencyCheckService/PicklistDependencyCheckService').PicklistDependencyCheckService, 'runSalesforceCli')
+            jest.spyOn(require('../../SalesforceCli/SalesforceCli').SalesforceCli, 'runSalesforceCli')
                 .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: null, timedOut: true });
 
             await deploy('deployTreeFields');

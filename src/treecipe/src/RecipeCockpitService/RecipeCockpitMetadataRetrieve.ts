@@ -1,5 +1,5 @@
 
-import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, SalesforceCli } from '../SalesforceCli/SalesforceCli';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, METADATA_RETRIEVE_PACKAGE_XML_TYPES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
@@ -278,7 +278,7 @@ export class RecipeCockpitMetadataRetrieve {
     static buildManifestRetrieveArguments(manifestRelativePath: string, orgUsername: string): string[] {
 
         RecipeCockpitMetadataDeploy.assertPlainManifestPath(manifestRelativePath, 'nothing was retrieved');
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+        SalesforceCli.assertValidTargetOrgIdentifier(orgUsername);
 
         return [
             'project', 'retrieve', 'start',
@@ -327,7 +327,7 @@ export class RecipeCockpitMetadataRetrieve {
 
     static buildCliRequiredMessage(retrieveKind: MetadataRetrieveKind = 'validationRules'): string {
 
-        return `The Salesforce CLI is required to retrieve ${RETRIEVE_WORDS[retrieveKind].many}, and "${PicklistDependencyCheckService.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
+        return `The Salesforce CLI is required to retrieve ${RETRIEVE_WORDS[retrieveKind].many}, and "${SalesforceCli.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
 
     }
 

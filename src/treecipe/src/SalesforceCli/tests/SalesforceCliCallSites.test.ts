@@ -21,10 +21,10 @@ const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'ScratchOrgService/ScratchOrgService.ts#runScratchOrgSetup'
 ];
 
-// runSalesforceCli starts the process; snowfakery is a Python program, not the Salesforce CLI
+// SalesforceCli.runSalesforceCli starts the process; snowfakery is a Python program, not the Salesforce CLI
 const CHILD_PROCESS_FILES = [
     'FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor.ts',
-    'PicklistDependencyCheckService/PicklistDependencyCheckService.ts'
+    'SalesforceCli/SalesforceCli.ts'
 ];
 
 const SERVICES_DIRECTORY_PATH = path.resolve(__dirname, '../..');
@@ -107,6 +107,7 @@ describe('shouldStartTheSalesforceCliOnlyWhereEpic496HasNotReplacedIt', () => {
 
         expect(sourceFiles.map(sourceFile => sourceFile.relativePath)).toIncludeAllMembers([
             'PicklistDependencyCheckService/PicklistDependencyCheckService.ts',
+            'SalesforceCli/SalesforceCli.ts',
             'SalesforceOrgService/SalesforceOrgService.ts',
             '../../extension.ts'
         ]);

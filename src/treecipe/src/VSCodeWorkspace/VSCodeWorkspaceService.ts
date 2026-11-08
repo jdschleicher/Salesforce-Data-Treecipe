@@ -3,7 +3,7 @@ import path = require('path');
 import * as fs from 'fs';
 import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
-import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';

@@ -64,6 +64,7 @@ jest.mock('@salesforce/core', () => ({
 }));
 
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DatasetSourceService, IDatasetSourceAdaptation } from '../../DatasetSourceService/DatasetSourceService';
 import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryProcessor';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
@@ -89,7 +90,7 @@ const ADAPTED_AT = new Date(Date.UTC(2026, 9, 25, 14, 30, 5));
 
 async function generateRecipeTexts(createFakerService: () => IRecipeFakerService): Promise<string[]> {
 
-    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+    jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 

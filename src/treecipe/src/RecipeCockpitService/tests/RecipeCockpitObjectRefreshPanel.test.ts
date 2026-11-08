@@ -53,7 +53,7 @@ import {
     RecipeCockpitService
 } from '../RecipeCockpitService';
 import { OBJECT_REFRESH_KINDS } from '../RecipeCockpitObjectRefresh';
-import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -305,7 +305,7 @@ describe('RecipeCockpitService, Get latest object detail from target org (#612)'
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
             jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation((warningText: string) => { vscode.window.showWarningMessage(warningText); });
-            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
                 cliCalls.push(cliArguments);
                 return cliAnswer(cliArguments);
             });

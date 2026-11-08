@@ -66,7 +66,7 @@ import { RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate }
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
-import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
@@ -504,7 +504,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision').mockImplementation(async () => false);
 
             // THE RETRIEVE: THE ORG'S FILES UNDER --output-dir, EVERY KIND OF FIELD ONLY IT HOLDS
-            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockImplementation(async (cliArguments: string[]) => {
                 const outputDirectory = cliArguments[cliArguments.indexOf('--output-dir') + 1];
                 const stagedFieldsFolder = path.join(workspaceRoot, outputDirectory, 'main', 'default', 'objects', 'Account', 'fields');
                 fs.mkdirSync(stagedFieldsFolder, { recursive: true });

@@ -137,6 +137,7 @@ src/
     │       └── mocks/                       # Sample Salesforce metadata XML fixtures
     ├── ErrorHandlingService/
     │   ├── ErrorHandlingService.ts          # try-catch wrappers, GitHub Issue template generation
+    │   ├── MissingTreecipeConfigurationError.ts # The missing-config error ConfigurationService throws and the missing-config flow keys on
     │   └── tests/
     ├── ExtensionCommandService/
     │   ├── ExtensionCommandService.ts       # VS Code command handler implementations
@@ -145,6 +146,7 @@ src/
     │       └── mocks/                       # A pre-3.29.1 recipe per backend (bare record-type variants) and a recipe with an unrelated YAML error
     ├── FakerRecipeProcessor/
     │   ├── IFakerRecipeProcessor.ts         # Interface both processors implement
+    │   ├── RecipeFakerServiceFactory.ts     # The faker service and processor the selectedFakerService setting names (#574)
     │   ├── FakerJSRecipeProcessor/
     │   │   └── FakerJSRecipeProcessor.ts
     │   └── SnowfakeryRecipeProcessor/
@@ -157,6 +159,7 @@ src/
     │   └── tests/
     ├── ObjectInfoWrapper/
     │   ├── ObjectInfo.ts                    # Typed wrapper for parsed Salesforce object metadata
+    │   ├── RelationshipTypes.ts             # RelationshipDetail, RelationshipTree, RecipeFileOutput: what RelationshipService fills in (#574)
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
     │   └── tests/
@@ -204,8 +207,8 @@ src/
     │   └── tests/                           # PythonTestHarness.test.ts pins the gate below
     │       └── mocks/                       # HostilePicklistValues payloads and PythonTestHarness (PyYAML / Jinja runners, fail in CI, #158)
     ├── PicklistDependencyCheckService/
-    │   ├── PicklistDependencyCheckService.ts # Deploys and runs picklist dependency tests on a @salesforce/core connection; runSalesforceCli, the one place an sf process starts
-    │   └── tests/                            # SalesforceCliCallSites.test.ts: every remaining sf call site by file and method (#496), child_process importers, no direct jsforce import
+    │   ├── PicklistDependencyCheckService.ts # Deploys and runs picklist dependency tests on a @salesforce/core connection; runs the CLI through SalesforceCli
+    │   └── tests/
     ├── PicklistDependencyExplorerService/
     │   ├── PicklistDependencyExplorerService.ts # Builds the Explorer structure view model and webview shell; retains the run overlay
     │   └── tests/
@@ -230,6 +233,7 @@ src/
     │   └── tests/                           # Its recipe fixtures are RecipeCockpitService/tests/mocks/recipeWriter/
     ├── RecordTypeSelectionService/
     │   ├── SavedRecordTypeSelection.ts      # A record type selection saved in treecipe.config.json (#196); no vscode
+    │   ├── RecordTypeSelectionConfiguration.ts # Reads and writes that selection in treecipe.config.json (#574)
     │   └── tests/
     ├── RecordTypeService/
     │   ├── RecordTypeService.ts             # Detects record types and related picklist options
@@ -249,6 +253,9 @@ src/
     ├── SalesforceApiName/
     │   ├── SalesforceApiName.ts             # The one api-name rule every metadata NAME is held to before it reaches a recipe; imports nothing
     │   └── tests/                           # SalesforceApiName.test.ts: "imports nothing"
+    ├── SalesforceCli/
+    │   ├── SalesforceCli.ts                  # runSalesforceCli, the one place an sf process starts; target-org identifier checks, CLI on PATH (#574)
+    │   └── tests/                            # SalesforceCliCallSites.test.ts: every remaining sf call site by file and method (#496), child_process importers, no direct jsforce import
     ├── SalesforceOrgService/
     │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection, connected-org listing, describe cache, org type and default org reads
     │   └── tests/
@@ -301,7 +308,7 @@ User runs command (Cmd+Shift+P)
 
 ### Layers
 
-**A folder under `src/treecipe/src` imports only its own layer or a lower one, never in a cycle** (epic #570). The layers run from 0 (leaf: imports no other service) through platform, metadata model, generation and insert, and features, to 5 (commands, `src/extension.ts`). Each folder's layer is `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table. That test fails on an upward import, a folder-level cycle, a folder with no layer, a file outside any folder, and a `KNOWN_LAYER_VIOLATIONS` entry that no longer happens or is no longer a violation. The list holds today's violations, each with the slice that removes it (#572, #574, #575), and only shrinks. A new folder gets its layer in the same change. Shared code a lower layer needs moves down; it is not added to the list.
+**A folder under `src/treecipe/src` imports only its own layer or a lower one, never in a cycle** (epic #570). The layers run from 0 (leaf: imports no other service) through platform, metadata model, generation and insert, and features, to 5 (commands, `src/extension.ts`). Each folder's layer is `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table. That test fails on an upward import, a folder-level cycle, a folder with no layer, a file outside any folder, and a `KNOWN_LAYER_VIOLATIONS` entry that no longer happens or is no longer a violation. The list holds today's violations, each with the slice that removes it (#575), and only shrinks. A new folder gets its layer in the same change. Shared code a lower layer needs moves down; it is not added to the list.
 
 `ExtensionCommandService/tests/GenerationCommands.golden.test.ts` runs Generate Treecipe and Run Faker by Recipe and compares every file they write with `tests/golden/`. A move that claims "behaviour unchanged" passes it with no change to those files. `UPDATE_GOLDEN=1` rewrites them, and the PR then says what a user now gets differently.
 
@@ -343,7 +350,7 @@ The cockpit's design notes, grouped by tab and concern, are `src/treecipe/src/Re
 
 #### Orgs and the Salesforce CLI
 
-- **Org work goes through `SalesforceOrgService.getConnection`; never `import` `jsforce`** (a devDependency only). Every remaining `sf` call is listed in `PicklistDependencyCheckService/tests/SalesforceCliCallSites.test.ts`; a new one needs a reason in its issue and its entry there. An access token is never written, logged, posted to a webview or quoted in a notification, and a browser opens an org only through a one-time `singleaccess` frontdoor address, never `frontdoor.jsp?sid=`. `PicklistDependencyCheckService/DESIGN.md`, `RecipeCockpitService/DESIGN.md`
+- **Org work goes through `SalesforceOrgService.getConnection`; never `import` `jsforce`** (a devDependency only). Every remaining `sf` call is listed in `SalesforceCli/tests/SalesforceCliCallSites.test.ts`; a new one needs a reason in its issue and its entry there. An access token is never written, logged, posted to a webview or quoted in a notification, and a browser opens an org only through a one-time `singleaccess` frontdoor address, never `frontdoor.jsp?sid=`. `SalesforceCli/DESIGN.md`, `PicklistDependencyCheckService/DESIGN.md`, `RecipeCockpitService/DESIGN.md`
 - **Every org picker lists only authorizations that answer a ping, and fails closed.** `SalesforceOrgService/DESIGN.md`
 - **A CLI call with a `cwd` runs the absolute `sf` from `findSalesforceCliOnPath` (project mode)** — a repository can plant `sf.cmd` in its own folder. `ScratchOrgService/DESIGN.md`
 - **Nothing builds an `sf org delete` argv.**
@@ -387,6 +394,7 @@ The cockpit's design notes, grouped by tab and concern, are `src/treecipe/src/Re
 | Relationship trees | [`src/treecipe/src/RelationshipService/DESIGN.md`](src/treecipe/src/RelationshipService/DESIGN.md) |
 | Run artifacts | [`src/treecipe/src/RunArtifacts/DESIGN.md`](src/treecipe/src/RunArtifacts/DESIGN.md) |
 | Run Faker confirmation | [`src/treecipe/src/RunFakerConfirmation/DESIGN.md`](src/treecipe/src/RunFakerConfirmation/DESIGN.md) |
+| Salesforce CLI gate | [`src/treecipe/src/SalesforceCli/DESIGN.md`](src/treecipe/src/SalesforceCli/DESIGN.md) |
 | Salesforce api name | [`src/treecipe/src/SalesforceApiName/DESIGN.md`](src/treecipe/src/SalesforceApiName/DESIGN.md) |
 | Salesforce org service | [`src/treecipe/src/SalesforceOrgService/DESIGN.md`](src/treecipe/src/SalesforceOrgService/DESIGN.md) |
 | Scratch org service | [`src/treecipe/src/ScratchOrgService/DESIGN.md`](src/treecipe/src/ScratchOrgService/DESIGN.md) |

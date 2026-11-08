@@ -39,7 +39,7 @@ import {
     OrgConnectionStatusUnavailableError,
     SalesforceOrgService
 } from '../../SalesforceOrgService/SalesforceOrgService';
-import { IAuthenticatedOrgDetail, PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail, SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
@@ -618,7 +618,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 const authorizationFields = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks', 'authFieldsScratchOrg.json'), 'utf8'));
                 const getFields = jest.fn(() => authorizationFields);
                 const createAuthInfoSpy = jest.spyOn(AuthInfo, 'create').mockResolvedValue({ getFields: getFields } as unknown as AuthInfo);
-                const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
+                const runSalesforceCliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli');
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
                 await openRenderedCockpit();

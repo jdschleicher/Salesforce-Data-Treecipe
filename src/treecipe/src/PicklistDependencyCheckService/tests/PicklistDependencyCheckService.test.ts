@@ -1,4 +1,5 @@
-import { PicklistDependencyCheckService, PicklistDependencyTestRunCancelledError, SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE } from "../PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyTestRunCancelledError } from "../PicklistDependencyCheckService";
+import { SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE, SalesforceCli } from "../../SalesforceCli/SalesforceCli";
 
 import { OrgAuthorization } from '@salesforce/core';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -48,18 +49,6 @@ function stubSalesforceCli(options: { stdout?: string; stderr?: string; exitCode
 
     return { execFileSpy, killMock };
 
-}
-
-function buildOrgAuthorization(overrides: Partial<OrgAuthorization>): OrgAuthorization {
-    return {
-        orgId: '00D000000000000EAA',
-        username: 'dev@example.com',
-        oauthMethod: 'web',
-        aliases: [],
-        configs: [],
-        isExpired: false,
-        ...overrides
-    } as OrgAuthorization;
 }
 
 const passingTestMethods = [
@@ -308,11 +297,11 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('runs in the workspace, by the absolute path of the installed sf, never one in the workspace or on a relative PATH entry', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(false);
             process.env.PATH = ['', '.', 'bin', path.join(workspacePath, 'bin'), workspacePath, installedBinPath].join(':');
             const { capturedCalls } = captureExecFile();
 
-            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, { workingDirectoryPath: workspacePath });
+            await SalesforceCli.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, { workingDirectoryPath: workspacePath });
 
             expect(capturedCalls[0].command).toBe(path.join(installedBinPath, 'sf'));
             expect(capturedCalls[0].options).toMatchObject({ cwd: workspacePath, shell: false, maxBuffer: 1024 * 1024 * 8 });
@@ -322,11 +311,11 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('on Windows quotes the absolute sf.cmd and tells cmd.exe not to search the current directory', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
             process.env.PATH = [workspacePath, installedBinPath].join(';');
             const { capturedCalls } = captureExecFile();
 
-            await PicklistDependencyCheckService.runSalesforceCli(['org', 'create', 'scratch', '--json'], undefined, undefined, { workingDirectoryPath: workspacePath, maxBufferBytes: 1234 });
+            await SalesforceCli.runSalesforceCli(['org', 'create', 'scratch', '--json'], undefined, undefined, { workingDirectoryPath: workspacePath, maxBufferBytes: 1234 });
 
             expect(capturedCalls[0].command).toBe(`"${path.join(installedBinPath, 'sf.cmd')}"`);
             expect(capturedCalls[0].options).toMatchObject({ cwd: workspacePath, shell: true, maxBuffer: 1234 });
@@ -336,11 +325,11 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('answers as an uninstalled CLI, starting nothing, when the only sf on PATH is the workspace\'s', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(false);
             process.env.PATH = [workspacePath, path.join(workspacePath, 'bin')].join(':');
             const { capturedCalls } = captureExecFile();
 
-            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['org', 'list'], undefined, undefined, { workingDirectoryPath: workspacePath });
+            const invocationResult = await SalesforceCli.runSalesforceCli(['org', 'list'], undefined, undefined, { workingDirectoryPath: workspacePath });
 
             expect(capturedCalls).toHaveLength(0);
             expect(invocationResult.spawnError?.code).toBe('ENOENT');
@@ -349,11 +338,11 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('reports output past maxBuffer as too large rather than as a CLI that never started, and ends the process tree', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
             process.env.PATH = installedBinPath;
             const { capturedCalls } = captureExecFile(Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }));
 
-            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: workspacePath });
+            const invocationResult = await SalesforceCli.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: workspacePath });
 
             expect(invocationResult).toEqual({ stdout: '', stderr: '', exitCode: null, isOutputTooLarge: true });
             expect(capturedCalls.map(capturedCall => capturedCall.command)).toContain('taskkill');
@@ -367,41 +356,41 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
             '//fileserver/share/project'
         ])('on Windows refuses the UNC folder %s, starting nothing, since cmd.exe would run the CLI in the Windows folder instead (#285)', async (uncWorkingDirectoryPath) => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
             process.env.PATH = installedBinPath;
             const { capturedCalls } = captureExecFile();
 
-            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, { workingDirectoryPath: uncWorkingDirectoryPath });
+            const invocationResult = await SalesforceCli.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, { workingDirectoryPath: uncWorkingDirectoryPath });
 
             expect(capturedCalls).toHaveLength(0);
             expect(invocationResult.exitCode).toBeNull();
             expect(invocationResult.spawnError?.code).toBe(SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE);
             expect(invocationResult.spawnError?.message).toContain(`"${uncWorkingDirectoryPath}"`);
             expect(invocationResult.spawnError?.message).toContain('Nothing was run');
-            expect(() => PicklistDependencyCheckService.parseSalesforceCliJsonOutput(invocationResult)).toThrow(/UNC path/);
+            expect(() => SalesforceCli.parseSalesforceCliJsonOutput(invocationResult)).toThrow(/UNC path/);
 
         });
 
         it('reads only a leading double slash of either kind as UNC, and nothing that is not a string', () => {
 
-            expect(PicklistDependencyCheckService.isUncPath('\\\\server\\share')).toBe(true);
-            expect(PicklistDependencyCheckService.isUncPath('//server/share')).toBe(true);
-            expect(PicklistDependencyCheckService.isUncPath('C:\\Users\\me\\project')).toBe(false);
-            expect(PicklistDependencyCheckService.isUncPath('C:/Users/me/project')).toBe(false);
-            expect(PicklistDependencyCheckService.isUncPath('\\single\\slash')).toBe(false);
-            expect(PicklistDependencyCheckService.isUncPath(undefined as unknown as string)).toBe(false);
+            expect(SalesforceCli.isUncPath('\\\\server\\share')).toBe(true);
+            expect(SalesforceCli.isUncPath('//server/share')).toBe(true);
+            expect(SalesforceCli.isUncPath('C:\\Users\\me\\project')).toBe(false);
+            expect(SalesforceCli.isUncPath('C:/Users/me/project')).toBe(false);
+            expect(SalesforceCli.isUncPath('\\single\\slash')).toBe(false);
+            expect(SalesforceCli.isUncPath(undefined as unknown as string)).toBe(false);
 
         });
 
         it('runs from a drive-letter folder on Windows and from a double-slash folder elsewhere, which only Windows reads as UNC', async () => {
 
-            const isWindowsSpy = jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            const isWindowsSpy = jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
             process.env.PATH = installedBinPath;
             const { capturedCalls } = captureExecFile();
 
-            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: workspacePath });
+            await SalesforceCli.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: workspacePath });
             isWindowsSpy.mockReturnValue(false);
-            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: `/${workspacePath}` });
+            await SalesforceCli.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: `/${workspacePath}` });
 
             expect(capturedCalls.map(capturedCall => capturedCall.options.cwd)).toEqual([workspacePath, `/${workspacePath}`]);
 
@@ -409,10 +398,10 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('changes nothing for a caller with no project options', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(false);
             const { capturedCalls } = captureExecFile();
 
-            await PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json']);
+            await SalesforceCli.runSalesforceCli(['org', 'list', '--json']);
 
             expect(capturedCalls[0].command).toBe('sf');
             expect(capturedCalls[0].options).not.toHaveProperty('cwd');
@@ -454,7 +443,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
             process.env.PATH = `${installedBinPath}:${savedPathVariable ?? ''}`;
             process.chdir(path.parse(process.cwd()).root);
 
-            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, 10000, { workingDirectoryPath: workspacePath });
+            const invocationResult = await SalesforceCli.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, 10000, { workingDirectoryPath: workspacePath });
 
             expect(invocationResult.spawnError).toBeUndefined();
             expect(JSON.parse(invocationResult.stdout).cwd).toBe(workspacePath);
@@ -492,10 +481,10 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('resolves as timed out when the timeout passes, whatever the pipes are still doing, and kills the child', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(false);
             const { killMock } = stubHungSalesforceCli();
 
-            const invocation = PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
+            const invocation = SalesforceCli.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
             jest.advanceTimersByTime(60000);
 
             expect(await invocation).toEqual({ stdout: '', stderr: '', exitCode: null, timedOut: true });
@@ -505,10 +494,10 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('on Windows, ends the whole process tree with taskkill rather than killing only cmd.exe', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
             const { execFileSpy, killMock } = stubHungSalesforceCli();
 
-            const invocation = PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
+            const invocation = SalesforceCli.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
             jest.advanceTimersByTime(60000);
 
             expect((await invocation).timedOut).toBe(true);
@@ -521,11 +510,11 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('on Windows, a cancellation ends the whole process tree too', () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(true);
             const { execFileSpy } = stubHungSalesforceCli();
 
             let cancel: (() => void) | undefined;
-            void PicklistDependencyCheckService.runSalesforceCli(['apex', 'run', 'test'], killChildProcess => { cancel = killChildProcess; });
+            void SalesforceCli.runSalesforceCli(['apex', 'run', 'test'], killChildProcess => { cancel = killChildProcess; });
             cancel();
 
             expect(execFileSpy.mock.calls.filter(([command]) => command === 'taskkill')).toHaveLength(1);
@@ -534,10 +523,10 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         it('kills nothing when the CLI answers before the timeout, and never marks that answer timed out', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            jest.spyOn(SalesforceCli, 'isWindowsPlatform').mockReturnValue(false);
             const { killMock } = stubSalesforceCli({ stdout: '{"status":0}' });
 
-            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
+            const invocationResult = await SalesforceCli.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
             jest.advanceTimersByTime(60000);
 
             expect(invocationResult).toEqual({ stdout: '{"status":0}', stderr: '', exitCode: 0, spawnError: undefined });
@@ -549,7 +538,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
             const { killMock } = stubHungSalesforceCli();
 
-            void PicklistDependencyCheckService.runSalesforceCli(['apex', 'run', 'test']);
+            void SalesforceCli.runSalesforceCli(['apex', 'run', 'test']);
             jest.advanceTimersByTime(24 * 60 * 60 * 1000);
 
             expect(killMock).not.toHaveBeenCalled();
@@ -1139,18 +1128,18 @@ describe('shouldTranslateSalesforceCliSpawnFailures', () => {
 describe('shouldValidateTheTargetOrgIdentifier', () => {
 
     it('shouldAcceptOrdinaryAliasesAndUsernames', () => {
-        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('devHub')).toBeTrue();
-        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('test-abc123@example.com')).toBeTrue();
+        expect(SalesforceCli.isValidTargetOrgIdentifier('devHub')).toBeTrue();
+        expect(SalesforceCli.isValidTargetOrgIdentifier('test-abc123@example.com')).toBeTrue();
     });
 
     it('shouldRejectAnIdentifierThatWouldBeReadAsACliFlag', () => {
-        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('--json')).toBeFalse();
+        expect(SalesforceCli.isValidTargetOrgIdentifier('--json')).toBeFalse();
     });
 
     it('shouldRejectShellMetacharacters', () => {
-        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev;rm -rf /')).toBeFalse();
-        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev$(whoami)')).toBeFalse();
-        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev"quote')).toBeFalse();
+        expect(SalesforceCli.isValidTargetOrgIdentifier('dev;rm -rf /')).toBeFalse();
+        expect(SalesforceCli.isValidTargetOrgIdentifier('dev$(whoami)')).toBeFalse();
+        expect(SalesforceCli.isValidTargetOrgIdentifier('dev"quote')).toBeFalse();
     });
 
     it('shouldThrowBeforeOpeningAConnectionForAnUnusableIdentifier', async () => {
@@ -1173,89 +1162,6 @@ describe('shouldValidateTheTargetOrgIdentifier', () => {
 
         expect(execFileSpy).not.toHaveBeenCalled();
 
-    });
-
-});
-
-describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
-
-    it('shouldPreferAliasOverUsernameAsTargetOrgIdentifier', () => {
-
-        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            buildOrgAuthorization({ username: 'dev@example.com', aliases: ['devHub'] })
-        ]);
-
-        expect(orgDetails).toHaveLength(1);
-        expect(orgDetails[0].targetOrgIdentifier).toBe('devHub');
-
-    });
-
-    it('shouldFallBackToUsernameWhenNoAliasIsSet', () => {
-
-        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            buildOrgAuthorization({ username: 'scratch@example.com', aliases: [] })
-        ]);
-
-        expect(orgDetails[0].targetOrgIdentifier).toBe('scratch@example.com');
-        expect(orgDetails[0].alias).toBeUndefined();
-
-    });
-
-    it('shouldSkipAuthorizationsWithoutAUsername', () => {
-
-        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            buildOrgAuthorization({ username: undefined as unknown as string, aliases: ['brokenEntry'] }),
-            buildOrgAuthorization({ username: 'valid@example.com', aliases: [] })
-        ]);
-
-        expect(orgDetails).toHaveLength(1);
-        expect(orgDetails[0].username).toBe('valid@example.com');
-
-    });
-
-    it('shouldDropAnOrgWhoseIdentifierCouldNotSafelyReachTheCli', () => {
-
-        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            buildOrgAuthorization({ username: 'ok@example.com', aliases: ['--json'] }),
-            buildOrgAuthorization({ username: 'valid@example.com', aliases: [] })
-        ]);
-
-        expect(orgDetails).toHaveLength(1);
-        expect(orgDetails[0].username).toBe('valid@example.com');
-
-    });
-
-    it('shouldLabelByTheAuthorizationsOwnAliasElseLeaveTheAliasUnset', () => {
-
-        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            buildOrgAuthorization({ username: 'qa@example.com', aliases: [] }),
-            buildOrgAuthorization({ username: 'uat@example.com', aliases: ['uat'] })
-        ]);
-
-        expect(orgDetails).toEqual([
-            { targetOrgIdentifier: 'qa@example.com', username: 'qa@example.com', alias: undefined },
-            { targetOrgIdentifier: 'uat', username: 'uat@example.com', alias: 'uat' }
-        ]);
-
-    });
-
-    it('shouldSkipAnAuthorizationAliasThatIsNotANonEmptyString', () => {
-
-        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            buildOrgAuthorization({ username: 'qa@example.com', aliases: [42, '', 'qa'] as unknown as string[] }),
-            buildOrgAuthorization({ username: 'uat@example.com', aliases: 'uat' as unknown as string[] })
-        ]);
-
-        expect(orgDetails).toEqual([
-            { targetOrgIdentifier: 'qa', username: 'qa@example.com', alias: 'qa' },
-            { targetOrgIdentifier: 'uat@example.com', username: 'uat@example.com', alias: undefined }
-        ]);
-
-    });
-
-    it('shouldReturnEmptyListWhenNoOrgsAreAuthenticated', () => {
-        expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails([])).toBeEmpty();
-        expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails(undefined as unknown as OrgAuthorization[])).toBeEmpty();
     });
 
 });
@@ -1831,48 +1737,6 @@ describe('shouldPersistCheckResultsToTheTreecipeDirectory', () => {
         );
 
         expect(writeFileSyncSpy).toHaveBeenCalledTimes(2);
-
-    });
-
-});
-
-describe('shouldHandleTheWindowsCliShim', () => {
-
-    afterEach(() => {
-        jest.restoreAllMocks();
-    });
-
-    it('shouldUseAShellOnWindowsBecauseSpawningACmdShimWithoutOneFailsWithEinval', () => {
-
-        jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
-
-        const invocation = PicklistDependencyCheckService.buildSalesforceCliInvocation(['apex', 'run', 'test']);
-
-        expect(invocation.command).toBe('sf.cmd');
-        expect(invocation.useShell).toBeTrue();
-        // EVERY ARGUMENT IS QUOTED ONCE THE SHELL IS IN PLAY
-        expect(invocation.args).toSatisfyAll((argumentValue: string) => argumentValue.startsWith('"') && argumentValue.endsWith('"'));
-
-    });
-
-    it('shouldKeepTheArgvFormOnNonWindowsPlatforms', () => {
-
-        jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
-
-        const invocation = PicklistDependencyCheckService.buildSalesforceCliInvocation(['apex', 'run', 'test']);
-
-        expect(invocation.command).toBe('sf');
-        expect(invocation.useShell).toBeFalse();
-        expect(invocation.args).toEqual(['apex', 'run', 'test']);
-
-    });
-
-    it('shouldRejectAnArgumentContainingADoubleQuoteRatherThanEscapingIt', () => {
-
-        jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
-
-        expect(() => PicklistDependencyCheckService.buildSalesforceCliInvocation(['--target-org', 'dev"org']))
-            .toThrow('contains a double quote');
 
     });
 

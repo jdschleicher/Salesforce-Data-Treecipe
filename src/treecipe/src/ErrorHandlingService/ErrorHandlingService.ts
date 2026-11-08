@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { ConfigurationService, MissingTreecipeConfigurationError } from '../ConfigurationService/ConfigurationService';
-import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { MissingTreecipeConfigurationError } from './MissingTreecipeConfigurationError';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 
 export class ErrorHandlingService {
@@ -207,20 +206,37 @@ ${stackTrace}
      */
     static resolveErrorCaptureFolderPath(errorsGenerationFolderName: string): string | undefined {
 
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) {
+            void vscode.window.showErrorMessage('No workspace folder found');
             return undefined;
         }
 
-        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
-        return `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
+        return `${workspaceRoot}/treecipe/${this.generatedRecipesFolderName}/${errorsGenerationFolderName}`;
+    }
+
+    // THE FOLDER Generate Treecipe WRITES RECIPES TO; THE ErrorHandlingService SUITE HOLDS IT EQUAL TO THE CONFIGURATION SERVICE'S DEFAULT
+    static readonly generatedRecipesFolderName = 'GeneratedRecipes';
+
+    // '2024-11-25T16-24-15': A FILE NAME CANNOT HOLD ':' ON WINDOWS
+    static getCaptureFileTimestamp(): string {
+        return new Date().toISOString().split('.')[0].replace(/:/g, '-');
+    }
+
+    static async openCaptureFile(captureFilePath: string): Promise<void> {
+        try {
+            const captureFileDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(captureFilePath));
+            await vscode.window.showTextDocument(captureFileDocument);
+        } catch (openError) {
+            void vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(`Failed to open file: ${captureFilePath} - ${openError}`));
+        }
     }
 
     static createGenerateRecipeErrorCaptureFile(customGenerateRecipeError: Error, executedCommand: string) {
         
         const expectedErrorsFolderPath = this.resolveErrorCaptureFolderPath(this.getRecipeGenerationErrorsFolderName());
         if (!expectedErrorsFolderPath) {
-            VSCodeWorkspaceService.showWarningMessage('No workspace folder found, so the recipe generation error could not be captured to a file.');
+            void vscode.window.showWarningMessage('No workspace folder found, so the recipe generation error could not be captured to a file.');
             return;
         }
 
@@ -228,7 +244,7 @@ ${stackTrace}
             fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
         }
         
-        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        const isoDateTimestamp = this.getCaptureFileTimestamp();
         
         let recipeErrorGenerationFileName = 'generateRecipeError_' + isoDateTimestamp + '.json';
 
@@ -242,8 +258,8 @@ ${stackTrace}
             } 
         });
 
-        VSCodeWorkspaceService.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
-        VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+        void vscode.window.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName);
+        void this.openCaptureFile(outputFilePath);
     
     }
 
@@ -251,7 +267,7 @@ ${stackTrace}
     
         const expectedErrorsFolderPath = this.resolveErrorCaptureFolderPath(this.getRecipeGenerationErrorsFolderName());
         if (!expectedErrorsFolderPath) {
-            VSCodeWorkspaceService.showWarningMessage('No workspace folder found, so the faker value error could not be captured to a file.');
+            void vscode.window.showWarningMessage('No workspace folder found, so the faker value error could not be captured to a file.');
             return;
         }
 
@@ -259,7 +275,7 @@ ${stackTrace}
             fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
         }
     
-        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        const isoDateTimestamp = this.getCaptureFileTimestamp();
         
         let recipeErrorGenerationFileName = 'getFakerJSValueError' + isoDateTimestamp + '.json';
 
@@ -273,8 +289,8 @@ ${stackTrace}
             } 
         });
 
-        VSCodeWorkspaceService.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
-        VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+        void vscode.window.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName);
+        void this.openCaptureFile(outputFilePath);
 
     }
 
@@ -286,7 +302,7 @@ ${stackTrace}
     
         const expectedErrorsFolderPath = this.resolveErrorCaptureFolderPath(this.getFakerJSExpressionErrorsFolderName());
         if (!expectedErrorsFolderPath) {
-            VSCodeWorkspaceService.showWarningMessage('No workspace folder found, so the faker-js expression error could not be captured to a file.');
+            void vscode.window.showWarningMessage('No workspace folder found, so the faker-js expression error could not be captured to a file.');
             return;
         }
 
@@ -294,7 +310,7 @@ ${stackTrace}
             fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
         }
     
-        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        const isoDateTimestamp = this.getCaptureFileTimestamp();
         
         let recipeErrorGenerationFileName = 'fakerJSExpressionError' + isoDateTimestamp + '.json';
 
@@ -308,8 +324,8 @@ ${stackTrace}
             } 
         });
 
-        VSCodeWorkspaceService.showWarningMessage('faker-js expression error captured in: ' + executedCommand );
-        VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+        void vscode.window.showWarningMessage('faker-js expression error captured in: ' + executedCommand );
+        void this.openCaptureFile(outputFilePath);
 
     }
 

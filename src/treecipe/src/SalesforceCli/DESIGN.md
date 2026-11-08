@@ -1,0 +1,9 @@
+# Salesforce CLI gate — design notes
+
+Read this before changing `SalesforceCli.ts`. CLAUDE.md keeps only the rules every change must follow. History is in CHANGELOG.md.
+
+- **`SalesforceCli.runSalesforceCli` is the one place an `sf` process starts** (#574 moved it here from `PicklistDependencyCheckService`) — it sits in the platform layer (1) so `SalesforceOrgService`, `VSCodeWorkspaceService`, `ScratchOrgService` and `CollectionsApiService` reach the CLI, the target-org identifier checks and `IAuthenticatedOrgDetail` without importing a feature. `PicklistDependencyCheckService` keeps the picklist check and calls the gate. It imports no other service.
+- **Every remaining call site is listed in `tests/SalesforceCliCallSites.test.ts`** — by file and method, with the files that import `child_process` (this file and the snowfakery processor) and a check that nothing imports `jsforce` directly. A new `sf` call needs a reason in its issue and its entry there; a #496 slice that removes one deletes its entry.
+- **Argv only, a shell on Windows alone, every argument quoted there** — a `.cmd` shim cannot be spawned without a shell since the CVE-2024-27980 fix; a value holding `"` is refused, never escaped. An org identifier must match `targetOrgIdentifierPattern`, so a value starting with `-` never reaches the CLI as a flag.
+- **Project mode runs the ABSOLUTE `sf` from `findSalesforceCliOnPath`** — with a `cwd` a cloned repository controls, a relative PATH entry or one inside the project is skipped, and on Windows `NoDefaultCurrentDirectoryInExePath` is set; a UNC project folder is refused before anything runs. `ScratchOrgService/DESIGN.md` has the scratch org create that needs it.
+- **A timeout or cancel kills the whole process tree** — on Windows `taskkill /T`, since `execFile` would end only `cmd.exe`.

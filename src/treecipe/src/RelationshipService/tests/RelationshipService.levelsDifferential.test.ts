@@ -1,4 +1,5 @@
-import { RelationshipDetail, RelationshipService } from '../RelationshipService';
+import { RelationshipService } from '../RelationshipService';
+import { RelationshipDetail } from '../../ObjectInfoWrapper/RelationshipTypes';
 import { ObjectInfo } from '../../ObjectInfoWrapper/ObjectInfo';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 

@@ -1,4 +1,4 @@
-import { RecipeFileOutput, RelationshipTree } from "../RelationshipService/RelationshipService";
+import { RecipeFileOutput, RelationshipTree } from "./RelationshipTypes";
 import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 import { ObjectInfo } from "./ObjectInfo";
 
