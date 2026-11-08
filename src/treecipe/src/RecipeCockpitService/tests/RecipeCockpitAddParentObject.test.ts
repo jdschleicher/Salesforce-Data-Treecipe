@@ -15,7 +15,7 @@ import {
     IParentObjectAdditionRequest,
     RecipeParentObjectAdditionResult,
     RecipeWriterRefusalReason
-} from '../RecipeCockpitRecipeWriter';
+} from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';

@@ -73,14 +73,14 @@ import {
     RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { OrgConnectionStatusUnavailableError, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME } from '../../DatasetSourceService/DatasetSourceService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';

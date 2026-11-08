@@ -24,7 +24,7 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

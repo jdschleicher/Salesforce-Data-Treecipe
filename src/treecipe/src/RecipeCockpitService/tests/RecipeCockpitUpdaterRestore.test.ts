@@ -67,7 +67,7 @@ import {
     RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES,
     RecipeCockpitRecordUpdate
 } from '../RecipeCockpitRecordUpdate';
-import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';

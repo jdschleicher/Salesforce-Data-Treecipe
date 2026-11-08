@@ -63,15 +63,15 @@ import {
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
 } from '../RecipeCockpitService';
 import { IUpdateObjectDescribe, IUpdateRequestRecord, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
-import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
-import { RecipeCockpitRunArtifacts } from '../RecipeCockpitRunArtifacts';
+import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
+import { RecipeCockpitRunArtifacts } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { DatasetSourceService } from '../../DatasetSourceService/DatasetSourceService';
 

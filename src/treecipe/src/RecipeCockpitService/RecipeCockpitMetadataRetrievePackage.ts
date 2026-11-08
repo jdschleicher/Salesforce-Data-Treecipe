@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import * as xml2js from 'xml2js';
 
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IMetadataDeployComponent, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import { METADATA_DEPLOY_NAMESPACE, METADATA_DEPLOY_SOURCE_FILE_MAX_BYTES, RecipeCockpitMetadataDeployPackage } from './RecipeCockpitMetadataDeployPackage';

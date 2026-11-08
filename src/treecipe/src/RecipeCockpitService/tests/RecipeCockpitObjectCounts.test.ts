@@ -29,9 +29,9 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter, RecipeFilterResult, RecipeWriterRefusalReason } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, RecipeFilterResult, RecipeWriterRefusalReason } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';

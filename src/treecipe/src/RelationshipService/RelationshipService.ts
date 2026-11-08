@@ -1,7 +1,7 @@
 import { FieldInfo } from "../ObjectInfoWrapper/FieldInfo";
 import { ObjectInfo } from "../ObjectInfoWrapper/ObjectInfo";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
-import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
+import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 
 export class RelationshipService {
 

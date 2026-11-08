@@ -8,7 +8,7 @@ jest.mock('vscode', () => ({ workspace: { getConfiguration: jest.fn() }, window:
 
 import { IComparedField, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
-import { buildTreeRunArtifactsLocation, FIXTURE_RUN_FOLDER_NAME, FIXTURE_TREE_FOLDER_NAME, makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { buildTreeRunArtifactsLocation, FIXTURE_RUN_FOLDER_NAME, FIXTURE_TREE_FOLDER_NAME, makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 
 const WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'orgChangeWorkspace');
 const STAGING_FOLDER_PATH = path.join(WORKSPACE_ROOT, 'treecipe', 'OrgOperations', 'qa@example.com.qa', '20261023-100000-adapter-retrieve');

@@ -1,10 +1,10 @@
 import * as path from 'path';
 
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { ISOQLTreeQuery, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
-import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 
 /*
     The Query tab (#367): a tree's generated SOQL, the check an edited query is held to before it is

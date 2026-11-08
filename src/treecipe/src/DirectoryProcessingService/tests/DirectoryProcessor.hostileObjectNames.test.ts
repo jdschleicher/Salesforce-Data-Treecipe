@@ -58,8 +58,8 @@ import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerSer
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { INJECTED_FIELD_API_NAME, INJECTION_MARKER } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { INJECTED_FIELD_API_NAME, INJECTION_MARKER } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 const INJECTED_OBJECT_API_NAME = 'Injected__c';
 const INJECTED_RECIPE_LINES = `- object: ${INJECTED_OBJECT_API_NAME}\n  fields:\n    ${INJECTED_FIELD_API_NAME}: \${{ globalThis.${INJECTION_MARKER} = true }}\n#`;

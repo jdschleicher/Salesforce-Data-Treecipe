@@ -1,7 +1,7 @@
 import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 
 export const RECORD_TYPE_SELECTIONS_CONFIG_KEY = 'recordTypeSelections';
 export const RECORD_TYPES_WHEN_SELECTION_SAVED_CONFIG_KEY = 'recordTypesWhenSelectionSaved';

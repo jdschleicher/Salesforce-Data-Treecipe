@@ -3,11 +3,11 @@ import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
-import { FakerJSRecipeFakerService } from '../../FakerJSRecipeFakerService/FakerJSRecipeFakerService';
-import { SnowfakeryRecipeFakerService } from '../../SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import { IRecipeFakerService } from '../../IRecipeFakerService';
-import { FakerJSRecipeProcessor } from '../../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { RecipeCockpitRecipeWriter } from '../../../RecipeCockpitService/RecipeCockpitRecipeWriter';
+import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
+import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
+import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
+import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import {
     IRecipeFieldConstraintTarget,

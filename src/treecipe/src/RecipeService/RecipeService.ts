@@ -1,16 +1,16 @@
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
-import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { IRecordTypeBlock, RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import { ICompoundComponentRecipe } from "./ICompoundComponentRecipe";
-import { SalesforceApiName } from "./SalesforceApiName";
-import { IRecipeFieldConstraintTarget, IStoredRecipeFieldConstraint, RecipeFieldConstraint, ResolvedRecipeFieldConstraint } from "../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint";
+import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
+import { IRecipeFieldConstraintTarget, IStoredRecipeFieldConstraint, RecipeFieldConstraint, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
 import { IValidationRuleConstraintRecord, IValidationRuleFieldConstraint, IValidationRuleRegexAtom } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
-import { RecipeCockpitRecipeWriter } from "../RecipeCockpitService/RecipeCockpitRecipeWriter";
+import { RecipeCockpitRecipeWriter } from "../RecipeWriter/RecipeCockpitRecipeWriter";
 
 export interface IValidationRuleFieldRecipe {
     recipeValue: string;

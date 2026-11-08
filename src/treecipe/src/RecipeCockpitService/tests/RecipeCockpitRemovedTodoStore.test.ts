@@ -2,7 +2,7 @@ import * as matchers from 'jest-extended';
 expect.extend(matchers);
 
 import { RecipeCockpitRemovedTodoStore, RECIPE_COCKPIT_REMOVED_TODO_FILE_VERSION } from '../RecipeCockpitRemovedTodoStore';
-import { IRemovedTodoComment } from '../RecipeCockpitRecipeWriter';
+import { IRemovedTodoComment } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 const LINE_TODO: IRemovedTodoComment = {
     objectApiName: 'Account',

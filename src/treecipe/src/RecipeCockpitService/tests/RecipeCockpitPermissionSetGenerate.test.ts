@@ -53,8 +53,8 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
-import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../RecipeCockpitRunArtifacts';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { IPermissionSetGeneratePlan, PERMISSION_SET_GENERATED_FOLDER_NAME, RecipeCockpitPermissionSetGenerate } from '../RecipeCockpitPermissionSetGenerate';
 import { RecipeCockpitPermissionSetAssign } from '../RecipeCockpitPermissionSetAssign';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

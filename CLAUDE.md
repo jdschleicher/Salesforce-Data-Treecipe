@@ -152,6 +152,9 @@ src/
     ├── GlobalValueSetSingleton/
     │   ├── GlobalValueSetSingleton.ts       # Shared picklist global value set state
     │   └── tests/
+    ├── InsertFailureTriage/
+    │   ├── RecipeCockpitInsertFailureTriage.ts # A failed insert's first error → its Troubleshooting sub-tab (#375); imports nothing (class keeps its cockpit name)
+    │   └── tests/
     ├── ObjectInfoWrapper/
     │   ├── ObjectInfo.ts                    # Typed wrapper for parsed Salesforce object metadata
     │   ├── ObjectInfoWrapper.ts
@@ -168,7 +171,6 @@ src/
     │   ├── RecipeCockpitObjectRefresh.ts     # Get latest object detail from target org (#612): one object compared kind by kind, ticked items applied; no vscode
     │   ├── RecipeCockpitObjectRefreshDialog.ts # Its row button and host-driven dialog (#612), interpolated into the shell
     │   ├── RecipeCockpitAdaptedDataset.ts    # What a landed Adapter update leaves (#448): adapted data set and recipe; no vscode
-    │   ├── RecipeCockpitRunArtifacts.ts      # Where a tree's run files live (#470): RunArtifacts folders and writers
     │   ├── RecipeCockpitDatasetJourney.ts    # A data set row's insert journey (#471)
     │   ├── RecipeCockpitRunHistory.ts        # Troubleshooting History (#485): step summaries written and listed
     │   ├── RecipeCockpitRecordUpdate.ts      # Treecipe Adapter update (#418) and restore snapshots (#419); no vscode
@@ -177,11 +179,9 @@ src/
     │   ├── RecipeCockpitMetadataRetrieve.ts  # Troubleshooting retrieves (#326, #382): org listing, package.xml, CLI answer; no vscode
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode
     │   ├── RecipeCockpitObjectSelection.ts   # Pure cascade of the Treecipe tab's tree icons (#219): what a card's direct exclusions auto-exclude, which lookups they disable; imports nothing
-    │   ├── RecipeCockpitRecipeWriter.ts      # Pure line-level recipe patcher; imports nothing
     │   ├── RecipeCockpitFixedValueStore.ts   # The <recipe>.fixedValues.json file (#342); imports only SalesforceApiName and the writer
     │   ├── RecipeCockpitRemovedTodoStore.ts  # The <recipe>.removedTodos.json file (#391); imports only SalesforceApiName and the writer
     │   ├── RecipeCockpitConfirmContent.ts    # What an in-panel confirmation says (#457); imports nothing
-    │   ├── RecipeCockpitInsertFailureTriage.ts # A failed insert's first error → its Troubleshooting sub-tab (#375); imports nothing
     │   ├── RecipeCockpitRecordCreation.ts    # Pure rules of the tree insert; imports nothing
     │   ├── RecipeCockpitTreeHistory.ts       # A tree card's Previously Used Data Sets
     │   └── tests/                            # RecipeCockpitPanelHarness.ts runs the real panel script against a fake DOM
@@ -193,16 +193,16 @@ src/
     │   │   ├── FakerJSRecipeFakerService.ts # faker-js YAML recipe generation per field type
     │   │   ├── ProcessedYamlWrapper.ts
     │   │   └── tests/
-    │   ├── SnowfakeryRecipeFakerService/
-    │   │   ├── SnowfakeryRecipeFakerService.ts # Snowfakery YAML recipe generation per field type
-    │   │   └── tests/
-    │   ├── RecipeFieldConstraint/
-    │   │   ├── RecipeFieldConstraint.ts     # A field's faker constraint (#323), used by #324's validation rules; imports nothing
-    │   │   └── tests/                       # ConstrainedExpressionGeneration.test.ts: the contract both backends are held to
-    │   └── RecipeYamlScalar/
-    │       ├── RecipeYamlScalar.ts          # The YAML half of writing an untrusted picklist value: line breaks either parser sees, plain-vs-quoted list items
-    │       └── tests/                   # PythonTestHarness.test.ts pins the gate below
-    │           └── mocks/                   # HostilePicklistValues payloads and PythonTestHarness (PyYAML / Jinja runners, fail in CI, #158)
+    │   └── SnowfakeryRecipeFakerService/
+    │       ├── SnowfakeryRecipeFakerService.ts # Snowfakery YAML recipe generation per field type
+    │       └── tests/
+    ├── RecipeFieldConstraint/
+    │   ├── RecipeFieldConstraint.ts         # A field's faker constraint (#323), used by #324's validation rules; imports nothing
+    │   └── tests/                           # ConstrainedExpressionGeneration.test.ts: the contract both backends are held to
+    ├── RecipeYamlScalar/
+    │   ├── RecipeYamlScalar.ts              # The YAML half of writing an untrusted picklist value: line breaks either parser sees, plain-vs-quoted list items
+    │   └── tests/                           # PythonTestHarness.test.ts pins the gate below
+    │       └── mocks/                       # HostilePicklistValues payloads and PythonTestHarness (PyYAML / Jinja runners, fail in CI, #158)
     ├── PicklistDependencyCheckService/
     │   ├── PicklistDependencyCheckService.ts # Deploys and runs picklist dependency tests on a @salesforce/core connection; runSalesforceCli, the one place an sf process starts
     │   └── tests/                            # SalesforceCliCallSites.test.ts: every remaining sf call site by file and method (#496), child_process importers, no direct jsforce import
@@ -223,9 +223,11 @@ src/
     │       └── mocks/
     ├── RecipeService/
     │   ├── RecipeService.ts                 # Orchestrates recipe YAML file creation end-to-end
-    │   ├── SalesforceApiName.ts             # The one api-name rule every metadata NAME is held to before it reaches a recipe; imports nothing
     │   └── tests/
     │       └── mocks/
+    ├── RecipeWriter/
+    │   ├── RecipeCockpitRecipeWriter.ts     # Pure line-level recipe patcher; imports nothing (class keeps its cockpit name)
+    │   └── tests/                           # Its recipe fixtures are RecipeCockpitService/tests/mocks/recipeWriter/
     ├── RecordTypeSelectionService/
     │   ├── SavedRecordTypeSelection.ts      # A record type selection saved in treecipe.config.json (#196); no vscode
     │   └── tests/
@@ -239,6 +241,13 @@ src/
     │   ├── StandardFieldParentReferenceMap.ts # The parent of a well-known standard lookup/hierarchy field with no <referenceTo>, by Object.Field (Account.ParentId → Account, #400); imports nothing
     │   └── tests/
     │       └── mocks/
+    ├── RunArtifacts/
+    │   ├── RecipeCockpitRunArtifacts.ts     # Where a tree's run files live (#470): RunArtifacts folders and writers (class keeps its cockpit name)
+    │   └── tests/
+    ├── RunFakerConfirmation/
+    │   └── RunFakerConfirmation.ts          # One-time tokens: the cockpit's confirmation stands in for Run Faker's modal (#255); imports only crypto
+    ├── SalesforceApiName/
+    │   └── SalesforceApiName.ts             # The one api-name rule every metadata NAME is held to before it reaches a recipe; imports nothing
     ├── SalesforceOrgService/
     │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection, connected-org listing, describe cache, org type and default org reads
     │   └── tests/
@@ -366,11 +375,18 @@ The cockpit's design notes, grouped by tab and concern, are `src/treecipe/src/Re
 | Picklist dependency spec manifest | [`src/treecipe/src/PicklistDependencyManifestService/DESIGN.md`](src/treecipe/src/PicklistDependencyManifestService/DESIGN.md) |
 | Picklist dependency writeback | [`src/treecipe/src/PicklistDependencyMetadataWriterService/DESIGN.md`](src/treecipe/src/PicklistDependencyMetadataWriterService/DESIGN.md) |
 | Recipe Cockpit | [`src/treecipe/src/RecipeCockpitService/DESIGN.md`](src/treecipe/src/RecipeCockpitService/DESIGN.md) |
+| Insert failure triage | [`src/treecipe/src/InsertFailureTriage/DESIGN.md`](src/treecipe/src/InsertFailureTriage/DESIGN.md) |
 | Faker services | [`src/treecipe/src/RecipeFakerService.ts/DESIGN.md`](src/treecipe/src/RecipeFakerService.ts/DESIGN.md) |
+| Recipe field constraint | [`src/treecipe/src/RecipeFieldConstraint/DESIGN.md`](src/treecipe/src/RecipeFieldConstraint/DESIGN.md) |
 | Recipe generation | [`src/treecipe/src/RecipeService/DESIGN.md`](src/treecipe/src/RecipeService/DESIGN.md) |
+| Recipe writer | [`src/treecipe/src/RecipeWriter/DESIGN.md`](src/treecipe/src/RecipeWriter/DESIGN.md) |
+| Recipe YAML scalar | [`src/treecipe/src/RecipeYamlScalar/DESIGN.md`](src/treecipe/src/RecipeYamlScalar/DESIGN.md) |
 | Saved record type selections | [`src/treecipe/src/RecordTypeSelectionService/DESIGN.md`](src/treecipe/src/RecordTypeSelectionService/DESIGN.md) |
 | Record types | [`src/treecipe/src/RecordTypeService/DESIGN.md`](src/treecipe/src/RecordTypeService/DESIGN.md) |
 | Relationship trees | [`src/treecipe/src/RelationshipService/DESIGN.md`](src/treecipe/src/RelationshipService/DESIGN.md) |
+| Run artifacts | [`src/treecipe/src/RunArtifacts/DESIGN.md`](src/treecipe/src/RunArtifacts/DESIGN.md) |
+| Run Faker confirmation | [`src/treecipe/src/RunFakerConfirmation/DESIGN.md`](src/treecipe/src/RunFakerConfirmation/DESIGN.md) |
+| Salesforce api name | [`src/treecipe/src/SalesforceApiName/DESIGN.md`](src/treecipe/src/SalesforceApiName/DESIGN.md) |
 | Salesforce org service | [`src/treecipe/src/SalesforceOrgService/DESIGN.md`](src/treecipe/src/SalesforceOrgService/DESIGN.md) |
 | Scratch org service | [`src/treecipe/src/ScratchOrgService/DESIGN.md`](src/treecipe/src/ScratchOrgService/DESIGN.md) |
 | sfdx project service | [`src/treecipe/src/SfdxProjectService/DESIGN.md`](src/treecipe/src/SfdxProjectService/DESIGN.md) |

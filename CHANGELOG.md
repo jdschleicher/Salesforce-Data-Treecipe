@@ -1,5 +1,26 @@
 # Change Log
 
+## [3.194.1] - Seven shared files move into their own leaf folders (#572, slice B of #570)
+
+Seven files that import no other service lived inside feature or engine folders, so each of their users counted as a dependent of the whole folder. That alone held 27 folders in one import cycle, `ExtensionCommandService ↔ RecipeCockpitService` among them. Nothing a user sees changes.
+
+- **Moved, class names kept, no shim left at an old path** (importing one fails `npm run compile`). All seven are layer 0:
+
+  | File | From | To |
+  |---|---|---|
+  | `SalesforceApiName.ts` | `RecipeService/` | `SalesforceApiName/` |
+  | `RecipeYamlScalar.ts`, its tests and `tests/mocks/` (HostilePicklistValues, PythonTestHarness) | `RecipeFakerService.ts/RecipeYamlScalar/` | `RecipeYamlScalar/` |
+  | `RecipeFieldConstraint.ts` and its tests | `RecipeFakerService.ts/RecipeFieldConstraint/` | `RecipeFieldConstraint/` |
+  | `RecipeCockpitRecipeWriter.ts` and its test | `RecipeCockpitService/` | `RecipeWriter/` |
+  | `RecipeCockpitRunArtifacts.ts`, its test and fixture | `RecipeCockpitService/` | `RunArtifacts/` |
+  | `RecipeCockpitInsertFailureTriage.ts` and its test | `RecipeCockpitService/` | `InsertFailureTriage/` |
+  | `RunFakerConfirmation.ts` | `ExtensionCommandService/` | `RunFakerConfirmation/` |
+
+- The writer's recipe fixtures stay in `RecipeCockpitService/tests/mocks/recipeWriter/`, which six cockpit and command suites also read.
+- **Layer test:** the seven folders are in `SERVICE_LAYERS` at layer 0, and the 16 `KNOWN_LAYER_VIOLATIONS` entries for #572 are gone. The largest cycle in the whole import graph drops from 27 folders to 15. Two new tests hold that: no cycle may hold more than 15 folders, and `ExtensionCommandService` and `RecipeCockpitService` are not in one cycle.
+- **Unchanged:** the golden files, every hostile-picklist suite's expectations (only their mock import paths changed) and the cockpit acceptance journeys.
+- **Design notes:** each new folder has a `DESIGN.md`. The writer's "patching LINES" note and the run artifacts' "run files live with its recipe" note moved with their files; `RecipeCockpitService/DESIGN.md` points to them. The notes about how a service uses one of these files stay with that service. CLAUDE.md's Project Structure and design-notes table name the new paths.
+
 ## [3.194.0] - Recipe Cockpit: "Get latest object detail from target org" on each object row (#612)
 
 To pick up one object's org changes you had to open the Treecipe Adapter (a whole subtree, fields only) or run a Troubleshooting retrieve for the whole tree, which writes straight into the project. Then you worked out the recipe lines yourself. Each Treecipe tab object row now ends with **Get latest object detail from target org**.

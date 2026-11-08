@@ -46,7 +46,7 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import { RecipeCockpitService } from '../RecipeCockpitService';
-import { ILookupWiringContext, IRecipeFilterLookup, RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, IRecipeFilterLookup, RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 const STANDARD_FIELD_PARENT_OBJECTS_PATH = path.join(__dirname, '..', '..', 'DirectoryProcessingService', 'tests', 'mocks', 'StandardFieldParentSalesforceMetadataDirectory', 'objects');
 

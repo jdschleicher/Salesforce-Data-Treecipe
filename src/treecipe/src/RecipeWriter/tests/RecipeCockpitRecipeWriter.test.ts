@@ -7,7 +7,7 @@ import * as yaml from 'js-yaml';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
-import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../../RecipeCockpitService/RecipeCockpitService';
 import { RecipeCockpitRecipeWriter, RecipeWriterResult, IRecipeWriterEdit, RecipeWriterRefusalReason } from '../RecipeCockpitRecipeWriter';
 
 /*
@@ -19,7 +19,8 @@ import { RecipeCockpitRecipeWriter, RecipeWriterResult, IRecipeWriterEdit, Recip
     Picklist__c and MultiPicklist__c carry record-type variants as commented lines under their
     "### TODO"s -- continuation lines the writer carries as opaque, like any other.
 */
-const RECIPE_WRITER_MOCKS_PATH = path.join(__dirname, 'mocks', 'recipeWriter');
+// THE COCKPIT'S SUITES READ THE SAME GENERATED RECIPES, SO THEY STAY WITH THE COCKPIT'S MOCKS
+const RECIPE_WRITER_MOCKS_PATH = path.join(__dirname, '..', '..', 'RecipeCockpitService', 'tests', 'mocks', 'recipeWriter');
 
 const RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [
     ['snowfakery', 'recipe-snowfakery--RelationshipTree_1.yml'],

@@ -1,8 +1,8 @@
 import { AuthInfo, Connection, Org, OrgAuthorization, StateAggregator } from '@salesforce/core';
 import { IAuthenticatedOrgDetail, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 
 import * as fs from 'fs';
 import * as os from 'os';

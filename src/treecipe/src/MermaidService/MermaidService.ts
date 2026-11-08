@@ -1,7 +1,7 @@
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 
 const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 

@@ -1,7 +1,7 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecipeService } from '../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
-import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
@@ -18,7 +18,7 @@ import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceServic
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { MermaidService } from '../MermaidService/MermaidService';
 import { StandardFieldParentReferenceMap } from '../RelationshipService/StandardFieldParentReferenceMap';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, IValidationRuleNotApplied, ValidationRuleAnalyzerService, VALIDATION_RULES_DIRECTORY_NAME } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 
 const STANDARD_PARENT_REFERENCE_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];

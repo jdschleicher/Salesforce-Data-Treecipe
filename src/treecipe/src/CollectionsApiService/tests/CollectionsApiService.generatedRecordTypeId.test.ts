@@ -9,7 +9,7 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { MockRecordTypeService } from '../../RecordTypeService/tests/MockRecordTypeService';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 jest.mock('vscode', () => ({
     workspace: { workspaceFolders: undefined },

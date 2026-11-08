@@ -33,11 +33,11 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL
 } from '../RecipeCockpitService';
-import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeUnconstrainedValue } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeUnconstrainedValue } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import * as os from 'os';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 

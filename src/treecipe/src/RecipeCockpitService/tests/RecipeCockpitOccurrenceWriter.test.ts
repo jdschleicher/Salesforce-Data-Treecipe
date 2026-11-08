@@ -4,9 +4,9 @@ expect.extend(matchers);
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeFilterLookup } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeFilterLookup } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore, IFixedValueEntry } from '../RecipeCockpitFixedValueStore';
-import { SalesforceApiName } from '../../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
 
 jest.mock('vscode', () => ({ window: {}, workspace: {}, Uri: {} }), { virtual: true });
 

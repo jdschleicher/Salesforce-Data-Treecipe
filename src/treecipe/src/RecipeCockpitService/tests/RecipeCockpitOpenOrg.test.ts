@@ -53,7 +53,7 @@ import {
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { ORG_FRONT_DOOR_FAILURE_TEXTS, ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 

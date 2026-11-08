@@ -11,7 +11,7 @@ import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { RecordTypeService } from '../../RecordTypeService/RecordTypeService';
-import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 
 jest.mock('vscode', () => ({
     workspace: {

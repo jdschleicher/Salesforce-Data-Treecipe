@@ -7,7 +7,7 @@ import * as yaml from 'js-yaml';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
-import { RecipeCockpitRecipeWriter, ILookupWiringContext, IRecipeFilterLookup, RecipeLookupWiringResult } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, ILookupWiringContext, IRecipeFilterLookup, RecipeLookupWiringResult } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 
 const TODO = '### TODO -- REFERENCE ID REQUIRED';

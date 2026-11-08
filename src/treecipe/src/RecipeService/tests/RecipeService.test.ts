@@ -10,7 +10,7 @@ import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordT
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
 import * as yaml from 'js-yaml';
-import { PythonTestHarness } from "../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness";
+import { PythonTestHarness } from "../../RecipeYamlScalar/tests/mocks/PythonTestHarness";
 
 // ONE PROBE FOR THE FILE, NOT ONE PER BACKEND describe.each RUNS
 const testRequiringPyYaml = PythonTestHarness.testRequiringModules('yaml');

@@ -1,6 +1,6 @@
 import * as xml2js from 'xml2js';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { RecipeFieldConstraint } from '../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
+import { RecipeFieldConstraint } from '../RecipeFieldConstraint/RecipeFieldConstraint';
 
 /*
     What a validation rule says about the one field it names (#324, reviving #41). A rule's formula

@@ -16,7 +16,7 @@ import {
     RecipeCockpitMetadataDeploy
 } from '../RecipeCockpitMetadataDeploy';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
-import { FIXTURE_RUN_FOLDER_NAME, FIXTURE_TREE_FOLDER_NAME, makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { FIXTURE_RUN_FOLDER_NAME, FIXTURE_TREE_FOLDER_NAME, makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 import { RecipeCockpitConfirmContent } from '../RecipeCockpitConfirmContent';
 
 const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');

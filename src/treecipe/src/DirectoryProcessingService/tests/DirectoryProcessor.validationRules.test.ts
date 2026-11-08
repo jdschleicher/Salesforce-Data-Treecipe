@@ -63,7 +63,7 @@ import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerSer
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 const VALIDATION_RULE_METADATA_PATH = path.join(__dirname, 'mocks', 'ValidationRuleSalesforceMetadataDirectory');
 const VALIDATION_RULE_OBJECTS_PATH = path.join(VALIDATION_RULE_METADATA_PATH, 'objects');

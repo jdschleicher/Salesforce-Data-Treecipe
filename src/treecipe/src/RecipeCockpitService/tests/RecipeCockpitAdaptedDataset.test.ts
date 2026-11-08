@@ -70,9 +70,9 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { IAdaptedRunRequest, RecipeCockpitAdaptedDataset } from '../RecipeCockpitAdaptedDataset';
-import { IAdaptedRecipeField, RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { IAdaptedRecipeField, RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { IRecipeCockpitRecipeViewModel, RecipeCockpitService, RECIPE_COCKPIT_DATASET_ADAPTED_LABEL } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

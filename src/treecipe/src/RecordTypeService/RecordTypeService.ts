@@ -1,7 +1,7 @@
 
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecordTypeWrapper } from './RecordTypesWrapper';
-import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
+import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 
 import * as fs from 'fs';
 import * as xml2js from 'xml2js';

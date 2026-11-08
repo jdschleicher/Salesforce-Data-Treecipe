@@ -20,7 +20,7 @@ import {
 } from '../RecipeCockpitMetadataDeploy';
 import { RecipeCockpitMetadataDeployPackage } from '../RecipeCockpitMetadataDeployPackage';
 import { RecipeCockpitConfirmContent } from '../RecipeCockpitConfirmContent';
-import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 
 /*
     #547: a deployed custom object's file can name a FlexiPage, a component or a compact layout the

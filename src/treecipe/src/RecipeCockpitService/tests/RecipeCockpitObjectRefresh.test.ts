@@ -21,7 +21,7 @@ import {
 import { RecipeService } from '../../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import { INJECTED_FIELD_API_NAME, QUOTE_PAYLOADS } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { INJECTED_FIELD_API_NAME, QUOTE_PAYLOADS } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
 // THE PROJECT'S Account AND THE SAME OBJECT AS THE ORG ANSWERED IT; SEE mocks/objectRefresh
 const OBJECT_REFRESH_MOCKS = path.join(__dirname, 'mocks', 'objectRefresh');

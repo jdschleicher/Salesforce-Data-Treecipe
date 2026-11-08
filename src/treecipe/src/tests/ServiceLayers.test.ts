@@ -13,6 +13,13 @@ export const SERVICE_LAYERS: Readonly<Record<string, number>> = {
     CockpitKit: 0,
     DatasetInsertAttemptService: 0,
     DatasetSourceService: 0,
+    InsertFailureTriage: 0,
+    RecipeFieldConstraint: 0,
+    RecipeWriter: 0,
+    RecipeYamlScalar: 0,
+    RunArtifacts: 0,
+    RunFakerConfirmation: 0,
+    SalesforceApiName: 0,
     SfdxProjectService: 0,
     ValueSetService: 0,
 
@@ -65,24 +72,6 @@ export const SERVICE_LAYERS: Readonly<Record<string, number>> = {
     cycle is listed, and #575 removes the cycle.
 */
 export const KNOWN_LAYER_VIOLATIONS: readonly string[] = [
-
-    // #572: THE SEVEN DEPENDENCY-FREE SHARED FILES MOVE INTO LEAF FOLDERS
-    'CollectionsApiService/CollectionsApiService.ts → RecipeCockpitService/RecipeCockpitInsertFailureTriage.ts', // #572
-    'ConfigurationService/ConfigurationService.ts → RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar.ts', // #572
-    'ErrorHandlingService/ErrorHandlingService.ts → RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar.ts', // #572
-    'ObjectInfoWrapper/ObjectInfoWrapper.ts → RecipeService/SalesforceApiName.ts', // #572
-    'RecipeCockpitService/RecipeCockpitService.ts → ExtensionCommandService/RunFakerConfirmation.ts', // #572
-    'RecipeService/RecipeService.ts → RecipeCockpitService/RecipeCockpitRecipeWriter.ts', // #572
-    'RecordTypeSelectionService/SavedRecordTypeSelection.ts → RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar.ts', // #572
-    'RecordTypeSelectionService/SavedRecordTypeSelection.ts → RecipeService/SalesforceApiName.ts', // #572
-    'RecordTypeService/RecordTypeService.ts → RecipeService/SalesforceApiName.ts', // #572
-    'SalesforceOrgService/SalesforceOrgService.ts → RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar.ts', // #572
-    'SalesforceOrgService/SalesforceOrgService.ts → RecipeService/SalesforceApiName.ts', // #572
-    'ScratchOrgService/ScratchOrgService.ts → RecipeCockpitService/RecipeCockpitRunArtifacts.ts', // #572
-    'ValidationRuleAnalyzerService/ValidationRuleAnalyzerService.ts → RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint.ts', // #572
-    'ValidationRuleAnalyzerService/ValidationRuleAnalyzerService.ts → RecipeService/SalesforceApiName.ts', // #572
-    'VSCodeWorkspace/VSCodeWorkspaceService.ts → RecipeCockpitService/RecipeCockpitRunArtifacts.ts', // #572
-    'VSCodeWorkspace/VSCodeWorkspaceService.ts → RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar.ts', // #572
 
     // #574: THE PLATFORM LAYER, AND THE sf CLI GATE OUT OF THE PICKLIST SERVICE
     'CollectionsApiService/CollectionsApiService.ts → PicklistDependencyCheckService/PicklistDependencyCheckService.ts', // #574
@@ -355,6 +344,29 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
     });
 
+    // 27 BEFORE #572 MOVED THE SEVEN DEPENDENCY-FREE FILES INTO LEAF FOLDERS; EACH LATER SLICE OF #570 LOWERS IT
+    const MOST_FOLDERS_IN_ONE_CYCLE = 15;
+
+    test(`no cycle in the whole import graph, listed violations included, holds more than ${MOST_FOLDERS_IN_ONE_CYCLE} folders`, () => {
+
+        const oversizedCycles = findFolderCycles(SERVICE_IMPORTS)
+            .filter(cycleFolders => cycleFolders.length > MOST_FOLDERS_IN_ONE_CYCLE)
+            .map(cycleFolders => `${cycleFolders.length} folders import each other in a cycle (${cycleFolders.join(', ')}), more than ${MOST_FOLDERS_IN_ONE_CYCLE}: `
+                + 'a new import has joined two folders the layers keep apart. Move the shared code into a lower layer.');
+
+        expect(oversizedCycles).toEqual([]);
+
+    });
+
+    test('ExtensionCommandService and RecipeCockpitService are not in one cycle (#572)', () => {
+
+        const commandAndCockpitCycles = findFolderCycles(SERVICE_IMPORTS)
+            .filter(cycleFolders => cycleFolders.includes('ExtensionCommandService') && cycleFolders.includes('RecipeCockpitService'));
+
+        expect(commandAndCockpitCycles).toEqual([]);
+
+    });
+
     test('every entry in KNOWN_LAYER_VIOLATIONS is still a violation, so the list only shrinks', () => {
 
         expect(findStaleViolations(SERVICE_IMPORTS, KNOWN_LAYER_VIOLATIONS, SERVICE_LAYERS)).toEqual([]);
@@ -375,7 +387,7 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
             const sourceText = [
                 "import type { IPicklistValue } from '../ObjectInfoWrapper/FieldInfo';",
-                "export * from '../RecipeService/SalesforceApiName';",
+                "export * from '../SalesforceApiName/SalesforceApiName';",
                 "const relationshipService = require('../RelationshipService/RelationshipService');",
                 "void import('../ErrorHandlingService/ErrorHandlingService');",
                 "import * as yaml from 'js-yaml';"
@@ -384,7 +396,7 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
             expect(importedFiles.filter(importedFile => importedFile.startsWith('.'))).toEqual([
                 '../ObjectInfoWrapper/FieldInfo',
-                '../RecipeService/SalesforceApiName',
+                '../SalesforceApiName/SalesforceApiName',
                 '../RelationshipService/RelationshipService',
                 '../ErrorHandlingService/ErrorHandlingService'
             ]);
@@ -453,8 +465,8 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
             const scratchDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-service-layers-'));
             try {
-                writeScratchSource(scratchDirectoryPath, 'RecipeService/SalesforceApiName.ts', 'export class SalesforceApiName {}');
-                const importingFilePath = writeScratchSource(scratchDirectoryPath, 'XMLProcessingService/XmlFileProcessor.ts', "import type { SalesforceApiName } from '../RecipeService/SalesforceApiName';");
+                writeScratchSource(scratchDirectoryPath, 'SalesforceApiName/SalesforceApiName.ts', 'export class SalesforceApiName {}');
+                const importingFilePath = writeScratchSource(scratchDirectoryPath, 'XMLProcessingService/XmlFileProcessor.ts', "import type { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';");
 
                 const [serviceImport] = readServiceImports([importingFilePath]);
                 expect(path.basename(serviceImport.importedFile)).toBe('SalesforceApiName.ts');

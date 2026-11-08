@@ -1,5 +1,5 @@
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
-import { ResolvedRecipeFieldConstraint } from "./RecipeFieldConstraint/RecipeFieldConstraint";
+import { ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
 import { IValidationRuleRegexAtom } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export interface IRecipeFakerService {
