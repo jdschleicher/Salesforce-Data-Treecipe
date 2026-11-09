@@ -9,6 +9,8 @@ import {
     DatasetSourceService,
     DATASET_COLLECTIONS_API_FOLDER_NAME,
     DATASET_SOURCE_API_NAME_PATTERN,
+    DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS,
+    DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT,
     DATASET_SOURCE_FILE_NAME,
     IDatasetSource,
     IKnownRecipeRun
@@ -754,6 +756,18 @@ describe('DatasetSourceService', () => {
                 const readSource = DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject });
 
                 expect(readSource).toEqual(validDatasetSource);
+
+            });
+
+            test('reads a tag at its caps, and drops one past either cap', () => {
+
+                const listDeveloperNames = (developerNameCount: number) => Array.from({ length: developerNameCount }, (_unused, developerNameIndex) => `Type${developerNameIndex}`);
+                const buildObjects = (objectCount: number) => Object.fromEntries(Array.from({ length: objectCount }, (_unused, objectIndex) => [`Object${objectIndex}__c`, ['Business']]));
+
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: buildObjects(DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS) })).toHaveProperty('recordTypesByObject');
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: { Account: listDeveloperNames(DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT) } })).toHaveProperty('recordTypesByObject');
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: buildObjects(DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS + 1) })).toEqual(validDatasetSource);
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: { Account: listDeveloperNames(DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT + 1) } })).toEqual(validDatasetSource);
 
             });
 

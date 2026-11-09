@@ -10,6 +10,10 @@ const BASE_ARTIFACT_FILES_FOLDER_NAME = 'BaseArtifactFiles';
 // SalesforceApiName.pattern, repeated so this service keeps importing only fs and path; a test holds the two equal
 export const DATASET_SOURCE_API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 
+// THE MOST A recordTypesByObject TAG MAY NAME (#621): ONE GENERATE TICKS A FEW PER OBJECT, SO ANYTHING NEAR THESE WAS NOT WRITTEN BY RUN FAKER
+export const DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS = 100;
+export const DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT = 200;
+
 // ConfigurationService.getDatasetFilesForCollectionsApiFolderName, repeated so this service keeps importing only fs and path
 export const DATASET_COLLECTIONS_API_FOLDER_NAME = 'DatasetFilesForCollectionsApi';
 
@@ -108,7 +112,7 @@ export interface IDatasetSource {
     constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
     // THE FIELDS WHOSE VALIDATION RULES THE RECIPE COCKPIT SWITCHED OFF (#325), BY OBJECT; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
     validationRulesOffByObject?: Record<string, string[]>;
-    // THE RECORD TYPES THE RECORDS CARRY BECAUSE THEY WERE CHOSEN (#621), BY OBJECT, DEVELOPER NAMES IN BLOCK ORDER; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
+    // THE RECORD TYPES THE RECORDS CARRY (#621), UNLESS ONLY THE DEFAULT OF AN OBJECT WITH SEVERAL, BY OBJECT, DEVELOPER NAMES IN BLOCK ORDER; ABSENT WHEN NONE IS. READ BACK WITH NO PROTOTYPE
     recordTypesByObject?: Record<string, string[]>;
     adaptation?: IDatasetSourceAdaptation;
 }
@@ -704,6 +708,8 @@ export class DatasetSourceService {
         The record types a data set carries (#621), as untrusted JSON. Unlike the fields above, a tag
         only labels a row, so one out of shape is dropped and the rest of the file still reads: every
         object and developer name must be an api name, each list non-empty, and the map has no prototype.
+        The file arrives with a cloned repository, and the panel draws the tag as one chip, so a tag
+        naming more than an org could hold is dropped too.
     */
     static readRecordTypesByObject(candidate: unknown): Record<string, string[]> | undefined {
 
@@ -712,10 +718,11 @@ export class DatasetSourceService {
         }
 
         const entries = Object.entries(candidate as Record<string, unknown>);
-        const isEveryEntryValid = entries.length > 0 && entries.every(([objectApiName, developerNames]) => (
+        const isEveryEntryValid = entries.length > 0 && entries.length <= DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS && entries.every(([objectApiName, developerNames]) => (
             DATASET_SOURCE_API_NAME_PATTERN.test(objectApiName)
             && Array.isArray(developerNames)
             && developerNames.length > 0
+            && developerNames.length <= DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT
             && developerNames.every(developerName => typeof developerName === 'string' && DATASET_SOURCE_API_NAME_PATTERN.test(developerName))
         ));
 

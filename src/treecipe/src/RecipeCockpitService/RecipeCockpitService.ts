@@ -483,7 +483,6 @@ export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL = 'Add as the parent, n
 export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting', 'query', 'updater'] as const;
 
 // THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
-export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
 export const RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL = 'Remove TODO';
 export const RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL = 'Restore TODO';
 export const RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX = 'The TODO was not removed';
@@ -649,7 +648,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
-            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row is two lines: the star, the pencil, its name, its last insert and its buttons first, then the ▸ with when, how and from which version it was made. A data set made from more than one record type, or from a record type you chose, names them beside its name, for example Record types: Account · Business, Partner. A row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of the second line opens its insert journey: a table of every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, newest first, for the orgs it was inserted into. Each row shows its time, step, org, outcome in words, the first error of a failure, and where its files are, with View file; click a column heading to sort by it. A data set never inserted opens to No inserts yet.',
+            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row is two lines: the star, the pencil, its name, its last insert and its buttons first, then the ▸ with when, how and from which version it was made. A data set names the record types its records carry beside its name, for example Record types: Account · Business, Partner, unless they are only the default of an object with several. A row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of the second line opens its insert journey: a table of every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, newest first, for the orgs it was inserted into. Each row shows its time, step, org, outcome in words, the first error of a failure, and where its files are, with View file; click a column heading to sort by it. A data set never inserted opens to No inserts yet.',
             'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset Selections, right of a card\'s Generate fake data and insert button, clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
@@ -1282,8 +1281,6 @@ export interface IRecipeSourceFile {
     objectEntries: Map<string, IRecipeSourceObjectEntry>;
 }
 
-// WHAT A RUN'S BLOCKS WRITE AS RecordTypeId, COLLECTED BY THE SAME SCAN parseRecipeSource MAKES (#195); THE WRITER READS IT (#621)
-export type { IRecipeRecordTypeBlocks };
 
 /*
     Everything the cockpit webview can post back.
@@ -20774,18 +20771,6 @@ export class RecipeCockpitService {
     }
 
     // AN OBJECT WHOSE RECIPE NAMES NONE OF ITS RECORD TYPES IS DRAWN WITH THE DEFAULT TICKED: THE FIRST ACTIVE ONE, AS GENERATION PICKS
-    static buildEmptyRecordTypeBlocks(): IRecipeRecordTypeBlocks {
-
-        return RecipeCockpitRecipeWriter.buildEmptyRecordTypeBlocks();
-
-    }
-
-    static collectRecordTypeBlocks(lines: string[], scannedObjects: IScannedObject[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
-
-        RecipeCockpitRecipeWriter.collectRecordTypeBlocks(lines, scannedObjects, recordTypeBlocks);
-
-    }
-
     static applyGeneratedRecordTypes(objects: IRecipeCockpitObjectViewModel[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
 
         const { developerNamesByObjectApiName, defaultWrittenObjectApiNames } = recordTypeBlocks;
@@ -21136,7 +21121,7 @@ export class RecipeCockpitService {
         const recipeSourceFiles: IRecipeSourceFile[] = [];
         const notices: string[] = [];
         const recipeTextsByFilePath = new Map<string, string>();
-        const recordTypeBlocks = this.buildEmptyRecordTypeBlocks();
+        const recordTypeBlocks = RecipeCockpitRecipeWriter.buildEmptyRecordTypeBlocks();
 
         this.collectRecipeFilePaths(runFolderPath)
             .filter(recipeFilePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(recipeFilePath), path.resolve(workspaceRoot)))
@@ -21215,7 +21200,7 @@ export class RecipeCockpitService {
         const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeContent);
         const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
         if ( recordTypeBlocks ) {
-            this.collectRecordTypeBlocks(lines, scannedObjects, recordTypeBlocks);
+            RecipeCockpitRecipeWriter.collectRecordTypeBlocks(lines, scannedObjects, recordTypeBlocks);
         }
         const scannedFriendIndex = RecipeCockpitRecipeWriter.buildScannedFriendIndex(scannedObjects);
         const scannedObjectsByHeaderIndex = scannedFriendIndex.objectsByHeaderIndex;
@@ -21921,6 +21906,7 @@ ${COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES}
         background-color: var(--sdt-chip-bg);
         border-radius: 3px;
     }
+    .treeDatasetRecordTypes { padding: 0 0.35em; font-size: 0.85em; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 3px; }
     .recordTypeChip {
         position: relative;
         z-index: 2;
@@ -27284,10 +27270,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         rowState.nameElement = createElement('span', 'treeDatasetName');
         primaryLineElement.appendChild(rowState.nameElement);
 
-        // THE RECORD TYPES ITS RECORDS CARRY (#621), BESIDE THE NAME A READER PICKS A DATA SET BY
+        // THE RECORD TYPES ITS RECORDS CARRY (#621), BESIDE THE NAME A READER PICKS A DATA SET BY; ITS OWN CLASS, SO NO .recordTypeChip SELECTOR FINDS IT
         if (dataset.recordTypes) {
             const recordTypesText = formatDatasetRecordTypes(dataset.recordTypes);
-            const recordTypesChipElement = createElement('span', 'recordTypeChip treeDatasetRecordTypes', recordTypesText);
+            const recordTypesChipElement = createElement('span', 'treeDatasetRecordTypes', recordTypesText);
             recordTypesChipElement.setAttribute('title', 'Generated with ' + recordTypesText);
             primaryLineElement.appendChild(recordTypesChipElement);
         }

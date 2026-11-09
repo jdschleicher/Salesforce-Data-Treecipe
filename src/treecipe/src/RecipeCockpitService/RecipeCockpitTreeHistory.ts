@@ -73,7 +73,7 @@ export interface IRecipeCockpitTreeDatasetViewModel {
     isFavorite?: boolean;
     // A DATA SET THE TREECIPE ADAPTER WROTE (#448), DRAWN WITH AN "adapted" LABEL; ABSENT OTHERWISE
     isAdapted?: true;
-    // THE RECORD TYPES ITS RECORDS CARRY BECAUSE THEY WERE CHOSEN (#621), IN THE ORDER datasetSource.json NAMES THEM; ABSENT WHEN IT NAMES NONE
+    // THE RECORD TYPES ITS RECORDS CARRY (#621), UNLESS ONLY THE DEFAULT OF AN OBJECT WITH SEVERAL, IN THE ORDER datasetSource.json NAMES THEM; ABSENT WHEN IT NAMES NONE
     recordTypes?: IRecipeCockpitDatasetRecordTypesViewModel[];
     // ITS NEWEST INSERT (#469); ABSENT FOR A DATA SET NEVER INSERTED, WHICH DRAWS AS IT ALWAYS DID
     lastInsert?: IRecipeCockpitDatasetLastInsertViewModel;

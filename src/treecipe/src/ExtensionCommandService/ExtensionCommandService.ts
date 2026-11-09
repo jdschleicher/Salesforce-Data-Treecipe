@@ -342,7 +342,7 @@ export class ExtensionCommandService {
                 filteredRecipe?.fixedValuesByObject ?? {},
                 filteredRecipe?.constraintsByObject ?? {},
                 filteredRecipe?.validationRulesOffByObject ?? {},
-                Object.fromEntries(RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(fs.readFileSync(generationRecipeFilePath, 'utf8')))
+                Object.fromEntries(RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(filteredRecipe?.recipeText ?? fs.readFileSync(generationRecipeFilePath, 'utf8')))
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
             datasetFolderPath = fullPathToUniqueTimeStampedFakeDataSetsFolder;
