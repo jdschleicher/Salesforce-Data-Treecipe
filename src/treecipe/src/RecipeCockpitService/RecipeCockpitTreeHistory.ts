@@ -34,6 +34,11 @@ export interface IRecipeCockpitDatasetRecordCountViewModel {
     recordCount: number;
 }
 
+export interface IRecipeCockpitDatasetRecordTypesViewModel {
+    objectApiName: string;
+    developerNames: string[];
+}
+
 /*
     How the newest insert of a data set ended (#469), as its row draws it. The counts are absent
     when the attempt could not be read; isOutcomeUnrecorded marks an attempt with no summary at all,
@@ -68,6 +73,8 @@ export interface IRecipeCockpitTreeDatasetViewModel {
     isFavorite?: boolean;
     // A DATA SET THE TREECIPE ADAPTER WROTE (#448), DRAWN WITH AN "adapted" LABEL; ABSENT OTHERWISE
     isAdapted?: true;
+    // THE RECORD TYPES ITS RECORDS CARRY BECAUSE THEY WERE CHOSEN (#621), IN THE ORDER datasetSource.json NAMES THEM; ABSENT WHEN IT NAMES NONE
+    recordTypes?: IRecipeCockpitDatasetRecordTypesViewModel[];
     // ITS NEWEST INSERT (#469); ABSENT FOR A DATA SET NEVER INSERTED, WHICH DRAWS AS IT ALWAYS DID
     lastInsert?: IRecipeCockpitDatasetLastInsertViewModel;
 }
@@ -247,6 +254,7 @@ export class RecipeCockpitTreeHistory {
             const runFolderName = isLinkedToTree ? datasetSourceRead.recipeRunFolderName : null;
             const isAdapted = datasetListing.folderNameDetail.adaptedFromName !== undefined && datasetSourceRead.datasetSource?.origin === 'adapt';
             const lastInsertRead = lastInsertsByDatasetFolderName.get(datasetListing.datasetFolderName);
+            const recordTypesByObject = datasetSourceRead.datasetSource?.recordTypesByObject;
 
             const datasetViewModel: IRecipeCockpitTreeDatasetViewModel = {
                 datasetFolderName: datasetListing.datasetFolderName,
@@ -258,6 +266,7 @@ export class RecipeCockpitTreeHistory {
                 runFolderName: runFolderName,
                 recordCounts: recordCountsByObject ? this.toRecordCountViewModels(recordCountsByObject) : null,
                 ...( isAdapted ? { isAdapted: true as const } : {} ),
+                ...( recordTypesByObject ? { recordTypes: Object.entries(recordTypesByObject).map(([objectApiName, developerNames]) => ({ objectApiName: objectApiName, developerNames: [...developerNames] })) } : {} ),
                 ...( lastInsertRead ? { lastInsert: this.toLastInsertViewModel(lastInsertRead) } : {} )
             };
 

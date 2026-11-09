@@ -485,6 +485,12 @@ export interface IScannedField extends ILineSpan {
     fieldApiName: string;
 }
 
+// WHAT A RECIPE'S BLOCKS WRITE AS RecordTypeId (#195): THE DEVELOPER NAMES PER OBJECT, IN BLOCK ORDER, AND THE OBJECTS ANY BLOCK WROTE AS THE DEFAULT
+export interface IRecipeRecordTypeBlocks {
+    developerNamesByObjectApiName: Map<string, string[]>;
+    defaultWrittenObjectApiNames: Set<string>;
+}
+
 export interface IScannedObject {
     objectApiName: string;
     // THE COLUMN OF "- object:" -- 0 AT THE TOP, FOUR MORE FOR EACH friends: LEVEL
@@ -3496,6 +3502,64 @@ export class RecipeCockpitRecipeWriter {
 
     private static buildFixedValueFieldLine(fieldIndent: string, fieldApiName: string, fixedValue: IRecipeFixedValue): string {
         return `${fieldIndent}${fieldApiName}: ${this.toFixedValueScalar(fixedValue)}`;
+    }
+
+    /*
+        Which record types a recipe's blocks write per object (#195), read from every block's
+        RecordTypeId line ("Object.DeveloperName"), in block order -- a self-lookup iteration repeats
+        its object's first block and adds nothing. A block written as the DEFAULT carries the
+        RecordType Options TODO under that line (two or more record types always do), so its absence
+        on every block says the recipe was generated from a choice.
+    */
+    static buildEmptyRecordTypeBlocks(): IRecipeRecordTypeBlocks {
+
+        return { developerNamesByObjectApiName: new Map(), defaultWrittenObjectApiNames: new Set() };
+
+    }
+
+    static collectRecordTypeBlocks(lines: string[], scannedObjects: IScannedObject[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
+
+        scannedObjects.forEach(scannedObject => {
+
+            const recordTypeIdField = scannedObject.fields.find(scannedField => scannedField.fieldApiName === RECORD_TYPE_ID_FIELD_API_NAME);
+            if ( !recordTypeIdField ) {
+                return;
+            }
+
+            const recordTypeIdMatch = /^\s*RecordTypeId:[ \t]*([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)[ \t]*$/.exec(lines[recordTypeIdField.startIndex]);
+            if ( recordTypeIdMatch && recordTypeIdMatch[1] === scannedObject.objectApiName ) {
+                const developerNames = recordTypeBlocks.developerNamesByObjectApiName.get(scannedObject.objectApiName) ?? [];
+                if ( !developerNames.includes(recordTypeIdMatch[2]) ) {
+                    developerNames.push(recordTypeIdMatch[2]);
+                }
+                recordTypeBlocks.developerNamesByObjectApiName.set(scannedObject.objectApiName, developerNames);
+            }
+
+            for ( let continuationIndex = recordTypeIdField.startIndex + 1; continuationIndex < recordTypeIdField.endIndex; continuationIndex++ ) {
+                if ( lines[continuationIndex].trimStart().startsWith(RECORD_TYPE_SECTION_MARKER) ) {
+                    recordTypeBlocks.defaultWrittenObjectApiNames.add(scannedObject.objectApiName);
+                    break;
+                }
+            }
+
+        });
+
+    }
+
+    /*
+        The record types a data set's records carry because they were CHOSEN (#621): every object no
+        block of which was written as the default, with its developer names in block order. A recipe
+        generated with no choice answers an empty map, so its data set records nothing new.
+    */
+    static listChosenRecordTypesByObject(recipeText: string): Map<string, string[]> {
+
+        const { lines } = this.splitRecipeLines(recipeText);
+        const recordTypeBlocks = this.buildEmptyRecordTypeBlocks();
+        this.collectRecordTypeBlocks(lines, this.scanRecipeObjects(lines), recordTypeBlocks);
+
+        return new Map([...recordTypeBlocks.developerNamesByObjectApiName]
+            .filter(([objectApiName]) => !recordTypeBlocks.defaultWrittenObjectApiNames.has(objectApiName)));
+
     }
 
     /*

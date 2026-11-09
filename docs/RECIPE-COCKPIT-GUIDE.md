@@ -106,6 +106,7 @@ When you generate, the cockpit applies them to a copy of the recipe.
 The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…` in its `BaseArtifactFiles` folder, and `datasetSource.json` lists what was changed.
 Each insert of a data set saves its results, and how it ended, in the data set's `InsertAttempts` folder.
 Under **Previously Used Data Sets**, each row is two lines: the star, the pencil, its name, its last insert and its buttons first, then the **▸** with when, how and from which version it was made.
+A data set made from more than one record type, or from a record type you chose, names them beside its name, for example **Record types: Account · Business, Partner**.
 A row shows its last insert: ✅ **Inserted**, ⚠️ **Partly inserted**, ❌ **Insert failed**, 🚫 **Insert cancelled** or ❔ **Insert outcome unknown** (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip.
 **View results** opens that insert's results file.
 A row's **Insert…** inserts into the sandbox or scratch org chosen in **Target Org Manager** (with none chosen, it asks), after a confirmation that lists its records per object and offers **Change org…**.

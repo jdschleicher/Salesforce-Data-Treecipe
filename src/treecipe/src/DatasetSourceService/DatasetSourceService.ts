@@ -7,6 +7,9 @@ export const DATASET_SOURCE_SCHEMA_VERSION = 1;
 
 const BASE_ARTIFACT_FILES_FOLDER_NAME = 'BaseArtifactFiles';
 
+// SalesforceApiName.pattern, repeated so this service keeps importing only fs and path; a test holds the two equal
+export const DATASET_SOURCE_API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
 // ConfigurationService.getDatasetFilesForCollectionsApiFolderName, repeated so this service keeps importing only fs and path
 export const DATASET_COLLECTIONS_API_FOLDER_NAME = 'DatasetFilesForCollectionsApi';
 
@@ -105,6 +108,8 @@ export interface IDatasetSource {
     constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
     // THE FIELDS WHOSE VALIDATION RULES THE RECIPE COCKPIT SWITCHED OFF (#325), BY OBJECT; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
     validationRulesOffByObject?: Record<string, string[]>;
+    // THE RECORD TYPES THE RECORDS CARRY BECAUSE THEY WERE CHOSEN (#621), BY OBJECT, DEVELOPER NAMES IN BLOCK ORDER; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
+    recordTypesByObject?: Record<string, string[]>;
     adaptation?: IDatasetSourceAdaptation;
 }
 
@@ -232,7 +237,8 @@ export class DatasetSourceService {
                                 objectCountsByObject: Record<string, number> = {},
                                 fixedValuesByObject: Record<string, Record<string, string>> = {},
                                 constraintsByObject: Record<string, Record<string, IDatasetSourceFieldConstraint>> = {},
-                                validationRulesOffByObject: Record<string, string[]> = {}): IDatasetSource {
+                                validationRulesOffByObject: Record<string, string[]> = {},
+                                recordTypesByObject: Record<string, string[]> = {}): IDatasetSource {
 
         // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
         const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
@@ -240,6 +246,7 @@ export class DatasetSourceService {
         const recordedFixedValues = Object.entries(fixedValuesByObject).filter(([, fixedValuesByField]) => Object.keys(fixedValuesByField).length > 0);
         const recordedConstraints = Object.entries(constraintsByObject).filter(([, constraintsByField]) => Object.keys(constraintsByField).length > 0);
         const recordedValidationRulesOff = Object.entries(validationRulesOffByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
+        const recordedRecordTypes = Object.entries(recordTypesByObject).filter(([, developerNames]) => developerNames.length > 0);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -263,6 +270,9 @@ export class DatasetSourceService {
                 : {} ),
             ...( recordedValidationRulesOff.length > 0
                 ? { validationRulesOffByObject: Object.fromEntries(recordedValidationRulesOff.map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])) }
+                : {} ),
+            ...( recordedRecordTypes.length > 0
+                ? { recordTypesByObject: Object.fromEntries(recordedRecordTypes.map(([objectApiName, developerNames]) => [objectApiName, [...developerNames]])) }
                 : {} )
         };
 
@@ -653,6 +663,8 @@ export class DatasetSourceService {
             });
         }
 
+        const readRecordTypes = this.readRecordTypesByObject(candidate.recordTypesByObject);
+
         let readLookupParents: Record<string, LookupParentRecord> | undefined;
         if ( lookupParentsByField !== undefined ) {
             readLookupParents = Object.create(null) as Record<string, LookupParentRecord>;
@@ -682,8 +694,40 @@ export class DatasetSourceService {
             ...( readFixedValues ? { fixedValuesByObject: readFixedValues } : {} ),
             ...( readConstraints ? { constraintsByObject: readConstraints } : {} ),
             ...( readValidationRulesOff ? { validationRulesOffByObject: readValidationRulesOff } : {} ),
+            ...( readRecordTypes ? { recordTypesByObject: readRecordTypes } : {} ),
             ...( isAdapt ? { adaptation: this.readAdaptation(adaptation as IDatasetSourceAdaptation) } : {} )
         };
+
+    }
+
+    /*
+        The record types a data set carries (#621), as untrusted JSON. Unlike the fields above, a tag
+        only labels a row, so one out of shape is dropped and the rest of the file still reads: every
+        object and developer name must be an api name, each list non-empty, and the map has no prototype.
+    */
+    static readRecordTypesByObject(candidate: unknown): Record<string, string[]> | undefined {
+
+        if ( typeof candidate !== 'object' || candidate === null || Array.isArray(candidate) ) {
+            return undefined;
+        }
+
+        const entries = Object.entries(candidate as Record<string, unknown>);
+        const isEveryEntryValid = entries.length > 0 && entries.every(([objectApiName, developerNames]) => (
+            DATASET_SOURCE_API_NAME_PATTERN.test(objectApiName)
+            && Array.isArray(developerNames)
+            && developerNames.length > 0
+            && developerNames.every(developerName => typeof developerName === 'string' && DATASET_SOURCE_API_NAME_PATTERN.test(developerName))
+        ));
+
+        if ( !isEveryEntryValid ) {
+            return undefined;
+        }
+
+        const readRecordTypes = Object.create(null) as Record<string, string[]>;
+        entries.forEach(([objectApiName, developerNames]) => {
+            readRecordTypes[objectApiName] = [...( developerNames as string[] )];
+        });
+        return readRecordTypes;
 
     }
 
