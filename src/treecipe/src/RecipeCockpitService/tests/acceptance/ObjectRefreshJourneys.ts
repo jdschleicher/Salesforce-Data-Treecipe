@@ -61,7 +61,7 @@ export const OBJECT_REFRESH_JOURNEYS: IObjectRefreshJourney[] = [
             await chooseOrg(journey, SANDBOX_ORG_LABEL);
             const recipeBefore = readWorkspaceFile(journey, ACCOUNT_RECIPE_FILE);
 
-            await journey.click('button', 'Get latest object detail from target org for Account');
+            await journey.click('button', 'Get latest detail for Account');
             await journey.step('step 1 offers every kind, ticked', () => {
                 const screen = journey.screen();
                 ['Fields', 'Validation rules', 'Record types', 'Global value sets'].forEach(kindLabel => screen.get('checkbox', kindLabel));

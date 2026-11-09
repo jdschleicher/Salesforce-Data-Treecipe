@@ -648,6 +648,8 @@ describe('RecipeCockpitService', () => {
                 ['onHeaderMuted', 'header'], ['action', 'header'],
                 // #449: AN IMPACTED ROW'S HALF-BROKEN LINK, ON A ROW AND A HOVERED ROW
                 ['changed', 'surface'], ['changed', 'rowHover'],
+                // #612: THE RED REFRESH ARROW ON "Get latest detail", ON THE SECONDARY BUTTON'S SURFACE INSIDE A ROW
+                ['removed', 'surface'], ['removed', 'rowHover'],
                 // THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, AND A TICKED BOX'S EDGE
                 ['actionEdge', 'surface'], ['actionEdge', 'rowHover']
             ];

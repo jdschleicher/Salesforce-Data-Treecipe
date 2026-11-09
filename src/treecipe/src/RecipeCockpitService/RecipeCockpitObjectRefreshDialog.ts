@@ -1,5 +1,5 @@
 /*
-    The panel half of "Get latest object detail from target org" (#612): the row's button and the
+    The panel half of "Get latest detail" (#612): the row's button and the
     dialog the host drives through objectRefreshState. Kept beside the service as the kit keeps its
     confirmation, so the 33,000-line service does not grow by it. The dialog draws over the cockpit
     with the confirmation's own overlay classes, writes every host string through textContent, and
@@ -7,12 +7,14 @@
 
     It uses, from the panel script around it: vscodeApi, renderedSequence, createElement,
     createButton, focusElement, isMotionReduced, drawToggle, setShownWithMotion, SVG_NAMESPACE,
-    TREE_GLYPH_VIEW_BOX, TOGGLE_COLLAPSED_GLYPH_PATH, cockpitDialogHostElement, cockpitBodyElement,
+    TREE_GLYPH_VIEW_BOX, TOGGLE_COLLAPSED_GLYPH_PATH, OBJECT_REFRESH_GLYPH_PATH, cockpitDialogHostElement, cockpitBodyElement,
     cockpitMetaElement, loadStatusElement, buildDataOrgView, dataOrgViews, buildRowTable and
     confirmDialog. Imports nothing.
 */
 
-export const RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STYLES = `    .treeObjectRefresh { margin-left: auto; }
+export const RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STYLES = `    .treeObjectRefresh { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
+    .objectRefreshGlyph { width: 1rem; height: 1rem; flex: none; }
+    .objectRefreshGlyph path { fill: none; stroke: var(--sdt-removed); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     .objectRefreshOrg { margin: 0.5rem 0; }
     .objectRefreshKinds { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.5rem 0; }
     .objectRefreshKind { display: flex; align-items: center; gap: 0.45rem; }
@@ -33,7 +35,17 @@ export const RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT = `    /*
     */
     function buildObjectRefreshButton(treeKey, object) {
 
-        const buttonElement = createButton('secondary', 'treeObjectRefresh', OBJECT_REFRESH_LABEL, 'compact');
+        const buttonElement = createButton('secondary', 'treeObjectRefresh', '', 'compact');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+        glyphElement.setAttribute('class', 'objectRefreshGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', OBJECT_REFRESH_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        buttonElement.appendChild(glyphElement);
+        buttonElement.appendChild(createElement('span', 'objectRefreshButtonLabel', OBJECT_REFRESH_LABEL));
         // THE NAME STARTS WITH THE VISIBLE LABEL (WCAG 2.5.3) AND SAYS WHICH ROW, SINCE EVERY OBJECT ROW HAS ONE
         buttonElement.setAttribute('aria-label', OBJECT_REFRESH_LABEL + ' for ' + object.objectApiName + (object.nickname ? ' · ' + object.nickname : ''));
         buttonElement.setAttribute('title', 'Retrieve ' + object.objectApiName + '\\'s fields, validation rules, record types and global value sets from an org, see what is new or changed, and apply only what you tick');

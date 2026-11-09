@@ -50,6 +50,8 @@ import {
     RECIPE_COCKPIT_OBJECT_REFRESH_CHANGED_REFUSAL,
     RECIPE_COCKPIT_OBJECT_REFRESH_CONFIRM_LABEL,
     RECIPE_COCKPIT_OBJECT_REFRESH_LABEL,
+    RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX,
     RecipeCockpitService
 } from '../RecipeCockpitService';
 import { OBJECT_REFRESH_KINDS } from '../RecipeCockpitObjectRefresh';
@@ -670,7 +672,10 @@ describe('RecipeCockpitService, Get latest object detail from target org (#612)'
             const accountButton = visibleHeaderChildren[visibleHeaderChildren.length - 1];
 
             expect(accountButton.classList.contains('treeObjectRefresh')).toBe(true);
-            expect(accountButton.textContent).toBe(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL);
+            expect(panel.findAll(accountButton, 'objectRefreshButtonLabel').map(labelElement => labelElement.textContent)).toEqual([RECIPE_COCKPIT_OBJECT_REFRESH_LABEL]);
+            // THE RED REFRESH ARROW COMES FIRST AND IS HIDDEN FROM A SCREEN READER: THE aria-label NAMES THE BUTTON
+            expect(accountButton.children[0].attributes).toEqual({ 'class': 'objectRefreshGlyph', 'viewBox': RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX, 'aria-hidden': 'true', 'focusable': 'false' });
+            expect(accountButton.children[0].children[0].attributes).toEqual({ 'd': RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH });
             expect(refreshButtons(panel).length).toBe(panel.objectElements().filter(objectElement => panel.findAll(objectElement.children[0], 'treeObjectIncludeSpacer').length === 0).length);
 
             accountButton.dispatch('click');
