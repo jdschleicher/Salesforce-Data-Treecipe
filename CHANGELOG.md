@@ -5,6 +5,7 @@
 - **The button at the end of each Treecipe tab object row now reads "Get latest detail"**, shortened from "Get latest object detail from target org", and starts with a red circular refresh arrow so it is easy to spot along the row. Its accessible name is "Get latest detail for <object>"; its tooltip still says it retrieves the object's fields, validation rules, record types and global value sets from an org. The dialog it opens is titled "Get latest detail: <object>". What the button does is unchanged.
 - The arrow is stroked in the palette's `--sdt-removed` red, and the contrast test now holds that red to 3:1 on a row and a hovered row.
 - The cockpit's ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the rendered baselines use the new name.
+- The "already applying" refusal now names the button by its new label: "Nothing was started: Get latest detail is applying retrieved files to this project."
 
 ## [3.194.3] - Follow-ups from #574's code review (epic #570)
 
