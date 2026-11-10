@@ -9,7 +9,7 @@ import { OrgLoginOutcome, SANDBOX_LOGIN_URL, WorkspaceTargetOrgWrite } from '../
 */
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL = 'Authorize org';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL = 'Authorizing org…';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = 'Log in to an existing sandbox in your browser so Target Org Manager can list it.';
+export const RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = 'Log in to an existing sandbox in your browser through the Salesforce CLI so Target Org Manager and every sf command can use it.';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL = 'Authorize org';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL = 'Make this my selected target org and this workspace\'s default org';
 
@@ -77,7 +77,7 @@ export class RecipeCockpitOrgAuthorize {
 
         return {
             summary: [
-                'Your browser opens the Salesforce login page. Once you log in and allow access, the org is saved with your other Salesforce CLI authorizations.',
+                'The Salesforce CLI opens the Salesforce login page in your browser. Once you log in and allow access, the CLI saves the org with your other authorizations, so every sf command can use it.',
                 authorizePlan.alias ? `Alias: ${authorizePlan.alias}` : 'Alias: none'
             ],
             warnings: authorizePlan.alias && authorizePlan.aliasHolderUsername

@@ -38,8 +38,7 @@ jest.mock('vscode', () => ({
 jest.mock('@salesforce/core', () => ({
     AuthInfo: { listAllAuthorizations: jest.fn() },
     StateAggregator: { clearInstance: jest.fn() },
-    Org: { create: jest.fn() },
-    WebOAuthServer: { create: jest.fn() }
+    Org: { create: jest.fn() }
 }));
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
@@ -82,7 +81,6 @@ const NEW_SANDBOX_AUTHORIZATION = { username: NEW_SANDBOX_USERNAME, aliases: ['n
 const PRODUCTION_USERNAME = 'admin@example.com';
 const PRODUCTION_AUTHORIZATION = { username: PRODUCTION_USERNAME, aliases: [], isExpired: false, instanceUrl: 'https://acme.my.salesforce.com' };
 const CHOSEN_ALIAS = 'newsbx';
-const AUTHORIZATION_URL = 'https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
 beforeEach(() => {
@@ -309,8 +307,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         };
 
         const answerLogin = (loginOutcome: OrgLoginOutcome, authorization?: object) => {
-            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async (_loginUrl: string, loginRun: IOrgLoginRun) => {
-                await loginRun.openLoginPage(AUTHORIZATION_URL);
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async () => {
                 if ( authorization ) {
                     authorizedAuthorizations.push(authorization);
                 }
@@ -436,7 +433,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_URL, expect.anything());
             expect(aliasSpy).toHaveBeenCalledWith(CHOSEN_ALIAS, NEW_SANDBOX_USERNAME);
-            expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: AUTHORIZATION_URL, isStrict: true });
+            expect(vscode.env.openExternal).not.toHaveBeenCalled();
             expect(execFile).not.toHaveBeenCalled();
 
             expect(lastOrgList().orgLabels.some((orgLabel: string) => orgLabel.includes(CHOSEN_ALIAS))).toBe(true);
