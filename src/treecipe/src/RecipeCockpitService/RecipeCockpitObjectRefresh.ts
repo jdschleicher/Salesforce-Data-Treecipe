@@ -46,8 +46,8 @@ export const OBJECT_REFRESH_RECIPE_NOTES = Object.freeze({
     formula: 'A formula field: only the project file changes.',
     lookup: 'A lookup: only the project file changes. Wire it from its row.',
     dependentPicklist: 'A dependent picklist: only the project file changes. Run Generate Treecipe to write its if: block.',
-    recordTypeSections: 'The recipe has a section per record type for this object: only the project file changes. Use Regenerate with record types.',
-    recordType: 'Only the project file changes. Use Regenerate with record types to add its section.',
+    recordTypeSections: 'The recipe has a section per record type for this object: only the project file changes. Run Generate Treecipe to write a new run with it.',
+    recordType: 'Only the project file changes. Run Generate Treecipe to write a new run with its section.',
     rulesOff: 'This field\'s validation rules are switched off on its row: its recipe line is not changed.',
     ruleInactive: 'Inactive: only the project file changes.',
     noBackend: 'The card\'s faker backend is not known: only the project file changes.',
@@ -75,7 +75,7 @@ export interface IObjectRefreshItem {
 export interface IObjectRefreshPlannedItem extends IObjectRefreshItem {
     fileCopy: IOrgMetadataFileCopy;
     recipeChanges: IObjectRefreshRecipeChange[];
-    offersRecordTypeRegenerate?: boolean;
+    needsNewRunForRecordType?: boolean;
 }
 
 export interface IObjectRefreshComparison {
@@ -434,7 +434,7 @@ export class RecipeCockpitObjectRefresh {
                     targetFilePath: localFile?.filePath ?? path.join(newFolderPath, `${componentName}${childFileKind.fileSuffix}`)
                 },
                 recipeChanges: recipeDecision.recipeChanges,
-                ...( childFileKind.kind === 'recordTypes' ? { offersRecordTypeRegenerate: true } : {} )
+                ...( childFileKind.kind === 'recordTypes' ? { needsNewRunForRecordType: true } : {} )
             });
 
         }

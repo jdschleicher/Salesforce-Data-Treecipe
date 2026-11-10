@@ -118,6 +118,7 @@ import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCock
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
+import { IRecordTypeTickObject, OccurrenceSettingPlacer, RECORD_TYPE_SET_MODE_LABELS, RECORD_TYPE_SET_MODE_LEGEND, RecipeCockpitRecordTypeRecipe, RecordTypeSetMode } from './RecipeCockpitRecordTypeRecipe';
 import {
     ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
@@ -508,10 +509,9 @@ export const RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL = 'Remove TODO';
 export const RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL = 'Restore TODO';
 export const RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX = 'The TODO was not removed';
 export const RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX = 'The TODO was not put back';
-export const RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL = 'Regenerate with these record types';
-export const RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL = 'Use defaults';
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selection';
-export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
+export const RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE = 'Record types, one block each';
+export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the ticked record types in treecipe/treecipe.config.json when the data is generated, so Generate Treecipe reuses them. With every object at its default record type, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
 // THE BUTTON IN THE TREECIPE TAB'S FILTER TILE THAT OPENS THE RECORD TYPES SECTION (#490)
@@ -544,8 +544,8 @@ export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more 
 export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING;
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
 export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
-// WHAT THE SECTION SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
-export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
+// WHAT THE SECTION SAYS ABOVE ITS ROWS: THE TICKS ARE USED BY THE NEXT GENERATE, AND NO RUN IS WRITTEN (#623)
+export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Tick the record types "Generate fake data and insert" generates for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. The run on screen is not rewritten.';
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
@@ -636,6 +636,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
             'No fields selected: an object with every field unticked generates no records. Its row shows NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED in red in place of its nickname, friends and count, and its chain link turns red and cannot be clicked. Its children are left out with it, as for an excluded object. Tick any field to bring it back.',
             'Record counts: each object\'s row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend\'s count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
+            'Record types: tick them under Manage record types, and the next Generate fake data and insert uses them. Its confirmation offers One data set with the record types folded together: each ticked record type gets its own records, with its own children and picklist values. The recipe is built again from your object metadata for that data set, so what was written into the recipe file is not in it (lines edited by hand, lookups wired on the card, parents or friends added on it), and no new run is written.',
             'The rules box: a field generated without the limits its validation rules set. Beside it, ↗ and a rule\'s name open that rule\'s .validationRule-meta.xml file at its formula, for each rule the field names, applied or not.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
         ]
@@ -649,14 +650,14 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Create <parent> in recipe, on a lookup that is still a TODO: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe it can instead become the parent of the child\'s whole block, which moves under it. A parent with no template, such as a custom object, draws it disabled and says why.',
             'Use existing <parent> from org…, beside it: pick any connected org, then search the parent or enter a record Id, which is checked in that org. The Id is written as the lookup\'s value and the row shows org record and the org; the insert checks the Id exists in the org it inserts into. Clear, under the pencil, puts the TODO back.',
-            'Get latest detail, the red refresh arrow at the end of an object\'s row: pick the org and what to compare (fields, validation rules, record types, global value sets), then Next retrieves that object and lists what is new or changed against your project, kind by kind. Tick what to apply: those files are copied into your project, then only their recipe lines are added or rewritten, and every other line stays as it was. Cancel at any step changes nothing; a new record type\'s section is written by Regenerate with record types.',
+            'Get latest detail, the red refresh arrow at the end of an object\'s row: pick the org and what to compare (fields, validation rules, record types, global value sets), then Next retrieves that object and lists what is new or changed against your project, kind by kind. Tick what to apply: those files are copied into your project, then only their recipe lines are added or rewritten, and every other line stays as it was. Cancel at any step changes nothing; a new record type\'s section is written by the next Generate Treecipe run.',
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On a lookup, including one with no parent in its metadata such as Product2.SellerId, it takes the 15- or 18-character Id of an existing record instead, and the tree insert checks the org it inserts into holds that record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
             'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
-            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter\'s read straight from the org instead of through the Salesforce CLI (listing an org\'s validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.',
+            'Others write other files: Remember this selection, under Manage record types, saves the ticked record types to treecipe.config.json when you generate, so Generate Treecipe reuses them, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter\'s read straight from the org instead of through the Salesforce CLI (listing an org\'s validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields & dependencies (Fields: custom fields, the custom objects that hold them and the record pages and compact layouts those objects open, any such page or layout not in your project set back to the standard one in what is sent, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
@@ -668,7 +669,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         heading: 'Where your changes are stored',
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
-            'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
+            'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed. With record types ticked, that copy is the recipe built for them.',
             'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row is two lines: the star, the pencil, its name, its last insert and its buttons first, then the ▸ with when, how and from which version it was made. A data set names the record types its records carry beside its name, for example Record types: Account · Business, Partner, unless they are only the default of an object with several. A row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file. A row\'s Insert… inserts into the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), after a confirmation that lists its records per object and offers Change org…. The ▸ at the start of the second line opens its insert journey: a table of every insert of the data set and each Troubleshooting step of its tree from when the data set was made to its last insert, newest first, for the orgs it was inserted into. Each row shows its time, step, org, outcome in words, the first error of a failure, and where its files are, with View file; click a column heading to sort by it. A data set never inserted opens to No inserts yet.',
             'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, a summary of how each Troubleshooting step ended (what History lists), the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset Selections, right of a card\'s Generate fake data and insert button, clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
@@ -879,7 +880,7 @@ export interface IRecipeCockpitObjectViewModel {
         Set only on an object with two or more record types under a valid developer name (#195):
         what the Record types section offers. generatedRecordTypeDeveloperNames is what the run's recipe
         writes, in block order, and isRecordTypeSelectionApplied says it was written from a choice
-        rather than as the default -- a later regenerate repeats a choice it was not asked to change.
+        rather than as the default -- the next generate sends that choice again unless it is changed (#623).
     */
     recordTypes?: IRecipeCockpitRecordTypeViewModel[];
     generatedRecordTypeDeveloperNames?: string[];
@@ -1138,6 +1139,8 @@ export interface IRecipeCockpitRunFakerFilteredRecipe {
     objectCountsByObject?: Record<string, number>;
     fixedValuesByObject?: Record<string, Record<string, string>>;
     validationRulesOffByObject?: Record<string, string[]>;
+    // SET WHEN THE COPY WAS BUILT AGAIN FOR THE RECORD TYPES TICKED AT THE CLICK (#623); EMPTY WHEN EVERY OBJECT IS BACK AT ITS DEFAULT
+    recordTypeSelection?: Record<string, string[]>;
 }
 
 // WHAT workspaceState HOLDS FOR THE STRUCTURE TAB, BY TREE FOLDER NAME
@@ -1404,6 +1407,8 @@ export interface IRecipeCockpitPanelMessage {
     choice?: unknown;
     // WHETHER ITS CHECKBOX WAS TICKED (#402); ANYTHING BUT A BOOLEAN IS READ AS CANCEL
     isChecked?: unknown;
+    // THE RECORD TYPE SET MODE CHOSEN ON A CONFIRMATION THAT OFFERED MODES (#623): A NAME, MATCHED AGAINST THE ONES OFFERED
+    recordTypeSetMode?: unknown;
     // "Change org…" ON A CONFIRMATION (#480): THE READER ASKED FOR ANOTHER ORG RATHER THAN A BUTTON'S ANSWER
     changeOrg?: unknown;
 }
@@ -1707,12 +1712,6 @@ export interface IRecipeCockpitAddFriendStateMessage {
 export interface IRecipeCockpitWireLookupStateMessage {
     command: 'wireLookupState';
     isRunning: boolean;
-}
-
-// A REFUSED REGENERATE (#195): THE PANEL DISABLED THE RECORD TYPES TAB ON THE CLICK, AND ONLY THIS OR A NEW MODEL GIVES IT BACK
-export interface IRecipeCockpitRecordTypeRegenerateStateMessage {
-    command: 'recordTypeRegenerateState';
-    isRunning: false;
 }
 
 /*
@@ -2375,7 +2374,7 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
     place (the tree's insert, + New scratch org in the pinned org row) carries its verb's emoji too,
     drawn before its label from the same map.
 */
-export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'regenerate' | 'generateData' | 'update' | 'authorize';
+export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'generateData' | 'update' | 'authorize';
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
 export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = COCKPIT_ACTION_CARD_HEIGHT;
 
@@ -2387,7 +2386,6 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     run: '▶️',
     export: '💾',
     create: '➕',
-    regenerate: '🔄',
     generateData: '🌱',
     update: '✍️',
     authorize: '🔑'
@@ -2421,11 +2419,9 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
 });
 // THE STANDALONE ACTIONS OUTSIDE THE TROUBLESHOOTING TAB THAT ARE CARDS (#384); THE PR'S INVENTORY SAYS WHY EVERY OTHER BUTTON IS NOT
-export type RecipeCockpitStandaloneAction = 'generateTreecipe' | 'regenerateWithRecordTypes' | 'regenerateWithDefaultRecordTypes' | 'runQuery' | 'exportQueryJson' | 'exportQueryCsv' | 'loadUpdaterRecords' | 'generateUpdaterValues' | 'updateUpdaterRecords';
+export type RecipeCockpitStandaloneAction = 'generateTreecipe' | 'runQuery' | 'exportQueryJson' | 'exportQueryCsv' | 'loadUpdaterRecords' | 'generateUpdaterValues' | 'updateUpdaterRecords';
 export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockpitStandaloneAction, IRecipeCockpitActionCard>> = Object.freeze({
     generateTreecipe: { verb: 'generate', why: 'No recipe run yet? Read this project\'s object metadata and write a Treecipe run to open here.' },
-    regenerateWithRecordTypes: { verb: 'regenerate', why: 'Write the run again with the record types ticked above, one block each.' },
-    regenerateWithDefaultRecordTypes: { verb: 'regenerate', why: 'Write the run again with each object\'s default record type, as Generate Treecipe does.' },
     runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
     exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as JSON.' },
     exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as CSV.' },
@@ -2827,7 +2823,6 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitInsertStateMessage
                                         | IRecipeCockpitAddFriendStateMessage
                                         | IRecipeCockpitWireLookupStateMessage
-                                        | IRecipeCockpitRecordTypeRegenerateStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitDatasetPreferencesMessage
                                         | IRecipeCockpitNameEditResultMessage
@@ -2923,16 +2918,24 @@ export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpit
     checkboxLabel: string;
 }
 
+// THE RECORD TYPE SET MODES A CONFIRMATION OFFERS (#623), IN THE ORDER DRAWN; THE FIRST IS THE ONE CHOSEN WHEN IT OPENS
+export interface IRecipeCockpitConfirmWithRecordTypeSetModesOptions extends IRecipeCockpitConfirmOptions {
+    recordTypeSetModes: RecordTypeSetMode[];
+}
+
 // THE LABEL CHOSEN, OR undefined FOR CANCEL; isChecked IS true ONLY FOR A BOX TICKED UNDER A CHOSEN BUTTON
 export interface IRecipeCockpitConfirmAnswer {
     chosenLabel: string | undefined;
     isChecked: boolean;
+    // SET ONLY UNDER A CHOSEN BUTTON OF A CONFIRMATION THAT OFFERED MODES (#623), AND ONLY TO ONE IT OFFERED
+    recordTypeSetMode?: RecordTypeSetMode;
 }
 
 interface IRecipeCockpitPendingConfirmation {
     confirmationId: string;
     buttonLabels: string[];
     hasCheckbox: boolean;
+    recordTypeSetModes: RecordTypeSetMode[];
     resolve: (answer: IRecipeCockpitConfirmAnswer) => void;
     // SET ONLY WHEN "Change org…" WAS DRAWN: WHAT IT STARTS AGAIN, AND THE ACTION THAT ASKED
     changeOrg?: IRecipeCockpitConfirmChangeOrg;
@@ -3066,9 +3069,8 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     selectableObjectKeys: Set<string>;
     // "<treeKey>\n<object>\n<field>" FOR EVERY FIELD CHECKBOX (#220): A SELECTABLE OBJECT'S FIELDS THAT HAVE A LINE IN THE RECIPE
     selectableFieldKeys: Set<string>;
-    // "<object>\n<developerName>" FOR EVERY RECORD TYPE A CARD'S RECORD TYPES TAB OFFERS (#195), AND THE CARDS THAT DRAW THAT TAB
+    // "<object>\n<developerName>" FOR EVERY RECORD TYPE A CARD'S RECORD TYPES SECTION OFFERS (#195): WHAT THE TICKS POSTED WITH insertTree ARE MATCHED AGAINST (#623)
     selectableRecordTypeKeys: Set<string>;
-    recordTypeTreeKeys: Set<string>;
     // "<treeKey>\n<lineNumber>" FOR EVERY TODO THE OPEN SUB-TAB DRAWS A REMOVE BUTTON FOR (#391): ONE OF THE CARD'S OWN RECIPE FILE, NO LOCK HOLDING IT
     removableTodoKeys: Set<string>;
     // "<treeKey>\n<removalKey>" FOR EVERY ROW OF THE REMOVED SUB-TAB (#391)
@@ -3090,20 +3092,19 @@ export type RecipeCockpitPanelAction =
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'generateTreecipe' }
     | { kind: 'openHelpGuide' }
-    | { kind: 'regenerateWithRecordTypes'; treeKey: string; recordTypeSelection: Record<string, string[]>; isRemembered?: true }
-    | { kind: 'refuseRecordTypeRegenerate' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'viewDatasetInsertResults'; resultsFilePath: string }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; isOrgToPrompt: boolean; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'refuseDatasetInsert'; refusalText: string }
-    | { kind: 'promptInsertOrg'; treeKey: string; recipeFilePath: string }
+    | { kind: 'promptInsertOrg'; treeKey: string; recipeFilePath: string; recordTypeSelection?: Record<string, string[]>; isRemembered?: true }
     | { kind: 'loadDataOrgs' }
     | { kind: 'selectDataOrg'; orgIndex: number }
     | { kind: 'refreshDataOrgs' }
     | { kind: 'refuseDataOrgListing'; hostMessage: IRecipeCockpitDataOrgListingRefusedMessage }
-    | { kind: 'insertTree'; treeKey: string; recipeFilePath: string }
+    // recordTypeSelection: THE RECORD TYPES TICKED AT THE CLICK (#623), EVERY NAME ONE THE DRAWN MODEL OFFERED
+    | { kind: 'insertTree'; treeKey: string; recipeFilePath: string; recordTypeSelection?: Record<string, string[]>; isRemembered?: true }
     | { kind: 'postInsertState'; hostMessage: IRecipeCockpitInsertStateMessage }
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
@@ -3182,7 +3183,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
     | { kind: 'openChangelog' }
-    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown; isChangeOrg: boolean };
+    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown; recordTypeSetMode: unknown; isChangeOrg: boolean };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -3271,9 +3272,8 @@ export interface IRecipeCockpitPanelState {
     /*
         Set while a load asks for an org and checks the pick (#416). It holds the window as the
         insert's own state does while it asks (#375): every router the insert's state refuses --
-        the org listing, the dropdown, ⟳, + New scratch org, the insert, the assignment, the deploys
-        and a record type regenerate -- refuses while it is set, so no run changes the selection
-        under the pick.
+        the org listing, the dropdown, ⟳, + New scratch org, the insert, the assignment and the
+        deploys -- refuses while it is set, so no run changes the selection under the pick.
     */
     isUpdaterOrgPromptOpen?: boolean;
     // SET WHILE A QUERY ASKS FOR AN ORG AND CHECKS THE PICK (#439), HOLDING THE SELECTION AS isUpdaterOrgPromptOpen DOES
@@ -6659,19 +6659,23 @@ export class RecipeCockpitService {
     static buildRunFakerFilteredRecipe(recipeText: string,
                                         tree: IRecipeCockpitTreeViewModel,
                                         objectLevelsByApiName: Map<string, number> | undefined,
-                                        recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } {
+                                        recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                        settingPlacer?: OccurrenceSettingPlacer): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } {
 
+        // A RECIPE BUILT FOR THE TICKED RECORD TYPES (#623) NAMES ITS BLOCKS ANEW, SO EACH SETTING IS PLACED ON THE BLOCK IT NOW BELONGS TO
+        const placeKeys = <T>(settingsByKey: Map<string, T>) => settingPlacer ? settingPlacer.placeKeys(settingsByKey) : settingsByKey;
         const excludedObjectApiNames = this.listExcludedObjectApiNames(tree);
-        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByOccurrence(tree);
-        const objectCountsByObject = this.listObjectCountsByObject(tree);
-        const fixedValuesByObject = this.listFixedValuesByObject(tree);
-        const unconstrainedValuesByObject = this.listUnconstrainedValuesByObject(recipeViewModel, tree);
+        const placedExcludedFieldApiNames = placeKeys(this.listExcludedFieldApiNamesByOccurrence(tree));
+        const excludedFieldApiNamesByObject = settingPlacer ? settingPlacer.keepRecordTypeIdOfChoiceObjects(placedExcludedFieldApiNames) : placedExcludedFieldApiNames;
+        const objectCountsByObject = settingPlacer ? settingPlacer.placeCounts(this.listObjectCountsByObject(tree)) : this.listObjectCountsByObject(tree);
+        const fixedValuesByObject = placeKeys(this.listFixedValuesByObject(tree));
+        const unconstrainedValuesByObject = placeKeys(this.listUnconstrainedValuesByObject(recipeViewModel, tree));
         const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
         tree.objects
             .filter(treeObject => treeObject.iterationNickname === undefined)
             .forEach(treeObject => parentLookupsByObjectApiName.set(treeObject.objectApiName, treeObject.parentLookups.map(parentLookup => ({ ...parentLookup }))));
 
-        const noFieldsSelectedIterationKeys = this.listNoFieldsSelectedIterationKeys(tree);
+        const noFieldsSelectedIterationKeys = [...placeKeys(new Map(this.listNoFieldsSelectedIterationKeys(tree).map(iterationKey => [iterationKey, true]))).keys()];
         const filterResult = RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
             excludedObjectApiNames: excludedObjectApiNames,
             ...( noFieldsSelectedIterationKeys.length > 0 ? { excludedOccurrenceKeys: noFieldsSelectedIterationKeys } : {} ),
@@ -6733,7 +6737,6 @@ export class RecipeCockpitService {
             selectableObjectKeys: new Set(),
             selectableFieldKeys: new Set(),
             selectableRecordTypeKeys: new Set(),
-            recordTypeTreeKeys: new Set(),
             removableTodoKeys: new Set(),
             restorableTodoKeys: new Set()
         };
@@ -6803,7 +6806,6 @@ export class RecipeCockpitService {
                 .map(treeObject => objectsByApiName.get(treeObject.objectApiName))
                 .filter((objectViewModel): objectViewModel is IRecipeCockpitObjectViewModel => !!objectViewModel?.recordTypes)
                 .forEach(objectViewModel => {
-                    treeHistoryAllowLists.recordTypeTreeKeys.add(tree.treeKey);
                     objectViewModel.recordTypes.forEach(recordType => treeHistoryAllowLists.selectableRecordTypeKeys.add(this.buildSelectableRecordTypeKey(objectViewModel.objectApiName, recordType.developerName)));
                 });
 
@@ -7296,6 +7298,17 @@ export class RecipeCockpitService {
     }
 
     /*
+        The same confirmation with the record type set modes as radios under its lines (#623). The
+        answer names a mode only when it is one this confirmation offered; a chosen button with any
+        other mode is Cancel.
+    */
+    static confirmInPanelWithRecordTypeSetModes(message: string, confirmOptions: IRecipeCockpitConfirmWithRecordTypeSetModesOptions, ...buttonLabels: string[]): Promise<IRecipeCockpitConfirmAnswer> {
+
+        return this.askInPanel(message, confirmOptions, undefined, buttonLabels, confirmOptions.recordTypeSetModes);
+
+    }
+
+    /*
         The same confirmation with ONE checkbox under its lines (#402), unticked every time it is
         drawn and never remembered. The box says only what the reader asked for: the caller still
         decides, from its own read, what a ticked box adds, and re-checks its guards after the answer.
@@ -7306,7 +7319,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[]): Promise<IRecipeCockpitConfirmAnswer> {
+    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[], recordTypeSetModes: RecordTypeSetMode[] = []): Promise<IRecipeCockpitConfirmAnswer> {
 
         const cancelled: IRecipeCockpitConfirmAnswer = { chosenLabel: undefined, isChecked: false };
 
@@ -7338,6 +7351,7 @@ export class RecipeCockpitService {
                 confirmationId: confirmationId,
                 buttonLabels: [...buttonLabels],
                 hasCheckbox: checkboxLabel !== undefined,
+                recordTypeSetModes: [...recordTypeSetModes],
                 resolve: resolve,
                 ...( changeOrg ? { changeOrg: changeOrg, actionContext: actionContext } : {} )
             };
@@ -7351,6 +7365,12 @@ export class RecipeCockpitService {
                 buttons: [...buttonLabels],
                 isDestructive: confirmOptions.isDestructive === true,
                 ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} ),
+                ...( recordTypeSetModes.length > 0
+                    ? {
+                        recordTypeSetModeLegend: RECORD_TYPE_SET_MODE_LEGEND,
+                        recordTypeSetModes: recordTypeSetModes.map(recordTypeSetMode => ({ name: recordTypeSetMode, label: RECORD_TYPE_SET_MODE_LABELS[recordTypeSetMode] }))
+                    }
+                    : {} ),
                 ...( changeOrg ? { canChangeOrg: true } : {} )
             });
 
@@ -7381,7 +7401,7 @@ export class RecipeCockpitService {
         that action's context only when the host drew the button; the action is started again once
         it has ended (runPanelAction).
     */
-    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown, isChangeOrg = false) {
+    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown, isChangeOrg = false, postedRecordTypeSetMode?: unknown) {
 
         const pendingConfirmation = this.pendingConfirmation;
 
@@ -7399,7 +7419,16 @@ export class RecipeCockpitService {
             return;
         }
 
-        pendingConfirmation.resolve(CockpitConfirmDialog.readAnswer(pendingConfirmation.buttonLabels, pendingConfirmation.hasCheckbox, choice, isChecked));
+        const answer = CockpitConfirmDialog.readAnswer(pendingConfirmation.buttonLabels, pendingConfirmation.hasCheckbox, choice, isChecked);
+
+        if ( pendingConfirmation.recordTypeSetModes.length === 0 || answer.chosenLabel === undefined ) {
+            pendingConfirmation.resolve(answer);
+            return;
+        }
+
+        // A CONFIRMATION THAT OFFERED MODES IS ANSWERED ONLY WITH ONE OF THEM (#623)
+        const recordTypeSetMode = CockpitConfirmDialog.readRecordTypeSetMode(pendingConfirmation.recordTypeSetModes, postedRecordTypeSetMode);
+        pendingConfirmation.resolve(recordTypeSetMode === undefined ? { chosenLabel: undefined, isChecked: false } : { ...answer, recordTypeSetMode: recordTypeSetMode });
 
     }
 
@@ -7774,7 +7803,7 @@ export class RecipeCockpitService {
                 return;
 
             case 'answerConfirmation':
-                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked, panelAction.isChangeOrg);
+                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked, panelAction.isChangeOrg, panelAction.recordTypeSetMode);
                 return;
 
             case 'reportRenderFailure': {
@@ -7870,23 +7899,6 @@ export class RecipeCockpitService {
             case 'openHelpGuide':
 
                 await vscode.env.openExternal(vscode.Uri.parse(RECIPE_COCKPIT_HELP_GUIDE_URL, true));
-                return;
-
-            case 'regenerateWithRecordTypes':
-
-                if ( panelAction.isRemembered ) {
-                    this.saveRecordTypeSelection(panelState, panelAction.recordTypeSelection);
-                }
-
-                await this.generateTreecipeAndReload(cockpitPanel, panelState, {
-                    generateTreecipeOptions: { ...RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS, recordTypeSelection: panelAction.recordTypeSelection },
-                    focusTree: { treeKey: panelAction.treeKey, tab: 'treecipe', recordTypes: {} }
-                });
-                return;
-
-            case 'refuseRecordTypeRegenerate':
-
-                this.postToPanel(cockpitPanel, { command: 'recordTypeRegenerateState', isRunning: false });
                 return;
 
             case 'postPicklistValues':
@@ -9045,8 +9057,9 @@ export class RecipeCockpitService {
         "Remember this selection" (#196): the selection goes into treecipe.config.json beside every
         record type each of its objects had in the model on screen, which is how a record type added
         later is noticed. A selection the router already matched against what the model offered, so
-        every name is one the panel drew. A failed save is a warning and the regenerate still runs:
-        the reader asked for that run whether or not it could be remembered.
+        every name is one the panel drew. An empty selection (every object at its default) removes a
+        saved one. A failed save is a warning and the generate still runs: the reader asked for that
+        data whether or not the ticks could be remembered.
     */
     static saveRecordTypeSelection(panelState: IRecipeCockpitPanelState, recordTypeSelection: Record<string, string[]>): boolean {
 
@@ -9078,13 +9091,7 @@ export class RecipeCockpitService {
         palette. The latest run is loaded afterwards whether or not generation wrote one: Generate
         Treecipe reports its own failures, and reloading shows the reader exactly what is on disk.
     */
-    /*
-        The Record types section (#195, #321) comes through here too, with its selection in the
-        options and the reload focused back on the section it was clicked in.
-    */
-    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel,
-                                                    panelState: IRecipeCockpitPanelState,
-                                                    regeneration?: { generateTreecipeOptions: object; focusTree: IRecipeCockpitTreeFocus }) {
+    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
 
         /*
             In flight until the RELOAD has finished, not only the command, so a second click before
@@ -9103,14 +9110,14 @@ export class RecipeCockpitService {
         try {
 
             try {
-                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, regeneration?.generateTreecipeOptions ?? RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS);
+                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS);
             } catch (commandError) {
                 hasGenerationFailed = true;
                 generationError = commandError;
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, regeneration?.focusTree);
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
             }
 
         } finally {
@@ -12746,12 +12753,12 @@ export class RecipeCockpitService {
             this.closeObjectRefresh(cockpitPanel, panelState, session, true);
         }
 
-        const offersRecordTypeRegenerate = ( confirmedItems as IObjectRefreshPlannedItem[] ).some(item => item.offersRecordTypeRegenerate);
+        const needsNewRunForRecordType = ( confirmedItems as IObjectRefreshPlannedItem[] ).some(item => item.needsNewRunForRecordType);
         const failures = [...copyOutcome.failures, ...recipeOutcome.refusals];
         const outcomeText = [
             `${objectLabel}: copied ${copyOutcome.copiedCount} ${copyOutcome.copiedCount === 1 ? 'file' : 'files'} from ${orgLabel ?? 'the org'} into the project and wrote ${recipeOutcome.writtenLineCount} recipe ${recipeOutcome.writtenLineCount === 1 ? 'line' : 'lines'}.`,
             ...( failures.length > 0 ? [`Not written: ${failures.join('; ')}.`] : [] ),
-            ...( offersRecordTypeRegenerate ? ['A record type changed: use Regenerate with record types on the card to write its section.'] : [] )
+            ...( needsNewRunForRecordType ? ['A record type changed: run Generate Treecipe to write a new run with its section.'] : [] )
         ].join(' ');
         const escapedOutcomeText = RecipeYamlScalar.escapeForNotification(outcomeText);
 
@@ -16971,7 +16978,7 @@ export class RecipeCockpitService {
             panelState.insertStateMessage = undefined;
         }
 
-        const routedInsert = this.routePanelMessage({ command: 'insertTree', treeKey: treeKey }, panelState);
+        const routedInsert = this.routePanelMessage(this.buildInsertTreeMessage(promptAction), panelState);
         if ( routedInsert?.kind !== 'insertTree' ) {
             giveButtonBack();
             return;
@@ -17287,6 +17294,61 @@ export class RecipeCockpitService {
 
     }
 
+    // THE MESSAGE THAT STARTS THIS INSERT AGAIN -- AFTER THE ORG WAS ASKED FOR, OR "Change org…" -- WITH THE RECORD TYPES TICKED AT THE CLICK (#623), ROUTED AND MATCHED AGAIN
+    private static buildInsertTreeMessage(insertAction: { treeKey: string; recordTypeSelection?: Record<string, string[]>; isRemembered?: true }): IRecipeCockpitPanelMessage {
+
+        return {
+            command: 'insertTree',
+            treeKey: insertAction.treeKey,
+            ...( insertAction.recordTypeSelection ? { recordTypeSelection: insertAction.recordTypeSelection } : {} ),
+            ...( insertAction.isRemembered ? { isRemembered: true } : {} )
+        };
+
+    }
+
+    // WHAT THE RECORD TYPE PLAN (#623) READS OF EACH LISTED OBJECT WITH RECORD TYPES: ITS DEFAULT, AND WHAT THE RUN'S RECIPE WRITES
+    static listRecordTypeTickObjects(recipeViewModel: IRecipeCockpitRecipeViewModel, objectApiNames: readonly string[]): IRecordTypeTickObject[] {
+
+        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
+
+        return [...new Set(objectApiNames)]
+            .map(objectApiName => objectsByApiName.get(objectApiName))
+            .filter((objectViewModel): objectViewModel is IRecipeCockpitObjectViewModel => !!objectViewModel?.recordTypes?.length)
+            .map(objectViewModel => {
+                const generatedDeveloperNames = objectViewModel.generatedRecordTypeDeveloperNames ?? [];
+                const firstActiveRecordType = objectViewModel.recordTypes.find(recordType => recordType.isActive) ?? objectViewModel.recordTypes[0];
+                return {
+                    objectApiName: objectViewModel.objectApiName,
+                    // A RUN GENERATED WITH NO CHOICE WRITES THE DEFAULT ITSELF
+                    defaultDeveloperName: objectViewModel.isRecordTypeSelectionApplied !== true && generatedDeveloperNames.length === 1
+                        ? generatedDeveloperNames[0]
+                        : firstActiveRecordType.developerName,
+                    generatedDeveloperNames: generatedDeveloperNames
+                };
+            });
+
+    }
+
+    // THE NICKNAME OF THE FIRST BLOCK OF EACH OBJECT THE RUN'S RECIPE WRITES MORE THAN ONCE (#467): WHAT ITS FIRST BLOCK'S SETTINGS ARE STORED UNDER
+    static listRunFirstNicknamesByObject(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): Map<string, string> {
+
+        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
+        const runFirstNicknameByObject = new Map<string, string>();
+
+        tree.objects
+            .filter(treeObject => treeObject.iterationNickname === undefined)
+            .forEach(treeObject => {
+                const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
+                const firstNickname = objectViewModel ? this.readOccurrenceNickname(objectViewModel) : undefined;
+                if ( firstNickname !== undefined ) {
+                    runFirstNicknameByObject.set(treeObject.objectApiName, firstNickname);
+                }
+            });
+
+        return runFirstNicknameByObject;
+
+    }
+
     // TRUE WHEN A DATA SET FOLDER WAS MADE; onDatasetFolderMade SAYS SO EVEN WHEN A LATER STEP THROWS
     private static async performTreeInsert(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -17326,14 +17388,28 @@ export class RecipeCockpitService {
                 : `"${recipeFileLabel}" has a file name and folder that disagree on which faker implementation generated it, so nothing was inserted.`);
         }
 
-        // READ AT THE CLICK FROM THE MODEL ON SCREEN, WHICH IS WHAT THE CARD SHOWS; A COPY THAT DOES NOT READ BACK IS NEVER REPLACED BY THE WHOLE TREE
-        const filteredRecipeResult = this.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated or inserted for');
-        if ( filteredRecipeResult && 'refusalMessage' in filteredRecipeResult ) {
-            return refuse(filteredRecipeResult.refusalMessage);
+        /*
+            The record types ticked at the click (#623). When they ask for anything the run's recipe
+            does not already write, the tree's recipe is built again in memory for them and the
+            card's settings are applied to that; no Generate Treecipe run is written. Otherwise the
+            run's recipe is generated from, exactly as before.
+        */
+        const recordTypePlan = RecipeCockpitRecordTypeRecipe.planGeneration(
+            this.listRecordTypeTickObjects(recipeDataMessage.recipe, tree.objects.map(treeObject => treeObject.objectApiName)),
+            insertAction.recordTypeSelection
+        );
+        let recordTypeWarnings: string[] = [];
+        let filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined;
+
+        if ( !recordTypePlan.isRecipeDerived ) {
+            // READ AT THE CLICK FROM THE MODEL ON SCREEN, WHICH IS WHAT THE CARD SHOWS; A COPY THAT DOES NOT READ BACK IS NEVER REPLACED BY THE WHOLE TREE
+            const filteredRecipeResult = this.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated or inserted for');
+            if ( filteredRecipeResult && 'refusalMessage' in filteredRecipeResult ) {
+                return refuse(filteredRecipeResult.refusalMessage);
+            }
+            filteredRecipe = filteredRecipeResult as IRecipeCockpitRunFakerFilteredRecipe | undefined;
         }
 
-        const filteredRecipe = filteredRecipeResult as IRecipeCockpitRunFakerFilteredRecipe | undefined;
-        const generationRecipeText = filteredRecipe ? filteredRecipe.recipeText : fs.readFileSync(recipeFilePath, 'utf-8');
         const insertObjectApiNames = this.listTreeInsertObjectApiNames(recipeDataMessage.recipe, tree);
         const insertObjectApiNameSet = new Set(insertObjectApiNames);
 
@@ -17354,6 +17430,57 @@ export class RecipeCockpitService {
             return refuse(`Nothing was inserted into ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(unreadyEntry[1]?.disabledReason ?? `${unreadyEntry[0]} could not be checked.`)}`);
         }
 
+        // BUILT ONLY NOW, ONCE THE ORG CAN TAKE THE TREE: THE BUILD WALKS EVERY OBJECT'S METADATA
+        if ( recordTypePlan.isRecipeDerived ) {
+
+            const derivedRecipe = tree.folderName
+                ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypePlan.recordTypeSelection)
+                : 'treeNotBuilt';
+            if ( derivedRecipe === 'cancelled' ) {
+                VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
+                return false;
+            }
+            if ( derivedRecipe === 'treeNotBuilt' ) {
+                return refuse(`Nothing was generated or inserted for ${treeLabel}: the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.`);
+            }
+
+            const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(
+                derivedRecipe.recipeText,
+                this.listRunFirstNicknamesByObject(recipeDataMessage.recipe, tree),
+                recordTypePlan.recordTypeSelection
+            );
+
+            // THE CARD, ITS READINESS AND THE CONFIRMATION'S TOTALS ARE THE RUN'S OBJECTS, SO A RECIPE WITH AN OBJECT THE RUN LACKS IS NOT GENERATED
+            const treeObjectApiNames = new Set(tree.objects.map(treeObject => treeObject.objectApiName));
+            const objectsNewToTree = settingPlacer.derivedObjectApiNames.filter(objectApiName => !treeObjectApiNames.has(objectApiName));
+            if ( objectsNewToTree.length > 0 ) {
+                return refuse(`Nothing was generated or inserted for ${treeLabel}: the object metadata now puts ${objectsNewToTree.map(objectApiName => RecipeYamlScalar.escapeForNotification(objectApiName)).join(', ')} in this tree, which this run does not have. Run "Generate Treecipe" again, then tick the record types.`);
+            }
+
+            const derivedFilteredRecipe = this.buildRunFakerFilteredRecipe(derivedRecipe.recipeText, tree, panelState.objectLevelsByApiName, recipeDataMessage.recipe, settingPlacer);
+            if ( 'refusalMessage' in derivedFilteredRecipe ) {
+                return refuse(`Nothing was generated or inserted for ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(derivedFilteredRecipe.refusalMessage)} The recipe built for the ticked record types could not take this card's settings.`);
+            }
+
+            // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
+            filteredRecipe = { ...derivedFilteredRecipe, recordTypeSelection: Object.fromEntries(Object.entries(recordTypePlan.recordTypeSelection)) };
+            recordTypeWarnings = RecipeCockpitRecordTypeRecipe.buildConfirmationWarnings(derivedRecipe.droppedTicks, settingPlacer);
+
+        }
+
+        const generationRecipeText = filteredRecipe ? filteredRecipe.recipeText : fs.readFileSync(recipeFilePath, 'utf-8');
+
+        // "Remember this selection" (#196): EVERY OBJECT WITH A CHOICE, IN ANY TREE. THE CONFIRMATION SAYS WHAT THE FILE WILL HOLD, AND IT IS SAVED ONLY WHEN THE GENERATE RUNS
+        const rememberedRecordTypeSelection = insertAction.isRemembered && insertAction.recordTypeSelection
+            ? RecipeCockpitRecordTypeRecipe.planGeneration(
+                this.listRecordTypeTickObjects(recipeDataMessage.recipe, recipeDataMessage.recipe.objects.map(objectViewModel => objectViewModel.objectApiName)),
+                insertAction.recordTypeSelection
+            ).recordTypeSelection
+            : undefined;
+        if ( rememberedRecordTypeSelection ) {
+            recordTypeWarnings = [...recordTypeWarnings, RecipeCockpitRecordTypeRecipe.buildRememberWarning(rememberedRecordTypeSelection)];
+        }
+
         /*
             A lookup the reader set to an existing org record (#421) keeps that Id. Every other lookup
             to a parent the tree does not insert asks nothing (#254's picker is gone): an optional one
@@ -17370,16 +17497,25 @@ export class RecipeCockpitService {
         const recordTotalsByObject = new Map([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(generationRecipeText)]
             .filter(([objectApiName]) => insertObjectApiNameSet.has(objectApiName)));
 
-        const confirmation = await this.confirmInPanel(
-            `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            {
-                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail, typedLookupIds),
-                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
-                isDestructive: true,
-                changeOrg: { restartMessage: { command: 'insertTree', treeKey: treeKey }, isSandboxOnly: true }
-            },
-            RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
-        );
+        const insertConfirmationContent = this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail, typedLookupIds);
+        const confirmTitle = `Generate ${treeLabel} and insert it into ${orgLabel}?`;
+        const confirmOptions: IRecipeCockpitConfirmOptions = {
+            ...( recordTypePlan.isRecipeDerived
+                ? this.addRecordTypesToInsertConfirmation(insertConfirmationContent, generationRecipeText, recordTypeWarnings)
+                : { ...insertConfirmationContent, warnings: [...( insertConfirmationContent.warnings ?? [] ), ...recordTypeWarnings] } ),
+            org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
+            isDestructive: true,
+            changeOrg: { restartMessage: this.buildInsertTreeMessage(insertAction), isSandboxOnly: true }
+        };
+
+        // THE FOLDED QUESTION ONLY WHEN SOME OBJECT HAS A CHOICE (#623); AN ANSWER NAMING NO MODE THE DIALOG OFFERED IS CANCEL
+        let confirmation: string | undefined;
+        if ( recordTypePlan.offeredModes.length > 0 ) {
+            const modeAnswer = await this.confirmInPanelWithRecordTypeSetModes(confirmTitle, { ...confirmOptions, recordTypeSetModes: recordTypePlan.offeredModes }, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
+            confirmation = modeAnswer.recordTypeSetMode === 'folded' ? modeAnswer.chosenLabel : undefined;
+        } else {
+            confirmation = await this.confirmInPanel(confirmTitle, confirmOptions, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
+        }
 
         if ( confirmation !== RECIPE_COCKPIT_INSERT_CONFIRM_LABEL ) {
             return false;
@@ -17448,6 +17584,10 @@ export class RecipeCockpitService {
             recordIdsByField.set(orgRecordLookup.fieldApiName, new Set([...( recordIdsByField.get(orgRecordLookup.fieldApiName) ?? [] ), orgRecordLookup.recordId]));
             orgRecordIdsByObjectField.set(orgRecordLookup.objectApiName, recordIdsByField);
         });
+
+        if ( rememberedRecordTypeSelection ) {
+            this.saveRecordTypeSelection(panelState, rememberedRecordTypeSelection);
+        }
 
         const datasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, filteredRecipe);
 
@@ -17863,6 +18003,25 @@ export class RecipeCockpitService {
 
     }
 
+    // THE CONFIRMATION OF A RECIPE BUILT FOR THE TICKED RECORD TYPES (#623): WHAT IT WARNS OF, AND THE RECORD TYPES EACH OBJECT IS GENERATED WITH
+    static addRecordTypesToInsertConfirmation(insertConfirmationContent: IRecipeCockpitConfirmContent, generationRecipeText: string, recordTypeWarnings: readonly string[]): IRecipeCockpitConfirmContent {
+
+        const recordTypeLines = [...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(generationRecipeText)]
+            .map(([objectApiName, developerNames]) => `  ${objectApiName}: ${developerNames.join(', ')}`);
+        const [recordsSection, ...otherSections] = insertConfirmationContent.sections ?? [];
+
+        return {
+            ...insertConfirmationContent,
+            warnings: [...( insertConfirmationContent.warnings ?? [] ), ...recordTypeWarnings],
+            sections: [
+                ...( recordsSection ? [recordsSection] : [] ),
+                { title: RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE, count: recordTypeLines.length, lines: recordTypeLines },
+                ...otherSections
+            ]
+        };
+
+    }
+
     /*
         What the card leaves out of the insert, one object at a time (#483): each excluded object on
         its own line, then each occurrence with a field left out as a lead-in with one field per line
@@ -17944,7 +18103,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked, isChangeOrg: panelMessage.changeOrg === true };
+                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked, recordTypeSetMode: panelMessage.recordTypeSetMode, isChangeOrg: panelMessage.changeOrg === true };
 
             /*
                 The panel's place, kept in workspaceState too (#230). Only for the model the panel
@@ -18125,38 +18284,6 @@ export class RecipeCockpitService {
             case 'openHelpGuide':
 
                 return panelState.recipeDataMessage ? { kind: 'openHelpGuide' } : undefined;
-
-            /*
-                The Record types section's two buttons (#195, #321). The selection is NAMES only, each pair
-                MATCHED against what the confirmed-drawn model offered; one name it did not offer
-                refuses the whole request rather than generating something other than what was
-                asked. An empty selection is "Use defaults". It shares Generate Treecipe's
-                in-flight flag, so neither starts while the other runs or reloads.
-            */
-            case 'regenerateWithRecordTypes': {
-
-                const treeKey = panelMessage.treeKey;
-                const recordTypeSelection = this.readPostedRecordTypeSelection(panelMessage.recordTypeSelection, panelState.treeHistoryAllowLists.selectableRecordTypeKeys);
-
-                // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
-                if ( panelState.isGenerateTreecipeInFlight
-                        || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) )
-                        || this.isApplyingAdapterFiles(panelState)
-                        || this.isApplyingObjectRefresh(panelState)
-                        || typeof treeKey !== 'string'
-                        || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
-                        || !recordTypeSelection ) {
-                    return { kind: 'refuseRecordTypeRegenerate' };
-                }
-
-                return {
-                    kind: 'regenerateWithRecordTypes',
-                    treeKey: treeKey,
-                    recordTypeSelection: recordTypeSelection,
-                    ...( panelMessage.isRemembered === true ? { isRemembered: true as const } : {} )
-                };
-
-            }
 
             /*
                 Names, not a path, and answered only for a row the CONFIRMED-drawn model marked as a
@@ -18435,8 +18562,24 @@ export class RecipeCockpitService {
                 }
 
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
+
+                /*
+                    The record types ticked under Manage record types ride with the click (#623): NAMES
+                    only, each pair matched against what the confirmed-drawn model offered. One name
+                    it did not offer refuses the whole insert, rather than generating something
+                    other than what was ticked.
+                */
+                const postedRecordTypeSelection = panelMessage.recordTypeSelection;
+                const recordTypeSelection = postedRecordTypeSelection === undefined
+                    ? undefined
+                    : this.readPostedRecordTypeSelection(postedRecordTypeSelection, panelState.treeHistoryAllowLists.selectableRecordTypeKeys);
+                const recordTypeTicks = recordTypeSelection
+                    ? { recordTypeSelection: recordTypeSelection, ...( panelMessage.isRemembered === true ? { isRemembered: true as const } : {} ) }
+                    : {};
+
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
-                const isTreeRoutable = !panelState.scratchOrgStateMessage?.isRunning
+                const isTreeRoutable = ( postedRecordTypeSelection === undefined || !!recordTypeSelection )
+                                        && !panelState.scratchOrgStateMessage?.isRunning
                                         && !this.isSelectionHeldByPromptOrUpdater(panelState)
                                         && !panelState.permissionSetAssignStateMessage?.isRunning
                                         && !panelState.metadataDeployStateMessage?.isRunning
@@ -18446,13 +18589,13 @@ export class RecipeCockpitService {
                                         && !!recipeFilePath;
 
                 if ( isTreeRoutable && panelState.dataOrgSelection?.orgTypeDetail?.isSandbox === true ) {
-                    return { kind: 'insertTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
+                    return { kind: 'insertTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath, ...recordTypeTicks };
                 }
 
                 // NO ORG CHOSEN YET (#375): THE ORG IS ASKED FOR IN THE COMMAND PALETTE, CHECKED AS A PICK IN THE DROPDOWN IS, AND ONLY THEN INSERTED INTO
                 // THE OBJECTS A SELECTION CHECKS ARE THE CONFIRMED-DRAWN MODEL'S, AS FOR A PICK IN THE DROPDOWN
                 if ( isTreeRoutable && !panelState.dataOrgSelection && panelState.dataOrgObjectApiNames.size > 0 ) {
-                    return { kind: 'promptInsertOrg', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
+                    return { kind: 'promptInsertOrg', treeKey: treeKey as string, recipeFilePath: recipeFilePath, ...recordTypeTicks };
                 }
 
                 // THE PANEL DISABLED THE CARD'S BUTTON ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
@@ -22482,7 +22625,6 @@ ${COCKPIT_KIT_PINNED_SECTION_STYLES}
         margin: 0.5rem 0;
     }
     .actionCards > .sdtButton-card { min-width: 0; }
-    .recordTypeActions.actionCards { margin-top: 0.75rem; }
     .updaterCards.actionCards { margin: 0.5rem 0.6rem; }
 ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => `    .sdtButton.${className}::before { content: '${RECIPE_COCKPIT_ACTION_VERB_EMOJI[verb]}' / ''; margin-right: 0.35em; }`).join('\n')}
     .actionCardHeading { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; font-weight: 600; font-size: 1.05em; }
@@ -22956,8 +23098,6 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const TREE_PICKER_OBJECTS_SHOW_LESS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
-    const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
-    const USE_DEFAULT_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
@@ -25040,13 +25180,12 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     /*
         The Record types section's choice (#195) is the PANEL's, per object and shared by every card
         that lists the object: object api name -> developer names, in the order ticked, starting
-        from what the run on screen generates. Keyed by names from files, so no prototype.
+        from what the run on screen generates. It is what the next "Generate fake data and insert"
+        uses (#623). Keyed by names from files, so no prototype.
     */
     let recordTypeChoices = Object.create(null);
     let recordTypeObjects = [];
     let recordTypeRowStates = [];
-    let recordTypeActionCards = [];
-    let isRecordTypeRegenerating = false;
     // "Remember this selection" (#196): PANEL-WIDE LIKE THE CHOICE, UNTICKED BY DEFAULT AND AGAIN WITH EVERY MODEL
     let isRecordTypeSelectionRemembered = false;
     let recordTypeRememberElements = [];
@@ -28446,8 +28585,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     /*
         The section's rows: every object of the card with two or more record types, each record
-        type a checkbox with what it restricts, and the two buttons that regenerate the run. The
-        choice they draw is panel-wide, so a tick here is drawn on every card listing the object.
+        type a checkbox with what it restricts, and "Remember this selection". The choice they draw
+        is panel-wide, so a tick here is drawn on every card listing the object.
     */
     function buildRecordTypesRows(treeState, panelElement) {
 
@@ -28492,12 +28631,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
         });
 
-        const actionsElement = createElement('div', 'recordTypeActions actionCards');
-        const regenerateCard = buildActionCard('regenerateWithRecordTypes', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
-        const defaultsCard = buildActionCard('regenerateWithDefaultRecordTypes', 'recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
-        const regenerateElement = regenerateCard.buttonElement;
-        const defaultsElement = defaultsCard.buttonElement;
-
         const rememberRowElement = createElement('div', 'recordTypesRememberRow');
         const rememberElement = createButton('check', 'treeFieldInclude recordTypesRemember');
         const rememberLabelElement = createElement('span', 'recordTypesRememberLabel', REMEMBER_RECORD_TYPES_LABEL);
@@ -28520,17 +28653,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         panelElement.appendChild(rememberRowElement);
         recordTypeRememberElements.push(rememberElement);
 
-        regenerateElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, buildRecordTypeSelection()); });
-        defaultsElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, {}); });
-
-        actionsElement.appendChild(regenerateElement);
-        actionsElement.appendChild(defaultsElement);
-        panelElement.appendChild(actionsElement);
-        recordTypeActionCards.push(
-            { actionCard: regenerateCard, title: 'Regenerate the run with the record types ticked above' },
-            { actionCard: defaultsCard, title: 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it' }
-        );
-
         drawRecordTypeChoices();
         applyRecordTypesFilter(treeState);
 
@@ -28548,7 +28670,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    // A CHOICE KEEPS AT LEAST ONE RECORD TYPE: "NONE" IS NOT A RECORD TYPE, AND "Use defaults" IS HOW TO GO BACK
+    // A CHOICE KEEPS AT LEAST ONE RECORD TYPE: "NONE" IS NOT A RECORD TYPE
     function toggleRecordTypeChoice(objectApiName, developerName) {
 
         const choice = recordTypeChoices[objectApiName] || [];
@@ -28579,10 +28701,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     /*
-        What a regenerate sends: every object the reader changed, and every object the run on
-        screen was already generated from a choice for -- so regenerating for one object does not
-        put another back to its default. An object left at its default is left out, which
-        generates it exactly as Generate Treecipe always has.
+        What "Generate fake data and insert" sends (#623), names only: every object the reader
+        changed, and every object the run on screen was already generated from a choice for. An
+        object left at its default is left out, so a card left as generated posts and inserts
+        exactly as it did before.
     */
     function buildRecordTypeSelection() {
 
@@ -28600,18 +28722,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    function postRecordTypeRegenerate(treeState, recordTypeSelection) {
-
-        if (isRecordTypeRegenerating || insertRunningTreeKey !== null) { return; }
-
-        isRecordTypeRegenerating = true;
-        drawRecordTypeChoices();
-        const regenerateMessage = { command: 'regenerateWithRecordTypes', treeKey: treeState.tree.treeKey, recordTypeSelection: recordTypeSelection };
-        if (isRecordTypeSelectionRemembered) { regenerateMessage.isRemembered = true; }
-        vscodeApi.postMessage(regenerateMessage);
-
-    }
-
     function drawRecordTypeChoices() {
 
         recordTypeRowStates.forEach(function (rowState) {
@@ -28620,7 +28730,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const isLastTicked = isTicked && choice.length === 1;
             rowState.checkboxElement.textContent = isTicked ? '✓' : '';
             rowState.checkboxElement.setAttribute('aria-checked', isTicked ? 'true' : 'false');
-            rowState.checkboxElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null || isLastTicked;
+            rowState.checkboxElement.disabled = insertRunningTreeKey !== null || isLastTicked;
             if (isLastTicked) {
                 rowState.checkboxElement.setAttribute('title', 'Each object keeps at least one record type');
             } else {
@@ -28634,7 +28744,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
                 const choice = recordTypeChoices[object.objectApiName] || [];
                 const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
                 objectState.statusElement.textContent = isChanged
-                    ? 'changed: regenerate to write ' + choice.join(', ')
+                    ? 'changed: the next generate writes ' + choice.join(', ')
                     : (object.isRecordTypeSelectionApplied === true ? 'generated: ' : 'generated by default: ') + choice.join(', ');
             });
         });
@@ -28644,14 +28754,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         recordTypeRememberElements.forEach(function (rememberElement) {
             rememberElement.textContent = isRecordTypeSelectionRemembered ? '✓' : '';
             rememberElement.setAttribute('aria-checked', isRecordTypeSelectionRemembered ? 'true' : 'false');
-            rememberElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
-        });
-
-        recordTypeActionCards.forEach(function (recordTypeAction) {
-            const reason = insertRunningTreeKey !== null ? 'Wait for the insert to finish'
-                : isRecordTypeRegenerating ? 'The run is being regenerated.'
-                : '';
-            drawActionCardState(recordTypeAction.actionCard, reason, recordTypeAction.title);
+            rememberElement.disabled = insertRunningTreeKey !== null;
         });
 
     }
@@ -29373,7 +29476,15 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const insertReason = findTreeInsertReason(treeState);
             if (insertReason !== '' && insertReason !== NO_DATA_ORG_INSERT_REASON) { return; }
             setInsertRunning(treeKey);
-            vscodeApi.postMessage({ command: 'insertTree', treeKey: treeKey });
+            // THE RECORD TYPES TICKED UNDER Manage record types RIDE WITH THE CLICK (#623), AND "Remember this selection" WITH THEM
+            const insertMessage = { command: 'insertTree', treeKey: treeKey };
+            const recordTypeSelection = buildRecordTypeSelection();
+            // WITH "Remember this selection" TICKED THE TICKS ARE SENT EVEN WHEN NONE DIFFERS, SO A SAVED CHOICE IS FORGOTTEN
+            if (Object.keys(recordTypeSelection).length > 0 || (isRecordTypeSelectionRemembered && recordTypeObjects.length > 0)) {
+                insertMessage.recordTypeSelection = recordTypeSelection;
+                if (isRecordTypeSelectionRemembered) { insertMessage.isRemembered = true; }
+            }
+            vscodeApi.postMessage(insertMessage);
         });
 
         insert.reasonLinkElement.addEventListener('click', function () {
@@ -34076,8 +34187,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         recordTypeObjects = [];
         recordTypeFieldsByObjectApiName = Object.create(null);
         recordTypeRowStates = [];
-        recordTypeActionCards = [];
-        isRecordTypeRegenerating = false;
         isRecordTypeSelectionRemembered = false;
         recordTypeRememberElements = [];
         pendingDatasetCountElements = Object.create(null);
@@ -34373,12 +34482,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT}
 
         if (hostMessage.command === 'insertState') {
             setInsertRunning(hostMessage.isRunning ? hostMessage.treeKey : null, hostMessage.datasetFolderName);
-            return;
-        }
-
-        if (hostMessage.command === 'recordTypeRegenerateState') {
-            isRecordTypeRegenerating = !!hostMessage.isRunning;
-            drawRecordTypeChoices();
             return;
         }
 
