@@ -1821,8 +1821,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
 
-            //mocking faker service to avoid test run time failure
-
             const result = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems, "faker-js");
     
             expect(result).toEqual([]); 

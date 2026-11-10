@@ -152,10 +152,7 @@ export function describeUpwardImport(serviceImport: IServiceImport, serviceLayer
 
 }
 
-/*
-    Folder-level cycles (Tarjan's strongly connected components), with every listed violation taken
-    out first: a cycle a listed edge explains is already on its way out.
-*/
+// FOLDER-LEVEL CYCLES (TARJAN'S STRONGLY CONNECTED COMPONENTS)
 export function findFolderCycles(serviceImports: IServiceImport[]): string[][] {
 
     const importedFoldersByFolder = new Map<string, Set<string>>();
