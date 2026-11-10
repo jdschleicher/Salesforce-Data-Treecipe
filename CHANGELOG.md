@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.195.0] - Recipe Cockpit: every lookup's pencil takes a record Id, including a lookup with no parent in its metadata (#627)
+
+- **The pencil on a lookup field is no longer locked.** A lookup whose field file has no `<referenceTo>` and no known parent, such as `Product2.SellerId` or `Product2.SourceProductId`, had no "Create … in recipe" or "Use existing … from org…" button and a locked pencil, so its `### TODO -- REFERENCE ID REQUIRED` could not be set from the cockpit. Every lookup's pencil now opens, tree-wired lookups included.
+- **On a lookup, the pencil takes the 15- or 18-character Id of an existing record.** It opens empty, with a placeholder and hint that say so, and writes the Id into the recipe as a fixed value (`SellerId: "001…"`). Clear puts back the line the field had (its TODO, or its nickname). Anything else typed, such as a word or a `${{ … }}` expression, is refused under the editor: "Not saved: Product2.SellerId is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id." A record Id typed over one chosen with "Use existing … from org…" replaces it.
+- **Generate fake data and insert keeps a typed Id.** Before, the tree insert replaced any lookup value it had not chosen itself. Now an Id typed with the pencil is sent as it is, on a field the target org describes as a lookup. Before anything is generated, the insert asks the target org whether it holds that record, using the parent the org's describe names. If it doesn't, nothing is inserted and the warning names the field, the Id and the org: "… Contact.Region__c holds the Region__c Id a05…, typed with its pencil, and qa (…) has no such record. Change it with the pencil, or Clear it." A polymorphic lookup's Id can't be checked this way, so it is sent unchecked and a bad Id shows in the insert's results.
+- The TODO tab's Remove on a `REFERENCE ID REQUIRED` lookup now says to give it a record Id with its pencil, or wire it to a parent, in the Treecipe tab.
+- The cockpit's ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the lookup pencil.
+- Recipe generation, the golden files, "Create … in recipe", "Use existing … from org…" and the Treecipe Adapter's lookup lock are unchanged.
+
 ## [3.194.4] - Recipe Cockpit: the object row's "Get latest detail" button carries a red refresh arrow (#612)
 
 - **The button at the end of each Treecipe tab object row now reads "Get latest detail"**, shortened from "Get latest object detail from target org", and starts with a red circular refresh arrow so it is easy to spot along the row. Its accessible name is "Get latest detail for <object>"; its tooltip still says it retrieves the object's fields, validation rules, record types and global value sets from an org. The dialog it opens is titled "Get latest detail: <object>". What the button does is unchanged.

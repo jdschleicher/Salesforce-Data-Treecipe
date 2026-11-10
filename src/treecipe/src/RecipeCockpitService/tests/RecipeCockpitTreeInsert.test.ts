@@ -1047,6 +1047,61 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
+        describe('a lookup given a record Id with its pencil, with no parent in its metadata (#627)', () => {
+
+            // Region__c IS NO LOOKUP OF THE TREE, AS Product2.SellerId IS NONE: ONLY THE ORG'S DESCRIBE NAMES ITS PARENT
+            const buildWorkspaceWithTypedId = (recordId: string) => {
+                const recipeText = buildFakerJsAccountRecipe(2, 3).replace(
+                    '        AccountId: Account_NickName\n',
+                    '        AccountId: Account_NickName\n        Region__c: ### TODO -- REFERENCE ID REQUIRED\n'
+                );
+                const pinResult = RecipeCockpitRecipeWriter.pinField(recipeText, 'Contact', 'Region__c', { value: recordId, kind: 'text' });
+                if ( 'refusal' in pinResult ) { throw new Error(pinResult.refusal.message); }
+                buildWorkspace(pinResult.recipeText);
+                fs.writeFileSync(RecipeCockpitFixedValueStore.buildFilePath(accountRecipeFilePath(FAKER_JS_RUN)), RecipeCockpitFixedValueStore.serialize([{
+                    objectApiName: 'Contact',
+                    fieldApiName: 'Region__c',
+                    value: recordId,
+                    occurrences: pinResult.occurrences
+                }]));
+            };
+
+            it('keeps the typed Id on every record after checking the org inserted into holds it, and asks for no random parent', async () => {
+
+                const typedId = OUTSIDE_REGION_IDS[1];
+                buildWorkspaceWithTypedId(typedId);
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(connection.sentQueries).toContain(`SELECT Id FROM Region__c WHERE Id IN ('${typedId}')`);
+                expect(connection.sentQueries).not.toContain('SELECT Id FROM Region__c LIMIT 2000');
+                const contacts = insertedOf(connection, 'Contact');
+                expect(contacts).toHaveLength(6);
+                contacts.forEach(contact => expect(contact.Region__c).toBe(typedId));
+
+            });
+
+            it('refuses, naming the object, field, Id and the org, when the org inserted into has no such record, and writes nothing', async () => {
+
+                buildWorkspaceWithTypedId('a05000000000099AAA');
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toBe('Nothing was generated or inserted for Account-thru-OtherChildObject__c: Contact.Region__c holds the Region__c Id a05000000000099AAA, typed with its pencil, and qa (qa@example.com.qa) has no such record. Change it with the pencil, or Clear it.');
+                expect(runFakerCalls()).toEqual([]);
+                expect(connection.insertCalls).toEqual([]);
+                expect(datasetFolderNames()).toEqual([]);
+
+            });
+
+        });
+
         it('refuses before writing anything when the parent outside the tree has no records', async () => {
 
             const connection = buildFakeConnection({ withOutsideParent: true, outsideParentIds: [] });
@@ -2147,6 +2202,55 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
     });
 
     // #301: HOW AN INSERT ENDED IS ONE NOTIFICATION, AND THE RESULTS FILE IS ITS BUTTON
+    describe('listTreeInsertTypedLookupIds (#627)', () => {
+
+        const describeField = (fieldApiName: string, fieldType: string, referenceTo: string[]) => ({ fieldApiName, fieldType, referenceTo, isNillable: true, isCreateable: true, isDefaultedOnCreate: false });
+        const productDescribe = {
+            objectApiName: 'Product2',
+            isCreateable: true,
+            fields: [
+                describeField('SellerId', 'reference', ['Account']),
+                describeField('SourceProductId', 'reference', ['Product2']),
+                describeField('OwnerId', 'reference', ['Group', 'User']),
+                describeField('StockKeepingUnit', 'string', [])
+            ]
+        };
+        const typedTree = (fixedValues: any[]) => ({ treeKey: 'Product2-ONLY', objects: [], fixedValues: fixedValues } as any);
+        const fixedValue = (fieldApiName: string, value: string, extra: object = {}) => ({ objectApiName: 'Product2', fieldApiName, value, kind: 'text', ...extra });
+
+        it('lists each record Id on a field the org describes as a lookup, with its parent, and none for a polymorphic one', () => {
+
+            const typedLookupIds = RecipeCockpitService.listTreeInsertTypedLookupIds(typedTree([
+                fixedValue('SellerId', '001000000000001AAA'),
+                fixedValue('SourceProductId', '01t000000000001AAA'),
+                fixedValue('OwnerId', '005000000000001AAA'),
+                fixedValue('SellerId', '001000000000001AAA', { nickname: 'Product2_2' })
+            ]), new Set(['Product2']), () => productDescribe);
+
+            expect(typedLookupIds).toEqual([
+                { objectApiName: 'Product2', fieldApiName: 'SellerId', recordId: '001000000000001AAA', parentObjectApiName: 'Account' },
+                { objectApiName: 'Product2', fieldApiName: 'SourceProductId', recordId: '01t000000000001AAA', parentObjectApiName: 'Product2' },
+                { objectApiName: 'Product2', fieldApiName: 'OwnerId', recordId: '005000000000001AAA' }
+            ]);
+
+        });
+
+        it('leaves out an org record, a value that is no Id, a field that is no lookup in the org, an object not inserted and an object not described', () => {
+
+            const tree = typedTree([
+                fixedValue('SellerId', '001000000000001AAA', { orgRecord: { orgLabel: 'dev', parentObjectApiName: 'Account' } }),
+                fixedValue('SourceProductId', 'Product2_1'),
+                fixedValue('StockKeepingUnit', '001000000000001AAA')
+            ]);
+
+            expect(RecipeCockpitService.listTreeInsertTypedLookupIds(tree, new Set(['Product2']), () => productDescribe)).toEqual([]);
+            expect(RecipeCockpitService.listTreeInsertTypedLookupIds(typedTree([fixedValue('SellerId', '001000000000001AAA')]), new Set(['Account']), () => productDescribe)).toEqual([]);
+            expect(RecipeCockpitService.listTreeInsertTypedLookupIds(typedTree([fixedValue('SellerId', '001000000000001AAA')]), new Set(['Product2']), () => undefined)).toEqual([]);
+
+        });
+
+    });
+
     describe('showTreeInsertNotification', () => {
 
         // AN EXISTING FILE INSIDE THE WORKSPACE STANDS IN FOR THE INSERT'S RESULTS FILE
