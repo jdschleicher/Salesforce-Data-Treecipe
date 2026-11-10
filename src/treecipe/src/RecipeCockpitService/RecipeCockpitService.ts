@@ -24698,7 +24698,8 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         dropdown is a native select of the LABELS the host posted, and the panel posts back only the
         chosen option's index -- the host holds the usernames.
     */
-    function buildDataOrgView() {
+    // hasOrgAddingButtons: false LEAVES + New scratch org AND Authorize org OUT OF THE VIEW (#617); THEY ARE STILL BUILT, SO ONE DRAW SERVES EVERY VIEW
+    function buildDataOrgView(hasOrgAddingButtons) {
 
         const viewElement = createElement('div', 'dataOrgView');
         const pickerElement = createElement('span', 'dataOrgControls');
@@ -24783,8 +24784,10 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         pickerElement.appendChild(dataOrgView.typeElement);
         pickerElement.appendChild(dataOrgView.openOrgElement);
         pickerElement.appendChild(dataOrgView.refreshElement);
-        pickerElement.appendChild(dataOrgView.newScratchElement);
-        pickerElement.appendChild(dataOrgView.authorizeElement);
+        if (hasOrgAddingButtons !== false) {
+            pickerElement.appendChild(dataOrgView.newScratchElement);
+            pickerElement.appendChild(dataOrgView.authorizeElement);
+        }
         viewElement.appendChild(pickerElement);
         viewElement.appendChild(dataOrgView.hiddenNoteElement);
         viewElement.appendChild(dataOrgView.statusElement);
