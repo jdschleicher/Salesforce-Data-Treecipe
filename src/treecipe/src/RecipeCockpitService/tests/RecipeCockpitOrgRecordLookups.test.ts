@@ -20,11 +20,10 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL,
-    RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL,
-    RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL
+    RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
@@ -331,13 +330,13 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
         });
 
-        it('draws a stored org record whose parent is not the field\'s tree parent as nothing, since the insert checks the Id as a record of it', () => {
+        it('draws a stored org record whose parent is not the field\'s tree parent as a typed Id, which the insert checks against the org\'s own parent (#627)', () => {
 
             writeOrgRecordPin(ACCOUNT_ID, { orgUsername: DEV_ORG.username, parentObjectApiName: 'User' });
             const tree = treeOf(loadModel());
 
             expect(tree.orgRecordLookups).toHaveLength(1);
-            expect(tree).not.toHaveProperty('fixedValues');
+            expect(tree.fixedValues).toEqual([{ objectApiName: 'Contact', fieldApiName: 'AccountId', value: ACCOUNT_ID, kind: 'text' }]);
 
         });
 
@@ -349,28 +348,27 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
         });
 
-        it('draws a typed value on a lookup as nothing: a lookup takes only an org record', () => {
+        it('draws a record Id typed on a lookup as a fixed value with no org record (#627)', () => {
 
             writeOrgRecordPin(ACCOUNT_ID, null);
             const tree = treeOf(loadModel());
 
             expect(tree).not.toHaveProperty('orgRecordLookups');
-            expect(tree).not.toHaveProperty('fixedValues');
+            expect(tree.fixedValues).toEqual([{ objectApiName: 'Contact', fieldApiName: 'AccountId', value: ACCOUNT_ID, kind: 'text' }]);
 
         });
 
-        it('lets a lookup hold a value only as an org record, and still holds back every other lock', () => {
+        it('leaves a lookup free to edit (#627), and still holds back every other lock', () => {
 
             const recipeViewModel = loadModel();
             const tree = treeOf(recipeViewModel);
             const contact = recipeViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact');
             const accountId = contact.fields.find(field => field.fieldApiName === 'AccountId');
 
-            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId)).toBe(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON);
-            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId, true)).toBeUndefined();
+            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId)).toBeUndefined();
 
             tree.objectSelection = { exclusions: [{ objectApiName: 'Contact', isDirect: true } as any], disabledLookups: [], includedObjectCount: 0, objectCount: 1 };
-            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId, true)).toBe(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON);
+            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId)).toBe(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON);
 
         });
 
@@ -428,7 +426,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
         });
 
-        it('routes a Clear of an org record, and a typed value only so the executor can refuse it', () => {
+        it('routes a Clear of an org record, and a typed value on any lookup (#627)', () => {
 
             writeOrgRecordPin();
             const panelState = buildActivePanelState();
@@ -436,7 +434,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             const clearMessage = { command: 'setFieldFixedValue', treeKey: TREE_KEY, objectApiName: 'Contact', fieldApiName: 'AccountId', value: '' };
 
             expect(RecipeCockpitService.routePanelMessage(clearMessage, panelState)).toMatchObject({ kind: 'setFieldFixedValue', value: '' });
-            expect(RecipeCockpitService.routePanelMessage({ ...clearMessage, fieldApiName: 'Owner__c', value: '005000000000001AAA' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ ...clearMessage, fieldApiName: 'Owner__c', value: '005000000000001AAA' }, panelState)).toMatchObject({ kind: 'setFieldFixedValue', fieldApiName: 'Owner__c', value: '005000000000001AAA' });
 
         });
 
@@ -665,17 +663,21 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
         });
 
-        it('Clear puts the TODO line back exactly, and a typed value on the lookup is refused under the editor', async () => {
+        it('a typed Id replaces the org record (#627), and Clear puts the TODO line back exactly', async () => {
 
             writeOrgRecordPin();
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock)
+                .mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL)
+                .mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
 
             await openRenderedCockpit();
             const editMessage = { command: 'setFieldFixedValue', treeKey: TREE_KEY, objectApiName: 'Contact', fieldApiName: 'AccountId' };
 
             await receivedMessageHandler({ ...editMessage, value: '001000000000077AAA' });
-            expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'fieldEditResult')).toMatchObject({ refusal: RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL });
-            expect(fs.readFileSync(recipeFilePath, 'utf-8')).toContain(`    AccountId: "${ACCOUNT_ID}"`);
+            expect(fs.readFileSync(recipeFilePath, 'utf-8')).toContain('    AccountId: "001000000000077AAA"');
+            // NO LONGER AN ORG RECORD: THE BADGE AND THE INSERT'S CHECK ARE THE TYPED Id'S
+            expect(treeOf(lastModel())).not.toHaveProperty('orgRecordLookups');
+            await receivedMessageHandler({ command: 'rendered', renderSequence: postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').at(-1).renderSequence });
 
             await receivedMessageHandler({ ...editMessage, value: '' });
             expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(RECIPE_TEXT);
@@ -772,10 +774,12 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             expect(badgeElement.attributes.title).toContain('not generated data. The Id exists only in that org');
             expect(panel.findAll(accountRow, 'treeLookupDecision')).toHaveLength(0);
             expect(pencilElement.disabled).toBe(false);
-            expect(pencilElement.attributes.title).toBe('Existing Account record of dev â€” click to clear it');
+            expect(pencilElement.attributes.title).toBe('Existing Account record of dev â€” click to change or clear it');
 
+            // AN EMPTY LOOKUP'S PENCIL IS OPEN TOO (#627), BESIDE ITS CREATE AND USE EXISTING DECISIONS
             const [ownerPencilElement] = panel.findAll(panel.fieldRowNamed(contactElement, 'Owner__c'), 'treeFieldFixedValue');
-            expect(ownerPencilElement.disabled).toBe(true);
+            expect(ownerPencilElement.disabled).toBe(false);
+            expect(ownerPencilElement.attributes.title).toBe('Give the lookup the Id of an existing record');
 
         });
 

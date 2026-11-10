@@ -317,7 +317,7 @@ export class RecipeCockpitFixedValueStore {
     /*
         An entry's org record is kept only beside a value that is a Salesforce Id, with a parent that
         is an api name and an org named on one line; anything else is dropped, and the entry then
-        reads as a plain fixed value -- which a lookup never takes, so it is not drawn as pinned.
+        reads as a plain fixed value: on a lookup, an Id typed with the pencil (#627).
     */
     private static readOrgRecord(storedOrgRecord: unknown, value: string): IFixedValueOrgRecord | undefined {
 
