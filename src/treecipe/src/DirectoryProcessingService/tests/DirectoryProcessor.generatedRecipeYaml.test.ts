@@ -1,5 +1,6 @@
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ExtensionCommandService, RECORD_TYPE_OPTIONS_TODO_MARKER } from '../../ExtensionCommandService/ExtensionCommandService';
@@ -76,6 +77,7 @@ import { CollectionsApiService } from '../../CollectionsApiService/CollectionsAp
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 import { SavedRecordTypeSelection } from '../../RecordTypeSelectionService/SavedRecordTypeSelection';
 import { RecipeCockpitService } from '../../RecipeCockpitService/RecipeCockpitService';
+import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
@@ -90,13 +92,13 @@ const PYYAML_CHECK = [
     '        print(recipe_file["fileName"] + ": " + str(yaml_error).splitlines()[0])'
 ].join('\n');
 
-async function processMockMetadata(createFakerService: () => IRecipeFakerService, recordTypeSelection?: RecordTypeSelection): Promise<ObjectInfoWrapper> {
+async function processMockMetadata(createFakerService: () => IRecipeFakerService, recordTypeSelection?: RecordTypeSelection, objectsPath: string = MOCK_OBJECTS_PATH): Promise<ObjectInfoWrapper> {
 
     jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 
-    return new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(MOCK_OBJECTS_PATH), undefined, recordTypeSelection);
+    return new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(objectsPath), undefined, recordTypeSelection);
 
 }
 
@@ -607,6 +609,78 @@ describe.each([
             expect(everythingEntry.nickname).toBe('Example_Everything__c_TwoRecType_NickName');
             expect(everythingEntry.hasIndistinctOccurrences).toBeUndefined();
             expect(everythingEntry.iterations.map(iteration => iteration.nickname)).toContain('Example_Everything__c_OneRecType_NickName');
+
+        });
+
+    });
+
+    /*
+        #622: the mock metadata gives no parent record types, so a copy of it gives Account two --
+        Business and Partner -- and the selection writes Account and Example_Everything__c, a child
+        of Account, as two blocks each, every block carrying its own children.
+    */
+    describe('given every record type block carrying its own children (#622)', () => {
+
+        const ACCOUNT_RECORD_TYPE_NAMES = ['Business', 'Partner'];
+        const buildSelection = (isChildTreeCopiedPerRecordTypeBlock: boolean) => new RecordTypeSelection([
+            ['Account', ACCOUNT_RECORD_TYPE_NAMES],
+            ['Example_Everything__c', ['TwoRecType', 'OneRecType']]
+        ], isChildTreeCopiedPerRecordTypeBlock);
+
+        let objectsCopyPath: string;
+        let copiedRecipeTexts: string[];
+        let firstBlockOnlyRecipeTexts: string[];
+
+        beforeAll(async () => {
+            const metadataCopyPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-622-'));
+            objectsCopyPath = path.join(metadataCopyPath, 'objects');
+            fs.cpSync(MOCK_OBJECTS_PATH, objectsCopyPath, { recursive: true });
+            fs.mkdirSync(path.join(objectsCopyPath, 'Account', 'recordTypes'));
+            ACCOUNT_RECORD_TYPE_NAMES.forEach(recordTypeName => fs.writeFileSync(
+                path.join(objectsCopyPath, 'Account', 'recordTypes', `${recordTypeName}.recordType-meta.xml`),
+                `<?xml version="1.0" encoding="UTF-8"?>\n<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">\n    <fullName>${recordTypeName}</fullName>\n    <active>true</active>\n    <label>${recordTypeName}</label>\n</RecordType>\n`
+            ));
+            copiedRecipeTexts = (await processMockMetadata(createFakerService, buildSelection(true), objectsCopyPath)).RecipeFiles.map(recipeFile => recipeFile.content);
+            firstBlockOnlyRecipeTexts = (await processMockMetadata(createFakerService, buildSelection(false), objectsCopyPath)).RecipeFiles.map(recipeFile => recipeFile.content);
+        });
+
+        afterAll(() => {
+            fs.rmSync(path.dirname(objectsCopyPath), { recursive: true, force: true });
+        });
+
+        const loadEntries = (recipeTexts: string[]) => recipeTexts.map(recipeText => flattenObjectRecipes(yaml.load(recipeText) as LoadedObjectRecipe[]) as Array<LoadedObjectRecipe & { nickname: string }>);
+        const countByObject = (recipeTexts: string[]) => loadEntries(recipeTexts).flat().reduce((objectCounts, objectRecipe) => objectCounts.set(objectRecipe.object, (objectCounts.get(objectRecipe.object) ?? 0) + 1), new Map<string, number>());
+
+        test('every recipe file loads with js-yaml, and every nickname in a file is unique and an api name', () => {
+
+            loadEntries(copiedRecipeTexts).forEach(objectRecipes => {
+                const nicknames = objectRecipes.map(objectRecipe => objectRecipe.nickname);
+                expect(new Set(nicknames).size).toBe(nicknames.length);
+                expect(nicknames.filter(nickname => !SalesforceApiName.isApiName(nickname))).toEqual([]);
+            });
+
+        });
+
+        test('each child of Account is written once per Account block, the child with blocks of its own with all of them', () => {
+
+            const copiedCounts = countByObject(copiedRecipeTexts);
+            const firstBlockOnlyCounts = countByObject(firstBlockOnlyRecipeTexts);
+
+            // TWO BLOCKS, AND FOR faker-js THE SELF-LOOKUP ITERATION UNDER THE FIRST ONLY
+            expect(firstBlockOnlyCounts.get('Account')).toBe(isNestingBackend ? 3 : 2);
+            expect(copiedCounts.get('Account')).toBe(firstBlockOnlyCounts.get('Account'));
+            expect(copiedCounts.get('Contact')).toBe(2 * firstBlockOnlyCounts.get('Contact'));
+            expect(copiedCounts.get('Example_Everything__c')).toBe(2 * firstBlockOnlyCounts.get('Example_Everything__c'));
+            expect(loadEntries(copiedRecipeTexts).flat().map(objectRecipe => objectRecipe.nickname)).toEqual(expect.arrayContaining([
+                'Example_Everything__c_TwoRecType_Account_Partner_NickName',
+                'Example_Everything__c_OneRecType_Account_Partner_NickName'
+            ]));
+
+        });
+
+        testRequiringPyYaml('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+
+            expect(PythonTestHarness.loadWithPyYaml(copiedRecipeTexts)).toEqual(copiedRecipeTexts.map(recipeText => yaml.load(recipeText)));
 
         });
 

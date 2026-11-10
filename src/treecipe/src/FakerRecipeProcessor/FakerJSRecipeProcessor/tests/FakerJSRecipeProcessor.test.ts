@@ -1328,6 +1328,66 @@ describe('FakerJSRecipeProcessor gives sibling friends of one object type distin
 });
 
 /*
+    #622: with every record type block carrying its own copy of the children, the second Account
+    block's Contacts are a friend copy under their own YAML nickname, wired to their own block. The
+    recipe below is the shape RelationshipService writes for it.
+*/
+describe('FakerJSRecipeProcessor resolves each copy of the children to its own record type block (#622)', () => {
+
+    const recipeWithAChildCopyPerBlock = [
+        '- object: Account',
+        '  nickname: Account_Business_NickName',
+        '  count: 2',
+        '  fields:',
+        '    Name: Business',
+        '  friends:',
+        '    - object: Contact',
+        '      nickname: Contact_NickName',
+        '      count: 1',
+        '      fields:',
+        '        LastName: Business',
+        '        AccountId: Account_Business_NickName',
+        '- object: Account',
+        '  nickname: Account_Partner_NickName',
+        '  count: 2',
+        '  fields:',
+        '    Name: Partner',
+        '  friends:',
+        '    - object: Contact',
+        '      nickname: Contact_Account_Partner_NickName',
+        '      count: 1',
+        '      fields:',
+        '        LastName: Partner',
+        '        AccountId: Account_Partner_NickName',
+        ''
+    ].join('\n');
+
+    type GeneratedRecordJson = { object: string, nickname: string, fields: Record<string, string> };
+
+    test('every Contact names an Account record of its own block, and every record has its own referenceId', async () => {
+
+        jest.spyOn(fs, 'readFileSync').mockReturnValue(recipeWithAChildCopyPerBlock);
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+
+        const fakerJson = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('recipe.yml');
+        const generatedRecords = JSON.parse(fakerJson) as GeneratedRecordJson[];
+        const accountNameByNickname = new Map(generatedRecords.filter(generatedRecord => generatedRecord.object === 'Account')
+            .map(accountRecord => [accountRecord.nickname, accountRecord.fields.Name]));
+        const contactRecords = generatedRecords.filter(generatedRecord => generatedRecord.object === 'Contact');
+        const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+        const referenceIds = ['Account', 'Contact'].flatMap(objectApiName => collectionsByObject.get(objectApiName).records.map(record => record.attributes.referenceId));
+
+        expect(contactRecords.map(contactRecord => [contactRecord.fields.LastName, accountNameByNickname.get(contactRecord.fields.AccountId)])).toEqual([
+            ['Business', 'Business'], ['Business', 'Business'], ['Partner', 'Partner'], ['Partner', 'Partner']
+        ]);
+        expect(new Set(contactRecords.map(contactRecord => contactRecord.fields.AccountId)).size).toBe(4);
+        expect(new Set(referenceIds).size).toBe(referenceIds.length);
+
+    });
+
+});
+
+/*
     Generate Treecipe writes an object's fields in file-name order, so a dependent picklist is often
     written BEFORE its controlling field (DependentPicklist__c before Picklist__c). The processor has to
     evaluate the controller first, or every record of the object fails with "not found in existing

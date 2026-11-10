@@ -1,0 +1,57 @@
+# Relationship Tree: RelationshipTree_1
+# Objects must be processed in this order for proper lookup resolution
+# Each child is written once per record type block of its parent, each copy referencing its own block
+
+# Level 0 - Account
+# Account (Children: Contact, Case)
+
+- object: Account
+  nickname: Account_Business_NickName
+  count: 2
+  fields:
+    RecordTypeId: Account.Business
+    Name: ${{fake.company}}
+
+- object: Account
+  nickname: Account_Partner_NickName
+  count: 2
+  fields:
+    RecordTypeId: Account.Partner
+    Name: ${{fake.company}}
+
+# Level 1 - Contact
+# Contact (Parents: Account | Children: Case)
+
+- object: Contact
+  nickname: Contact_NickName
+  count: 2
+  fields:
+    Name: ${{fake.company}}
+    AccountId: Account_Reference_${{reference(Account_Business_NickName).id}}
+
+- object: Contact
+  nickname: Contact_Account_Partner_NickName
+  count: 2
+  fields:
+    Name: ${{fake.company}}
+    AccountId: Account_Reference_${{reference(Account_Partner_NickName).id}}
+
+# Level 2 - Case
+# Case (Parents: Account, Contact)
+
+- object: Case
+  nickname: Case_NickName
+  count: 2
+  fields:
+    Name: ${{fake.company}}
+    AccountId: Account_Reference_${{reference(Account_Business_NickName).id}}
+    ContactId: Contact_Reference_${{reference(Contact_NickName).id}}
+
+- object: Case
+  nickname: Case_Account_Partner_NickName
+  count: 2
+  fields:
+    Name: ${{fake.company}}
+    AccountId: Account_Reference_${{reference(Account_Partner_NickName).id}}
+    ContactId: Contact_Reference_${{reference(Contact_Account_Partner_NickName).id}}
+
