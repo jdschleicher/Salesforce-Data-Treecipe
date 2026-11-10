@@ -104,6 +104,7 @@ import {
     IRecipeCockpitCreateReadinessViewModel,
     RecipeCockpitCreateReasonCode,
     RecipeCockpitRecordCreation,
+    ICreateObjectDescribe,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
 import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult, INSERT_RESULTS_FILE_MISSING_TEXT } from '../CollectionsApiService/CollectionsApiService';
@@ -305,7 +306,6 @@ export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset Selections';
 export const RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON = 'object excluded';
 export const RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = 'unticked';
 export const RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = 'the record type is chosen by name';
-export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON = 'a lookup is wired by the tree or filled by the insert';
 export const RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = 'depends on ';
 export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 export const RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ['Number', 'Currency', 'Percent'];
@@ -315,8 +315,10 @@ export const RECIPE_COCKPIT_EXPRESSION_OPENER = '${{';
 // WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
 // A PIN WRITES THE RECIPE FILE (#342): HOW AN INLINE EDIT ENDS WHEN THAT WRITE DOES NOT HAPPEN
 export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recipe file was not changed.';
-// A LOOKUP TAKES ONLY AN EXISTING RECORD'S Id, CHOSEN IN AN ORG (#421)
-export const RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL = 'Not saved: a lookup takes only an existing record chosen with "Use existing … from org…". Clear puts its TODO back.';
+// A LOOKUP'S PENCIL (#627) TAKES ONE RECORD'S Id: THE TREE INSERT KEEPS AN Id AND REPLACES ANY OTHER VALUE A LOOKUP HOLDS
+export const RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX = 'is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id.';
+export const RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER = '15- or 18-character Salesforce Id';
+export const RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = 'Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it, unless the lookup can point at more than one object. Save writes it into the recipe file; Clear puts back the lines the field had.';
 export const RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL = 'Enter a record Id';
 export const RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL = 'Use this record';
 export const RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = 'org record · ';
@@ -631,7 +633,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Get latest detail, the red refresh arrow at the end of an object\'s row: pick the org and what to compare (fields, validation rules, record types, global value sets), then Next retrieves that object and lists what is new or changed against your project, kind by kind. Tick what to apply: those files are copied into your project, then only their recipe lines are added or rewritten, and every other line stays as it was. Cancel at any step changes nothing; a new record type\'s section is written by Regenerate with record types.',
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
-            'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
+            'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On a lookup, including one with no parent in its metadata such as Product2.SellerId, it takes the 15- or 18-character Id of an existing record instead, and the tree insert checks the org it inserts into holds that record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
             'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
@@ -979,6 +981,22 @@ export interface IRecipeCockpitOrgRecordLookupViewModel {
     recordId: string;
     parentObjectApiName: string;
     orgLabel: string;
+}
+
+// A LOOKUP'S Id THE TREE INSERT ASKS ITS ORG ABOUT: AN ORG RECORD'S (#421) OR ONE TYPED WITH THE PENCIL (#627)
+export interface ICheckedRecordIdLookup {
+    objectApiName: string;
+    fieldApiName: string;
+    recordId: string;
+    parentObjectApiName: string;
+}
+
+// A RECORD Id TYPED INTO A LOOKUP'S PENCIL (#627), WITH ITS PARENT AS THE ORG INSERTED INTO DESCRIBES THE FIELD: NONE FOR A POLYMORPHIC LOOKUP
+export interface IRecipeCockpitTypedLookupId {
+    objectApiName: string;
+    fieldApiName: string;
+    recordId: string;
+    parentObjectApiName?: string;
 }
 
 // ONE "Wire to…" THE CONFIRMED-DRAWN MODEL OFFERS, WITH THE HOST-ONLY RECIPE FILE IT WRITES
@@ -2544,7 +2562,7 @@ export const RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS: Readonly<Record<RecipeCock
     'scalar-content': 'This line is inside the field\'s multi-line value, where YAML reads it as part of the value rather than a comment, so it stays.',
     'indistinct-occurrence': 'This object is written more than once without a nickname that tells this one apart, so the TODO could not be put back in the same place.'
 });
-export const RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON = 'This TODO is the lookup\'s whole value: removing it would leave the lookup empty. Wire the lookup to a parent in the Treecipe tab instead.';
+export const RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON = 'This TODO is the lookup\'s whole value: removing it would leave the lookup empty. In the Treecipe tab, give it a record Id with its pencil or wire it to a parent instead.';
 export const RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON = 'This TODO is in another recipe file than this tree\'s, so it can be removed only from that tree\'s card.';
 export const RECIPE_COCKPIT_TODO_NO_RECIPE_REASON = 'This tree has no single recipe file to write, so its TODOs cannot be removed here.';
 
@@ -4383,15 +4401,15 @@ export class RecipeCockpitService {
 
     /*
         Why a field cannot be given a fixed value (#262), or undefined when it can. A field the tree or
-        the insert decides -- a lookup, RecordTypeId, a dependent picklist whose value a controlling
-        value chooses -- keeps its expression, and so does any field a #220 lock holds or the reader
-        unticked: a fixed value on a field generation leaves out would never be written. The panel
-        draws the same rule from the same model.
+        the insert decides -- RecordTypeId, a dependent picklist whose value a controlling value
+        chooses -- keeps its expression, and so does any field a #220 lock holds or the reader
+        unticked: a fixed value on a field generation leaves out would never be written. A lookup is
+        open (#627): it takes a record's Id (findLookupValueRefusal). The panel draws the same rule
+        from the same model.
     */
     static findFixedValueLockReason(tree: IRecipeCockpitTreeViewModel,
                                     objectViewModel: IRecipeCockpitObjectViewModel,
-                                    fieldViewModel: IRecipeCockpitFieldViewModel,
-                                    isOrgRecordValue = false): string | undefined {
+                                    fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
 
         if ( this.listExcludedObjectApiNames(tree).includes(objectViewModel.objectApiName) ) {
             return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
@@ -4410,18 +4428,26 @@ export class RecipeCockpitService {
             return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON;
         }
 
-        const isTreeLookup = tree.objects.some(treeObject => treeObject.objectApiName === objectViewModel.objectApiName
-                                                            && treeObject.parentLookups.some(parentLookup => parentLookup.fieldApiName === fieldViewModel.fieldApiName));
-        // THE ONE VALUE A LOOKUP TAKES (#421): AN EXISTING RECORD'S Id, WRITTEN BY "Use existing <Parent> from org…" -- NEVER ONE TYPED
-        if ( isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.includes(fieldViewModel.fieldType) ) {
-            return isOrgRecordValue ? undefined : RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON;
-        }
         if ( fieldViewModel.controllingField ) {
             return `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}${fieldViewModel.controllingField}`;
         }
 
         return undefined;
 
+    }
+
+    // A FIELD OF A LOOKUP TYPE, OR ONE THE TREE WIRES TO A PARENT (A STANDARD FIELD #400 MAPS CAN HAVE NO LOOKUP TYPE IN ITS XML)
+    static isLookupField(tree: IRecipeCockpitTreeViewModel, objectApiName: string, fieldViewModel: IRecipeCockpitFieldViewModel): boolean {
+        return RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.includes(fieldViewModel.fieldType)
+                || tree.objects.some(treeObject => treeObject.objectApiName === objectApiName
+                                                    && treeObject.parentLookups.some(parentLookup => parentLookup.fieldApiName === fieldViewModel.fieldApiName));
+    }
+
+    // WHY A VALUE TYPED INTO A LOOKUP'S PENCIL (#627) IS NOT SAVED: ONLY A RECORD Id SURVIVES THE TREE INSERT
+    static findLookupValueRefusal(tree: IRecipeCockpitTreeViewModel, objectApiName: string, fieldViewModel: IRecipeCockpitFieldViewModel, value: string): string | undefined {
+        return this.isLookupField(tree, objectApiName, fieldViewModel) && !RecipeCockpitFixedValueStore.isSalesforceRecordId(value)
+            ? `Not saved: ${objectApiName}.${fieldViewModel.fieldApiName} ${RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX}`
+            : undefined;
     }
 
     /*
@@ -4454,7 +4480,8 @@ export class RecipeCockpitService {
                 .filter((fieldViewModel, fieldIndex) => selectableFieldApiNames.has(fieldViewModel.fieldApiName)
                                                         && storedByField.has(fieldViewModel.fieldApiName)
                                                         && objectViewModel.fields.findIndex(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName) === fieldIndex
-                                                        && this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel, !!orgRecordLookup(fieldViewModel)) === undefined)
+                                                        && this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) === undefined
+                                                        && this.findLookupValueRefusal(tree, objectApiName, fieldViewModel, storedByField.get(fieldViewModel.fieldApiName) as string) === undefined)
                 .map(fieldViewModel => {
                     const fieldOrgRecordLookup = orgRecordLookup(fieldViewModel);
                     const value = storedByField.get(fieldViewModel.fieldApiName) as string;
@@ -4634,11 +4661,6 @@ export class RecipeCockpitService {
     static findObjectFieldSelection(tree: IRecipeCockpitTreeViewModel, objectViewModel: IRecipeCockpitObjectViewModel): IRecipeCockpitObjectFieldSelectionViewModel | undefined {
         const nickname = this.readOccurrenceNickname(objectViewModel);
         return ( tree.fieldSelection?.objects ?? [] ).find(candidate => candidate.objectApiName === objectViewModel.objectApiName && candidate.nickname === nickname);
-    }
-
-    // WHETHER THE CARD GENERATES THE FIELD WITH AN ORG RECORD'S Id (#421)
-    static isOrgRecordFixedValue(tree: IRecipeCockpitTreeViewModel, objectApiName: string, fieldApiName: string): boolean {
-        return ( tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === objectApiName && fixedValue.fieldApiName === fieldApiName && !!fixedValue.orgRecord);
     }
 
     // THE ORG RECORD A LOOKUP'S PINNED VALUE IS (#421), ONLY WHILE THE VALUE IS STILL THAT Id
@@ -5297,15 +5319,14 @@ export class RecipeCockpitService {
         const drawnField = this.recipeCockpitPanelState === panelState
             ? this.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
             : undefined;
-        const isOrgRecordValue = !!drawnField && this.isOrgRecordFixedValue(drawnField.tree, panelAction.objectApiName, panelAction.fieldApiName);
         if ( !drawnField || drawnField.tree.folderName !== panelAction.folderName || drawnField.fieldViewModel.lineNumber === undefined
-                || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel, isOrgRecordValue) !== undefined ) {
+                || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
             return;
         }
 
-        // A LOOKUP HOLDING AN ORG RECORD (#421) CAN BE CLEARED, NEVER GIVEN A TYPED VALUE
-        if ( panelAction.value !== '' && this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL);
+        const lookupValueRefusal = panelAction.value === '' ? undefined : this.findLookupValueRefusal(drawnField.tree, panelAction.objectApiName, drawnField.fieldViewModel, panelAction.value);
+        if ( lookupValueRefusal !== undefined ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, lookupValueRefusal);
             return;
         }
 
@@ -5604,7 +5625,7 @@ export class RecipeCockpitService {
 
         const drawnField = this.findDrawnField(panelState.recipeDataMessage?.recipe, tree.treeKey, objectApiName, fieldApiName);
         const lockReason = drawnField
-            ? this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel, true)
+            ? this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel)
             : 'the field is no longer drawn';
         if ( lockReason !== undefined ) {
             return refuse(`${RecipeYamlScalar.escapeForNotification(lockReason)}.`);
@@ -17055,7 +17076,8 @@ export class RecipeCockpitService {
             is left blank, and a required one gets a random existing record of its parent.
         */
         const orgRecordLookups = this.listTreeInsertOrgRecordLookups(tree, insertObjectApiNameSet);
-        const orgRecordLookupKeys = new Set(orgRecordLookups.map(orgRecordLookup => `${orgRecordLookup.objectApiName}\n${orgRecordLookup.fieldApiName}`));
+        const typedLookupIds = this.listTreeInsertTypedLookupIds(tree, insertObjectApiNameSet, objectApiName => SalesforceOrgService.getCachedDescribe(orgDetail.username, objectApiName));
+        const orgRecordLookupKeys = new Set([...orgRecordLookups, ...typedLookupIds].map(keptLookup => `${keptLookup.objectApiName}\n${keptLookup.fieldApiName}`));
         const outsideParentObjectApiNames = [...new Set([...readinessByObjectApiName.values()]
             .flatMap(readiness => readiness.requiredLookups.map(requiredLookup => ({ objectApiName: readiness.objectApiName, requiredLookup: requiredLookup })))
             .filter(({ objectApiName, requiredLookup }) => !insertObjectApiNameSet.has(requiredLookup.parentObjectApiName) && !orgRecordLookupKeys.has(`${objectApiName}\n${requiredLookup.fieldApiName}`))
@@ -17067,7 +17089,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
             {
-                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail),
+                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail, typedLookupIds),
                 org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 isDestructive: true,
                 changeOrg: { restartMessage: { command: 'insertTree', treeKey: treeKey }, isSandboxOnly: true }
@@ -17118,17 +17140,26 @@ export class RecipeCockpitService {
             }
         }
 
-        // EVERY Id A LOOKUP WAS SET TO (#421) MUST BE A RECORD OF ITS PARENT IN THE ORG INSERTED INTO, OR NOTHING IS WRITTEN
-        const missingOrgRecordLookup = await this.findMissingOrgRecordLookup(querySource, orgRecordLookups);
-        if ( missingOrgRecordLookup ) {
-            const { objectApiName, fieldApiName, parentObjectApiName, recordId, orgLabel: sourceOrgLabel, failureMessage } = missingOrgRecordLookup;
+        /*
+            EVERY Id A LOOKUP WAS SET TO -- CHOSEN IN AN ORG (#421) OR TYPED WITH THE PENCIL (#627) -- MUST BE A
+            RECORD OF ITS PARENT IN THE ORG INSERTED INTO, OR NOTHING IS WRITTEN. A POLYMORPHIC LOOKUP'S TYPED Id
+            HAS NO ONE PARENT TO ASK, SO ITS RECORD'S INSERT ANSWERS FOR IT.
+        */
+        const checkedTypedLookupIds = typedLookupIds.filter((typedLookupId): typedLookupId is IRecipeCockpitTypedLookupId & { parentObjectApiName: string } => typedLookupId.parentObjectApiName !== undefined);
+        const missingLookup = await this.findMissingOrgRecordLookup<ICheckedRecordIdLookup>(querySource, [...orgRecordLookups, ...checkedTypedLookupIds]);
+        if ( missingLookup ) {
+            const { objectApiName, fieldApiName, parentObjectApiName, recordId, failureMessage } = missingLookup;
             const lookupLabel = `${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
+            const parentLabel = RecipeYamlScalar.escapeForNotification(parentObjectApiName);
+            const recordIdLabel = RecipeYamlScalar.escapeForNotification(recordId);
             return refuse(failureMessage !== undefined
-                ? `Nothing was generated or inserted for ${treeLabel}: ${orgLabel} could not be asked whether it holds the ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} records ${lookupLabel} points at (${RecipeYamlScalar.escapeForNotification(failureMessage)}).`
-                : `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} points at the ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} record ${RecipeYamlScalar.escapeForNotification(recordId)}, chosen in ${RecipeYamlScalar.escapeForNotification(sourceOrgLabel)}, and ${orgLabel} has no such record. Clear it, or choose a record of this org with "Use existing ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} from org…".`);
+                ? `Nothing was generated or inserted for ${treeLabel}: ${orgLabel} could not be asked whether it holds the ${parentLabel} records ${lookupLabel} points at (${RecipeYamlScalar.escapeForNotification(failureMessage)}).`
+                : 'orgLabel' in missingLookup
+                    ? `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} points at the ${parentLabel} record ${recordIdLabel}, chosen in ${RecipeYamlScalar.escapeForNotification(String(missingLookup.orgLabel))}, and ${orgLabel} has no such record. Clear it, or choose a record of this org with "Use existing ${parentLabel} from org…".`
+                    : `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} holds the ${parentLabel} Id ${recordIdLabel}, typed with its pencil, and ${orgLabel} has no such record. Change it with the pencil, or Clear it.`);
         }
         const orgRecordIdsByObjectField = new Map<string, Map<string, Set<string>>>();
-        orgRecordLookups.forEach(orgRecordLookup => {
+        [...orgRecordLookups, ...typedLookupIds].forEach(orgRecordLookup => {
             const recordIdsByField = orgRecordIdsByObjectField.get(orgRecordLookup.objectApiName) ?? new Map<string, Set<string>>();
             recordIdsByField.set(orgRecordLookup.fieldApiName, new Set([...( recordIdsByField.get(orgRecordLookup.fieldApiName) ?? [] ), orgRecordLookup.recordId]));
             orgRecordIdsByObjectField.set(orgRecordLookup.objectApiName, recordIdsByField);
@@ -17192,11 +17223,45 @@ export class RecipeCockpitService {
     }
 
     /*
+        The record Ids typed into a lookup's pencil (#627) that the insert sends and keeps: a pinned
+        value that is a Salesforce Id, on a field the org inserted into describes as a lookup. Any
+        other pinned value is left to prepareTreeInsertRecords, which replaces a lookup's as before.
+    */
+    static listTreeInsertTypedLookupIds(tree: IRecipeCockpitTreeViewModel,
+                                        insertObjectApiNames: ReadonlySet<string>,
+                                        findDescribe: (objectApiName: string) => ICreateObjectDescribe | undefined): IRecipeCockpitTypedLookupId[] {
+
+        const listedKeys = new Set<string>();
+        return ( tree.fixedValues ?? [] ).flatMap(fixedValue => {
+            if ( fixedValue.orgRecord || !insertObjectApiNames.has(fixedValue.objectApiName) || !RecipeCockpitFixedValueStore.isSalesforceRecordId(fixedValue.value) ) {
+                return [];
+            }
+            const describe = findDescribe(fixedValue.objectApiName);
+            const insertLookup = describe
+                ? RecipeCockpitRecordCreation.findTreeInsertLookups(describe).find(candidate => candidate.fieldApiName.toLowerCase() === fixedValue.fieldApiName.toLowerCase())
+                : undefined;
+            // AN OBJECT WITH iterations PINS EACH OCCURRENCE (#467): ONE Id ON ONE FIELD IS ONE LOOKUP
+            const typedKey = `${fixedValue.objectApiName}\n${fixedValue.fieldApiName}\n${fixedValue.value}`;
+            if ( !insertLookup || listedKeys.has(typedKey) ) {
+                return [];
+            }
+            listedKeys.add(typedKey);
+            return [{
+                objectApiName: fixedValue.objectApiName,
+                fieldApiName: fixedValue.fieldApiName,
+                recordId: fixedValue.value,
+                ...( insertLookup.parentObjectApiName !== undefined ? { parentObjectApiName: insertLookup.parentObjectApiName } : {} )
+            }];
+        });
+
+    }
+
+    /*
         The first lookup whose Id the org does not hold as a record of its parent, one query per
         parent; a query that fails is that lookup's failureMessage, never "it exists".
     */
-    static async findMissingOrgRecordLookup(querySource: IOrgQuerySource, orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[]):
-        Promise<( IRecipeCockpitOrgRecordLookupViewModel & { failureMessage?: string } ) | undefined> {
+    static async findMissingOrgRecordLookup<TLookup extends ICheckedRecordIdLookup>(querySource: IOrgQuerySource, orgRecordLookups: readonly TLookup[]):
+        Promise<( TLookup & { failureMessage?: string } ) | undefined> {
 
         const parentObjectApiNames = [...new Set(orgRecordLookups.map(orgRecordLookup => orgRecordLookup.parentObjectApiName))];
 
@@ -17423,7 +17488,8 @@ export class RecipeCockpitService {
                                             fakerService: string,
                                             recipeFileLabel: string,
                                             orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = [],
-                                            scratchOrgDetail?: IScratchOrgDetail): IRecipeCockpitConfirmContent {
+                                            scratchOrgDetail?: IScratchOrgDetail,
+                                            typedLookupIds: readonly IRecipeCockpitTypedLookupId[] = []): IRecipeCockpitConfirmContent {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
@@ -17446,8 +17512,11 @@ export class RecipeCockpitService {
             return this.describeOccurrence(objectApiName, nickname);
         };
         const leftOutLines = this.buildInsertLeftOutLines(tree);
-        // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM
-        const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord);
+        // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM, AND SO IS AN Id TYPED INTO A LOOKUP (#627)
+        const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord
+                                                                            && !typedLookupIds.some(typedLookupId => typedLookupId.objectApiName === fixedValue.objectApiName
+                                                                                                                    && typedLookupId.fieldApiName === fixedValue.fieldApiName
+                                                                                                                    && typedLookupId.recordId === fixedValue.value));
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
             .flatMap(([occurrenceKey, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`));
 
@@ -17472,6 +17541,14 @@ export class RecipeCockpitService {
                     ? [
                         'Lookups set to existing org records, each checked in this org before anything is written:',
                         ...orgRecordLookups.map(orgRecordLookup => `  ${orgRecordLookup.objectApiName}.${orgRecordLookup.fieldApiName} → ${orgRecordLookup.parentObjectApiName} ${orgRecordLookup.recordId} (from ${orgRecordLookup.orgLabel})`)
+                    ]
+                    : [] ),
+                ...( typedLookupIds.length > 0
+                    ? [
+                        'Lookups set to a record Id typed with the pencil, each checked in this org before anything is written:',
+                        ...typedLookupIds.map(typedLookupId => typedLookupId.parentObjectApiName !== undefined
+                            ? `  ${typedLookupId.objectApiName}.${typedLookupId.fieldApiName} → ${typedLookupId.parentObjectApiName} ${typedLookupId.recordId}`
+                            : `  ${typedLookupId.objectApiName}.${typedLookupId.fieldApiName} → ${typedLookupId.recordId} (can point at more than one object, so it is not checked)`)
                     ]
                     : [] )
             ],
@@ -18481,8 +18558,9 @@ export class RecipeCockpitService {
                 checkbox, matched against the same allow-list, and the value AS TYPED -- a string no
                 longer than any fixed value can be, '' clearing it. Only its shape is checked here; the
                 host checks the value itself against the field before anything is written. A field a
-                lock holds back (#220's, a lookup, RecordTypeId, a dependent picklist, an unticked field
-                or an excluded object's) is refused here and again before anything is written.
+                lock holds back (#220's, RecordTypeId, a dependent picklist, an unticked field or an
+                excluded object's) is refused here and again before anything is written. A lookup is
+                routed (#627): the executor's findLookupValueRefusal holds its value to a record Id.
             */
             case 'setFieldFixedValue': {
 
@@ -18499,7 +18577,7 @@ export class RecipeCockpitService {
                 const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
                 if ( !drawnField || !drawnField.tree.folderName
-                        || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel, this.isOrgRecordFixedValue(drawnField.tree, objectApiName, fieldApiName)) !== undefined ) {
+                        || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
                     return undefined;
                 }
 
@@ -22658,9 +22736,10 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     const FIXED_VALUE_OBJECT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON)};
     const FIXED_VALUE_UNTICKED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON)};
     const FIXED_VALUE_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON)};
-    const FIXED_VALUE_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON)};
     const FIXED_VALUE_DEPENDENT_REASON_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX)};
     const FIXED_VALUE_LOOKUP_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES)};
+    const LOOKUP_ID_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER)};
+    const LOOKUP_ID_EDIT_HINT = ${JSON.stringify(RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT)};
     const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
     const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
     const VALIDATION_RULE_SOURCE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX)};
@@ -25073,11 +25152,16 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
+    // THE HOST'S isLookupField: A LOOKUP'S PENCIL (#627) TAKES A RECORD Id
+    function isLookupField(tree, objectApiName, field) {
+        return FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1 || hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\\n' + field.fieldApiName);
+    }
+
     /*
         Why a field's pin is disabled (#262): the host's own rule (findFixedValueLockReason), drawn
         from the model the panel already holds. The host re-derives it before it writes anything.
     */
-    function findFixedValueLockReason(treeObjectState, fieldState, isOrgRecordValue) {
+    function findFixedValueLockReason(treeObjectState, fieldState) {
 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
@@ -25089,8 +25173,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, field.fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
         if (field.fieldApiName === 'RecordTypeId') { return FIXED_VALUE_RECORD_TYPE_REASON; }
 
-        const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\\n' + field.fieldApiName);
-        if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return isOrgRecordValue ? '' : FIXED_VALUE_LOOKUP_REASON; }
         if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
 
         return '';
@@ -25170,15 +25252,16 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const buttonElement = fieldState.fixedValueButtonElement;
         if (!buttonElement) { return; }
 
-        const lockReason = findFixedValueLockReason(treeObjectState, fieldState, !!orgRecord);
+        const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
         buttonElement.disabled = !!lockReason;
         buttonElement.setAttribute('aria-pressed', isFixed ? 'true' : 'false');
         buttonElement.setAttribute('aria-expanded', fieldState.editorEdit === 'fixedValue' ? 'true' : 'false');
         if (buttonElement.disabled && fieldState.editorEdit === 'fixedValue') { closeFieldEditor(fieldState); }
 
         const title = lockReason ? 'Cannot be edited: ' + lockReason
-            : orgRecord ? 'Existing ' + orgRecord.parentObjectApiName + ' record of ' + orgRecord.orgLabel + ' — click to clear it'
+            : orgRecord ? 'Existing ' + orgRecord.parentObjectApiName + ' record of ' + orgRecord.orgLabel + ' — click to change or clear it'
             : isFixed ? ( isExpressionValue(fixedValue) ? 'Edited expression' : 'Fixed value' ) + ' — click to change or clear it'
+            : isLookupField(treeObjectState.tree, treeObjectState.object.objectApiName, fieldState.field) ? 'Give the lookup the Id of an existing record'
             : 'Edit the faker expression, or give the field a fixed value';
         buttonElement.setAttribute('title', title);
         buttonElement.setAttribute('aria-label', fieldApiName + ': ' + title);
@@ -25789,17 +25872,22 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         const inputElements = [];
         let collectTyped = null;
 
+        // A LOOKUP (#627) TAKES ONE RECORD'S Id, SO IT STARTS FROM THE Id IT HOLDS, NEVER FROM ITS TODO OR NICKNAME
+        const isLookup = isLookupField(tree, object.objectApiName, field);
         editorElement.setAttribute('aria-label', 'Edit ' + fieldLabel);
-        const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), 'Value or faker expression for ' + fieldLabel, '');
+        const valueElement = isLookup
+            ? buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object)) || '', 'Record Id for ' + fieldLabel, LOOKUP_ID_PLACEHOLDER)
+            : buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), 'Value or faker expression for ' + fieldLabel, '');
         inputElements.push(valueElement);
         inputsElement.appendChild(valueElement);
         collectTyped = function (isClearing) {
             const typedValue = String(valueElement.value);
-            return { value: isClearing ? '' : isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue };
+            return { value: isClearing ? '' : isLookup || isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue };
         };
 
         // THE HINT SAYS WHICH OF THE TWO SAVE WRITES, AS THE READER TYPES
         const describeEdit = function () {
+            if (isLookup) { return LOOKUP_ID_EDIT_HINT; }
             return ( isExpressionValue(String(valueElement.value).trim())
                 ? 'Saved as a faker expression: one \${{ ... }} on one line. Change its arguments, or call another faker method.'
                 : 'Saved as a fixed value. ' + describeFixedValueForm(field) + ' Start with \${{ to save a faker expression instead.' )
@@ -25973,7 +26061,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     function findPicklistChoiceLockReason(treeObjectState, fieldState) {
 
         if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) { return 'Values can be chosen only on a card with its own recipe file.'; }
-        const lockReason = findFixedValueLockReason(treeObjectState, fieldState, false);
+        const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
         return lockReason ? 'Cannot be edited: ' + lockReason : '';
 
     }

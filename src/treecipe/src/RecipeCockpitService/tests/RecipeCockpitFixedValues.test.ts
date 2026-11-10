@@ -31,7 +31,9 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON,
+    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
+    RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX,
+    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
@@ -445,15 +447,15 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         const lockReasonOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string, fieldApiName: string, treeKey = ACCOUNT_TREE_KEY) =>
             RecipeCockpitService.findFixedValueLockReason(treeOf(recipe, treeKey), objectOf(recipe, objectApiName), fieldOf(recipe, objectApiName, fieldApiName));
 
-        it('locks a lookup, RecordTypeId, a dependent picklist and a controlling field, and leaves every other field free', () => {
+        it('locks RecordTypeId, a dependent picklist and a controlling field, and leaves every lookup and every other field free (#627)', () => {
 
             const recipe = loadRecipe();
             applyFixedValues(recipe, {});
             objectOf(recipe, 'Account').fields.push({ ...fieldOf(recipe, 'Account', 'Legacy_Code__c'), fieldApiName: 'RecordTypeId', fieldType: '', fieldTypeWithSize: '' });
 
-            expect(lockReasonOf(recipe, 'Account', 'ParentId')).toBe(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON);
-            expect(lockReasonOf(recipe, 'Account', 'OwnerId')).toBe(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON);
-            expect(lockReasonOf(recipe, 'Contact', 'AccountId')).toBe(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON);
+            expect(lockReasonOf(recipe, 'Account', 'ParentId')).toBeUndefined();
+            expect(lockReasonOf(recipe, 'Account', 'OwnerId')).toBeUndefined();
+            expect(lockReasonOf(recipe, 'Contact', 'AccountId')).toBeUndefined();
             expect(lockReasonOf(recipe, 'Account', 'RecordTypeId')).toBe(RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON);
             expect(lockReasonOf(recipe, 'Account', 'Sub_Rating__c')).toBe(`${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c`);
             expect(lockReasonOf(recipe, 'Account', 'Rating__c')).toBe(`${RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX}Sub_Rating__c`);
@@ -488,6 +490,17 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                 { objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', value: '4', kind: 'number' }
             ]);
             expect(treeOf(recipe, LEAD_TREE_KEY)).not.toHaveProperty('fixedValues');
+
+        });
+
+        it('sets a lookup\'s stored record Id as text and holds back a lookup value that is no Id, which the insert would replace (#627)', () => {
+
+            const recipe = loadRecipe();
+            applyFixedValues(recipe, { [ACCOUNT_TREE_KEY]: { Account: { ParentId: '001000000000001AAA', OwnerId: 'Owner_1' } } });
+
+            expect(treeOf(recipe, ACCOUNT_TREE_KEY).fixedValues).toEqual([
+                { objectApiName: 'Account', fieldApiName: 'ParentId', value: '001000000000001AAA', kind: 'text' }
+            ]);
 
         });
 
@@ -683,11 +696,12 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', value: '' })).toMatchObject({ kind: 'setFieldFixedValue', folderName: LEAD_TREE_KEY, value: '' });
             expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'x'.repeat(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH) }))
                 .toMatchObject({ kind: 'setFieldFixedValue' });
+            // A LOOKUP IS ROUTED (#627): WHETHER ITS VALUE IS A RECORD Id IS THE EXECUTOR'S CHECK, ANSWERED UNDER THE EDITOR
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'ParentId', value: 'x' })).toMatchObject({ kind: 'setFieldFixedValue', fieldApiName: 'ParentId', value: 'x' });
 
         });
 
         it.each([
-            ['a lookup', { fieldApiName: 'ParentId' }],
             ['a dependent picklist', { fieldApiName: 'Sub_Rating__c' }],
             ['a controlling field', { fieldApiName: 'Rating__c' }],
             ['a field of another card', { treeKey: LEAD_TREE_KEY }],
@@ -841,6 +855,32 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
             expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
             expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY)).not.toHaveProperty('fixedValues');
+
+        });
+
+        it('writes a record Id into a lookup and Clear puts its line back, and refuses any other value under the editor with nothing written (#627)', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            const parentIdLine = recipeBefore.split('\n').find(recipeLine => /^\s+ParentId:/.test(recipeLine)) as string;
+            await openAndDraw(buildWorkspaceState());
+
+            for ( const notAnId of ['x', '${{ fake.Word }}', '001000000000001AA'] ) {
+                await save('ParentId', notAnId);
+                expect(lastPosted('fieldEditResult')).toMatchObject({ refusal: `Not saved: Account.ParentId ${RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX}` });
+            }
+            expect(showWarningMessage).not.toHaveBeenCalled();
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('ParentId', '001000000000001AAA');
+            const indent = parentIdLine.slice(0, parentIdLine.indexOf('ParentId'));
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore.replace(parentIdLine, `${indent}ParentId: "001000000000001AAA"`));
+            expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY).fixedValues).toEqual([{ objectApiName: 'Account', fieldApiName: 'ParentId', value: '001000000000001AAA', kind: 'text' }]);
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+            await save('ParentId', '');
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
 
         });
 
@@ -1296,7 +1336,6 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
 
-            await save('ParentId', 'x');
             await save('Sub_Rating__c', 'x');
             await save('Name', 'x', 'Forged-Folder');
             await save('Subject', 'x', ACCOUNT_TREE_KEY, 'Task');
@@ -1424,24 +1463,41 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const panel = drawRecipe();
             const account = expanded(panel, 'Account');
 
-            expect(pinOf(panel, account, 'ParentId').disabled).toBeTrue();
-            expect(pinOf(panel, account, 'ParentId').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
             expect(pinOf(panel, account, 'Sub_Rating__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c`);
             expect(pinOf(panel, account, 'Rating__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX}Sub_Rating__c`);
-            expect(pinOf(panel, expanded(panel, 'Contact'), 'AccountId').disabled).toBeTrue();
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fieldSelection: { objects: [{ objectApiName: 'Account', excludedFieldApiNames: ['Legacy_Code__c'], lockedFields: [] }] } });
             expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON}`);
 
         });
 
-        it('locks a field the tree wires as a lookup whatever type the wrapper gives it', () => {
+        it('opens every lookup\'s pencil, a tree-wired one and one of a lookup type alike, asking for a record Id (#627)', () => {
 
             const panel = drawRecipe(recipe => { treeOf(recipe, ACCOUNT_TREE_KEY).objects.find(treeObject => treeObject.objectApiName === 'Account')?.parentLookups.push({ fieldApiName: 'Legacy_Code__c', parentObjectApiName: 'Account' }); });
             const account = expanded(panel, 'Account');
+            const contact = expanded(panel, 'Contact');
 
-            expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
-            expect(pinOf(panel, account, 'Annual_Budget__c').disabled).toBeFalse();
+            [pinOf(panel, account, 'ParentId'), pinOf(panel, account, 'Legacy_Code__c'), pinOf(panel, contact, 'AccountId')].forEach(pin => {
+                expect(pin.disabled).toBeFalse();
+                expect(pin.attributes.title).toBe('Give the lookup the Id of an existing record');
+            });
+            expect(pinOf(panel, account, 'Annual_Budget__c').attributes.title).toBe('Edit the faker expression, or give the field a fixed value');
+
+            pinOf(panel, contact, 'AccountId').dispatch('click');
+            const editor = only(panel, rowOf(panel, contact, 'AccountId'), 'fieldEditor');
+            const input = only(panel, editor, 'fieldEditorInput');
+
+            // A LOOKUP NEVER STARTS FROM ITS TODO OR NICKNAME: THE Id IS ALL IT TAKES
+            expect(input.value).toBe('');
+            expect(input.attributes.placeholder).toBe(RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER);
+            expect(input.attributes['aria-label']).toBe('Record Id for Contact.AccountId');
+            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe(RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT);
+
+            input.value = ' 001000000000001AAA ';
+            only(panel, editor, 'fieldEditorSave').dispatch('click');
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue')).toEqual([
+                expect.objectContaining({ objectApiName: 'Contact', fieldApiName: 'AccountId', value: '001000000000001AAA' })
+            ]);
 
         });
 
@@ -1525,7 +1581,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const row = rowOf(panel, account, 'Legacy_Code__c');
 
             pinOf(panel, account, 'Legacy_Code__c').dispatch('click');
-            pinOf(panel, account, 'ParentId').dispatch('click');
+            pinOf(panel, account, 'Sub_Rating__c').dispatch('click');
             const input = only(panel, row, 'fieldEditorInput');
             input.value = ' X-1 ';
             only(panel, row, 'fieldEditorSave').dispatch('click');
@@ -1542,7 +1598,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                 { ...base, value: 'X-2' },
                 { ...base, value: '' }
             ]);
-            expect(panel.findAll(rowOf(panel, account, 'ParentId'), 'fieldEditor')).toEqual([]);
+            expect(panel.findAll(rowOf(panel, account, 'Sub_Rating__c'), 'fieldEditor')).toEqual([]);
 
         });
 

@@ -252,8 +252,9 @@ export class RecipeCockpitRecordCreation {
         One file's records with every lookup the recipe could not wire filled or cleared (#255). A
         value that already names a record of this insert is kept -- a faker-js friend's parent, which
         the insert resolves -- and so is an Id the reader set the lookup to with "Use existing
-        <Parent> from org…" (#421), which the insert checked the org holds before anything was
-        written. Any other value (a TODO, a nickname of nothing inserted, a hand-written Id) is
+        <Parent> from org…" (#421) or typed with the field's pencil (#627), both handed in as
+        orgRecordIdsByFieldApiName. Any other value (a TODO, a nickname of nothing inserted, an Id
+        edited into the recipe by hand) is
         replaced: by a random record THIS insert created of the parent, when the tree inserts that
         parent, so a snowfakery tree's children still hang off the parents inserted with them; for a
         required lookup to a parent outside the tree, by a random existing record of the parent; and

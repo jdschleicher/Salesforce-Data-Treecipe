@@ -1,8 +1,8 @@
 # Change Log
 
-## [3.196.0] - An option to give each record type block its own copy of the children, both backends (#622, slice B of #620)
+## [3.197.0] - An option to give each record type block its own copy of the children, both backends (#622, slice B of #620)
 
-With several record types selected, only an object's first record type block carried its children (#194), so a Partner Account had no Contacts. A new opt-in, `isChildTreeCopiedPerRecordTypeBlock` on `RecordTypeSelection` (off by default), gives every block its own copy. Nothing turns it on yet: the palette and the cockpit are unchanged, and slice C of #620 is what will set it. With the option off, every recipe is byte-identical to 3.195.0 (the golden files are unchanged).
+With several record types selected, only an object's first record type block carried its children (#194), so a Partner Account had no Contacts. A new opt-in, `isChildTreeCopiedPerRecordTypeBlock` on `RecordTypeSelection` (off by default), gives every block its own copy. Nothing turns it on yet: the palette and the cockpit are unchanged, and slice C of #620 is what will set it. With the option off, every recipe is byte-identical to 3.196.0 (the golden files are unchanged).
 
 With it on, and Account written as Business and Partner blocks:
 
@@ -14,6 +14,15 @@ With it on, and Account written as Business and Partner blocks:
 - **A self-lookup iteration** (`Account_child_NickName`) stays under the object's first block only. A child copied into a later block keeps its own self-lookup iteration, wired to the copy.
 - Record totals double for every child under a two-block parent (`RecipeCockpitRecipeWriter.countRecipeRecordsByObject`). The Recipe Cockpit reads each copy as its own occurrence, by nickname.
 - `RecordTypeSelection.fromUnknown` takes the option as a second argument and turns it on only for exactly `true`.
+
+## [3.196.0] - Recipe Cockpit: every lookup's pencil takes a record Id, including a lookup with no parent in its metadata (#627)
+
+- **The pencil on a lookup field is no longer locked.** A lookup whose field file has no `<referenceTo>` and no known parent, such as `Product2.SellerId` or `Product2.SourceProductId`, had no "Create … in recipe" or "Use existing … from org…" button and a locked pencil, so its `### TODO -- REFERENCE ID REQUIRED` could not be set from the cockpit. Every lookup's pencil now opens, tree-wired lookups included.
+- **On a lookup, the pencil takes the 15- or 18-character Id of an existing record.** It opens empty, with a placeholder and hint that say so, and writes the Id into the recipe as a fixed value (`SellerId: "001…"`). Clear puts back the line the field had (its TODO, or its nickname). Anything else typed, such as a word or a `${{ … }}` expression, is refused under the editor: "Not saved: Product2.SellerId is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id." A record Id typed over one chosen with "Use existing … from org…" replaces it.
+- **Generate fake data and insert keeps a typed Id.** Before, the tree insert replaced any lookup value it had not chosen itself. Now an Id typed with the pencil is sent as it is, on a field the target org describes as a lookup. Before anything is generated, the insert asks the target org whether it holds that record, using the parent the org's describe names. If it doesn't, nothing is inserted and the warning names the field, the Id and the org: "… Contact.Region__c holds the Region__c Id a05…, typed with its pencil, and qa (…) has no such record. Change it with the pencil, or Clear it." A polymorphic lookup's Id can't be checked this way, so it is sent unchecked and a bad Id shows in the insert's results. A required polymorphic lookup still stops the tree insert, Id or not, as it did before. The insert confirmation lists every typed Id under its own warning.
+- The TODO tab's Remove on a `REFERENCE ID REQUIRED` lookup now says to give it a record Id with its pencil, or wire it to a parent, in the Treecipe tab.
+- The cockpit's ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the lookup pencil.
+- Recipe generation, the golden files, "Create … in recipe", "Use existing … from org…" and the Treecipe Adapter's lookup lock are unchanged.
 
 ## [3.195.0] - Data sets record the record types they were generated with, and each Previously Used Data Sets row names them (#621, slice A of #620)
 
@@ -181,7 +190,6 @@ Generate Treecipe gives every object in a relationship tree a level, and the lev
   - `RelationshipService.test.ts` pins a two-object cycle, a three-object cycle, a cycle with a tail, a cycle reached by two paths, and independence from map order. It also checks that the 42-object, 14-layer graph walks each object exactly once.
   - The #98 tests now call the new walk. The `nestedFriends` cycle test is updated on purpose to the new cut.
 - Design note: `RelationshipService/DESIGN.md`.
-
 
 ## [3.192.14] - faker-js data sets no longer end dates, numbers and phones with a line break (#593)
 
@@ -627,7 +635,6 @@ Sessions had skipped `/next-task`'s plan approval (#571 was started without one)
 - **☆ and ✎ come first.** A tree card's header reads ☆, ✎, name, folder, count, so Tab reaches them first; `.treeHeaderActions` no longer pushes them to the end, and the group is drawn only on a card with a folder, so the ungrouped card's header starts with its name. A data set row's ✎ moved right after its ☆, before the name. The row aligns by baseline and the pencil has none, so `.treeDatasetRename` is `align-self: center` to sit level with the ☆. The action group still stops a click from reaching the header.
 - **Nothing else changes.** Rename and favorite post what they did, the host asks in its own input box, and what is stored is unchanged.
 - **Help and guide.** The ? help, the Adapter's intro and `docs/RECIPE-COCKPIT-GUIDE.md` call it the pencil, and say the rename sits before the name beside the star; two screenshots were re-taken.
-
 
 ## [3.180.0] - Recipe Cockpit: Target Org Manager's ⟳ recovers a stale or held picker without restarting VS Code
 
@@ -4732,7 +4739,6 @@ A deep link pasted while a value query was active left the previous query's row 
 
 Where the ceiling dropped rows, a value the reader types may be absent from what the panel holds rather than from their org -- and `0 of 12 objects shown` reads as the second. The count now says so whenever a query runs against a truncated model, not only when nothing matched: gating it on zero visible objects made the miss silent in the case that matters most, where some other object matches and the reader is looking at results with no reason to suspect a row was dropped. It is keyed on rows the ceiling removed rather than on a capped declared list, because the index is drawn from `allowedValues` -- a trimmed universe no longer costs the find box anything, and attaching the caveat to it would be its own kind of untrue. An untruncated model that matches nothing claims nothing about dropped rows.
 
-
 ## [3.19.0] - Geolocation compound fields expand into the Latitude and Longitude components an insert can write
 
 Closes [#111](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/111).
@@ -5573,7 +5579,6 @@ Field API names are not unique across objects — `Status__c` on Account and on 
 The write sink checks containment itself: a field file resolving outside the configured objects directory — a symlink out of the tree included — is refused rather than written, independent of the API-name validation upstream.
 
 Chain links survive the round trip. `.dependsOn(...)` names a spec *method*, and method names are deliberately lossy, so the link is derived from the parsed set — a field whose controlling field is itself specced in the same class — rather than reverse-engineered from the identifier. A field naming itself as its controlling field stays a root.
-
 
 ## [3.5.0] - The Spec Manifest: the Explorer and the generated Apex become one artifact
 
@@ -6566,7 +6571,6 @@ This functionality is dependent upon there being a dedicated directory named "gl
 
 This functionality relies on a singleton to initiate the a map of GlobalValueSets to associated available picklist values which mapps out to expected faker expressions for picklist fields.
 
-
 ## [2.4.0] [PR#29](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/29) - Feature : 2.4.0
 
 ### Standard Value Set Map for avoiding additional TODO's when generating recipes from code base
@@ -6678,11 +6682,9 @@ Based upon the same YAML file approached used with snowfakery, this update intro
   - added new unit tests to manage for several different scenarios of picklist xml markup
   - adding changelog :) 
 
-
 ## [1.2.1] [PR#13](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/13) - Bug: logic always expects a record types directory to exist under the custom object directory  
 
 - bug fix stemming from record type logic always expecting a record types directory to exists and record type configurations to build picklists and multiselect picklists from
-
 
 ## [1.2.0] ([PR#12](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/12)) - Feature: Insert Created Datasets with Collections API Service 
 
@@ -6690,14 +6692,10 @@ Based upon the same YAML file approached used with snowfakery, this update intro
 - significant refactoring needed to properly setup proof files and introduce new "RecordTypeWrapper" object that incorporates a map of "RecordType.DeveloperName" to unique Record Type Id based on the targeted Salesforce org we are attempting to insert data against
 - brief description of each file change below
 
-
-
 ## [1.1.0] ([PR#10](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/10)) - Feature: Source Record Type parsing for Record Type based Picklists and Multiselect Picklists  
 
 - Introduce logic to parse the "recordTypes" directory within an objects directory and generate a key-value map of record type to associated xml markup details 
 - updated unit tests to ensure scenarios where record types are included in the source directory, the generated recipes include the expected record type associated picklist options
-
-
 
 ## [1.0.0] ([PR#9](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/9)) - Feature: new command pallette option that prompts the User to select a previously created recipe file and executes the snowfakery cli command to generate fake data 
 
@@ -6709,8 +6707,6 @@ Based upon the same YAML file approached used with snowfakery, this update intro
     -  the originating recipe file that lead to the generated fake data
   - If snowfakery cli is not installed on your machine, an exception will be thrown 
 
-
-
 ## [0.2.1] ([PR#8](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/8)) - Bug: object variable being populated with full objects path instead of intended parsing of the path to get the object name 
 
 - new features - organization - dedicated directory called "GeneratedRecipes" where all new recipes will be placed instead of alongside the root of treecipe folder
@@ -6721,8 +6717,6 @@ Based upon the same YAML file approached used with snowfakery, this update intro
 - testing support - new methods in MockDirectoryService to mimic vscode.workspace.fs.readDirectory mocking and mocking vscode workspace
 - new test suite for ErrorHandlingService
 
-
-
 ## [0.2.0] ([PR#5](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/5)) - Bug: Graceful error handling when recipes do not generate and associated Support Functionality 
 
 - Introduces a error handling service around all available Treecipe VSCode extension commands
@@ -6732,7 +6726,6 @@ Based upon the same YAML file approached used with snowfakery, this update intro
   - standardize forward-slashes for objects path on creation of the treecipe.config.json file
   - gracefully handle OOTB Salesforce fields that do not have expected XML tags like "type".  
     - In the event of these scenarios, the recipe field is still generated for awareness and given a value of "REMOVE ME AS I MAY NOT BE ABLE TO GENERATE BECAUSE I AM OOTB FIELD LIKE Id or AccountNumber  
-
 
 ## [0.1.1] ([PR#3](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/3)) - Bug: Snowfakery configuration value casing issue 
 
