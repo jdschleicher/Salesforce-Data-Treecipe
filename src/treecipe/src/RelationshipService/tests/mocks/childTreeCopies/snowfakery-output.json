@@ -1,0 +1,12 @@
+[{"_table": "Account", "id": 1, "RecordTypeId": "Account.Business", "Name": "Jackson-Estrada"},
+{"_table": "Account", "id": 2, "RecordTypeId": "Account.Business", "Name": "Proctor-Mahoney"},
+{"_table": "Account", "id": 3, "RecordTypeId": "Account.Partner", "Name": "Ali, Kane and Winters"},
+{"_table": "Account", "id": 4, "RecordTypeId": "Account.Partner", "Name": "Miranda-Rocha"},
+{"_table": "Contact", "id": 1, "Name": "Webb Group", "AccountId": "Account_Reference_2"},
+{"_table": "Contact", "id": 2, "Name": "Gentry, Fowler and Solomon", "AccountId": "Account_Reference_2"},
+{"_table": "Contact", "id": 3, "Name": "Fitzpatrick, Barrett and Bruce", "AccountId": "Account_Reference_4"},
+{"_table": "Contact", "id": 4, "Name": "Lawrence-Koch", "AccountId": "Account_Reference_4"},
+{"_table": "Case", "id": 1, "Name": "Patton, Powers and Curry", "AccountId": "Account_Reference_2", "ContactId": "Contact_Reference_2"},
+{"_table": "Case", "id": 2, "Name": "Rosario Ltd", "AccountId": "Account_Reference_2", "ContactId": "Contact_Reference_2"},
+{"_table": "Case", "id": 3, "Name": "Mcclain-Clayton", "AccountId": "Account_Reference_4", "ContactId": "Contact_Reference_4"},
+{"_table": "Case", "id": 4, "Name": "Wallace-Gilbert", "AccountId": "Account_Reference_4", "ContactId": "Contact_Reference_4"}]

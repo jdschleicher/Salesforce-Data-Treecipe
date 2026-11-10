@@ -779,7 +779,11 @@ export class DirectoryProcessor {
     objectInfoWrapper.RelationshipTrees = this.relationshipService.buildRelationshipTrees(objectInfoWrapper);
 
     // ONLY faker-js RECIPES NEST CHILDREN UNDER friends: AND WIRE THEIR LOOKUPS (#46) -- A SNOWFAKERY RECIPE IS WRITTEN FLAT, AS BEFORE
-    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper, this.isFakerJSServiceSelected);
+    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(
+      objectInfoWrapper,
+      this.isFakerJSServiceSelected,
+      this.recordTypeSelection?.isChildTreeCopiedPerRecordTypeBlock === true
+    );
     
     objectInfoWrapper.RecipeFiles = recipeFiles;
 

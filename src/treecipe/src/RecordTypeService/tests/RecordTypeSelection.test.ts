@@ -65,6 +65,36 @@ describe('RecordTypeSelection', () => {
 
     });
 
+    describe('isChildTreeCopiedPerRecordTypeBlock (#622)', () => {
+
+        test('is off unless asked for', () => {
+
+            expect(new RecordTypeSelection().isChildTreeCopiedPerRecordTypeBlock).toBeFalse();
+            expect(new RecordTypeSelection([['Account', ['Partner']]]).isChildTreeCopiedPerRecordTypeBlock).toBeFalse();
+            expect(RecordTypeSelection.fromUnknown({ Account: ['Partner'] }).isChildTreeCopiedPerRecordTypeBlock).toBeFalse();
+
+        });
+
+        test('is on when the constructor is handed true', () => {
+
+            expect(new RecordTypeSelection([['Account', ['Partner']]], true).isChildTreeCopiedPerRecordTypeBlock).toBeTrue();
+
+        });
+
+        test('fromUnknown turns it on for true', () => {
+
+            expect(RecordTypeSelection.fromUnknown({ Account: ['Partner'] }, true).isChildTreeCopiedPerRecordTypeBlock).toBeTrue();
+
+        });
+
+        test.each(['true', 1, {}, null, undefined, false])('fromUnknown leaves it off for %p, which is not exactly true', (option) => {
+
+            expect(RecordTypeSelection.fromUnknown({ Account: ['Partner'] }, option).isChildTreeCopiedPerRecordTypeBlock).toBeFalse();
+
+        });
+
+    });
+
     describe('resolveForObject', () => {
 
         const writableRecordTypes = { Customer: buildRecordTypeWrapper('Customer'), Partner: buildRecordTypeWrapper('Partner') };

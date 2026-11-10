@@ -28,8 +28,16 @@ export class RecordTypeSelection {
 
     private readonly developerNamesByObjectApiName: Map<string, string[]>;
 
-    constructor(developerNamesByObjectApiName?: Iterable<[string, readonly string[]]>) {
+    /*
+        Off: only an object's first record type block carries its children (#194). On: every block
+        carries its own copy of them (#622), so each record type's records have children of their own.
+    */
+    readonly isChildTreeCopiedPerRecordTypeBlock: boolean;
 
+    constructor(developerNamesByObjectApiName?: Iterable<[string, readonly string[]]>,
+                isChildTreeCopiedPerRecordTypeBlock: boolean = false) {
+
+        this.isChildTreeCopiedPerRecordTypeBlock = isChildTreeCopiedPerRecordTypeBlock;
         this.developerNamesByObjectApiName = new Map();
         for (const [objectApiName, developerNames] of developerNamesByObjectApiName ?? []) {
             this.developerNamesByObjectApiName.set(objectApiName, [...new Set(developerNames)]);
@@ -40,9 +48,10 @@ export class RecordTypeSelection {
     /*
         A selection can arrive through a command argument, so its shape is checked rather than
         trusted: a plain object of string arrays. Anything else is ignored -- for that entry, or
-        wholly when the value is not an object -- and generation falls back to the defaults.
+        wholly when the value is not an object -- and generation falls back to the defaults. The copy
+        option is on only for exactly true.
     */
-    static fromUnknown(value: unknown): RecordTypeSelection | undefined {
+    static fromUnknown(value: unknown, isChildTreeCopiedPerRecordTypeBlock: unknown = false): RecordTypeSelection | undefined {
 
         if ( typeof value !== 'object' || value === null || Array.isArray(value) ) {
             return undefined;
@@ -58,7 +67,7 @@ export class RecordTypeSelection {
 
         });
 
-        return new RecordTypeSelection(entries);
+        return new RecordTypeSelection(entries, isChildTreeCopiedPerRecordTypeBlock === true);
 
     }
 
