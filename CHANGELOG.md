@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.197.0] - Recipe Cockpit: "Authorize org" logs in to an existing sandbox from Target Org Manager (#630)
+
+The cockpit could create a scratch org but not authorize an org that already exists: every "no org" message sent you to a terminal for `sf org login web`.
+
+- **Authorize org**, a 🔑 button right after **➕ New scratch org** in Target Org Manager, logs in to an existing org in your browser. It asks where to log in (**Sandbox**, `https://test.salesforce.com`, or the org's own **Custom My Domain** address) and for an alias, which can be left empty. An alias another org holds is a warning, as it is for a new scratch org.
+- **No Salesforce CLI process runs.** The login goes through `@salesforce/core`'s `WebOAuthServer`, and the org is saved with your other CLI authorizations. A login address is accepted only as `https://test.salesforce.com` or an `https://….my.salesforce.com` address with no port, path, query or user name.
+- **One box on the confirmation: "Make this my selected target org and this workspace's default org".** It starts unticked. Ticked, the org is selected in Target Org Manager and set as `target-org` in this workspace's `.sf/config.json`, with every other key left as it was. Unticked, the org is only added to the list, and the selection and the file are untouched.
+- **Only a sandbox or scratch org that answers its connection check is listed, selected or made the default.** A production org is authorized, and one warning says it is not listed.
+- **One notification per login**, naming the org and what happened: authorized, cancelled, no login within five minutes, the local login port in use, the login refused, the alias not set, or the workspace config not written (the login still counts, and the message gives the `sf config set` command).
+- **The login holds the same controls a new scratch org does**: both buttons, the org dropdown, ⟳, Open in browser and every insert are disabled until it ends, and a reopened panel is told a login is running. Cancel on its notification stops the login and frees the local port.
+- The workspace config is written only inside the workspace: a `.sf` folder or `config.json` that is a link elsewhere, or a file that is not a JSON object, is left alone.
+- The cockpit's "no org" messages now say to press **Authorize org** before naming the terminal command. The Command Palette commands keep their messages.
+- The ? help, `docs/RECIPE-COCKPIT-GUIDE.md`, the README and three guide pictures describe the button; the nine rendered baselines gain its one line.
+- **+ New scratch org**, the picker's connection check, the sandbox check before every org write and the Command Palette commands are unchanged.
+- **Tests.** `SalesforceOrgLogin`: the address rule, each login ending, the alias, the config write and its refusals. `RecipeCockpitOrgAuthorize`: the confirmation and every notification. `RecipeCockpitAuthorizeOrg`: the router, the panel button and the whole run. Three acceptance journeys read by role and name: box ticked, box unticked, production org.
+
 ## [3.196.0] - Recipe Cockpit: every lookup's pencil takes a record Id, including a lookup with no parent in its metadata (#627)
 
 - **The pencil on a lookup field is no longer locked.** A lookup whose field file has no `<referenceTo>` and no known parent, such as `Product2.SellerId` or `Product2.SourceProductId`, had no "Create … in recipe" or "Use existing … from org…" button and a locked pencil, so its `### TODO -- REFERENCE ID REQUIRED` could not be set from the cockpit. Every lookup's pencil now opens, tree-wired lookups included.

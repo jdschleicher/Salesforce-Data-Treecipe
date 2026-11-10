@@ -51,6 +51,24 @@ import {
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
+import {
+    AuthorizedOrgPlacement,
+    IOrgAuthorizePlan,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PLACEHOLDER,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_LOGIN_ADDRESS_PLACEHOLDER,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PLACEHOLDER,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PROMPT,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP,
+    RecipeCockpitOrgAuthorize
+} from './RecipeCockpitOrgAuthorize';
+import { OrgLoginOutcome, SalesforceOrgLogin, SANDBOX_LOGIN_URL, WorkspaceTargetOrgWrite } from '../SalesforceOrgService/SalesforceOrgLogin';
 import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -595,7 +613,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in Select Generated Treecipe runs by date:, the first line of the Treecipes section (or at the top of the panel, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
-            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Authorize org, next to it, logs in to a sandbox that already exists: it asks where to log in and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Tick the box in its confirmation to also choose the org here and make it this workspace\'s default org; an org that is not a sandbox or scratch org is authorized but never listed. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field\'s row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -1579,7 +1597,10 @@ export interface IRecipeCockpitDataOrgListMessage {
 
 export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = "The Treecipe tab lists only sandboxes and scratch orgs that answer when checked, plus the CLI's default org, and inserts only into a sandbox or scratch org.";
 
-export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: authorize one with "sf org login web --instance-url https://test.salesforce.com" and try again.';
+// THE PALETTE COMMANDS KEEP NO_AUTHORIZED_ORGS_MESSAGE: ONLY THE COCKPIT HAS THE BUTTON TO POINT AT (#630)
+export const RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesforce orgs were found. Press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", and try again.';
+
+export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", and try again.';
 
 // WHAT DATA-BY-ORG SHOWS BESIDE THE DROPDOWN, AND ITS SPINNER, WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
 export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connections…';
@@ -1612,7 +1633,7 @@ export interface IRecipeCockpitDataOrgProvisionalMessage {
     renderSequence: number;
 }
 
-export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. The Treecipe tab lists only orgs that answer when checked: re-authorize one with "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
+export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. The Treecipe tab lists only orgs that answer when checked: press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
 
 /*
     The org Data-by-Org has selected. orgTypeLabel is '' while the Organization query is still
@@ -1701,6 +1722,8 @@ export interface IRecipeCockpitRecordTypeRegenerateStateMessage {
 export interface IRecipeCockpitScratchOrgStateMessage {
     command: 'scratchOrgState';
     isRunning: boolean;
+    // "Authorize org" (#630) HOLDS THE SAME CONTROLS, SO IT IS THIS RUN TOO: SET ONLY WHILE THE RUN IS A LOGIN
+    isAuthorizing?: boolean;
 }
 
 /*
@@ -2351,7 +2374,7 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
     place (the tree's insert, + New scratch org in the pinned org row) carries its verb's emoji too,
     drawn before its label from the same map.
 */
-export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'regenerate' | 'generateData' | 'update';
+export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'regenerate' | 'generateData' | 'update' | 'authorize';
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
 export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = COCKPIT_ACTION_CARD_HEIGHT;
 
@@ -2365,7 +2388,8 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     create: '➕',
     regenerate: '🔄',
     generateData: '🌱',
-    update: '✍️'
+    update: '✍️',
+    authorize: '🔑'
 });
 
 /*
@@ -2410,10 +2434,11 @@ export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockp
 });
 
 // A PRIMARY BUTTON THAT STAYS A BUTTON BUT NAMES ITS VERB (#384): ITS EMOJI IS DRAWN BEFORE ITS LABEL BY THE STYLESHEET
-export type RecipeCockpitVerbButtonClassName = 'treeInsert' | 'dataOrgNewScratch';
+export type RecipeCockpitVerbButtonClassName = 'treeInsert' | 'dataOrgNewScratch' | 'dataOrgAuthorize';
 export const RECIPE_COCKPIT_VERB_BUTTON_VERBS: Readonly<Record<RecipeCockpitVerbButtonClassName, RecipeCockpitActionVerb>> = Object.freeze({
     treeInsert: 'generateData',
-    dataOrgNewScratch: 'create'
+    dataOrgNewScratch: 'create',
+    dataOrgAuthorize: 'authorize'
 });
 
 export const RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND: Readonly<Record<MetadataRetrieveKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
@@ -3102,6 +3127,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
+    | { kind: 'authorizeOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'generateTreePermissionSet'; treeKey: string }
@@ -8075,6 +8101,11 @@ export class RecipeCockpitService {
                 await this.createScratchOrgFromPanel(cockpitPanel);
                 return;
 
+            case 'authorizeOrg':
+
+                await this.authorizeOrgFromPanel(cockpitPanel);
+                return;
+
             case 'postScratchOrgState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
@@ -9295,6 +9326,23 @@ export class RecipeCockpitService {
 
     private static async createScratchOrgFromPanel(cockpitPanel: vscode.WebviewPanel) {
 
+        await this.runHoldingOrgPicker(cockpitPanel, { command: 'scratchOrgState', isRunning: true },
+            () => this.performScratchOrgSetup(this.recipeCockpitPanelState.workspaceRoot));
+
+    }
+
+    // "Authorize org" (#630) RUNS UNDER THE SCRATCH ORG RUN'S LOCK: BOTH ADD AN ORG TO THE PICKER, AND ONLY ONE DOES AT A TIME
+    private static async authorizeOrgFromPanel(cockpitPanel: vscode.WebviewPanel) {
+
+        await this.runHoldingOrgPicker(cockpitPanel, { command: 'scratchOrgState', isRunning: true, isAuthorizing: true },
+            () => this.performOrgAuthorize(this.recipeCockpitPanelState.workspaceRoot));
+
+    }
+
+    private static async runHoldingOrgPicker(cockpitPanel: vscode.WebviewPanel,
+                                                runningStateMessage: IRecipeCockpitScratchOrgStateMessage,
+                                                performRun: () => Promise<void>) {
+
         // A PANEL THAT DID NOT KNOW A RUN WAS GOING HAS ALREADY DISABLED ITS BUTTON, SO IT IS TOLD WHERE THE RUN IS
         if ( this.isScratchOrgSetupInFlight ) {
             if ( this.scratchOrgRunStateMessage ) {
@@ -9305,11 +9353,11 @@ export class RecipeCockpitService {
         }
 
         this.isScratchOrgSetupInFlight = true;
-        this.setScratchOrgState({ command: 'scratchOrgState', isRunning: true });
+        this.setScratchOrgState(runningStateMessage);
 
         try {
 
-            await this.performScratchOrgSetup(this.recipeCockpitPanelState.workspaceRoot);
+            await performRun();
 
         } finally {
 
@@ -9338,6 +9386,226 @@ export class RecipeCockpitService {
         if ( this.isScratchOrgSetupInFlight && this.scratchOrgRunStateMessage ) {
             panelState.scratchOrgStateMessage = this.scratchOrgRunStateMessage;
         }
+
+    }
+
+    /*
+        "Authorize org" (#630): a browser login to an existing org through @salesforce/core, no sf
+        process. The login address and the alias are asked by VS Code, as "+ New scratch org" asks
+        its alias; the panel confirms, and its one checkbox asks for the org to be selected and
+        made this workspace's default org. Both answers are checked again after the confirmation.
+        Only an org the fresh listing shows -- a sandbox or scratch org that answered its ping --
+        is selected or made the default. How the login ended is one notification.
+    */
+    private static async performOrgAuthorize(workspaceRoot: string): Promise<void> {
+
+        const authorizePlan = await this.promptForOrgAuthorizePlan();
+
+        if ( !authorizePlan ) {
+            return;
+        }
+
+        const confirmation = await this.confirmInPanelWithCheckbox(
+            RecipeCockpitOrgAuthorize.buildConfirmMessage(authorizePlan),
+            { ...RecipeCockpitOrgAuthorize.buildConfirmContent(authorizePlan), checkboxLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL },
+            RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL
+        );
+
+        if ( confirmation.chosenLabel !== RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL ) {
+            return;
+        }
+
+        const loginUrl = SalesforceOrgLogin.normalizeLoginUrl(authorizePlan.loginUrl);
+        const alias = authorizePlan.alias;
+
+        if ( loginUrl === undefined || ( alias !== undefined && RecipeCockpitOrgAuthorize.validateAlias(alias) !== undefined ) ) {
+            return;
+        }
+
+        const isDefaultRequested = confirmation.isChecked === true;
+
+        const loginOutcome: OrgLoginOutcome = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Recipe Cockpit: authorize org at ${RecipeCockpitOrgAuthorize.buildLoginHostName(loginUrl)}`,
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            progress.report({ message: 'Waiting for you to log in in your browser…' });
+
+            return await SalesforceOrgLogin.authorizeWithBrowser(loginUrl, alias, {
+                openLoginPage: authorizationUrl => vscode.env.openExternal(vscode.Uri.parse(authorizationUrl, true)),
+                onCancellationRequested: cancelLogin => {
+                    cancellationToken.onCancellationRequested(cancelLogin);
+                    if ( cancellationToken.isCancellationRequested ) {
+                        cancelLogin();
+                    }
+                }
+            });
+
+        });
+
+        const showAuthorizeNotification = (placement?: AuthorizedOrgPlacement, targetOrgWrite?: WorkspaceTargetOrgWrite) => {
+            const notification = RecipeCockpitOrgAuthorize.buildNotification({
+                loginOutcome: loginOutcome,
+                ...( alias !== undefined ? { alias: alias } : {} ),
+                ...( placement ? { placement: placement } : {} ),
+                isDefaultRequested: isDefaultRequested,
+                ...( targetOrgWrite ? { targetOrgWrite: targetOrgWrite } : {} )
+            });
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(notification.severity, RecipeYamlScalar.escapeForNotification(notification.text), [], workspaceRoot);
+        };
+
+        if ( loginOutcome.kind !== 'authorized' ) {
+            showAuthorizeNotification();
+            return;
+        }
+
+        const username = loginOutcome.username;
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Recipe Cockpit: authorize org'
+        }, async progress => {
+
+            progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT.listing });
+
+            const placement = await this.findAuthorizedOrgPlacement(username);
+            const isMadeDefault = isDefaultRequested && placement === 'listed';
+            // THE ALIAS WHEN IT LANDED, AS "sf config set target-org" WOULD STORE IT; ELSE THE USERNAME
+            const targetOrgWrite = isMadeDefault
+                ? SalesforceOrgLogin.writeWorkspaceTargetOrg(workspaceRoot, alias !== undefined && loginOutcome.aliasFailureMessage === undefined ? alias : username)
+                : undefined;
+
+            await this.relistDataOrgs(isMadeDefault ? username : undefined);
+
+            showAuthorizeNotification(placement, targetOrgWrite);
+
+        });
+
+    }
+
+    // THE CONNECTION CHECK IN HAND PREDATES THE LOGIN, SO IT IS DROPPED FIRST; THE LISTING HERE IGNORES THE WORKSPACE DEFAULT, WHICH IS LISTED WHATEVER ITS TYPE
+    private static async findAuthorizedOrgPlacement(username: string): Promise<AuthorizedOrgPlacement> {
+
+        SalesforceOrgService.clearConnectedOrgStatusCache();
+
+        try {
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
+
+            if ( dataOrgListing.orgDetails.some(orgDetail => orgDetail.username === username) ) {
+                return 'listed';
+            }
+
+            return dataOrgListing.hiddenOrgs.some(hiddenOrg => hiddenOrg.username === username && hiddenOrg.reason === 'production')
+                ? 'notSandboxOrScratch'
+                : 'notConnected';
+
+        } catch {
+            return 'notConnected';
+        }
+
+    }
+
+    // DRAWS THE FRESH LISTING IN A WINDOW WITH A DRAWN PICKER; A USERNAME GIVEN IS REMEMBERED AND SELECTED, ELSE THE SELECTION IS KEPT
+    private static async relistDataOrgs(selectedUsername: string | undefined): Promise<void> {
+
+        if ( selectedUsername !== undefined ) {
+            this.rememberDataOrgUsername(selectedUsername);
+        }
+
+        const cockpitPanel = this.recipeCockpitPanel;
+        const panelState = this.recipeCockpitPanelState;
+
+        if ( !cockpitPanel || !panelState.recipeDataMessage ) {
+            return;
+        }
+
+        if ( selectedUsername !== undefined ) {
+            panelState.dataOrgUsername = selectedUsername;
+        }
+
+        await this.loadDataOrgs(cockpitPanel, panelState, false, selectedUsername !== undefined);
+
+    }
+
+    // ESCAPE AT EITHER QUESTION IS A CANCEL
+    private static async promptForOrgAuthorizePlan(): Promise<IOrgAuthorizePlan | undefined> {
+
+        const loginAddressChoice = await vscode.window.showQuickPick([
+            { label: RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL, description: SANDBOX_LOGIN_URL },
+            { label: RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL, description: 'Type the org\'s own login address' }
+        ], { title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL, placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_LOGIN_ADDRESS_PLACEHOLDER, ignoreFocusOut: true });
+
+        if ( !loginAddressChoice ) {
+            return undefined;
+        }
+
+        const typedLoginUrl = loginAddressChoice.label === RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL
+            ? SANDBOX_LOGIN_URL
+            : await vscode.window.showInputBox({
+                title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
+                prompt: RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PROMPT,
+                placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PLACEHOLDER,
+                ignoreFocusOut: true,
+                validateInput: (typedAddress: string) => SalesforceOrgLogin.validateLoginUrl(typedAddress)
+            });
+        const loginUrl = SalesforceOrgLogin.normalizeLoginUrl(typedLoginUrl);
+
+        if ( loginUrl === undefined ) {
+            return undefined;
+        }
+
+        let aliasHolders = new Map<string, string>();
+
+        try {
+            aliasHolders = await SalesforceOrgService.listAliasHolders();
+        } catch {
+            // NO WARNING TO GIVE: THE LOGIN ITSELF STILL WORKS
+        }
+
+        const enteredAlias = await vscode.window.showInputBox({
+            title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
+            prompt: RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT,
+            placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PLACEHOLDER,
+            ignoreFocusOut: true,
+            validateInput: (typedAlias: string) => this.validateOrgAuthorizeAliasInput(typedAlias, aliasHolders)
+        });
+
+        if ( enteredAlias === undefined ) {
+            return undefined;
+        }
+
+        const alias = enteredAlias.trim();
+
+        if ( alias === '' ) {
+            return { loginUrl: loginUrl };
+        }
+
+        const aliasHolderUsername = aliasHolders.get(alias);
+
+        return { loginUrl: loginUrl, alias: alias, ...( aliasHolderUsername ? { aliasHolderUsername: aliasHolderUsername } : {} ) };
+
+    }
+
+    // AN INPUT BOX'S MESSAGE RENDERS [label](command:...) AS A NOTIFICATION DOES, SO THE HOLDER'S USERNAME IS ESCAPED
+    static validateOrgAuthorizeAliasInput(typedAlias: string, aliasHolders: Map<string, string>): string | vscode.InputBoxValidationMessage | undefined {
+
+        const alias = String(typedAlias ?? '').trim();
+        const aliasRefusal = RecipeCockpitOrgAuthorize.validateAlias(alias);
+
+        if ( aliasRefusal ) {
+            return aliasRefusal;
+        }
+
+        const aliasHolderUsername = aliasHolders.get(alias);
+
+        return aliasHolderUsername
+            ? {
+                message: RecipeYamlScalar.escapeForNotification(`"${alias}" is currently ${aliasHolderUsername}. Authorizing will move it to the org you log in to.`),
+                severity: vscode.InputBoxValidationSeverity.Warning
+            }
+            : undefined;
 
     }
 
@@ -16104,7 +16372,7 @@ export class RecipeCockpitService {
     static buildDataOrgNoOrgsMessage(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
 
         if ( SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts) === 0 ) {
-            return NO_AUTHORIZED_ORGS_MESSAGE;
+            return RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE;
         }
 
         return hiddenOrgReasonCounts.expired + hiddenOrgReasonCounts.deleted + hiddenOrgReasonCounts.notConnected > 0
@@ -18114,7 +18382,9 @@ export class RecipeCockpitService {
                 Data-by-Org picker, and never while a run or a Create is in flight -- whatever the panel
                 sends. A refusal while nothing runs still answers, since the panel disabled the button.
             */
+            // "Authorize org" (#630) CARRIES NOTHING EITHER, AND IS HELD TO THE SAME GUARDS: IT RE-LISTS THE PICKER AND MAY CHANGE THE SELECTION
             case 'createScratchOrg':
+            case 'authorizeOrg':
 
                 if ( panelState.scratchOrgStateMessage?.isRunning ) {
                     return undefined;
@@ -18128,7 +18398,7 @@ export class RecipeCockpitService {
                     };
                 }
 
-                return { kind: 'createScratchOrg' };
+                return { kind: panelMessage.command };
 
             /*
                 "Generate fake data and insert" (#255) posts the tree's KEY and nothing else, and it is
@@ -22525,6 +22795,9 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const NEW_SCRATCH_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL)};
+    const AUTHORIZE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL)};
+    const AUTHORIZE_ORG_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL)};
+    const AUTHORIZE_ORG_TOOLTIP = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const DATASET_INSERT_RUNNING_REASON = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
@@ -22808,6 +23081,8 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     let dataOrgHiddenNoteText = '';
     // "+ New scratch org" (#200): WHETHER A RUN HOLDS THE PICKER AND EVERY INSERT DISABLED; HOW IT ENDED IS A NOTIFICATION'S (#301)
     let isScratchOrgRunning = false;
+    // WHICH RUN HOLDS THE PICKER (#630): THE LOGIN SHARES THE SCRATCH ORG RUN'S LOCK, AND ONLY ITS OWN BUTTON SAYS IT IS RUNNING
+    let isOrgAuthorizeRunning = false;
     // "Assign permission sets to me…" (#274, #302): WHETHER AN ASSIGNMENT HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
     let isPermissionSetAssignRunning = false;
     // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382): SET ON THE CLICK, CLEARED BY THE HOST'S metadataRetrieveState; THE KEY NAMES THE CARD CLICKED
@@ -24421,6 +24696,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             openOrgElement: createButton('secondary', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
             refreshElement: createButton('secondary', 'dataOrgRefresh hidden'),
             newScratchElement: createButton('primary', 'dataOrgNewScratch', NEW_SCRATCH_ORG_LABEL),
+            authorizeElement: createButton('primary', 'dataOrgAuthorize', AUTHORIZE_ORG_LABEL),
             hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
             statusElement: createElement('div', 'dataOrgStatus muted hidden'),
             drawnLabels: null
@@ -24473,6 +24749,18 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             vscodeApi.postMessage({ command: 'createScratchOrg' });
         });
 
+        // THE MESSAGE CARRIES NOTHING (#630): THE LOGIN ADDRESS AND THE ALIAS ARE ASKED BY THE HOST
+        dataOrgView.authorizeElement.setAttribute('title', AUTHORIZE_ORG_TOOLTIP);
+        dataOrgView.authorizeElement.addEventListener('click', function () {
+            if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            isDataOrgPickerInUse = true;
+            isScratchOrgRunning = true;
+            isOrgAuthorizeRunning = true;
+            drawDataOrgViews();
+            drawTreeInserts();
+            vscodeApi.postMessage({ command: 'authorizeOrg' });
+        });
+
         pickerElement.appendChild(dataOrgView.loadElement);
         pickerElement.appendChild(dataOrgView.selectElement);
         pickerElement.appendChild(dataOrgView.spinnerElement);
@@ -24480,6 +24768,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         pickerElement.appendChild(dataOrgView.openOrgElement);
         pickerElement.appendChild(dataOrgView.refreshElement);
         pickerElement.appendChild(dataOrgView.newScratchElement);
+        pickerElement.appendChild(dataOrgView.authorizeElement);
         viewElement.appendChild(pickerElement);
         viewElement.appendChild(dataOrgView.hiddenNoteElement);
         viewElement.appendChild(dataOrgView.statusElement);
@@ -24581,7 +24870,9 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
         // SO DOES A METADATA DEPLOY (#346), TO THE ORG SELECTED; A RETRIEVE DOES NOT, SINCE THE RUN DEPLOYS NOTHING (#358)
         dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
-        dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : NEW_SCRATCH_ORG_LABEL;
+        dataOrgView.newScratchElement.textContent = isScratchOrgRunning && !isOrgAuthorizeRunning ? 'Setting up scratch org…' : NEW_SCRATCH_ORG_LABEL;
+        dataOrgView.authorizeElement.disabled = dataOrgView.newScratchElement.disabled;
+        dataOrgView.authorizeElement.textContent = isOrgAuthorizeRunning ? AUTHORIZE_ORG_RUNNING_LABEL : AUTHORIZE_ORG_LABEL;
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         // AND A METADATA DEPLOY (#346): IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
@@ -32980,6 +33271,7 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     function renderScratchOrgState(hostMessage) {
 
         isScratchOrgRunning = !!hostMessage.isRunning;
+        isOrgAuthorizeRunning = isScratchOrgRunning && hostMessage.isAuthorizing === true;
 
         drawDataOrgViews();
         drawTreeInserts();
