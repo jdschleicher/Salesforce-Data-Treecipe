@@ -183,6 +183,7 @@ src/
     │   ├── RecipeCockpitValidationRuleList.ts # Validation Rules sub-tab list (#327); no vscode
     │   ├── RecipeCockpitMetadataRetrieve.ts  # Troubleshooting retrieves (#326, #382): org listing, package.xml, CLI answer; no vscode
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode
+    │   ├── RecipeCockpitRecordTypeRecipe.ts  # The record types ticked at Generate fake data and insert (#623): the in-memory recipe built for them and where a card's settings land in it
     │   ├── RecipeCockpitObjectSelection.ts   # Pure cascade of the Treecipe tab's tree icons (#219): what a card's direct exclusions auto-exclude, which lookups they disable; imports nothing
     │   ├── RecipeCockpitFixedValueStore.ts   # The <recipe>.fixedValues.json file (#342); imports only SalesforceApiName and the writer
     │   ├── RecipeCockpitRemovedTodoStore.ts  # The <recipe>.removedTodos.json file (#391); imports only SalesforceApiName and the writer

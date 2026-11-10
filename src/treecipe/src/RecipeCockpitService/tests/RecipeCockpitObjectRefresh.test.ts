@@ -317,12 +317,12 @@ describe('RecipeCockpitObjectRefresh (#612)', () => {
 
     describe('compareStagedObject, record types and global value sets', () => {
 
-        it('lists a new and a changed record type by their picklist values, each offering Regenerate with record types and no recipe line', async () => {
+        it('lists a new and a changed record type by their picklist values, each pointing at Generate Treecipe and no recipe line', async () => {
 
             const { items } = await compare({ kinds: ['recordTypes'] });
 
             expect(items.map(item => `${item.status} ${item.name}`)).toEqual(['changed Business', 'new Partner']);
-            expect(itemNamed(items, 'recordTypes', 'Business')).toMatchObject({ differences: ['Rating__c: +Cold'], recipeNote: OBJECT_REFRESH_RECIPE_NOTES.recordType, recipeChanges: [], offersRecordTypeRegenerate: true });
+            expect(itemNamed(items, 'recordTypes', 'Business')).toMatchObject({ differences: ['Rating__c: +Cold'], recipeNote: OBJECT_REFRESH_RECIPE_NOTES.recordType, recipeChanges: [], needsNewRunForRecordType: true });
             expect(itemNamed(items, 'recordTypes', 'Partner')!.fileCopy.targetFilePath).toBe(projectPath('objects', 'Account', 'recordTypes', 'Partner.recordType-meta.xml'));
 
         });

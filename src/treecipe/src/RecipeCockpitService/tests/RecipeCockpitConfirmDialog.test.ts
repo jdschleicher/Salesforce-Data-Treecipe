@@ -596,6 +596,51 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('offers record type set modes only when told to, and answers the mode only when it is one it offered (#623)', async () => {
+
+            await openAndDraw();
+
+            const foldedAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded'] }, 'Go');
+            expect(lastPosted('confirmRequest')).toMatchObject({
+                title: 'Modes?',
+                buttons: ['Go'],
+                recordTypeSetModeLegend: 'Record types ticked under Manage record types',
+                recordTypeSetModes: [{ name: 'folded', label: 'One data set with the record types folded together' }]
+            });
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'folded' });
+            await expect(foldedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false, recordTypeSetMode: 'folded' });
+
+            // A MODE UNDER CANCEL IS NOTHING
+            const cancelledAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded'] }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, recordTypeSetMode: 'folded' });
+            await expect(cancelledAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+            // A CONFIRMATION THAT OFFERED NONE POSTS NONE AND ANSWERS NONE, WHATEVER THE PANEL NAMES
+            const plainAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Plain?', { summary: ['x'], recordTypeSetModes: [] }, 'Go');
+            expect(lastPosted('confirmRequest')).not.toHaveProperty('recordTypeSetModes');
+            expect(lastPosted('confirmRequest')).not.toHaveProperty('recordTypeSetModeLegend');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'folded' });
+            await expect(plainAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false });
+
+        });
+
+        it.each([
+            ['a mode it did not offer', 'separate'],
+            ['no mode', undefined],
+            ['a mode\'s label', 'One data set with the record types folded together'],
+            ['a list', ['folded']],
+            ['a prototype member', 'constructor']
+        ])('reads a chosen button with %s as Cancel (#623)', async (_description, recordTypeSetMode) => {
+
+            await openAndDraw();
+
+            const modeAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded'] }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: recordTypeSetMode });
+
+            await expect(modeAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+        });
+
         it('is Cancel, unticked, for a checkbox confirmation when nothing is drawn', async () => {
 
             await expect(RecipeCockpitService.confirmInPanelWithCheckbox('Nothing open?', { summary: [], checkboxLabel: 'x' }, 'Go')).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
@@ -1114,6 +1159,63 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             // A REQUEST WITHOUT ONE DRAWS NO BOX AND ANSWERS NO isChecked
             panel.postToPanel(confirmRequest({ confirmationId: 'a'.repeat(32), checkboxLabel: '' }));
             expect(panel.findAll(dialogOf(panel), 'confirmCheck')).toEqual([]);
+
+        });
+
+        const MODES = [{ name: 'separate', label: 'A data set <for> each record type' }, { name: 'folded', label: 'One data set, folded' }];
+
+        it('draws each record type set mode as a radio under the body, the first chosen, and answers the name of the one chosen (#623)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ recordTypeSetModeLegend: 'Record types <ticked>', recordTypeSetModes: MODES }));
+
+            const dialogElement = dialogOf(panel);
+            const [groupElement] = panel.findAll(dialogElement, 'confirmModeGroup');
+            const radioElements = panel.findAll(dialogElement, 'confirmModeRadio');
+            const labelElements = panel.findAll(dialogElement, 'confirmModeLabel');
+            expect(groupElement.attributes).toMatchObject({ 'role': 'radiogroup', 'aria-label': 'Record types <ticked>' });
+            expect(panel.findAll(dialogElement, 'confirmModeLegend')[0].textContent).toBe('Record types <ticked>');
+            expect(radioElements.map((radioElement: any) => ({ role: radioElement.attributes.role, label: radioElement.attributes['aria-label'], checked: radioElement.attributes['aria-checked'] }))).toEqual([
+                { role: 'radio', label: 'A data set <for> each record type', checked: 'true' },
+                { role: 'radio', label: 'One data set, folded', checked: 'false' }
+            ]);
+            expect(labelElements.map((labelElement: any) => labelElement.textContent)).toEqual(['A data set <for> each record type', 'One data set, folded']);
+            expect(dialogElement.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual(['confirmTitle', 'confirmBody', 'confirmModeGroup', 'confirmActions']);
+
+            radioElements[1].dispatch('click');
+            expect(radioElements.map((radioElement: any) => radioElement.attributes['aria-checked'])).toEqual(['false', 'true']);
+            labelElements[0].dispatch('click');
+            expect(radioElements.map((radioElement: any) => radioElement.attributes['aria-checked'])).toEqual(['true', 'false']);
+            labelElements[1].dispatch('click');
+
+            panel.findAll(dialogElement, 'confirmChoice')[0].dispatch('click');
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: 0, recordTypeSetMode: 'folded' }]);
+
+        });
+
+        it('names no mode under Cancel, keeps the radios in the Tab cycle, and draws none for modes it cannot read (#623)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ recordTypeSetModes: MODES, isDestructive: false }));
+            const dialogElement = dialogOf(panel);
+            const radioElements = panel.findAll(dialogElement, 'confirmModeRadio');
+
+            // THE RADIOS COME AFTER THE BODY AND ITS TWO SECTION TOGGLES (#457), BEFORE THE BUTTONS
+            panel.findAll(dialogElement, 'confirmBody')[0].focus();
+            [1, 2, 3].forEach(() => dialogElement.dispatch('keydown', { key: 'Tab' }));
+            expect(panel.activeElement()).toBe(radioElements[0]);
+
+            dialogElement.dispatch('keydown', { key: 'Escape' });
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: null }]);
+
+            [undefined, 'folded', [{ name: 'folded' }], [{ name: '', label: 'x' }], [MODES[0], 'folded']].forEach((unreadableModes, requestIndex) => {
+                panel.postToPanel(confirmRequest({ confirmationId: String(requestIndex).repeat(32), recordTypeSetModes: unreadableModes }));
+                expect(panel.findAll(dialogOf(panel), 'confirmModeGroup')).toEqual([]);
+            });
+
+            // WITH NONE DRAWN, A CHOSEN BUTTON NAMES NO MODE
+            panel.findAll(dialogOf(panel), 'confirmChoice')[0].dispatch('click');
+            expect(responses(panel).pop()).toEqual({ command: 'confirmResponse', confirmationId: '4'.repeat(32), choice: 0 });
 
         });
 

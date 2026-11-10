@@ -2084,11 +2084,15 @@ describe('ExtensionCommandService', () => {
                     return backendCase.fakerOutput;
                 });
 
+                const copyFileSpy = jest.spyOn(fs, 'copyFileSync');
+
                 await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact'] });
 
                 expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
                 expect(generatedFromText).toBe(filteredRecipeText);
                 expect(path.basename(generatedFromPath as string)).toBe(`filteredRecipe-${backendCase.recipeFileName}`);
+                // #623: THE COPY THE DATA SET KEEPS IS WRITTEN EXCLUSIVELY, NEVER OVER A FILE ALREADY THERE
+                expect(copyFileSpy.mock.calls.filter(([, copyPath]) => path.basename(String(copyPath)).startsWith('filteredRecipe-')).map(([, , copyMode]) => copyMode)).toEqual([fs.constants.COPYFILE_EXCL]);
                 // THE TEMPORARY COPY IS GONE, AND IT WAS NEVER IN THE WORKSPACE
                 expect(fs.existsSync(generatedFromPath as string)).toBeFalse();
                 expect(( generatedFromPath as string ).startsWith(workspaceRoot)).toBeFalse();
@@ -2433,6 +2437,23 @@ describe('ExtensionCommandService', () => {
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], excludedFieldApiNamesByObject: { [occurrenceKey]: ['Name'] } })).toBeFalse();
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], objectCountsByObject: { [occurrenceKey]: 3 } })).toBeFalse();
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], fixedValuesByObject: { [occurrenceKey]: { Name: 'x' } } })).toBeFalse();
+                });
+
+                test('accepts a copy built for ticked record types with nothing else left out or set, an empty selection included (#623)', () => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], recordTypeSelection: { Account: ['Business', 'Partner'] } })).toBeTrue();
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], recordTypeSelection: {} })).toBeTrue();
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [] })).toBeFalse();
+                });
+
+                test.each([
+                    ['a list in place of a map', ['Account']],
+                    ['a string in place of a list', { Account: 'Partner' }],
+                    ['a developer name that is not an api name', { Account: ['Partner\n- object: Evil'] }],
+                    ['an object name that is not an api name', { 'not a name': ['Partner'] }],
+                    ['an occurrence key for an object', { 'Account\nAccount_NickName': ['Partner'] }],
+                    ['null', null]
+                ])('refuses a record type selection that is %s, whatever else the copy carries (#623)', (_description, recordTypeSelection) => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: ['Contact'], recordTypeSelection: recordTypeSelection })).toBeFalse();
                 });
 
                 test('accepts a copy carrying only fixed values (#262)', () => {

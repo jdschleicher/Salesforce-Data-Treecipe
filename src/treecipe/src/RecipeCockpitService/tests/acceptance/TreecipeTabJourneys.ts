@@ -241,27 +241,4 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
         }
     },
 
-    {
-        name: 'record types: ticking Business and Partner and regenerating writes a run with an Account block for each',
-        run: async journey => {
-
-            await journey.click('button', `Manage record types (${TREE_NAME})`);
-            await journey.click('checkbox', 'Partner (Account)');
-            const fileChangeCountBefore = journey.fileChanges.length;
-            await journey.click('button', 'Regenerate with these record types');
-
-            await journey.step('a new run is written whose recipe has one Account block per record type, and the old run is kept', () => {
-                const writtenRecipe = journey.fileChanges.slice(fileChangeCountBefore)
-                    .map(fileChange => fileChange.relativePath)
-                    .find(relativePath => /^treecipe\/GeneratedRecipes\/recipe-fakerjs-(?!2026-10-15T09-00-00)[^/]+\/Account-thru-Visit__c\/recipe-fakerjs--.+\.yml$/.test(relativePath));
-                if ( !writtenRecipe ) { throw new Error(`no new run's recipe was written: ${JSON.stringify(fileChangesSince(journey, fileChangeCountBefore))}`); }
-                const regeneratedRecipe = readWorkspaceFile(journey, writtenRecipe);
-                expectEqual(recipeObjectNames(regeneratedRecipe), ['Account', 'Contact', 'Visit__c', 'Account'], 'The objects of the regenerated recipe: the Business block with its friends, then the Partner block');
-                expectEqual(recipeLinesOf(regeneratedRecipe, 'RecordTypeId'), ['RecordTypeId: Account.Business', 'RecordTypeId: Account.Partner'], 'The RecordTypeId lines');
-                expectEqual(readWorkspaceFile(journey, RECIPE_RELATIVE_PATH), readFixtureFile(RECIPE_RELATIVE_PATH), 'The run on screen before');
-            });
-
-        }
-    }
-
 ];

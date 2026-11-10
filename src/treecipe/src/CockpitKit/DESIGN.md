@@ -2,6 +2,8 @@
 
 Design notes moved out of CLAUDE.md (#563). Read this before changing the service; CLAUDE.md keeps only the rules every change must follow. History is in CHANGELOG.md.
 
+- **A confirmation can offer record type set modes, and the answer names one** (#623) — a request carrying `recordTypeSetModes` (`{name, label}` each, with `recordTypeSetModeLegend`) draws a `radiogroup` between the body and the buttons, one `check`-kind button per mode with `role="radio"`, the first chosen, all in the Tab cycle. Modes that are not all a name and a label draw none. A chosen button answers `recordTypeSetMode: <name>`; Cancel names none. `CockpitConfirmDialog.readRecordTypeSetMode` gives the name back only when it is one the request offered, and the cockpit that asked reads any other answer as Cancel. Labels are the host's and written with `textContent`. Slice D of #620 offers a second mode through the same group.
+
 ## Files
 
 What CLAUDE.md's Project Structure said about these files before #563 trimmed it to one line each.

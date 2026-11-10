@@ -6,6 +6,10 @@ import * as crypto from 'crypto';
     textContent only and answers with the INDEX of a button it was given, and readAnswer turns that
     back into a label or Cancel. Which panel is asked, whether it is visible and what an answer
     starts again stay with the cockpit that asks.
+
+    A request can also offer record type set modes (#623): one radio each, the first chosen. The
+    answer names the chosen mode, and readRecordTypeSetMode gives it back only when it is one the
+    request offered.
 */
 export const COCKPIT_CONFIRM_WARNINGS_LABEL = 'Before you confirm';
 export const COCKPIT_CONFIRM_CHANGE_ORG_LABEL = 'Change org…';
@@ -13,6 +17,12 @@ export const COCKPIT_CONFIRM_CHANGE_ORG_LABEL = 'Change org…';
 export interface ICockpitConfirmAnswer {
     chosenLabel: string | undefined;
     isChecked: boolean;
+}
+
+// ONE RADIO OF A CONFIRMATION (#623): THE NAME THE PANEL ANSWERS WITH, AND THE WORDS BESIDE IT
+export interface ICockpitConfirmRecordTypeSetMode {
+    name: string;
+    label: string;
 }
 
 /*
@@ -94,6 +104,11 @@ export const COCKPIT_KIT_CONFIRM_DIALOG_STYLES = `    .confirmOverlay {
     .confirmSectionBody { padding: 0.2rem 0.5rem 0.2rem 2rem; }
     .confirmCheckRow { flex: none; display: flex; align-items: center; gap: 0.4rem; padding: 0.75rem 1rem 0 1rem; }
     .confirmCheckLabel { cursor: pointer; overflow-wrap: anywhere; }
+    .confirmModeGroup { flex: none; padding: 0.75rem 1rem 0 1rem; }
+    .confirmModeLegend { margin-bottom: 0.3rem; font-weight: 600; overflow-wrap: anywhere; }
+    .confirmModeRow { display: flex; align-items: center; gap: 0.4rem; margin: 0.2rem 0; }
+    .confirmModeRadio { border-radius: 999px; }
+    .confirmModeLabel { cursor: pointer; overflow-wrap: anywhere; }
     .confirmActions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; }`;
 
 // MARKUP: A STATIC SIBLING AFTER THE BODY, SO THE SHELL BUILDER STILL TAKES ONLY A NONCE
@@ -181,16 +196,52 @@ export const COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT = `    /*
             checkRowElement.appendChild(checkLabelElement);
         }
 
+        // THE RECORD TYPE SET MODES THE HOST OFFERS (#623), ONE RADIO EACH, THE FIRST CHOSEN; THE ANSWER NAMES THE ONE CHOSEN
+        const offeredModes = readConfirmRecordTypeSetModes(hostMessage);
+        const modeState = { chosenName: offeredModes.length > 0 ? offeredModes[0].name : null };
+        let modeGroupElement = null;
+        const modeRadioElements = [];
+        if (offeredModes.length > 0) {
+            modeGroupElement = createElement('div', 'confirmModeGroup');
+            const modeLegend = typeof hostMessage.recordTypeSetModeLegend === 'string' ? hostMessage.recordTypeSetModeLegend : '';
+            modeGroupElement.setAttribute('role', 'radiogroup');
+            modeGroupElement.setAttribute('aria-label', modeLegend);
+            if (modeLegend) { modeGroupElement.appendChild(createElement('div', 'confirmModeLegend', modeLegend)); }
+            const drawModes = function () {
+                modeRadioElements.forEach(function (radioElement, modeIndex) {
+                    const isChosen = offeredModes[modeIndex].name === modeState.chosenName;
+                    radioElement.setAttribute('aria-checked', isChosen ? 'true' : 'false');
+                    radioElement.textContent = isChosen ? '●' : '';
+                });
+            };
+            offeredModes.forEach(function (offeredMode) {
+                const modeRowElement = createElement('div', 'confirmModeRow');
+                const radioElement = createButton('check', 'confirmModeRadio');
+                const modeLabelElement = createElement('span', 'confirmModeLabel', offeredMode.label);
+                const chooseMode = function () { modeState.chosenName = offeredMode.name; drawModes(); };
+                radioElement.setAttribute('role', 'radio');
+                radioElement.setAttribute('aria-label', offeredMode.label);
+                radioElement.addEventListener('click', chooseMode);
+                modeLabelElement.addEventListener('click', chooseMode);
+                modeRowElement.appendChild(radioElement);
+                modeRowElement.appendChild(modeLabelElement);
+                modeGroupElement.appendChild(modeRowElement);
+                modeRadioElements.push(radioElement);
+            });
+            drawModes();
+        }
+
         buttonElements.forEach(function (buttonElement) { actionsElement.appendChild(buttonElement); });
         actionsElement.appendChild(cancelElement);
 
         dialogElement.appendChild(titleElement);
         dialogElement.appendChild(bodyElement);
+        if (modeGroupElement) { dialogElement.appendChild(modeGroupElement); }
         if (checkRowElement) { dialogElement.appendChild(checkRowElement); }
         dialogElement.appendChild(actionsElement);
         overlayElement.appendChild(dialogElement);
 
-        const focusableElements = [bodyElement].concat(sectionToggleElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
+        const focusableElements = [bodyElement].concat(sectionToggleElements, modeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
 
         dialogElement.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
@@ -220,10 +271,22 @@ export const COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT = `    /*
         if (!isMotionReduced()) { dialogElement.classList.add('motionReveal'); }
         cockpitDialogHostElement.appendChild(overlayElement);
 
-        confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement, checkState: checkElement ? checkState : null };
+        confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement, checkState: checkElement ? checkState : null, modeState: modeGroupElement ? modeState : null };
 
         // AN ACTION WITH NO UNDO STARTS ON CANCEL
         focusElement(isDestructive ? cancelElement : buttonElements[0]);
+
+    }
+
+    // THE MODES OF A REQUEST (#623): EACH A NAME AND A LABEL, BOTH STRINGS WITH TEXT; ANYTHING ELSE IS NO MODES AT ALL
+    function readConfirmRecordTypeSetModes(hostMessage) {
+
+        const postedModes = hostMessage.recordTypeSetModes;
+        const isReadableMode = function (mode) { return !!mode && typeof mode === 'object' && typeof mode.name === 'string' && !!mode.name && typeof mode.label === 'string' && !!mode.label; };
+
+        return Array.isArray(postedModes) && postedModes.every(isReadableMode)
+            ? postedModes.map(function (mode) { return { name: mode.name, label: mode.label }; })
+            : [];
 
     }
 
@@ -423,6 +486,7 @@ export const COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT = `    /*
         if (!confirmDialog) { return; }
         const response = { command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: choice };
         if (confirmDialog.checkState) { response.isChecked = choice !== null && confirmDialog.checkState.isChecked; }
+        if (confirmDialog.modeState && choice !== null) { response.recordTypeSetMode = confirmDialog.modeState.chosenName; }
         vscodeApi.postMessage(response);
         closeConfirmDialog(true);
 
@@ -463,6 +527,13 @@ export class CockpitConfirmDialog {
         return isOfferedChoice && isReadableCheck
             ? { chosenLabel: buttonLabels[choice], isChecked: hasCheckbox && isChecked === true }
             : { chosenLabel: undefined, isChecked: false };
+
+    }
+
+    // THE MODE AN ANSWER NAMES (#623), ONLY WHEN IT IS ONE THE REQUEST OFFERED; ANY OTHER VALUE IS NO MODE, WHICH THE CALLER READS AS CANCEL
+    static readRecordTypeSetMode<ModeName extends string>(offeredModeNames: readonly ModeName[], postedModeName: unknown): ModeName | undefined {
+
+        return offeredModeNames.find(offeredModeName => offeredModeName === postedModeName);
 
     }
 

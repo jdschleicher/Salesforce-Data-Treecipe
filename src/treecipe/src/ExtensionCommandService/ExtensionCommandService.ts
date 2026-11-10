@@ -65,6 +65,10 @@ export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
     (#325). The recipe file itself is never written; the copy is what the processor runs and what
     the data set keeps. At least one object or field is left out, or one count, value, constraint
     or switched-off rule set, or there would be no copy.
+
+    recordTypeSelection (#623) says the copy was built again from the object metadata for the record
+    types ticked in the cockpit: object api name -> developer names, and empty when every object is
+    back at its default. Such a copy is one even with nothing left out or set.
 */
 export interface IRunFakerFilteredRecipe {
     recipeText: string;
@@ -74,6 +78,7 @@ export interface IRunFakerFilteredRecipe {
     fixedValuesByObject?: Record<string, Record<string, string>>;
     constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
     validationRulesOffByObject?: Record<string, string[]>;
+    recordTypeSelection?: Record<string, string[]>;
 }
 /*
     isConfirmed is set by the Recipe Cockpit's tree insert (#255), whose own host modal already named
@@ -301,7 +306,8 @@ export class ExtensionCommandService {
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${path.basename(recipeFullFileNamePath)}`);
             if ( generationRecipeFilePath !== recipeFullFileNamePath ) {
-                fs.copyFileSync(generationRecipeFilePath, path.join(fullPathToBaseArtifactsFolder, path.basename(generationRecipeFilePath)));
+                // NEVER OVER A FILE ALREADY THERE: THE COPY IS WHAT THE DATA SET WAS GENERATED FROM
+                fs.copyFileSync(generationRecipeFilePath, path.join(fullPathToBaseArtifactsFolder, path.basename(generationRecipeFilePath)), fs.constants.COPYFILE_EXCL);
             }
 
             /* 
@@ -380,7 +386,7 @@ export class ExtensionCommandService {
             return false;
         }
 
-        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject, constraintsByObject, validationRulesOffByObject } = candidate as Record<string, unknown>;
+        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject, constraintsByObject, validationRulesOffByObject, recordTypeSelection } = candidate as Record<string, unknown>;
 
         const isFieldListMap = (fieldListMap: unknown) => fieldListMap === undefined || (
             typeof fieldListMap === 'object'
@@ -442,7 +448,15 @@ export class ExtensionCommandService {
             ? Object.values(constraintsByObject as Record<string, Record<string, IDatasetSourceFieldConstraint>>).reduce((boundCount, constraintsByField) => boundCount + Object.keys(constraintsByField).length, 0)
             : 0;
 
+        // A COPY BUILT FOR TICKED RECORD TYPES (#623) IS A COPY WHATEVER ELSE IT CARRIES; ITS NAMES ARE API NAMES, WITH NO OCCURRENCE KEY
+        const isRecordTypeSelectionMap = recordTypeSelection === undefined || (
+            isFieldListMap(recordTypeSelection)
+            && Object.keys(recordTypeSelection as Record<string, string[]>).every(objectApiName => SalesforceApiName.isApiName(objectApiName))
+        );
+        const recordTypeSelectionCount = isRecordTypeSelectionMap && recordTypeSelection !== undefined ? 1 : 0;
+
         return typeof recipeText === 'string'
+                && isRecordTypeSelectionMap
                 && Array.isArray(excludedObjectApiNames)
                 && excludedObjectApiNames.every(excludedObjectApiName => SalesforceApiName.isApiName(excludedObjectApiName))
                 && isFieldMap
@@ -450,7 +464,7 @@ export class ExtensionCommandService {
                 && isFixedValueMap
                 && isConstraintMap
                 && isValidationRulesOffMap
-                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount + constraintCount + validationRulesOffCount > 0;
+                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount + constraintCount + validationRulesOffCount + recordTypeSelectionCount > 0;
 
     }
 
