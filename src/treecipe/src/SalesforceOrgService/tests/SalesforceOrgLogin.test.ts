@@ -99,6 +99,10 @@ describe('SalesforceOrgLogin (#630)', () => {
             ['a port', 'https://test.salesforce.com:8443'],
             ['a path', 'https://test.salesforce.com/services/oauth2/authorize'],
             ['a query', 'https://test.salesforce.com/?startURL=x'],
+            ['a double quote in the host, which cmd.exe could not be handed', 'https://a"b.my.salesforce.com'],
+            ['an ampersand in the host', 'https://a&calc.my.salesforce.com'],
+            ['a host label that starts with a hyphen', 'https://-x.my.salesforce.com'],
+            ['a host label that ends with a hyphen', 'https://acme-.my.salesforce.com'],
             ['text that is not an address', 'qa sandbox'],
             ['nothing', ''],
             ['a value that is not text', 42]
@@ -113,7 +117,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
     describe('authorizeWithSalesforceCli', () => {
 
-        it('runs "sf org login web" on the login address with no alias, no default and no project folder, and answers the username only', async () => {
+        it('runs "sf org login web" on the login address with no alias, no default and not in the workspace folder, and answers the username only', async () => {
 
             const cliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue(buildLoginSuccess(QA_USERNAME));
 
@@ -163,6 +167,29 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             expect(loginOutcome).toEqual({ kind: 'cancelled' });
             expect(killLogin).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('answers a login the CLI had already finished as authorized, even when a cancel arrived after it', async () => {
+
+            let cancelLogin: () => void = () => undefined;
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockImplementation(async (_cliArguments, registerCancellation) => {
+                registerCancellation?.(() => undefined);
+                cancelLogin();
+                return buildLoginSuccess(QA_USERNAME);
+            });
+
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun({ onCancellationRequested: cancel => { cancelLogin = cancel; } })))
+                .toEqual({ kind: 'authorized', username: QA_USERNAME });
+
+        });
+
+        it('says the answer was too large rather than that it was not JSON, never quoting stdout', async () => {
+
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue({ stdout: '', stderr: '', exitCode: null, isOutputTooLarge: true });
+
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun()))
+                .toEqual({ kind: 'failed', failureMessage: 'the Salesforce CLI\'s answer was too large to read' });
 
         });
 

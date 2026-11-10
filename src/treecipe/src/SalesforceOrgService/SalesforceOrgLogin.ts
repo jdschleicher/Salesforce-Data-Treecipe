@@ -19,6 +19,9 @@ export const SANDBOX_LOGIN_URL = 'https://test.salesforce.com';
 // A LOGIN PAGE IS A SANDBOX'S SHARED ADDRESS OR AN ORG'S OWN MY DOMAIN, AND NOTHING ELSE
 const MY_DOMAIN_HOST_SUFFIX = '.my.salesforce.com';
 
+// A HOST NAME IS DNS LABELS ONLY: WHATWG URL ACCEPTS "&", "'" OR '"' IN ONE, AND ON WINDOWS THE ADDRESS REACHES THE CLI THROUGH cmd.exe
+const HOST_NAME_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
 export const LOGIN_URL_REFUSAL = `Enter ${SANDBOX_LOGIN_URL} or the org's My Domain address, for example https://acme--qa.sandbox.my.salesforce.com.`;
 
 export const ORG_LOGIN_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
@@ -76,12 +79,13 @@ export class SalesforceOrgLogin {
         }
 
         const hostName = parsedUrl.hostname.toLowerCase();
+        const isDnsHostName = hostName.split('.').every(hostNameLabel => HOST_NAME_LABEL_PATTERN.test(hostNameLabel));
         const isSalesforceLoginHost = `https://${hostName}` === SANDBOX_LOGIN_URL
             || ( hostName.endsWith(MY_DOMAIN_HOST_SUFFIX) && hostName.length > MY_DOMAIN_HOST_SUFFIX.length );
         const isBareAddress = parsedUrl.username === '' && parsedUrl.password === '' && parsedUrl.port === ''
             && parsedUrl.pathname === '/' && parsedUrl.search === '' && parsedUrl.hash === '';
 
-        return parsedUrl.protocol === 'https:' && isSalesforceLoginHost && isBareAddress
+        return parsedUrl.protocol === 'https:' && isDnsHostName && isSalesforceLoginHost && isBareAddress
             ? `https://${hostName}`
             : undefined;
 
@@ -96,8 +100,9 @@ export class SalesforceOrgLogin {
     /*
         No --alias and no --set-default: the caller sets the alias only once it knows the org is a
         sandbox or scratch org, and writes the workspace's default itself. --no-prompt keeps the
-        CLI from waiting on a question nobody can see. Run with no project folder, so a cloned
-        repository's sfdx-project.json cannot move the login address or the local port.
+        CLI from waiting on a question nobody can see. The workspace is not passed as the working
+        directory, so the CLI starts in the extension host's own folder, as other non-project calls
+        do; --instance-url overrides any sfdcLoginUrl a project there sets.
     */
     static buildLoginWebArguments(normalizedLoginUrl: string): string[] {
 
@@ -106,8 +111,9 @@ export class SalesforceOrgLogin {
     }
 
     /*
-        "sf org login web": the CLI opens the browser and waits for its answer. A cancel or the timeout kills the
-        process, which also frees the local login port. The CLI saves the authorization BEFORE the
+        "sf org login web": the CLI opens the browser and waits for its answer. A cancel or the
+        timeout kills the process, which also frees the local login port. A login the CLI had
+        already finished when the cancel arrived is still answered as authorized. The CLI saves the authorization BEFORE the
         browser has loaded its success page, so a cancel or a timeout that lands in between leaves
         an org authorized: neither outcome may be worded as "nothing was authorized".
     */
@@ -130,15 +136,13 @@ export class SalesforceOrgLogin {
             loginRun.timeoutMilliseconds ?? ORG_LOGIN_TIMEOUT_MILLISECONDS
         );
 
-        if ( isCancelled ) {
-            return { kind: 'cancelled' };
-        }
-
         if ( loginResult.timedOut ) {
             return { kind: 'timedOut' };
         }
 
-        return this.readLoginAnswer(loginResult);
+        const loginOutcome = this.readLoginAnswer(loginResult);
+
+        return isCancelled && loginOutcome.kind !== 'authorized' ? { kind: 'cancelled' } : loginOutcome;
 
     }
 
@@ -152,6 +156,10 @@ export class SalesforceOrgLogin {
                     ? CLI_NOT_FOUND_FAILURE_MESSAGE
                     : `the Salesforce CLI could not be started: ${this.toFailureMessage(loginResult.spawnError)}`
             };
+        }
+
+        if ( loginResult.isOutputTooLarge ) {
+            return { kind: 'failed', failureMessage: 'the Salesforce CLI\'s answer was too large to read' };
         }
 
         let loginAnswer: unknown;

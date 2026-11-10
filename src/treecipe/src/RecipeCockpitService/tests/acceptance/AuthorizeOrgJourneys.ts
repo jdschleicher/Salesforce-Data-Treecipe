@@ -69,7 +69,7 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
             await logInFromTheButton(journey, 'newsbx', true);
             await journey.waitFor('button', 'Authorize org', undefined, { isEnabled: true });
 
-            await journey.step('the Salesforce CLI logged in at the sandbox login page, with no alias and no project folder', () => {
+            await journey.step('the Salesforce CLI logged in at the sandbox login page, with no alias and not in the workspace folder', () => {
                 expectEqual(journey.cli.calls, [{ argv: ['org', 'login', 'web', '--instance-url', 'https://test.salesforce.com', '--no-prompt', '--json'] }], 'sf processes run');
                 expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'env.openExternal').length, 0, 'Browsers the extension opened itself');
                 expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'WebOAuthServer.create').length, 0, 'In-process logins');
