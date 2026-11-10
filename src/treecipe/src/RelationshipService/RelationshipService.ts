@@ -259,7 +259,9 @@ export class RelationshipService {
     
   }
 
-  getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper, nestChildObjectsAsFriends: boolean): OrderedRecipeStructure {
+  getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper,
+                              nestChildObjectsAsFriends: boolean,
+                              isChildTreeCopiedPerRecordTypeBlock: boolean = false): OrderedRecipeStructure {
 
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
@@ -326,9 +328,12 @@ export class RelationshipService {
 
       // Build combined recipe for this tree (in dependency order)
       const nestedTreeRecipe = nestChildObjectsAsFriends
-        ? this.buildNestedFriendsTreeRecipe(orderedTree, objectInfoWrapper)
+        ? this.buildNestedFriendsTreeRecipe(orderedTree, objectInfoWrapper, isChildTreeCopiedPerRecordTypeBlock)
         : undefined;
-      orderedTree.combinedRecipe = nestedTreeRecipe ?? this.buildCombinedTreeRecipe(orderedTree, objectInfoWrapper);
+      const flatTreeRecipeWithChildCopies = !nestChildObjectsAsFriends && isChildTreeCopiedPerRecordTypeBlock
+        ? this.buildFlatTreeRecipeWithChildCopies(orderedTree, objectInfoWrapper)
+        : undefined;
+      orderedTree.combinedRecipe = nestedTreeRecipe ?? flatTreeRecipeWithChildCopies ?? this.buildCombinedTreeRecipe(orderedTree, objectInfoWrapper);
       orderedStructure.relationshipTrees.push(orderedTree);
       orderedStructure.totalObjects += tree.allObjects.length;
 
@@ -508,10 +513,13 @@ export class RelationshipService {
     iteration of itself named <Object>_child_NickName, whose every self-lookup holds the parent
     iteration's nickname -- it is an ancestor of itself, so wireLookupsToParents wires it -- while the
     top iteration keeps its TODO, a cycle (#188). The iteration carries no friends of its own, so nothing
-    recurses. undefined when nothing in the tree nests, so a tree without relationships is written
+    recurses. With isChildTreeCopiedPerRecordTypeBlock on, each record type block carries its own copy
+    of the friends (#622, buildBlockPlacer). undefined when nothing in the tree nests, so a tree without relationships is written
     by buildCombinedTreeRecipe exactly as before.
   */
-  private buildNestedFriendsTreeRecipe(orderedTree: OrderedRelationshipTree, objectInfoWrapper: ObjectInfoWrapper): string | undefined {
+  private buildNestedFriendsTreeRecipe(orderedTree: OrderedRelationshipTree,
+                                        objectInfoWrapper: ObjectInfoWrapper,
+                                        isChildTreeCopiedPerRecordTypeBlock: boolean): string | undefined {
 
     const recipeInfosInInsertOrder = orderedTree.orderedLevels.flatMap(level => level.recipes);
     const objectNamesInInsertOrder = recipeInfosInInsertOrder.map(recipeInfo => recipeInfo.objectName);
@@ -524,66 +532,55 @@ export class RelationshipService {
 
     const recipeInfoByObjectName = new Map(recipeInfosInInsertOrder.map(recipeInfo => [recipeInfo.objectName, recipeInfo]));
     const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(recipeInfosInInsertOrder);
-    const friendObjectNamesByParentName = new Map<string, string[]>();
-    friendsParentByObjectName.forEach((parentName, objectName) => {
-      friendObjectNamesByParentName.set(parentName, [...(friendObjectNamesByParentName.get(parentName) ?? []), objectName]);
-    });
+    const placeObject = this.buildBlockPlacer(recipeInfosInInsertOrder, friendsParentByObjectName, selfLookupObjectNames, isChildTreeCopiedPerRecordTypeBlock, objectInfoWrapper);
 
-    const renderBlock = (objectName: string, blockRecipe: string, depth: number, ancestorObjectNames: string[]): string[] => {
+    const renderBlock = (placement: RecordTypeBlockPlacement, depth: number): string[] => {
       const indentation = ' '.repeat(4 * depth);
-      const wiredLines = this.wireLookupsToParents(objectName, blockRecipe, ancestorObjectNames, recipeInfoByObjectName, objectInfoWrapper);
-      return RelationshipService.annotateLookupsToRecordTypeBlocks(objectName, wiredLines, blockNicknamesByObjectName, objectInfoWrapper)
+      const wiredLines = this.wireLookupsToParents(placement.objectName,
+                                                    placement.blockRecipe,
+                                                    placement.ancestorNicknameByObjectName,
+                                                    placement.resolveLowerLevelParentNickname,
+                                                    recipeInfoByObjectName,
+                                                    objectInfoWrapper);
+      return RelationshipService.annotateLookupsToRecordTypeBlocks(placement.objectName, wiredLines, blockNicknamesByObjectName, objectInfoWrapper)
         .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
     };
 
     /*
       Every block after the first is written right after it at the same depth -- a sibling at the top
-      of the file, or another friend of the same parent block -- wired to the same ancestors. Friends
-      nest under the FIRST block only (#194), so a parent with several record type blocks does not
-      multiply its children's records.
+      of the file, or another friend of the same parent block -- wired to the same ancestors. Which
+      blocks carry friends is the placer's decision: the first only (#194), or each its own copy (#622).
     */
-    const renderAdditionalRecordTypeBlocks = (objectName: string, depth: number, ancestorObjectNames: string[]): string[] => {
+    const renderPlacements = (objectName: string, placements: RecordTypeBlockPlacement[], depth: number): string[] => {
+
       const indentation = ' '.repeat(4 * depth);
-      return recipeInfoByObjectName.get(objectName).additionalRecordTypeRecipes.flatMap(blockRecipe => [
-        `${indentation}# ${objectName} (record type block ${RelationshipService.readNickname(blockRecipe)})`,
-        ...renderBlock(objectName, blockRecipe, depth, ancestorObjectNames)
-      ]);
-    };
-
-    const renderObject = (objectName: string, depth: number, ancestorObjectNames: string[], isSelfLookupIteration: boolean = false): string[] => {
-
-      const recipeInfo = recipeInfoByObjectName.get(objectName);
-      const indentation = ' '.repeat(4 * depth);
-      const objectRecipe = isSelfLookupIteration
-        ? RelationshipService.renameRecipeNickname(recipeInfo.recipe, RelationshipService.buildSelfLookupIterationNickname(objectName))
-        : recipeInfo.recipe;
-      const objectLines = renderBlock(objectName, objectRecipe, depth, ancestorObjectNames);
-
-      if ( isSelfLookupIteration ) {
-        return objectLines;
-      }
-
       const friendIndentation = ' '.repeat(4 * (depth + 1));
-      const friendAncestorObjectNames = [...ancestorObjectNames, objectName];
-      const friendLines = (friendObjectNamesByParentName.get(objectName) ?? []).flatMap(friendObjectName => [
-        `${friendIndentation}# ${friendObjectName} (${recipeInfoByObjectName.get(friendObjectName).relationshipInfo})`,
-        ...renderObject(friendObjectName, depth + 1, friendAncestorObjectNames),
-        ...renderAdditionalRecordTypeBlocks(friendObjectName, depth + 1, friendAncestorObjectNames)
-      ]);
 
-      if ( selfLookupObjectNames.has(objectName) ) {
-        const selfLookupFieldNames = RelationshipService.getWritableSelfLookupFieldNames(objectName, objectInfoWrapper);
-        friendLines.push(
-          `${friendIndentation}# ${objectName} (Child iteration of the ${objectName} above, through ${selfLookupFieldNames.join(', ')})`,
-          ...renderObject(objectName, depth + 1, friendAncestorObjectNames, true)
-        );
-      }
+      return placements.flatMap((placement, blockIndex) => {
 
-      if ( friendLines.length === 0 ) {
-        return objectLines;
-      }
+        const blockLines = [
+          ...( blockIndex > 0 ? [`${indentation}# ${objectName} (record type block ${placement.nickname})`] : [] ),
+          ...renderBlock(placement, depth)
+        ];
 
-      return [...objectLines, `${indentation}  friends:`, ...friendLines];
+        const friendLines = placement.friends.flatMap(friend => [
+          `${friendIndentation}# ${friend.objectName} (${recipeInfoByObjectName.get(friend.objectName).relationshipInfo})`,
+          ...renderPlacements(friend.objectName, friend.placements, depth + 1)
+        ]);
+
+        if ( placement.selfLookupIteration ) {
+          const selfLookupFieldNames = RelationshipService.getWritableSelfLookupFieldNames(objectName, objectInfoWrapper);
+          friendLines.push(
+            `${friendIndentation}# ${objectName} (Child iteration of the ${objectName} above, through ${selfLookupFieldNames.join(', ')})`,
+            ...renderBlock(placement.selfLookupIteration, depth + 1)
+          );
+        }
+
+        return friendLines.length === 0
+          ? blockLines
+          : [...blockLines, `${indentation}  friends:`, ...friendLines];
+
+      });
 
     };
 
@@ -594,10 +591,235 @@ export class RelationshipService {
       .filter(objectName => !friendsParentByObjectName.has(objectName))
       .forEach(rootObjectName => {
         nestedRecipe += `# ${rootObjectName} (${recipeInfoByObjectName.get(rootObjectName).relationshipInfo})\n`;
-        nestedRecipe += `${[...renderObject(rootObjectName, 0, []), ...renderAdditionalRecordTypeBlocks(rootObjectName, 0, [])].join('\n')}\n\n`;
+        nestedRecipe += `${renderPlacements(rootObjectName, placeObject(rootObjectName, new Map(), []), 0).join('\n')}\n\n`;
       });
 
     return nestedRecipe;
+
+  }
+
+  /*
+    Where each record type block of a tree is written, and under which ancestor blocks: one walk
+    for both layouts, so a copy is the same copy in a faker-js and a snowfakery recipe. An object's
+    friends -- and its self-lookup iteration (#188) -- go under its FIRST block; with
+    isChildTreeCopiedPerRecordTypeBlock on (#622), every later block carries its own copy of those
+    friends too, though never a second self-lookup iteration: that iteration is the object's own
+    parent-and-child pair, not part of the record type's children.
+
+    A copy renames every nickname it writes to <nickname stem>_<copying block's stem>_NickName --
+    Contact_NickName under Account_Partner_NickName is Contact_Account_Partner_NickName -- so
+    records sharing a nickname never share a referenceId. A name the tree already holds takes _Copy
+    before _NickName until it is free. Every part is a nickname built from api names joined by "_",
+    so a copy's name is an api name too.
+  */
+  private buildBlockPlacer(recipeInfos: RecipeInfo[],
+                            friendsParentByObjectName: Map<string, string>,
+                            selfLookupObjectNames: Set<string>,
+                            isChildTreeCopiedPerRecordTypeBlock: boolean,
+                            objectInfoWrapper: ObjectInfoWrapper
+                          ): (objectName: string, ancestorNicknameByObjectName: Map<string, string>, copyContexts: ChildTreeCopyContext[]) => RecordTypeBlockPlacement[] {
+
+    const recipeInfoByObjectName = new Map(recipeInfos.map(recipeInfo => [recipeInfo.objectName, recipeInfo]));
+    const friendObjectNamesByParentName = new Map<string, string[]>();
+    friendsParentByObjectName.forEach((parentName, objectName) => {
+      friendObjectNamesByParentName.set(parentName, [...(friendObjectNamesByParentName.get(parentName) ?? []), objectName]);
+    });
+
+    const takenNicknames = new Set<string>();
+    recipeInfos.forEach(recipeInfo => {
+      [recipeInfo.recipe, ...recipeInfo.additionalRecordTypeRecipes]
+        .map(blockRecipe => RelationshipService.readNickname(blockRecipe))
+        .filter((nickname): nickname is string => nickname !== undefined)
+        .forEach(nickname => takenNicknames.add(nickname));
+    });
+    selfLookupObjectNames.forEach(objectName => takenNicknames.add(RelationshipService.buildSelfLookupIterationNickname(objectName)));
+
+    // ONE NAME PER (COPY, NICKNAME): THE BLOCK THAT WRITES IT AND EVERY LOOKUP THAT NAMES IT MUST AGREE
+    const copyNicknameByKey = new Map<string, string>();
+    const nicknameInCopy = <Nickname extends string | undefined>(nickname: Nickname, copyContexts: ChildTreeCopyContext[]): Nickname | string => {
+      if ( nickname === undefined || copyContexts.length === 0 ) {
+        return nickname;
+      }
+      const copyStem = copyContexts[copyContexts.length - 1].nicknameStem;
+      const copyKey = `${copyStem}\n${nickname}`;
+      if ( !copyNicknameByKey.has(copyKey) ) {
+        const nicknameStem = RelationshipService.readNicknameStem(nickname);
+        let copySuffix = '';
+        while ( takenNicknames.has(`${nicknameStem}_${copyStem}${copySuffix}_NickName`) ) {
+          copySuffix += '_Copy';
+        }
+        const copyNickname = `${nicknameStem}_${copyStem}${copySuffix}_NickName`;
+        takenNicknames.add(copyNickname);
+        copyNicknameByKey.set(copyKey, copyNickname);
+      }
+      return copyNicknameByKey.get(copyKey);
+    };
+
+    const isFriendsDescendantOf = (objectName: string, ancestorName: string): boolean => {
+      for ( let parentName = friendsParentByObjectName.get(objectName); parentName !== undefined; parentName = friendsParentByObjectName.get(parentName) ) {
+        if ( parentName === ancestorName ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // A LOWER-LEVEL PARENT INSIDE THE COPY BEING WRITTEN IS THAT COPY'S RECORDS, OTHERWISE THE ORIGINAL'S (#189)
+    const buildLowerLevelParentNicknameResolver = (copyContexts: ChildTreeCopyContext[]) => (parentName: string): string | undefined => {
+      const parentNickname = RelationshipService.readNickname(recipeInfoByObjectName.get(parentName).recipe);
+      if ( parentNickname === undefined ) {
+        return undefined;
+      }
+      for ( let contextIndex = copyContexts.length - 1; contextIndex >= 0; contextIndex-- ) {
+        if ( isFriendsDescendantOf(parentName, copyContexts[contextIndex].objectName) ) {
+          return nicknameInCopy(parentNickname, copyContexts.slice(0, contextIndex + 1));
+        }
+      }
+      return parentNickname;
+    };
+
+    const placeObject = (objectName: string, ancestorNicknameByObjectName: Map<string, string>, copyContexts: ChildTreeCopyContext[]): RecordTypeBlockPlacement[] => {
+
+      const recipeInfo = recipeInfoByObjectName.get(objectName);
+      const resolveLowerLevelParentNickname = buildLowerLevelParentNicknameResolver(copyContexts);
+
+      return [recipeInfo.recipe, ...recipeInfo.additionalRecordTypeRecipes].map((blockRecipe, blockIndex) => {
+
+        // A BLOCK WITH NO NICKNAME LINE IS NO ANCESTOR TO WIRE, AND ITS LATER BLOCKS COPY NOTHING UNDER A NAME
+        const nickname = nicknameInCopy(RelationshipService.readNickname(blockRecipe), copyContexts);
+        const placement: RecordTypeBlockPlacement = {
+          objectName,
+          nickname,
+          blockRecipe: nickname === RelationshipService.readNickname(blockRecipe) ? blockRecipe : RelationshipService.renameRecipeNickname(blockRecipe, nickname),
+          ancestorNicknameByObjectName,
+          resolveLowerLevelParentNickname,
+          friends: []
+        };
+
+        if ( blockIndex > 0 && ( !isChildTreeCopiedPerRecordTypeBlock || nickname === undefined ) ) {
+          return placement;
+        }
+
+        const friendAncestorNicknameByObjectName = nickname === undefined
+          ? ancestorNicknameByObjectName
+          : new Map(ancestorNicknameByObjectName).set(objectName, nickname);
+        const friendCopyContexts = blockIndex === 0
+          ? copyContexts
+          : [...copyContexts, { objectName, nicknameStem: RelationshipService.readNicknameStem(nickname) }];
+
+        placement.friends = (friendObjectNamesByParentName.get(objectName) ?? []).map(friendObjectName => ({
+          objectName: friendObjectName,
+          placements: placeObject(friendObjectName, friendAncestorNicknameByObjectName, friendCopyContexts)
+        }));
+
+        if ( blockIndex === 0 && selfLookupObjectNames.has(objectName) ) {
+          const selfLookupIterationNickname = nicknameInCopy(RelationshipService.buildSelfLookupIterationNickname(objectName), copyContexts);
+          placement.selfLookupIteration = {
+            objectName,
+            nickname: selfLookupIterationNickname,
+            blockRecipe: RelationshipService.renameRecipeNickname(recipeInfo.recipe, selfLookupIterationNickname),
+            ancestorNicknameByObjectName: friendAncestorNicknameByObjectName,
+            resolveLowerLevelParentNickname,
+            friends: []
+          };
+        }
+
+        return placement;
+
+      });
+
+    };
+
+    return placeObject;
+
+  }
+
+  // A NICKNAME WITHOUT ITS _NickName ENDING: Account_Partner_NickName -> Account_Partner
+  static readNicknameStem(nickname: string): string {
+    return nickname.endsWith('_NickName') && nickname.length > '_NickName'.length
+      ? nickname.slice(0, -'_NickName'.length)
+      : nickname;
+  }
+
+  /*
+    Snowfakery writes every tree flat (#46), so a child copied per parent record type block (#622)
+    is written once per block it belongs to, after every object of a lower level, each copy's
+    lookups to its ancestor blocks written as ${{reference(<nickname>)}} -- snowfakery's link to the
+    most recent record of that nickname. undefined when no object in the tree has a later block
+    with children, so such a tree is written by buildCombinedTreeRecipe exactly as before.
+  */
+  private buildFlatTreeRecipeWithChildCopies(orderedTree: OrderedRelationshipTree, objectInfoWrapper: ObjectInfoWrapper): string | undefined {
+
+    const recipeInfosInInsertOrder = orderedTree.orderedLevels.flatMap(level => level.recipes);
+    const objectNamesInInsertOrder = recipeInfosInInsertOrder.map(recipeInfo => recipeInfo.objectName);
+    const friendsParentByObjectName = RelationshipService.selectFriendsParentByObjectName(objectNamesInInsertOrder, objectInfoWrapper);
+    const parentNamesWithFriends = new Set(friendsParentByObjectName.values());
+    if ( !recipeInfosInInsertOrder.some(recipeInfo => recipeInfo.additionalRecordTypeRecipes.length > 0 && parentNamesWithFriends.has(recipeInfo.objectName)) ) {
+      return undefined;
+    }
+
+    // A FLAT RECIPE HAS NO SELF-LOOKUP ITERATION, SO NONE IS PLACED
+    const placeObject = this.buildBlockPlacer(recipeInfosInInsertOrder, friendsParentByObjectName, new Set(), true, objectInfoWrapper);
+    const placementsByObjectName = new Map<string, RecordTypeBlockPlacement[]>();
+    const collectPlacements = (objectName: string, placements: RecordTypeBlockPlacement[]): void => {
+      placementsByObjectName.set(objectName, [...(placementsByObjectName.get(objectName) ?? []), ...placements]);
+      placements.forEach(placement => placement.friends.forEach(friend => collectPlacements(friend.objectName, friend.placements)));
+    };
+    objectNamesInInsertOrder
+      .filter(objectName => !friendsParentByObjectName.has(objectName))
+      .forEach(rootObjectName => collectPlacements(rootObjectName, placeObject(rootObjectName, new Map(), [])));
+
+    const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(recipeInfosInInsertOrder);
+
+    let flatRecipe = `# Relationship Tree: ${orderedTree.treeName}\n`;
+    flatRecipe += `# Objects must be processed in this order for proper lookup resolution\n`;
+    flatRecipe += `# Each child is written once per record type block of its parent, each copy referencing its own block\n\n`;
+
+    orderedTree.orderedLevels.forEach(level => {
+      flatRecipe += `# Level ${level.level} - ${level.objects.join(', ')}\n`;
+      level.recipes.forEach(recipeInfo => {
+        flatRecipe += `# ${recipeInfo.objectName} (${recipeInfo.relationshipInfo})\n`;
+        // EVERY OBJECT WITH A RECIPE IS PLACED: A ROOT, OR A FRIEND OF ITS PARENT'S FIRST BLOCK
+        placementsByObjectName.get(recipeInfo.objectName).forEach(placement => {
+          const referencedLines = RelationshipService.referenceAncestorLookups(placement, objectInfoWrapper);
+          const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, referencedLines, blockNicknamesByObjectName, objectInfoWrapper).join('\n');
+          flatRecipe += annotatedBlockRecipe;
+          if ( !annotatedBlockRecipe.endsWith('\n') ) {
+            flatRecipe += '\n';
+          }
+        });
+        flatRecipe += '\n';
+      });
+    });
+
+    return flatRecipe;
+
+  }
+
+  // ONLY A LINE THAT IS EXACTLY THE GENERATED TODO, TO AN ANCESTOR BLOCK, IS REWRITTEN; EVERY OTHER LOOKUP STAYS AS SNOWFAKERY WRITES IT
+  static referenceAncestorLookups(placement: RecordTypeBlockPlacement, objectInfoWrapper: ObjectInfoWrapper): string[] {
+
+    const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[placement.objectName].RelationshipDetail.parentObjectToFieldReferences;
+    const ancestorNicknameByLookupLine = new Map<string, string>();
+    Object.keys(lookupFieldNamesByParentName)
+      .filter(parentName => placement.ancestorNicknameByObjectName.has(parentName))
+      // CODE-UNIT ORDER, AS "<" -- A POLYMORPHIC LOOKUP TO TWO ANCESTORS REFERENCES THE FIRST BY NAME
+      .sort()
+      .forEach(parentName => {
+        lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
+          const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
+          if ( !ancestorNicknameByLookupLine.has(lookupLine) ) {
+            ancestorNicknameByLookupLine.set(lookupLine, placement.ancestorNicknameByObjectName.get(parentName));
+          }
+        });
+      });
+
+    return placement.blockRecipe.split('\n').map(objectLine => {
+      const ancestorNickname = ancestorNicknameByLookupLine.get(objectLine);
+      return ancestorNickname === undefined
+        ? objectLine
+        : `${objectLine.slice(0, objectLine.indexOf(':') + 1)} \${{reference(${ancestorNickname})}}`;
+    });
 
   }
 
@@ -634,7 +856,7 @@ export class RelationshipService {
 
   /*
     The object's recipe as lines, without the blank lines around it, with each generated lookup TODO
-    resolved by the parent it names: an ANCESTOR is wired to its nickname, which FakerJSRecipeProcessor
+    resolved by the parent it names: an ANCESTOR is wired to the nickname of the block it sits under, which FakerJSRecipeProcessor
     resolves to the record the child was generated under (#46); a parent in the same tree with a recipe
     at a strictly LOWER level is wired to its nickname too, which FakerJSRecipeProcessor resolves to one
     of that parent's records once the recipe is generated -- a lower level is inserted first (#189).
@@ -644,13 +866,13 @@ export class RelationshipService {
   */
   private wireLookupsToParents(objectName: string,
                                 objectRecipe: string,
-                                ancestorObjectNames: string[],
+                                ancestorNicknameByObjectName: Map<string, string>,
+                                resolveLowerLevelParentNickname: (parentName: string) => string | undefined,
                                 recipeInfoByObjectName: Map<string, RecipeInfo>,
                                 objectInfoWrapper: ObjectInfoWrapper): string[] {
 
     const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
     const levelOf = (lookupObjectName: string): number => objectInfoWrapper.ObjectToObjectInfoMap[lookupObjectName].RelationshipDetail.level;
-    const readNickname = (parentName: string): string | undefined => RelationshipService.readNickname(recipeInfoByObjectName.get(parentName).recipe);
 
     const ancestorNicknameByLookupLine = new Map<string, string>();
     const lowerLevelNicknameByLookupLine = new Map<string, string>();
@@ -658,12 +880,14 @@ export class RelationshipService {
 
     Object.keys(lookupFieldNamesByParentName).sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) )).forEach(parentName => {
 
-      const isAncestor = ancestorObjectNames.includes(parentName);
+      const isAncestor = ancestorNicknameByObjectName.has(parentName);
       const isLowerLevelParentWithRecipe = !isAncestor
                                             && parentName !== objectName
                                             && recipeInfoByObjectName.has(parentName)
                                             && levelOf(parentName) < levelOf(objectName);
-      const parentNickname = ( isAncestor || isLowerLevelParentWithRecipe ) ? readNickname(parentName) : undefined;
+      const parentNickname = isAncestor
+        ? ancestorNicknameByObjectName.get(parentName)
+        : ( isLowerLevelParentWithRecipe ? resolveLowerLevelParentNickname(parentName) : undefined );
 
       lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
         const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
@@ -714,9 +938,11 @@ export class RelationshipService {
     return parts.join(' | ') || 'No relationships';
   }
 
-  generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper, nestChildObjectsAsFriends: boolean = false): RecipeFileOutput[] {
+  generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper,
+                              nestChildObjectsAsFriends: boolean = false,
+                              isChildTreeCopiedPerRecordTypeBlock: boolean = false): RecipeFileOutput[] {
 
-    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper, nestChildObjectsAsFriends);
+    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper, nestChildObjectsAsFriends, isChildTreeCopiedPerRecordTypeBlock);
     const recipeFiles: RecipeFileOutput[] = [];
 
     orderedStructure.relationshipTrees.forEach((tree, index) => {
@@ -854,6 +1080,23 @@ export class RelationshipService {
 
   }
 
+}
+
+// Inside a copy of a block's children (#622): the object whose later block is copied, and that block's nickname without _NickName
+interface ChildTreeCopyContext {
+  objectName: string;
+  nicknameStem: string;
+}
+
+// One record type block where it is written: its recipe under the nickname of its copy, the ancestor blocks above it, and what it carries
+interface RecordTypeBlockPlacement {
+  objectName: string;
+  nickname: string | undefined;
+  blockRecipe: string;
+  ancestorNicknameByObjectName: Map<string, string>;
+  resolveLowerLevelParentNickname: (parentName: string) => string | undefined;
+  friends: { objectName: string; placements: RecordTypeBlockPlacement[] }[];
+  selfLookupIteration?: RecordTypeBlockPlacement;
 }
 
 // One depth-first walk of a tree: the lookups it keeps (every one but those that close a cycle) and the order objects finish in

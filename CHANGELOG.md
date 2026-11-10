@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.195.0] - An option to give each record type block its own copy of the children, both backends (#622, slice B of #620)
+
+With several record types selected, only an object's first record type block carried its children (#194), so a Partner Account had no Contacts. A new opt-in, `isChildTreeCopiedPerRecordTypeBlock` on `RecordTypeSelection` (off by default), gives every block its own copy. Nothing turns it on yet: the palette and the cockpit are unchanged, and slice C of #620 is what will set it. With the option off, every recipe is byte-identical to 3.194.4 (the golden files are unchanged).
+
+With it on, and Account written as Business and Partner blocks:
+
+- **faker-js:** each Account block has its own `friends:` copy of Account's subtree. The copy's nicknames take the block's name, so `Contact_NickName` under `Account_Partner_NickName` becomes `Contact_Account_Partner_NickName`, and its grandchildren follow (`Case_Account_Partner_NickName`). Every lookup in a copy names that copy's blocks, ancestors and #189's lower-level parents alike, so each Partner record's Contacts are inserted under that Partner record.
+- **Snowfakery:** the recipe stays flat. Each child is written once per parent block, after every object of a lower level. Each copy's lookups to its ancestor blocks are written as `${{reference(<nickname>)}}`, which Snowfakery resolves to the latest record with that nickname. A tree where no later block has children is written as before.
+- **A child with record type blocks of its own** is copied with all of them, and the option applies at every level: each of the child's blocks carries its own copy of the grandchildren. A copy name the tree already holds takes `_Copy`. Every copy name is a valid api name.
+- **A self-lookup iteration** (`Account_child_NickName`) stays under the object's first block only. A child copied into a later block keeps its own self-lookup iteration, wired to the copy.
+- Record totals double for every child under a two-block parent (`RecipeCockpitRecipeWriter.countRecipeRecordsByObject`). The Recipe Cockpit reads each copy as its own occurrence, by nickname.
+- `RecordTypeSelection.fromUnknown` takes the option as a second argument and turns it on only for exactly `true`.
+
 ## [3.194.4] - Recipe Cockpit: the object row's "Get latest detail" button carries a red refresh arrow (#612)
 
 - **The button at the end of each Treecipe tab object row now reads "Get latest detail"**, shortened from "Get latest object detail from target org", and starts with a red circular refresh arrow so it is easy to spot along the row. Its accessible name is "Get latest detail for <object>"; its tooltip still says it retrieves the object's fields, validation rules, record types and global value sets from an org. The dialog it opens is titled "Get latest detail: <object>". What the button does is unchanged.
