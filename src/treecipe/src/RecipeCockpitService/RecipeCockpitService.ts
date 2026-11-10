@@ -318,7 +318,7 @@ export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recip
 // A LOOKUP'S PENCIL (#627) TAKES ONE RECORD'S Id: THE TREE INSERT KEEPS AN Id AND REPLACES ANY OTHER VALUE A LOOKUP HOLDS
 export const RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX = 'is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id.';
 export const RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER = '15- or 18-character Salesforce Id';
-export const RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = 'Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it. Save writes it into the recipe file; Clear puts back the lines the field had.';
+export const RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = 'Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it, unless the lookup can point at more than one object. Save writes it into the recipe file; Clear puts back the lines the field had.';
 export const RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL = 'Enter a record Id';
 export const RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL = 'Use this record';
 export const RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = 'org record · ';
@@ -981,6 +981,14 @@ export interface IRecipeCockpitOrgRecordLookupViewModel {
     recordId: string;
     parentObjectApiName: string;
     orgLabel: string;
+}
+
+// A LOOKUP'S Id THE TREE INSERT ASKS ITS ORG ABOUT: AN ORG RECORD'S (#421) OR ONE TYPED WITH THE PENCIL (#627)
+export interface ICheckedRecordIdLookup {
+    objectApiName: string;
+    fieldApiName: string;
+    recordId: string;
+    parentObjectApiName: string;
 }
 
 // A RECORD Id TYPED INTO A LOOKUP'S PENCIL (#627), WITH ITS PARENT AS THE ORG INSERTED INTO DESCRIBES THE FIELD: NONE FOR A POLYMORPHIC LOOKUP
@@ -17081,7 +17089,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
             {
-                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail),
+                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail, typedLookupIds),
                 org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 isDestructive: true,
                 changeOrg: { restartMessage: { command: 'insertTree', treeKey: treeKey }, isSandboxOnly: true }
@@ -17132,25 +17140,23 @@ export class RecipeCockpitService {
             }
         }
 
-        // EVERY Id A LOOKUP WAS SET TO (#421) MUST BE A RECORD OF ITS PARENT IN THE ORG INSERTED INTO, OR NOTHING IS WRITTEN
-        const missingOrgRecordLookup = await this.findMissingOrgRecordLookup(querySource, orgRecordLookups);
-        if ( missingOrgRecordLookup ) {
-            const { objectApiName, fieldApiName, parentObjectApiName, recordId, orgLabel: sourceOrgLabel, failureMessage } = missingOrgRecordLookup;
+        /*
+            EVERY Id A LOOKUP WAS SET TO -- CHOSEN IN AN ORG (#421) OR TYPED WITH THE PENCIL (#627) -- MUST BE A
+            RECORD OF ITS PARENT IN THE ORG INSERTED INTO, OR NOTHING IS WRITTEN. A POLYMORPHIC LOOKUP'S TYPED Id
+            HAS NO ONE PARENT TO ASK, SO ITS RECORD'S INSERT ANSWERS FOR IT.
+        */
+        const checkedTypedLookupIds = typedLookupIds.filter((typedLookupId): typedLookupId is IRecipeCockpitTypedLookupId & { parentObjectApiName: string } => typedLookupId.parentObjectApiName !== undefined);
+        const missingLookup = await this.findMissingOrgRecordLookup<ICheckedRecordIdLookup>(querySource, [...orgRecordLookups, ...checkedTypedLookupIds]);
+        if ( missingLookup ) {
+            const { objectApiName, fieldApiName, parentObjectApiName, recordId, failureMessage } = missingLookup;
             const lookupLabel = `${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
+            const parentLabel = RecipeYamlScalar.escapeForNotification(parentObjectApiName);
+            const recordIdLabel = RecipeYamlScalar.escapeForNotification(recordId);
             return refuse(failureMessage !== undefined
-                ? `Nothing was generated or inserted for ${treeLabel}: ${orgLabel} could not be asked whether it holds the ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} records ${lookupLabel} points at (${RecipeYamlScalar.escapeForNotification(failureMessage)}).`
-                : `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} points at the ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} record ${RecipeYamlScalar.escapeForNotification(recordId)}, chosen in ${RecipeYamlScalar.escapeForNotification(sourceOrgLabel)}, and ${orgLabel} has no such record. Clear it, or choose a record of this org with "Use existing ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} from org…".`);
-        }
-        // AN Id TYPED WITH THE PENCIL (#627) IS HELD TO THE SAME RULE; A POLYMORPHIC LOOKUP'S HAS NO ONE PARENT TO ASK, SO ITS RECORD'S INSERT ANSWERS
-        const missingTypedLookupId = await this.findMissingOrgRecordLookup(querySource, typedLookupIds.flatMap(typedLookupId => typedLookupId.parentObjectApiName !== undefined
-            ? [{ ...typedLookupId, parentObjectApiName: typedLookupId.parentObjectApiName, orgLabel: '' }]
-            : []));
-        if ( missingTypedLookupId ) {
-            const { objectApiName, fieldApiName, parentObjectApiName, recordId, failureMessage } = missingTypedLookupId;
-            const lookupLabel = `${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
-            return refuse(failureMessage !== undefined
-                ? `Nothing was generated or inserted for ${treeLabel}: ${orgLabel} could not be asked whether it holds the ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} records ${lookupLabel} points at (${RecipeYamlScalar.escapeForNotification(failureMessage)}).`
-                : `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} holds the ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} Id ${RecipeYamlScalar.escapeForNotification(recordId)}, typed with its pencil, and ${orgLabel} has no such record. Change it with the pencil, or Clear it.`);
+                ? `Nothing was generated or inserted for ${treeLabel}: ${orgLabel} could not be asked whether it holds the ${parentLabel} records ${lookupLabel} points at (${RecipeYamlScalar.escapeForNotification(failureMessage)}).`
+                : 'orgLabel' in missingLookup
+                    ? `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} points at the ${parentLabel} record ${recordIdLabel}, chosen in ${RecipeYamlScalar.escapeForNotification(String(missingLookup.orgLabel))}, and ${orgLabel} has no such record. Clear it, or choose a record of this org with "Use existing ${parentLabel} from org…".`
+                    : `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} holds the ${parentLabel} Id ${recordIdLabel}, typed with its pencil, and ${orgLabel} has no such record. Change it with the pencil, or Clear it.`);
         }
         const orgRecordIdsByObjectField = new Map<string, Map<string, Set<string>>>();
         [...orgRecordLookups, ...typedLookupIds].forEach(orgRecordLookup => {
@@ -17254,8 +17260,8 @@ export class RecipeCockpitService {
         The first lookup whose Id the org does not hold as a record of its parent, one query per
         parent; a query that fails is that lookup's failureMessage, never "it exists".
     */
-    static async findMissingOrgRecordLookup(querySource: IOrgQuerySource, orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[]):
-        Promise<( IRecipeCockpitOrgRecordLookupViewModel & { failureMessage?: string } ) | undefined> {
+    static async findMissingOrgRecordLookup<TLookup extends ICheckedRecordIdLookup>(querySource: IOrgQuerySource, orgRecordLookups: readonly TLookup[]):
+        Promise<( TLookup & { failureMessage?: string } ) | undefined> {
 
         const parentObjectApiNames = [...new Set(orgRecordLookups.map(orgRecordLookup => orgRecordLookup.parentObjectApiName))];
 
@@ -17482,7 +17488,8 @@ export class RecipeCockpitService {
                                             fakerService: string,
                                             recipeFileLabel: string,
                                             orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = [],
-                                            scratchOrgDetail?: IScratchOrgDetail): IRecipeCockpitConfirmContent {
+                                            scratchOrgDetail?: IScratchOrgDetail,
+                                            typedLookupIds: readonly IRecipeCockpitTypedLookupId[] = []): IRecipeCockpitConfirmContent {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
@@ -17505,8 +17512,11 @@ export class RecipeCockpitService {
             return this.describeOccurrence(objectApiName, nickname);
         };
         const leftOutLines = this.buildInsertLeftOutLines(tree);
-        // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM
-        const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord);
+        // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM, AND SO IS AN Id TYPED INTO A LOOKUP (#627)
+        const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord
+                                                                            && !typedLookupIds.some(typedLookupId => typedLookupId.objectApiName === fixedValue.objectApiName
+                                                                                                                    && typedLookupId.fieldApiName === fixedValue.fieldApiName
+                                                                                                                    && typedLookupId.recordId === fixedValue.value));
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
             .flatMap(([occurrenceKey, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`));
 
@@ -17531,6 +17541,14 @@ export class RecipeCockpitService {
                     ? [
                         'Lookups set to existing org records, each checked in this org before anything is written:',
                         ...orgRecordLookups.map(orgRecordLookup => `  ${orgRecordLookup.objectApiName}.${orgRecordLookup.fieldApiName} → ${orgRecordLookup.parentObjectApiName} ${orgRecordLookup.recordId} (from ${orgRecordLookup.orgLabel})`)
+                    ]
+                    : [] ),
+                ...( typedLookupIds.length > 0
+                    ? [
+                        'Lookups set to a record Id typed with the pencil, each checked in this org before anything is written:',
+                        ...typedLookupIds.map(typedLookupId => typedLookupId.parentObjectApiName !== undefined
+                            ? `  ${typedLookupId.objectApiName}.${typedLookupId.fieldApiName} → ${typedLookupId.parentObjectApiName} ${typedLookupId.recordId}`
+                            : `  ${typedLookupId.objectApiName}.${typedLookupId.fieldApiName} → ${typedLookupId.recordId} (can point at more than one object, so it is not checked)`)
                     ]
                     : [] )
             ],
@@ -18540,8 +18558,9 @@ export class RecipeCockpitService {
                 checkbox, matched against the same allow-list, and the value AS TYPED -- a string no
                 longer than any fixed value can be, '' clearing it. Only its shape is checked here; the
                 host checks the value itself against the field before anything is written. A field a
-                lock holds back (#220's, a lookup, RecordTypeId, a dependent picklist, an unticked field
-                or an excluded object's) is refused here and again before anything is written.
+                lock holds back (#220's, RecordTypeId, a dependent picklist, an unticked field or an
+                excluded object's) is refused here and again before anything is written. A lookup is
+                routed (#627): the executor's findLookupValueRefusal holds its value to a record Id.
             */
             case 'setFieldFixedValue': {
 
