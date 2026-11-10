@@ -79,7 +79,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
             usedVerbs.forEach(verb => expect(Object.keys(RECIPE_COCKPIT_ACTION_VERB_EMOJI)).toContain(verb));
             expect([...usedVerbs].sort()).toEqual(Object.keys(RECIPE_COCKPIT_ACTION_VERB_EMOJI).sort());
-            expect(RECIPE_COCKPIT_VERB_BUTTON_VERBS).toEqual({ treeInsert: 'generateData', dataOrgNewScratch: 'create' });
+            expect(RECIPE_COCKPIT_VERB_BUTTON_VERBS).toEqual({ treeInsert: 'generateData', dataOrgNewScratch: 'create', dataOrgAuthorize: 'authorize' });
 
         });
 
@@ -109,7 +109,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             const panelScript = panelScriptOf(shellHtml());
             const primaryClassNames = Array.from(panelScript.matchAll(/createButton\('primary', '([A-Za-z ]+)'/g), match => match[1]);
 
-            expect([...new Set(primaryClassNames)].sort()).toEqual(['adapterChildGenerate', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
+            expect([...new Set(primaryClassNames)].sort()).toEqual(['adapterChildGenerate', 'dataOrgAuthorize', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
 
         });
 

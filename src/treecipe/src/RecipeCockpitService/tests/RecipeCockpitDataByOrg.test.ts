@@ -15,6 +15,7 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
+    RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
@@ -482,14 +483,14 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('says there are no authorized orgs with the existing message', async () => {
+        it('says there are no authorized orgs, and points at Authorize org (#630)', async () => {
 
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
-            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE });
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE });
 
         });
 

@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.198.0] - Recipe Cockpit: the ticked record types are used at "Generate fake data and insert", in one folded data set (#623, slice C of #620)
+## [3.199.0] - Recipe Cockpit: the ticked record types are used at "Generate fake data and insert", in one folded data set (#623, slice C of #620)
 
 Before, ticking record types under **Manage record types** did nothing until **Regenerate with these record types** wrote a whole new Generate Treecipe run. Now the ticks are what the next **Generate fake data and insert** uses.
 
@@ -17,6 +17,22 @@ Before, ticking record types under **Manage record types** did nothing until **R
 - Palette **Generate Treecipe**, **Run Faker by Recipe** and **Insert Data Set by Directory** are unchanged, and the golden files are untouched. Run Faker accepts a recipe copy that carries only a `recordTypeSelection`, type-checked like the rest of the copy.
 - The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new flow; its pictures were re-taken.
 
+## [3.198.0] - Recipe Cockpit: "Authorize org" logs in to an existing sandbox from Target Org Manager (#630)
+
+The cockpit could create a scratch org but not authorize an org that already exists: every "no org" message sent you to a terminal for `sf org login web`.
+
+- **Authorize org**, a 🔑 button right after **➕ New scratch org** in Target Org Manager, logs in to an existing org in your browser. It asks where to log in (**Sandbox**, `https://test.salesforce.com`, or the org's own **Custom My Domain** address) and for an alias, which can be left empty. An alias another org holds is a warning, as it is for a new scratch org.
+- **No Salesforce CLI process runs.** The login goes through `@salesforce/core`'s `WebOAuthServer`, and the org is saved with your other CLI authorizations. A login address is accepted only as `https://test.salesforce.com` or an `https://….my.salesforce.com` address with no port, path, query or user name.
+- **One box on the confirmation: "Make this my selected target org and this workspace's default org".** It starts unticked. Ticked, the org is selected in Target Org Manager and set as `target-org` in this workspace's `.sf/config.json`, with every other key left as it was. Unticked, the org is only added to the list, and the selection and the file are untouched.
+- **Only a sandbox or scratch org that answers its connection check is selected, made the default or given the alias.** A production org is authorized, and one warning says it was not selected and its alias was not set, with the `sf alias set` command if you still want it. An alias is never moved onto a production org.
+- **One notification per login**, naming the org and what happened: authorized, cancelled, no login within five minutes, the local login port in use, the login refused, the alias not set, or the workspace config not written (the login still counts, and the message gives the `sf config set` command). A cancel or a timeout says the org may still have been authorized, since Salesforce's library saves a login before the browser shows its success page. A refused login is worded as what the login reported. When `SF_TARGET_ORG` overrides the workspace default just written, the notification says so.
+- **The login holds the same controls a new scratch org does**: both buttons, the org dropdown, ⟳, Open in browser and every insert are disabled until it ends, and a reopened panel is told a login is running. Cancel on its notification stops the login and frees the local port.
+- The workspace config is written only inside the workspace: a `.sf` folder or `config.json` that is a link elsewhere, or a file that is not a JSON object, is left alone.
+- **The "Get latest detail" dialog no longer offers ➕ New scratch org** (#617), and does not offer Authorize org either. Its first step only chooses the org to read from: the dropdown, the type label, Open in browser and ⟳ stay. Both buttons that add an org remain in Target Org Manager.
+- The cockpit's "no org" messages now say to press **Authorize org** before naming the terminal command. The Command Palette commands keep their messages.
+- The ? help, `docs/RECIPE-COCKPIT-GUIDE.md`, the README and three guide pictures describe the button; the nine rendered baselines gain its one line.
+- **+ New scratch org**, the picker's connection check, the sandbox check before every org write and the Command Palette commands are unchanged.
+- **Tests.** `SalesforceOrgLogin`: the address rule, each login ending, the alias, the config write and its refusals; one suite asks the real `@salesforce/core` class for the private member the cancel closes. `RecipeCockpitOrgAuthorize`: the confirmation and every notification. `RecipeCockpitAuthorizeOrg`: the router, the panel button and the whole run. Three acceptance journeys read by role and name: box ticked, box unticked, production org.
 ## [3.197.0] - An option to give each record type block its own copy of the children, both backends (#622, slice B of #620)
 
 With several record types selected, only an object's first record type block carried its children (#194), so a Partner Account had no Contacts. A new opt-in, `isChildTreeCopiedPerRecordTypeBlock` on `RecordTypeSelection` (off by default), gives every block its own copy. Nothing turns it on yet: the palette and the cockpit are unchanged, and slice C of #620 is what will set it. With the option off, every recipe is byte-identical to 3.196.0 (the golden files are unchanged).

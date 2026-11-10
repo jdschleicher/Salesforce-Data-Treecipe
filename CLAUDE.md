@@ -165,6 +165,7 @@ src/
     │   └── tests/
     ├── RecipeCockpitService/
     │   ├── RecipeCockpitService.ts           # Owns the Recipe Cockpit webview panel: shell, model, message router and executor
+    │   ├── RecipeCockpitOrgAuthorize.ts      # "Authorize org" (#630): its prompts, confirmation and the one notification a login ends in; no vscode
     │   ├── RecipeCockpitPermissionSetAssign.ts # "Assign permission sets to me…" (#274): discover, plan and insert assignments; no vscode
     │   ├── RecipeCockpitPermissionSetGenerate.ts # "Generate permission set…" (#306): one tree's create/read permission set; no vscode
     │   ├── RecipeCockpitMetadataDeploy.ts    # Troubleshooting tab deploys (#346): what a tree holds, package.xml, CLI argv and answer; no vscode
@@ -259,6 +260,7 @@ src/
     │   └── tests/                            # SalesforceCliCallSites.test.ts: every remaining sf call site by file and method (#496), child_process importers, no direct jsforce import
     ├── SalesforceOrgService/
     │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection, connected-org listing, describe cache, org type and default org reads
+    │   ├── SalesforceOrgLogin.ts             # "Authorize org" (#630): browser login through WebOAuthServer, login address rule, workspace target-org write; no vscode
     │   └── tests/
     │       └── mocks/                        # Describe, authorization and ping fixtures, AuthInfo answers
     ├── SOQLTemplateService/

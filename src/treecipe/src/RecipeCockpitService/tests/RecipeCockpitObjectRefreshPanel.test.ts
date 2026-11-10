@@ -693,6 +693,12 @@ describe('RecipeCockpitService, Get latest object detail from target org (#612)'
             expect(dialogElement.attributes.role).toBe('dialog');
             expect(panel.cockpitBodyElement.attributes.inert).toBe('');
             expect(panel.findAll(dialogElement, 'dataOrgView')).toHaveLength(1);
+            // #617: THE DIALOG CHOOSES AN ORG, IT DOES NOT ADD ONE; BOTH BUTTONS STAY IN TARGET ORG MANAGER
+            expect(panel.findAll(dialogElement, 'dataOrgSelect')).toHaveLength(1);
+            expect(panel.findAll(dialogElement, 'dataOrgNewScratch')).toEqual([]);
+            expect(panel.findAll(dialogElement, 'dataOrgAuthorize')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch')).toHaveLength(1);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgAuthorize')).toHaveLength(1);
             const kindChecks = panel.findAll(dialogElement, 'objectRefreshKindCheck');
             expect(kindChecks.map(checkElement => [checkElement.attributes['aria-label'], checkElement.attributes['aria-checked']])).toEqual([
                 ['Fields', 'true'], ['Validation rules', 'true'], ['Record types', 'true'], ['Global value sets', 'true']

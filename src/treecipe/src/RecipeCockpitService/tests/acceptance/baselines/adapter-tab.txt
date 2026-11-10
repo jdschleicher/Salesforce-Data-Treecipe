@@ -3,6 +3,7 @@ button "About this cockpit" [collapsed]
 text "Target Org Manager"
 button "Choose org…"
 button "New scratch org"
+button "Authorize org"
 text "Treecipes"
 label "Select Generated Treecipe runs by date:"
 combobox "Select Generated Treecipe runs by date:" = "2026-10-15 09:00:00 UTC · faker-js · latest"
