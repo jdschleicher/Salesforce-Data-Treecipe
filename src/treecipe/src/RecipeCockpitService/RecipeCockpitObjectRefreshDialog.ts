@@ -153,11 +153,12 @@ export const RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT = `    /*
         bodyElement.appendChild(createElement('div', 'confirmSummary', 'Choose the org to read ' + hostMessage.objectApiName + ' from, then what to compare with this project and the recipe. Nothing is written until you apply what you tick.'));
 
         const orgElement = createElement('div', 'objectRefreshOrg');
-        const orgView = buildDataOrgView();
+        // THE DIALOG ONLY CHOOSES AN ORG TO READ (#617): THE BUTTONS THAT ADD ONE START A RUN WITH A CONFIRMATION OF ITS OWN, AND STAY IN TARGET ORG MANAGER
+        const orgView = buildDataOrgView(false);
         orgElement.appendChild(orgView.element);
         bodyElement.appendChild(orgElement);
         objectRefreshDialog.orgView = orgView;
-        [orgView.loadElement, orgView.selectElement, orgView.openOrgElement, orgView.refreshElement, orgView.newScratchElement].forEach(function (element) { objectRefreshDialog.focusableElements.push(element); });
+        [orgView.loadElement, orgView.selectElement, orgView.openOrgElement, orgView.refreshElement].forEach(function (element) { objectRefreshDialog.focusableElements.push(element); });
 
         const tickedKinds = OBJECT_REFRESH_KINDS.filter(function (kind) { return hostMessage.kinds.indexOf(kind) !== -1; });
         const kindsElement = createElement('div', 'objectRefreshKinds');

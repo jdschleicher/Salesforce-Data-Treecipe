@@ -677,7 +677,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
             expect(serviceSource.match(/this\.confirmInPanel\(/g) ?? []).toHaveLength(23);
-            expect(serviceSource.match(/this\.confirmInPanelWithCheckbox\(/g) ?? []).toHaveLength(1);
+            expect(serviceSource.match(/this\.confirmInPanelWithCheckbox\(/g) ?? []).toHaveLength(2);
 
         });
 
