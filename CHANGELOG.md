@@ -1,8 +1,8 @@
 # Change Log
 
-## [3.195.0] - An option to give each record type block its own copy of the children, both backends (#622, slice B of #620)
+## [3.196.0] - An option to give each record type block its own copy of the children, both backends (#622, slice B of #620)
 
-With several record types selected, only an object's first record type block carried its children (#194), so a Partner Account had no Contacts. A new opt-in, `isChildTreeCopiedPerRecordTypeBlock` on `RecordTypeSelection` (off by default), gives every block its own copy. Nothing turns it on yet: the palette and the cockpit are unchanged, and slice C of #620 is what will set it. With the option off, every recipe is byte-identical to 3.194.4 (the golden files are unchanged).
+With several record types selected, only an object's first record type block carried its children (#194), so a Partner Account had no Contacts. A new opt-in, `isChildTreeCopiedPerRecordTypeBlock` on `RecordTypeSelection` (off by default), gives every block its own copy. Nothing turns it on yet: the palette and the cockpit are unchanged, and slice C of #620 is what will set it. With the option off, every recipe is byte-identical to 3.195.0 (the golden files are unchanged).
 
 With it on, and Account written as Business and Partner blocks:
 
@@ -12,6 +12,16 @@ With it on, and Account written as Business and Partner blocks:
 - **A self-lookup iteration** (`Account_child_NickName`) stays under the object's first block only. A child copied into a later block keeps its own self-lookup iteration, wired to the copy.
 - Record totals double for every child under a two-block parent (`RecipeCockpitRecipeWriter.countRecipeRecordsByObject`). The Recipe Cockpit reads each copy as its own occurrence, by nickname.
 - `RecordTypeSelection.fromUnknown` takes the option as a second argument and turns it on only for exactly `true`.
+## [3.195.0] - Data sets record the record types they were generated with, and each Previously Used Data Sets row names them (#621, slice A of #620)
+
+A data set row did not say which record types its records carry, so a Business-only set and a Business + Partner set looked the same.
+
+- **Recorded.** Run Faker by Recipe writes `recordTypesByObject` to `BaseArtifactFiles/datasetSource.json`: each object's developer names, in block order, read from the `RecordTypeId: <Object>.<DeveloperName>` lines of the recipe it actually ran (the Recipe Cockpit's filtered copy included). Only an object no block wrote as the default (with the RecordType Options TODO under it) is recorded, so a run generated with no record type choice writes the file exactly as before. An object with a single record type is written with no TODO, so it is recorded too: its records carry it. A cockpit run reads the copy it already holds rather than the file again. Both backends.
+- **Shown.** Each Previously Used Data Sets row whose data set records them draws `Record types: Account · Business, Partner` after its name, on line 1 of the row header, in its own chip style. A data set from before this draws nothing new. Searching by it is left to a later slice of #620.
+- **Read safely.** The reader drops a `recordTypesByObject` that is not a non-empty map of api names to non-empty lists of api names, or that names more than 100 objects or 200 record types for one, and the rest of the file still reads; the map has no prototype. Every other field still refuses the whole file, since the cockpit acts on those.
+- **One reader.** The `RecordTypeId` block reader moved from `RecipeCockpitService` into `RecipeCockpitRecipeWriter` (which imports nothing), so Run Faker reads blocks the same way the cockpit does. The cockpit calls it there, and its unused `RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER` is gone.
+- **Help, guide and screenshots.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the chip; two pictures are re-taken.
+- **Tests.** `DatasetSourceService`: written only when named, read back in order with no prototype, dropped for each bad shape while the file reads, the pattern held equal to `SalesforceApiName`'s. `RecipeCockpitRecipeWriter`: chosen blocks, nested friends, defaults, commented lines, another object's value, every golden recipe answering none. `runFakerGenerationByRecipeFile`: both backends, a default block, the cockpit's copy. `RecipeCockpitDatasetRecordTypes.test.ts`: the posted model and the drawn chip.
 
 ## [3.194.4] - Recipe Cockpit: the object row's "Get latest detail" button carries a red refresh arrow (#612)
 
