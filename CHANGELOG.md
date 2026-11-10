@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.195.0] - Recipe Cockpit: every lookup's pencil takes a record Id, including a lookup with no parent in its metadata (#627)
+## [3.196.0] - Recipe Cockpit: every lookup's pencil takes a record Id, including a lookup with no parent in its metadata (#627)
 
 - **The pencil on a lookup field is no longer locked.** A lookup whose field file has no `<referenceTo>` and no known parent, such as `Product2.SellerId` or `Product2.SourceProductId`, had no "Create … in recipe" or "Use existing … from org…" button and a locked pencil, so its `### TODO -- REFERENCE ID REQUIRED` could not be set from the cockpit. Every lookup's pencil now opens, tree-wired lookups included.
 - **On a lookup, the pencil takes the 15- or 18-character Id of an existing record.** It opens empty, with a placeholder and hint that say so, and writes the Id into the recipe as a fixed value (`SellerId: "001…"`). Clear puts back the line the field had (its TODO, or its nickname). Anything else typed, such as a word or a `${{ … }}` expression, is refused under the editor: "Not saved: Product2.SellerId is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id." A record Id typed over one chosen with "Use existing … from org…" replaces it.
@@ -8,6 +8,16 @@
 - The TODO tab's Remove on a `REFERENCE ID REQUIRED` lookup now says to give it a record Id with its pencil, or wire it to a parent, in the Treecipe tab.
 - The cockpit's ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the lookup pencil.
 - Recipe generation, the golden files, "Create … in recipe", "Use existing … from org…" and the Treecipe Adapter's lookup lock are unchanged.
+## [3.195.0] - Data sets record the record types they were generated with, and each Previously Used Data Sets row names them (#621, slice A of #620)
+
+A data set row did not say which record types its records carry, so a Business-only set and a Business + Partner set looked the same.
+
+- **Recorded.** Run Faker by Recipe writes `recordTypesByObject` to `BaseArtifactFiles/datasetSource.json`: each object's developer names, in block order, read from the `RecordTypeId: <Object>.<DeveloperName>` lines of the recipe it actually ran (the Recipe Cockpit's filtered copy included). Only an object no block wrote as the default (with the RecordType Options TODO under it) is recorded, so a run generated with no record type choice writes the file exactly as before. An object with a single record type is written with no TODO, so it is recorded too: its records carry it. A cockpit run reads the copy it already holds rather than the file again. Both backends.
+- **Shown.** Each Previously Used Data Sets row whose data set records them draws `Record types: Account · Business, Partner` after its name, on line 1 of the row header, in its own chip style. A data set from before this draws nothing new. Searching by it is left to a later slice of #620.
+- **Read safely.** The reader drops a `recordTypesByObject` that is not a non-empty map of api names to non-empty lists of api names, or that names more than 100 objects or 200 record types for one, and the rest of the file still reads; the map has no prototype. Every other field still refuses the whole file, since the cockpit acts on those.
+- **One reader.** The `RecordTypeId` block reader moved from `RecipeCockpitService` into `RecipeCockpitRecipeWriter` (which imports nothing), so Run Faker reads blocks the same way the cockpit does. The cockpit calls it there, and its unused `RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER` is gone.
+- **Help, guide and screenshots.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the chip; two pictures are re-taken.
+- **Tests.** `DatasetSourceService`: written only when named, read back in order with no prototype, dropped for each bad shape while the file reads, the pattern held equal to `SalesforceApiName`'s. `RecipeCockpitRecipeWriter`: chosen blocks, nested friends, defaults, commented lines, another object's value, every golden recipe answering none. `runFakerGenerationByRecipeFile`: both backends, a default block, the cockpit's copy. `RecipeCockpitDatasetRecordTypes.test.ts`: the posted model and the drawn chip.
 
 ## [3.194.4] - Recipe Cockpit: the object row's "Get latest detail" button carries a red refresh arrow (#612)
 

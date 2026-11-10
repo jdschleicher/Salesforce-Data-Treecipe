@@ -1813,13 +1813,15 @@ describe('ExtensionCommandService', () => {
             return fullFilePath;
         };
 
-        const arrangeRun = (backendCase: typeof backendCases[number], recipeRelativeFolderPath: string, recipeFileName: string = backendCase.recipeFileName) => {
+        const defaultRecipeContent = '- object: Account\n  nickname: Account_1\n  count: 1\n  fields:\n    Name: Acme\n';
+
+        const arrangeRun = (backendCase: typeof backendCases[number], recipeRelativeFolderPath: string, recipeFileName: string = backendCase.recipeFileName, recipeContent: string = defaultRecipeContent) => {
 
             jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(backendCase.fakerService);
             jest.spyOn(backendCase.processorPrototype, 'generateFakeDataBySelectedRecipeFile').mockResolvedValue(backendCase.fakerOutput);
 
             writeWorkspaceFile(`treecipe/GeneratedRecipes/${backendCase.runFolderName}/treecipeObjectsWrapper-${runTimestamp}.json`, '{}');
-            const recipeFilePath = writeWorkspaceFile(`${recipeRelativeFolderPath}/${recipeFileName}`, '- object: Account\n  nickname: Account_1\n  count: 1\n  fields:\n    Name: Acme\n');
+            const recipeFilePath = writeWorkspaceFile(`${recipeRelativeFolderPath}/${recipeFileName}`, recipeContent);
 
             jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection')
                 .mockResolvedValue({ label: recipeFileName, detail: recipeFilePath });
@@ -1888,6 +1890,79 @@ describe('ExtensionCommandService', () => {
                 basis: 'recorded',
                 recipeRunFolderName: backendCase.runFolderName,
                 recipeTreeFolderName: 'Account-thru-Contact'
+            });
+
+        });
+
+        describe('the record types the data set carries (#621)', () => {
+
+            const twoRecordTypeRecipeContent = [
+                '- object: Account',
+                '  nickname: Account_Business_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Business',
+                '    Name: Acme',
+                '- object: Account',
+                '  nickname: Account_Partner_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Partner',
+                '    Name: Acme',
+                ''
+            ].join('\n');
+
+            const defaultRecordTypeRecipeContent = [
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Business',
+                '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
+                '                    # Account.Partner',
+                '    Name: Acme',
+                ''
+            ].join('\n');
+
+            test.each(backendCases)('given $fakerService and a recipe with a block per chosen record type, records them in block order', async (backendCase) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`, backendCase.recipeFileName, twoRecordTypeRecipeContent);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile();
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                const [datasetFolderName] = readDatasetFolderNames();
+                expect(readWrittenDatasetSource(datasetFolderName).recordTypesByObject).toEqual({ Account: ['Business', 'Partner'] });
+
+            });
+
+            test.each(backendCases)('given $fakerService and a block written as the default, records no record types', async (backendCase) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`, backendCase.recipeFileName, defaultRecordTypeRecipeContent);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile();
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                const [datasetFolderName] = readDatasetFolderNames();
+                expect(readWrittenDatasetSource(datasetFolderName)).not.toHaveProperty('recordTypesByObject');
+
+            });
+
+            test('reads the record types from the copy the Recipe Cockpit handed it, not the recipe file', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`, fakerJsCase.recipeFileName, defaultRecordTypeRecipeContent);
+                const recipeFilePath = path.join(workspaceRoot, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`, fakerJsCase.recipeFileName);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, {
+                    recipeText: twoRecordTypeRecipeContent,
+                    excludedObjectApiNames: [],
+                    objectCountsByObject: { Account: 2 }
+                }, { isConfirmed: true });
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                expect(readWrittenDatasetSource(path.basename(datasetFolderPath as string)).recordTypesByObject).toEqual({ Account: ['Business', 'Partner'] });
+
             });
 
         });

@@ -31,6 +31,7 @@ import { RecipeService } from '../../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 import { RecordTypeSelectionConfiguration } from '../../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
+import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
     The Record types tab (#195): each tree card lists the objects it draws that have two or more
@@ -159,7 +160,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         describe('applyGeneratedRecordTypes', () => {
 
             const readRecordTypeBlocks = (recipeTexts: string[]) => {
-                const recordTypeBlocks = RecipeCockpitService.buildEmptyRecordTypeBlocks();
+                const recordTypeBlocks = RecipeCockpitRecipeWriter.buildEmptyRecordTypeBlocks();
                 recipeTexts.forEach(recipeText => RecipeCockpitService.parseRecipeSource(recipeText, recordTypeBlocks));
                 return recordTypeBlocks;
             };
