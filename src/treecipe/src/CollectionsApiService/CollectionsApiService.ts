@@ -972,14 +972,14 @@ export class CollectionsApiService {
 
         const nicknameToOrgIdEntries: { nicknameValue: string; orgRecordId: string }[] = [];
 
-        const wholeReferenceIdToOrgIdEntries: { referenceId: string; orgRecordId: string }[] = [];
+        const orgRecordIdByNicknamelessReferenceId = new Map<string, string>();
 
         for (const [referenceIdKey, orgRecordId] of Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
             const nicknameValue = this.readNicknameFromReferenceId(referenceIdKey);
             if (nicknameValue && typeof orgRecordId === 'string') {
                 nicknameToOrgIdEntries.push({ nicknameValue, orgRecordId });
             } else if ( typeof orgRecordId === 'string' && CollectionsApiService.nicknamelessReferenceIdPattern.test(referenceIdKey) ) {
-                wholeReferenceIdToOrgIdEntries.push({ referenceId: referenceIdKey, orgRecordId });
+                orgRecordIdByNicknamelessReferenceId.set(referenceIdKey, orgRecordId);
             }
         }
 
@@ -1002,11 +1002,16 @@ export class CollectionsApiService {
             A snowfakery record carries no nickname, so its referenceId is <Object>_Reference_<id> alone,
             and a recipe that copies children per record type block (#622) writes its lookup as that same
             text. Only a field value that IS the whole referenceId is replaced -- never a key, and never a
-            record's own attributes.referenceId.
+            record's own attributes.referenceId. ONE pass over the file, whatever the map holds: a pattern
+            per inserted record made a 10k-record snowfakery file take seconds.
         */
-        for (const { referenceId, orgRecordId } of wholeReferenceIdToOrgIdEntries) {
-            const quotedReferenceIdValuePattern = new RegExp(`(?<!"referenceId"\\s*:\\s*)${JSON.stringify(referenceId)}(?!\\s*:)`, 'g');
-            collectionsApiJson = collectionsApiJson.replace(quotedReferenceIdValuePattern, () => JSON.stringify(orgRecordId));
+        if ( orgRecordIdByNicknamelessReferenceId.size > 0 ) {
+            collectionsApiJson = collectionsApiJson.replace(
+                /(?<!"referenceId"\s*:\s*)"([A-Za-z][A-Za-z0-9_]*_Reference_\d+)"(?!\s*:)/g,
+                (quotedValue: string, referenceId: string) => ( orgRecordIdByNicknamelessReferenceId.has(referenceId)
+                    ? JSON.stringify(orgRecordIdByNicknamelessReferenceId.get(referenceId))
+                    : quotedValue )
+            );
         }
 
         return collectionsApiJson;

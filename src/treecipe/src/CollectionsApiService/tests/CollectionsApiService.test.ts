@@ -648,6 +648,16 @@ describe('Shared tests for CollectionsApiService', () => {
 
         });
 
+        test('a value shaped like a referenceId that was never inserted is left as it is', () => {
+
+            const collectionsApiJson = '{"records":[{"AccountId":"Account_Reference_9","Other__c":"Account_Reference_2"}]}';
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(JSON.parse(result)).toEqual({ records: [ { AccountId: 'Account_Reference_9', Other__c: '001SECOND' } ] });
+
+        });
+
         test('a key that is not a referenceId shape, or an org Id that is not a string, is never used', () => {
 
             const collectionsApiJson = '{"records":[{"A":"Reference_2","B":"Account_Reference_3"}]}';
