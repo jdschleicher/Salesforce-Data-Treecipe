@@ -75,7 +75,7 @@ export interface IObjectRefreshItem {
 export interface IObjectRefreshPlannedItem extends IObjectRefreshItem {
     fileCopy: IOrgMetadataFileCopy;
     recipeChanges: IObjectRefreshRecipeChange[];
-    offersRecordTypeRegenerate?: boolean;
+    needsNewRunForRecordType?: boolean;
 }
 
 export interface IObjectRefreshComparison {
@@ -434,7 +434,7 @@ export class RecipeCockpitObjectRefresh {
                     targetFilePath: localFile?.filePath ?? path.join(newFolderPath, `${componentName}${childFileKind.fileSuffix}`)
                 },
                 recipeChanges: recipeDecision.recipeChanges,
-                ...( childFileKind.kind === 'recordTypes' ? { offersRecordTypeRegenerate: true } : {} )
+                ...( childFileKind.kind === 'recordTypes' ? { needsNewRunForRecordType: true } : {} )
             });
 
         }

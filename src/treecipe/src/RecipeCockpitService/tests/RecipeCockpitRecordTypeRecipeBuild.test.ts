@@ -5,8 +5,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { RecipeCockpitJourney } from './acceptance/RecipeCockpitJourney';
-import { TREECIPE_TAB_FIXTURE, TREE_NAME } from './acceptance/TreecipeTabWorkspace';
-import { RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { GENERATE_AND_INSERT_BUTTON_NAME, INSERT_ORG_LABEL, TREECIPE_TAB_FIXTURE, TREE_NAME, openTreecipeTabJourney } from './acceptance/TreecipeTabWorkspace';
+import { IDerivedTreeRecipe, RECORD_TYPE_RECIPE_PROGRESS_TITLE, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { DirectoryProcessor, RecipeGenerationCancelledError } from '../../DirectoryProcessingService/DirectoryProcessor';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
@@ -28,6 +29,13 @@ describe.each(['faker-js', 'snowfakery'])('RecipeCockpitRecordTypeRecipe.buildDe
         await journey.close();
     });
 
+    // THE RECIPE BUILT, OR A FAILED TEST NAMING WHY THERE IS NONE
+    const buildRecipe = async (treeFolderName: string, recordTypeSelection: Record<string, string[]>): Promise<IDerivedTreeRecipe> => {
+        const derivedRecipe = await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, treeFolderName, recordTypeSelection);
+        if ( typeof derivedRecipe === 'string' ) { throw new Error(`no recipe was built: ${derivedRecipe}`); }
+        return derivedRecipe;
+    };
+
     const listWorkspaceFiles = (folderPath: string): string[] => fs.readdirSync(folderPath, { withFileTypes: true })
         .flatMap(entry => entry.isDirectory() ? listWorkspaceFiles(path.join(folderPath, entry.name)) : [path.join(folderPath, entry.name)]);
 
@@ -35,10 +43,12 @@ describe.each(['faker-js', 'snowfakery'])('RecipeCockpitRecordTypeRecipe.buildDe
 
         const filesBefore = listWorkspaceFiles(journey.workspaceRoot);
 
-        const derivedRecipe = await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, TREE_NAME, { Account: ['Business', 'Partner'] });
+        const progressCallCountBefore = journey.hostCalls.filter(hostCall => hostCall.call === 'window.withProgress').length;
+        const derivedRecipe = await buildRecipe(TREE_NAME, { Account: ['Business', 'Partner'] });
 
-        expect(derivedRecipe?.droppedTicks).toEqual([]);
-        const recipeText = derivedRecipe?.recipeText as string;
+        expect(journey.hostCalls.filter(hostCall => hostCall.call === 'window.withProgress').slice(progressCallCountBefore).map(hostCall => hostCall.args[0])).toEqual([RECORD_TYPE_RECIPE_PROGRESS_TITLE]);
+        expect(derivedRecipe.droppedTicks).toEqual([]);
+        const recipeText = derivedRecipe.recipeText;
         expect(yaml.load(recipeText)).toBeArray();
         expect([...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(recipeText)]).toEqual([['Account', ['Business', 'Partner']]]);
         expect([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(recipeText)]).toEqual([['Account', 2], ['Contact', 2], ['Visit__c', 2]]);
@@ -48,25 +58,69 @@ describe.each(['faker-js', 'snowfakery'])('RecipeCockpitRecordTypeRecipe.buildDe
 
     it('builds the default recipe for a selection that names no object', async () => {
 
-        const derivedRecipe = await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, TREE_NAME, {});
+        const derivedRecipe = await buildRecipe(TREE_NAME, {});
 
-        expect([...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(derivedRecipe?.recipeText as string)]).toEqual([]);
-        expect([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(derivedRecipe?.recipeText as string)]).toEqual([['Account', 1], ['Contact', 1], ['Visit__c', 1]]);
+        expect([...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(derivedRecipe.recipeText)]).toEqual([]);
+        expect([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(derivedRecipe.recipeText)]).toEqual([['Account', 1], ['Contact', 1], ['Visit__c', 1]]);
 
     });
 
     it('drops the whole choice of an object ticked with a record type the metadata does not have, and names it', async () => {
 
-        const derivedRecipe = await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, TREE_NAME, { Account: ['Partner', 'Reseller'] });
+        const derivedRecipe = await buildRecipe(TREE_NAME, { Account: ['Partner', 'Reseller'] });
 
-        expect(derivedRecipe?.droppedTicks).toEqual([{ objectApiName: 'Account', missingDeveloperNames: ['Reseller'] }]);
-        expect([...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(derivedRecipe?.recipeText as string)]).toEqual([]);
+        expect(derivedRecipe.droppedTicks).toEqual([{ objectApiName: 'Account', missingDeveloperNames: ['Reseller'] }]);
+        expect([...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(derivedRecipe.recipeText)]).toEqual([]);
 
     });
 
     it('answers no recipe for a tree the object metadata does not build', async () => {
 
-        await expect(RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, 'Account-thru-Gone__c', { Account: ['Partner'] })).resolves.toBeUndefined();
+        await expect(RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, 'Account-thru-Gone__c', { Account: ['Partner'] })).resolves.toBe('treeNotBuilt');
+
+    });
+
+    it('answers cancelled when the reader cancels the walk, and rethrows any other failure', async () => {
+
+        const walkSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockRejectedValueOnce(new RecipeGenerationCancelledError());
+        await expect(RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, TREE_NAME, { Account: ['Partner'] })).resolves.toBe('cancelled');
+
+        walkSpy.mockRejectedValueOnce(new Error('EACCES'));
+        await expect(RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(journey.workspaceRoot, TREE_NAME, { Account: ['Partner'] })).rejects.toThrow('EACCES');
+
+    });
+
+});
+
+describe('Generate fake data and insert, when the reader cancels the recipe build (#623)', () => {
+
+    let journey: RecipeCockpitJourney;
+
+    beforeEach(async () => {
+        journey = await openTreecipeTabJourney();
+    });
+
+    afterEach(async () => {
+        await journey.close();
+    });
+
+    it('says so once and asks, generates and sends nothing', async () => {
+
+        jest.spyOn(RecipeCockpitRecordTypeRecipe, 'buildDerivedTreeRecipe').mockResolvedValue('cancelled');
+
+        await journey.click('button', `Manage record types (${TREE_NAME})`);
+        await journey.click('checkbox', 'Partner (Account)');
+        const fileChangeCountBefore = journey.fileChanges.length;
+        await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+        await journey.answerQuickPick(INSERT_ORG_LABEL);
+
+        expect(journey.notifications.map(notification => ({ kind: notification.kind, text: notification.text }))).toEqual([{
+            kind: 'information',
+            text: `Nothing was generated or inserted for ${TREE_NAME}: building its recipe for the ticked record types was cancelled.`
+        }]);
+        expect(journey.screen().findAll('alertdialog')).toHaveLength(0);
+        expect(journey.fileChanges.slice(fileChangeCountBefore)).toEqual([]);
+        expect(journey.org.calls.filter(orgCall => /\.insert$/.test(orgCall.call))).toEqual([]);
 
     });
 

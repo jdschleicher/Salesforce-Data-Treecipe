@@ -322,7 +322,7 @@ describe('RecipeCockpitObjectRefresh (#612)', () => {
             const { items } = await compare({ kinds: ['recordTypes'] });
 
             expect(items.map(item => `${item.status} ${item.name}`)).toEqual(['changed Business', 'new Partner']);
-            expect(itemNamed(items, 'recordTypes', 'Business')).toMatchObject({ differences: ['Rating__c: +Cold'], recipeNote: OBJECT_REFRESH_RECIPE_NOTES.recordType, recipeChanges: [], offersRecordTypeRegenerate: true });
+            expect(itemNamed(items, 'recordTypes', 'Business')).toMatchObject({ differences: ['Rating__c: +Cold'], recipeNote: OBJECT_REFRESH_RECIPE_NOTES.recordType, recipeChanges: [], needsNewRunForRecordType: true });
             expect(itemNamed(items, 'recordTypes', 'Partner')!.fileCopy.targetFilePath).toBe(projectPath('objects', 'Account', 'recordTypes', 'Partner.recordType-meta.xml'));
 
         });

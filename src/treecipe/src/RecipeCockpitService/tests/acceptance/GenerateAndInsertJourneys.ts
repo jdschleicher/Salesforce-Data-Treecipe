@@ -16,6 +16,20 @@ import { GENERATE_AND_INSERT_BUTTON_NAME, INSERT_ORG_LABEL, RECIPE_FILE_NAME, RE
 
 const CONFIRMATION_TITLE = `Generate ${TREE_NAME} and insert it into qa (qa@example.com.qa)?`;
 const CONFIGURATION_RELATIVE_PATH = 'treecipe/treecipe.config.json';
+// A CHILD OF Account THE RUN WAS NOT GENERATED WITH: IT JOINS THE TREE WITHOUT CHANGING ITS FOLDER NAME
+const NOTE_ACCOUNT_LOOKUP_FIELD = `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <externalId>false</externalId>
+    <label>Account</label>
+    <referenceTo>Account</referenceTo>
+    <relationshipLabel>Notes</relationshipLabel>
+    <relationshipName>Notes</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>
+`;
 const FOLDED_MODE_LABEL = RECORD_TYPE_SET_MODE_LABELS.folded;
 const PRODUCTION_ORG = { username: 'admin@example.com.prod', aliases: ['prod'], orgId: '00D000000000PRDAAA', instanceUrl: 'https://example.my.salesforce.com', isSandbox: false };
 
@@ -326,6 +340,13 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
 
             await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
             await journey.answerQuickPick(INSERT_ORG_LABEL);
+            await journey.waitForConfirmation();
+
+            await journey.step('the confirmation says what treecipe.config.json will hold', () => {
+                const screen = journey.screen();
+                screen.get('listitem', 'Remember this selection: treecipe.config.json will hold these record types for Generate Treecipe: Account: Business, Partner.', screen.get('alertdialog', CONFIRMATION_TITLE));
+            });
+
             await journey.answerConfirmation('Cancel');
 
             await journey.step('Cancel leaves treecipe.config.json as it was', () => {
@@ -339,6 +360,65 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
                 expectEqual(configuration.recordTypeSelections, { Account: ['Business', 'Partner'] }, 'recordTypeSelections');
                 expectEqual(configuration.recordTypesWhenSelectionSaved, { Account: ['Business', 'Partner'] }, 'recordTypesWhenSelectionSaved');
                 expectEqual(configuration.salesforceObjectsPath, JSON.parse(configurationBefore).salesforceObjectsPath, 'salesforceObjectsPath');
+            });
+
+        }
+    },
+
+    {
+        name: 'Remember this selection with every object at its default: the confirmation says the saved record types will be removed, and the generate removes them (#623)',
+        run: async journey => {
+
+            const configurationPath = path.join(journey.workspaceRoot, ...CONFIGURATION_RELATIVE_PATH.split('/'));
+            const configurationBefore = JSON.parse(readWorkspaceFile(journey, CONFIGURATION_RELATIVE_PATH));
+            fs.writeFileSync(configurationPath, JSON.stringify({ ...configurationBefore, recordTypeSelections: { Account: ['Partner'] }, recordTypesWhenSelectionSaved: { Account: ['Business', 'Partner'] } }, null, 4));
+
+            await journey.click('button', `Manage record types (${TREE_NAME})`);
+            await journey.click('checkbox', 'Remember this selection');
+            await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+            await journey.answerQuickPick(INSERT_ORG_LABEL);
+            await journey.waitForConfirmation();
+
+            await journey.step('the confirmation offers no mode, and says the saved record types will be removed', () => {
+                const screen = journey.screen();
+                const confirmation = screen.get('alertdialog', CONFIRMATION_TITLE);
+                expectEqual(screen.findAll('radio', undefined, confirmation).length, 0, 'Radios in the confirmation');
+                screen.get('listitem', 'Remember this selection: every object is ticked at its default record type, so any record types saved in treecipe.config.json will be removed.', confirmation);
+            });
+
+            await journey.answerConfirmation('Generate and insert');
+            await journey.answerQuickPick('AllOrNone: TRUE');
+
+            await journey.step('treecipe.config.json no longer holds a saved selection, and one default Account was sent', () => {
+                expectEqual(JSON.parse(readWorkspaceFile(journey, CONFIGURATION_RELATIVE_PATH)), configurationBefore, 'treecipe.config.json');
+                expectEqual(insertsSent(journey)[0].records.map(account => account.RecordTypeId), ['012000000000001AAA'], 'The RecordTypeId of each Account');
+            });
+
+        }
+    },
+
+    {
+        name: 'an object added to the tree\'s metadata since the run: nothing is asked, generated or sent, and the warning names it (#623)',
+        run: async journey => {
+
+            await journey.click('button', `Manage record types (${TREE_NAME})`);
+            await journey.click('checkbox', 'Partner (Account)');
+            const noteFieldsPath = path.join(journey.workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Note__c', 'fields');
+            fs.mkdirSync(noteFieldsPath, { recursive: true });
+            fs.writeFileSync(path.join(noteFieldsPath, 'Account__c.field-meta.xml'), NOTE_ACCOUNT_LOOKUP_FIELD);
+            const fileChangeCountBefore = journey.fileChanges.length;
+
+            await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+            await journey.answerQuickPick(INSERT_ORG_LABEL);
+
+            await journey.step('one warning names the new object and what to do, and nothing else happened', () => {
+                expectEqual(journey.notifications.map(notification => ({ kind: notification.kind, text: notification.text })), [{
+                    kind: 'warning',
+                    text: `Nothing was generated or inserted for ${TREE_NAME}: the object metadata now puts Note__c in this tree, which this run does not have. Run "Generate Treecipe" again, then tick the record types.`
+                }], 'The notifications');
+                expectEqual(journey.screen().findAll('alertdialog').length, 0, 'Confirmations on screen');
+                expectEqual(insertCallCount(journey), 0, 'Inserts sent');
+                expectEqual(fileChangesSince(journey, fileChangeCountBefore), [], 'Files written');
             });
 
         }

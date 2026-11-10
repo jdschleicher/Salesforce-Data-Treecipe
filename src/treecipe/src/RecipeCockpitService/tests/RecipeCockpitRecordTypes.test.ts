@@ -28,6 +28,7 @@ import { ExtensionCommandService } from '../../ExtensionCommandService/Extension
 import { RecipeService } from '../../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
+import { RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { RecordTypeSelectionConfiguration } from '../../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
@@ -522,6 +523,29 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             expect(confirmationContent.warnings).toEqual([]);
             expect(confirmationContent.sections).toEqual([{ title: 'Record types, one block each', count: 1, lines: ['  Account: Business, Partner'] }]);
+
+        });
+
+    });
+
+    describe('buildRunFakerFilteredRecipe on a recipe built for ticked record types (#623)', () => {
+
+        const DERIVED_RECIPE = '- object: Account\n  nickname: Account_Business_NickName\n  count: 1\n  fields:\n    RecordTypeId: Account.Business\n    Name: x\n- object: Account\n  nickname: Account_Partner_NickName\n  count: 1\n  fields:\n    RecordTypeId: Account.Partner\n    Name: x\n';
+
+        it('leaves an unticked field out of every block, but still generates RecordTypeId for an object with record types ticked', () => {
+
+            const recipe = loadRecipe();
+            const tree = { ...recipe.trees[0], objects: recipe.trees[0].objects.filter(treeObject => treeObject.objectApiName === 'Account') };
+            tree.fieldSelection = { objects: [{ objectApiName: 'Account', excludedFieldApiNames: ['RecordTypeId', 'Name'] }] } as any;
+            const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(DERIVED_RECIPE, new Map(), { Account: ['Business', 'Partner'] });
+
+            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(DERIVED_RECIPE, tree, undefined, recipe, settingPlacer);
+
+            if ( 'refusalMessage' in filteredRecipe ) { throw new Error(filteredRecipe.refusalMessage); }
+            expect(filteredRecipe.recipeText.split('\n').filter(recipeLine => /^\s+(RecordTypeId|Name): /.test(recipeLine)).map(recipeLine => recipeLine.trim()))
+                .toEqual(['RecordTypeId: Account.Business', 'RecordTypeId: Account.Partner']);
+            expect(filteredRecipe.excludedFieldApiNamesByObject).toEqual({ Account: ['Name'] });
+            expect(settingPlacer.heldRecordTypeIdObjectApiNames).toEqual(['Account']);
 
         });
 
@@ -1163,6 +1187,18 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             panel.findAll(recordTypesPanel, 'recordTypesRememberLabel')[0].dispatch('click');
             expect(rememberOf(panel).attributes['aria-checked']).toBe('false');
+
+        });
+
+        it('sends an empty selection with isRemembered when every object is at its default, so the host forgets a saved choice', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+
+            rememberOf(panel).dispatch('click');
+            clickGenerateAndInsert(panel);
+
+            expect(insertMessages(panel)).toEqual([{ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {}, isRemembered: true }]);
 
         });
 
