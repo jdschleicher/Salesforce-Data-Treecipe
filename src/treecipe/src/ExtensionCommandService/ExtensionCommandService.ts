@@ -17,6 +17,7 @@ import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
 import { RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeCockpitRecipeWriter } from "../RecipeWriter/RecipeCockpitRecipeWriter";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason, PicklistDependencyTestRunCancelledError } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { IAuthenticatedOrgDetail } from "../SalesforceCli/SalesforceCli";
@@ -340,7 +341,8 @@ export class ExtensionCommandService {
                 filteredRecipe?.objectCountsByObject ?? {},
                 filteredRecipe?.fixedValuesByObject ?? {},
                 filteredRecipe?.constraintsByObject ?? {},
-                filteredRecipe?.validationRulesOffByObject ?? {}
+                filteredRecipe?.validationRulesOffByObject ?? {},
+                Object.fromEntries(RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(filteredRecipe?.recipeText ?? fs.readFileSync(generationRecipeFilePath, 'utf8')))
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
             datasetFolderPath = fullPathToUniqueTimeStampedFakeDataSetsFolder;

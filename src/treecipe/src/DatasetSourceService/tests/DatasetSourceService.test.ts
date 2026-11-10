@@ -8,10 +8,14 @@ expect.extend(matchers);
 import {
     DatasetSourceService,
     DATASET_COLLECTIONS_API_FOLDER_NAME,
+    DATASET_SOURCE_API_NAME_PATTERN,
+    DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS,
+    DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT,
     DATASET_SOURCE_FILE_NAME,
     IDatasetSource,
     IKnownRecipeRun
 } from '../DatasetSourceService';
+import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
 
 const mockWorkspacePath = path.join(__dirname, 'mocks', 'workspace', 'treecipe');
 const mockGeneratedRecipesPath = path.join(mockWorkspacePath, 'GeneratedRecipes');
@@ -707,6 +711,78 @@ describe('DatasetSourceService', () => {
             ])('refuses the whole file for %s', (_description, validationRulesOffByObject) => {
 
                 expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, validationRulesOffByObject })).toBeUndefined();
+
+            });
+
+        });
+
+        describe('the record types the records carry (#621)', () => {
+
+            test('writes recordTypesByObject only when some object names a record type, so a default run writes what it always did', () => {
+
+                const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };
+
+                const defaultSource = DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 2 });
+                const emptyListSource = DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 2 }, [], {}, {}, {}, {}, {}, { Account: [] });
+                const taggedSource = DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 2 }, [], {}, {}, {}, {}, {}, { Account: ['Business', 'Partner'] });
+
+                expect(defaultSource).not.toHaveProperty('recordTypesByObject');
+                expect(JSON.stringify(emptyListSource)).toBe(JSON.stringify(defaultSource));
+                expect(taggedSource.recordTypesByObject).toEqual({ Account: ['Business', 'Partner'] });
+
+            });
+
+            test('reads the record types back in their order, into a map with no prototype', () => {
+
+                const recordTypesByObject = DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: { Account: ['Partner', 'Business'], constructor: ['Customer'] } })?.recordTypesByObject as Record<string, string[]>;
+
+                expect(Object.getPrototypeOf(recordTypesByObject)).toBeNull();
+                expect(recordTypesByObject.Account).toEqual(['Partner', 'Business']);
+                expect(Object.keys(recordTypesByObject)).toEqual(['Account', 'constructor']);
+
+            });
+
+            test.each([
+                ['a list instead of a map', ['Business']],
+                ['null', null],
+                ['an empty map', {}],
+                ['an object entry that is a string', { Account: 'Business' }],
+                ['an empty list', { Account: [] }],
+                ['a developer name that is a number', { Account: [7] }],
+                ['a developer name that is not an api name', { Account: ['Business Account'] }],
+                ['an object that is not an api name', { 'Account.Name': ['Business'] }]
+            ])('drops the tag and still reads the rest of the file for %s', (_description, recordTypesByObject) => {
+
+                const readSource = DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject });
+
+                expect(readSource).toEqual(validDatasetSource);
+
+            });
+
+            test('reads a tag at its caps, and drops one past either cap', () => {
+
+                const listDeveloperNames = (developerNameCount: number) => Array.from({ length: developerNameCount }, (_unused, developerNameIndex) => `Type${developerNameIndex}`);
+                const buildObjects = (objectCount: number) => Object.fromEntries(Array.from({ length: objectCount }, (_unused, objectIndex) => [`Object${objectIndex}__c`, ['Business']]));
+
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: buildObjects(DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS) })).toHaveProperty('recordTypesByObject');
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: { Account: listDeveloperNames(DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT) } })).toHaveProperty('recordTypesByObject');
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: buildObjects(DATASET_SOURCE_MAX_RECORD_TYPE_OBJECTS + 1) })).toEqual(validDatasetSource);
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, recordTypesByObject: { Account: listDeveloperNames(DATASET_SOURCE_MAX_RECORD_TYPES_PER_OBJECT + 1) } })).toEqual(validDatasetSource);
+
+            });
+
+            test('drops the tag for a "__proto__" object key, which is no api name', () => {
+
+                const parsedDatasetSource = JSON.parse(JSON.stringify({ ...validDatasetSource, recordTypesByObject: { Placeholder: ['Business'] } }).replace('"Placeholder"', '"__proto__"'));
+
+                expect(DatasetSourceService.typeCheckDatasetSource(parsedDatasetSource)).toEqual(validDatasetSource);
+
+            });
+
+            test('holds its api name pattern equal to SalesforceApiName.pattern, which it repeats to keep importing only fs and path', () => {
+
+                expect(DATASET_SOURCE_API_NAME_PATTERN.source).toBe(SalesforceApiName.pattern.source);
+                expect(DATASET_SOURCE_API_NAME_PATTERN.flags).toBe(SalesforceApiName.pattern.flags);
 
             });
 

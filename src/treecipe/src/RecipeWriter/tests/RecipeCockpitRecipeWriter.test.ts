@@ -298,6 +298,95 @@ const DEPENDENT_PICKLIST_VALUE = "\n      if:\n        - choice:\n            wh
 
 describe('RecipeCockpitRecipeWriter', () => {
 
+    describe('listChosenRecordTypesByObject (#621)', () => {
+
+        const optionsTodo = '### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection';
+
+        test('lists each object written from a choice, its developer names once each in block order, nested friends included', () => {
+
+            const recipeText = [
+                '- object: Account',
+                '  nickname: Account_Partner_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Partner',
+                '  friends:',
+                '    - object: Contact',
+                '      nickname: Contact_NickName',
+                '      count: 2',
+                '      fields:',
+                '        RecordTypeId: Contact.Customer',
+                '- object: Account',
+                '  nickname: Account_Business_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Business',
+                '- object: Account',
+                '  nickname: Account_Partner_Again_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Partner',
+                ''
+            ].join('\n');
+
+            expect([...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(recipeText)]).toEqual([
+                ['Account', ['Partner', 'Business']],
+                ['Contact', ['Customer']]
+            ]);
+
+        });
+
+        test('leaves out an object a block wrote as the default, a commented RecordTypeId, and a value that names another object', () => {
+
+            const recipeText = [
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Business',
+                `                    ${optionsTodo}`,
+                '                    # Account.Partner',
+                '- object: Opportunity',
+                '  nickname: Opportunity_NickName',
+                '  count: 1',
+                '  fields:',
+                '    # RecordTypeId: Opportunity.Renewal',
+                '- object: Case',
+                '  nickname: Case_NickName',
+                '  count: 1',
+                '  fields:',
+                '    RecordTypeId: Account.Business',
+                ''
+            ].join('\n');
+
+            expect(RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(recipeText).size).toBe(0);
+
+        });
+
+        test('answers an empty map for a recipe with no RecordTypeId at all', () => {
+
+            expect(RecipeCockpitRecipeWriter.listChosenRecordTypesByObject('- object: Account\n  nickname: Account_NickName\n  count: 1\n  fields:\n    Name: Acme\n').size).toBe(0);
+
+        });
+
+        test('reads each golden recipe Generate Treecipe wrote by default as no choice, in both backends', () => {
+
+            const goldenFolderPath = path.join(__dirname, '..', '..', 'ExtensionCommandService', 'tests', 'golden');
+            const listRecipeFiles = (folderPath: string): string[] => fs.readdirSync(folderPath, { withFileTypes: true }).flatMap(entry => (
+                entry.isDirectory() ? listRecipeFiles(path.join(folderPath, entry.name)) : entry.name.endsWith('.yml') ? [path.join(folderPath, entry.name)] : []
+            ));
+            const goldenRecipeFilePaths = listRecipeFiles(goldenFolderPath);
+
+            expect(goldenRecipeFilePaths.some(recipeFilePath => fs.readFileSync(recipeFilePath, 'utf8').includes('RecordTypeId:'))).toBeTrue();
+            goldenRecipeFilePaths.forEach(recipeFilePath => {
+                expect(RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(fs.readFileSync(recipeFilePath, 'utf8')).size).toBe(0);
+            });
+
+        });
+
+    });
+
+
     describe('isolation', () => {
 
         test('the module imports nothing, so it cannot reach the disk, a webview, vscode or an org', () => {
