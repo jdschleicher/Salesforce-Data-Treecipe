@@ -215,14 +215,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             ['loadDataOrgs', { command: 'loadDataOrgs' }],
             ['refreshDataOrgs', { command: 'refreshDataOrgs' }],
             ['createScratchOrg', { command: 'createScratchOrg' }],
-            ['insertTree', { command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }],
-            ['regenerateWithRecordTypes', { command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {} }]
+            ['insertTree', { command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }]
         ])('routes no %s while the load asks for its org, since the pick becomes the selection', (_description, panelMessage) => {
 
             const panelState = withSandbox(buildPanelState());
             panelState.dataOrgDetails = [SANDBOX_ORG];
             panelState.insertableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
-            panelState.treeHistoryAllowLists.recordTypeTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(ACCOUNT_TREE_KEY, '/workspace/recipe.yml');
             const routedFree = RecipeCockpitService.routePanelMessage(panelMessage, panelState);
             panelState.isUpdaterOrgPromptOpen = true;

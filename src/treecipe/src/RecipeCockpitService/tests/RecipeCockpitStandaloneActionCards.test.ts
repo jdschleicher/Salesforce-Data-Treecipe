@@ -60,9 +60,9 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
     describe('the verb map', () => {
 
-        it('adds Run, Export, Create, Regenerate and Generate data with the emojis the issue names, and still gives each verb its own', () => {
+        it('adds Run, Export, Create and Generate data with the emojis the issue names, and still gives each verb its own', () => {
 
-            expect(RECIPE_COCKPIT_ACTION_VERB_EMOJI).toMatchObject({ run: '▶️', export: '💾', create: '➕', regenerate: '🔄', generateData: '🌱', update: '✍️' });
+            expect(RECIPE_COCKPIT_ACTION_VERB_EMOJI).toMatchObject({ run: '▶️', export: '💾', create: '➕', generateData: '🌱', update: '✍️' });
 
             const verbs = Object.keys(RECIPE_COCKPIT_ACTION_VERB_EMOJI);
             expect(new Set(Object.values(RECIPE_COCKPIT_ACTION_VERB_EMOJI)).size).toBe(verbs.length);

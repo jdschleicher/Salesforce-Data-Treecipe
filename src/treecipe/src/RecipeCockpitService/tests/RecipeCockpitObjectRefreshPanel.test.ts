@@ -381,7 +381,7 @@ describe('RecipeCockpitService, Get latest object detail from target org (#612)'
             ]);
             expect(recipeLinesBefore.filter(recipeLine => !recipeLinesAfter.includes(recipeLine))).toEqual(['    Legacy_Code__c: ${{fake.Word}}']);
 
-            expect(informations()).toEqual(['Account: copied 3 files from qa · qa@example.com.qa into the project and wrote 2 recipe lines. A record type changed: use Regenerate with record types on the card to write its section.']);
+            expect(informations()).toEqual(['Account: copied 3 files from qa · qa@example.com.qa into the project and wrote 2 recipe lines. A record type changed: run Generate Treecipe to write a new run with its section.']);
             expect(lastRefreshState().step).toBe('closed');
             expect(panelState().objectRefreshSession).toBeUndefined();
             expect(objectRefreshFolders()).toHaveLength(1);

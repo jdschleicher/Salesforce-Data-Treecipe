@@ -281,7 +281,6 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
             panelState.recipeDataMessage = { command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 3 };
             panelState.treeHistoryAllowLists.nameableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
-            panelState.treeHistoryAllowLists.recordTypeTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             if ( isApplying ) {
                 panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'apply' };
             }
@@ -290,8 +289,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
         it.each([
             ['a Troubleshooting retrieve', { command: 'retrieveTreeFields', treeKey: ACCOUNT_TREE_KEY }, 'retrieveTreeMetadata', { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL }],
-            ['a deploy', { command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY }, 'deployTreeMetadataComponents', { kind: 'refuseMetadataDeploy', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL }],
-            ['a record type regenerate', { command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {} }, 'regenerateWithRecordTypes', { kind: 'refuseRecordTypeRegenerate' }]
+            ['a deploy', { command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY }, 'deployTreeMetadataComponents', { kind: 'refuseMetadataDeploy', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL }]
         ])('refuses %s while Apply runs, and routes it otherwise', (_description, panelMessage, routedKind, refusal) => {
 
             expect(RecipeCockpitService.routePanelMessage(panelMessage as any, buildPanelState(false))).toMatchObject({ kind: routedKind });

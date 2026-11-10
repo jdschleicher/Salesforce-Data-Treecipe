@@ -57,8 +57,8 @@ export class RecordTypeSelectionConfiguration {
 
     /*
         Writes the selection into the config file every command reads, keeping every other key. An
-        empty selection REMOVES both keys, which is what "Use defaults" with "Remember this
-        selection" means. Throws when the file cannot be read as a JSON object, rather than writing
+        empty selection REMOVES both keys: "Remember this selection" with every object ticked back
+        to its default (#623). Throws when the file cannot be read as a JSON object, rather than writing
         over a file a user is in the middle of editing.
     */
     static saveRecordTypeSelections(recordTypeSelections: Record<string, string[]>, recordTypesWhenSelectionSaved: Record<string, string[]>): string {
