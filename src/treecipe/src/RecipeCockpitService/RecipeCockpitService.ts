@@ -628,7 +628,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Create <parent> in recipe, on a lookup that is still a TODO: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe it can instead become the parent of the child\'s whole block, which moves under it. A parent with no template, such as a custom object, draws it disabled and says why.',
             'Use existing <parent> from org…, beside it: pick any connected org, then search the parent or enter a record Id, which is checked in that org. The Id is written as the lookup\'s value and the row shows org record and the org; the insert checks the Id exists in the org it inserts into. Clear, under the pencil, puts the TODO back.',
-            'Get latest object detail from target org, at the end of an object\'s row: pick the org and what to compare (fields, validation rules, record types, global value sets), then Next retrieves that object and lists what is new or changed against your project, kind by kind. Tick what to apply: those files are copied into your project, then only their recipe lines are added or rewritten, and every other line stays as it was. Cancel at any step changes nothing; a new record type\'s section is written by Regenerate with record types.',
+            'Get latest detail, the red refresh arrow at the end of an object\'s row: pick the org and what to compare (fields, validation rules, record types, global value sets), then Next retrieves that object and lists what is new or changed against your project, kind by kind. Tick what to apply: those files are copied into your project, then only their recipe lines are added or rewritten, and every other line stays as it was. Cancel at any step changes nothing; a new record type\'s section is written by Regenerate with record types.',
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
@@ -2634,13 +2634,15 @@ export const RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL = 'Apply files';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL = 'Nothing was started: the Treecipe Adapter is applying retrieved files to this project. Try again when it ends.';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL = 'Nothing was applied: a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
 
-// "Get latest object detail from target org" (#612): THE ROW'S BUTTON, THE DIALOG'S STEPS AND WHAT EACH REFUSES WITH
-export const RECIPE_COCKPIT_OBJECT_REFRESH_LABEL = 'Get latest object detail from target org';
+// "Get latest detail" (#612): THE ROW'S BUTTON, THE DIALOG'S STEPS AND WHAT EACH REFUSES WITH
+export const RECIPE_COCKPIT_OBJECT_REFRESH_LABEL = 'Get latest detail';
+// THE BUTTON'S CIRCULAR REFRESH ARROW: A 315-DEGREE ARC ROUND (12, 12) ENDING IN AN ARROWHEAD AT THE TOP RIGHT, STROKED IN --sdt-removed
+export const RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH = 'M19 12 A7 7 0 1 1 16.95 7.05 M16.95 3.55 V7.05 H13.45';
 export const RECIPE_COCKPIT_OBJECT_REFRESH_CONFIRM_LABEL = 'Apply to project and recipe';
 export const RECIPE_COCKPIT_OBJECT_REFRESH_ORG_PLACEHOLDER = 'Choose the org to get the latest object detail from';
 export const RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL = 'Nothing was retrieved: an insert, a Treecipe Adapter run, a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
 export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_BUSY_REFUSAL = 'Nothing was applied: an insert, a Treecipe Adapter run, a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
-export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL = 'Nothing was started: Get latest object detail is applying retrieved files to this project. Try again when it ends.';
+export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL = 'Nothing was started: Get latest detail is applying retrieved files to this project. Try again when it ends.';
 export const RECIPE_COCKPIT_OBJECT_REFRESH_CHANGED_REFUSAL = 'Nothing was applied: the retrieved files, the project or the recipe changed since the review, so what it listed is no longer what would be written. Get the latest object detail again.';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
@@ -22416,6 +22418,7 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
 ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
+    const OBJECT_REFRESH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH)};
     const OBJECT_REFRESH_KINDS = ${JSON.stringify(OBJECT_REFRESH_KINDS)};
     const OBJECT_REFRESH_KIND_LABELS = ${JSON.stringify(OBJECT_REFRESH_KIND_LABELS)};
     const CHANGELOG_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHANGELOG_LINK_LABEL)};
