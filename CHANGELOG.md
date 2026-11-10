@@ -1,5 +1,13 @@
 # Change Log
 
+## [3.199.1] - The last two import cycles are gone, and the layer test has no exceptions (#575, slice D of #570)
+
+Nothing a user sees changes: the golden files, the generated-YAML and hostile-picklist suites and the Recipe Cockpit journeys pass untouched.
+
+- **The metadata model no longer imports in a circle.** `RecordTypesWrapper.ts` moved from `RecordTypeService/` to `ObjectInfoWrapper/`, beside the `ObjectInfo` that holds it. `RecordTypeService` still reads XML through `XmlFileProcessor` and now imports the type from the model. The class and its fields are unchanged.
+- **`VSCodeWorkspaceService` no longer imports `ConfigurationService`.** The selected faker service, the fake data sets folder path and the status bar setting are handed to it by the command that calls: Run Faker by Recipe, Insert Data Set by Directory and `activate`. This direction was chosen over moving the Initiate Configuration prompts into the command because configuration needs the workspace root, so the workspace service is the lower of the two, and the prompts stay where they were.
+- **`KNOWN_LAYER_VIOLATIONS` is deleted** with the code that kept it honest. `ServiceLayers.test.ts` now fails on any upward import and any folder-level cycle.
+- **Tests.** `InitiateConfiguration.test.ts`, written before the move with only `vscode` mocked: the objects directory picker, then the faker picker, the exact `treecipe.config.json` written, nothing written when either is dismissed, and the missing-config and stale-setting notices with **Run Treecipe Initiation Setup**.
 ## [3.199.0] - Recipe Cockpit: the ticked record types are used at "Generate fake data and insert", in one folded data set (#623, slice C of #620)
 
 Before, ticking record types under **Manage record types** did nothing until **Regenerate with these record types** wrote a whole new Generate Treecipe run. Now the ticks are what the next **Generate fake data and insert** uses.

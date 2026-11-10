@@ -1,6 +1,6 @@
 
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
-import { RecordTypeWrapper } from './RecordTypesWrapper';
+import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 
 import * as fs from 'fs';

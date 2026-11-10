@@ -113,13 +113,16 @@ describe('Shared tests for CollectionsApiService', () => {
             const mockWorkspaceRoot = 'rootMock/mock';
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
             const dontCareAsWeAreExpectingNoSelection = undefined;
-            jest.spyOn(VSCodeWorkspaceService, 'getDataSetDirectoryQuickPickItemsByStartingDirectoryPath').mockReturnValue(Promise.resolve(dontCareAsWeAreExpectingNoSelection));
+            const getDataSetDirectoryQuickPickItemsSpy = jest.spyOn(VSCodeWorkspaceService, 'getDataSetDirectoryQuickPickItemsByStartingDirectoryPath').mockReturnValue(Promise.resolve(dontCareAsWeAreExpectingNoSelection));
 
             (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
 
             const result = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
             expect(result).toBeUndefined();
+            // THE DATA SET PICKER IS HANDED THE SELECTED FAKER SERVICE; THE WORKSPACE SERVICE NO LONGER READS IT (#575)
+            expect(getDataSetDirectoryQuickPickItemsSpy).toHaveBeenCalledWith('rootMock/mock/treecipe/FakeDataSets', [], 'faker-js');
 
         });
 

@@ -1,6 +1,6 @@
 import { RelationshipService } from '../../../RelationshipService/RelationshipService';
 import { RecipeMockService } from "../../../RecipeService/tests/mocks/RecipeMockService";
-import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../../ObjectInfoWrapper/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { SnowfakeryRecipeFakerService } from "../SnowfakeryRecipeFakerService";
 import * as yaml from 'js-yaml';

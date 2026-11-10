@@ -3,7 +3,7 @@ import { ValidationRuleAnalyzerService } from "../../../ValidationRuleAnalyzerSe
 import { faker } from "@faker-js/faker";
 import * as yaml from 'js-yaml';
 import { SnowfakeryRecipeFakerService } from '../../SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../../ObjectInfoWrapper/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { FakerJSRecipeFakerService } from "../FakerJSRecipeFakerService";
 import {

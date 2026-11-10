@@ -1307,7 +1307,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeDirectoryPath = 'treecipe/';
             const fakeQuickPickItemLabel = 'Select the thing';
-            const result = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(fakeDirectoryPath, fakeQuickPickItemLabel);
+            const result = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(fakeDirectoryPath, fakeQuickPickItemLabel, 'snowfakery');
             expect(result).toBeUndefined();
 
         });
@@ -1322,7 +1322,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeDirectoryPath = 'treecipe/';
             const fakeQuickPickItemLabel = 'Select the thing';
-            const actualQuickPickSelectedRecipeFileToProcess = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(fakeDirectoryPath, fakeQuickPickItemLabel);
+            const actualQuickPickSelectedRecipeFileToProcess = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(fakeDirectoryPath, fakeQuickPickItemLabel, 'snowfakery');
             expect(actualQuickPickSelectedRecipeFileToProcess).toEqual(expectedMockQuickPickItem);
 
         });
@@ -1375,9 +1375,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         test.each(['faker-js', 'snowfakery'])('given %s selected, accepts exactly the recipes the picker offers', async (selectedFakerService) => {
 
-            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(selectedFakerService);
 
-            const offeredRecipeFilePaths = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath))
+            const offeredRecipeFilePaths = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath, selectedFakerService))
                 .map(quickPickItem => quickPickItem.detail)
                 .sort();
             const acceptedRecipeFilePaths = recipeRelativeFilePaths
@@ -1392,8 +1391,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         test.each(['faker-js', 'snowfakery'])('given %s selected, never offers a file in a tree\'s RunArtifacts folder (#470)', async (selectedFakerService) => {
 
-            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(selectedFakerService);
-            const offeredBefore = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath)).map(quickPickItem => quickPickItem.detail).sort();
+            const offeredBefore = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath, selectedFakerService)).map(quickPickItem => quickPickItem.detail).sort();
 
             ['recipe-2026-09-20T10-00-00/Lead-ONLY', 'recipe-fakerjs-2026-09-10T00-00-00/Lead-ONLY'].forEach(treeRelativePath => {
                 const runArtifactsFolderPath = path.join(generatedRecipesFolderPath, treeRelativePath, 'RunArtifacts', 'OrgOperations', 'qa');
@@ -1402,7 +1400,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
                 fs.writeFileSync(path.join(runArtifactsFolderPath, 'recipe-fakerjs--Planted.yml'), '- object: Lead\n');
             });
 
-            const offeredAfter = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath)).map(quickPickItem => quickPickItem.detail).sort();
+            const offeredAfter = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath, selectedFakerService)).map(quickPickItem => quickPickItem.detail).sort();
             expect(offeredAfter).toEqual(offeredBefore);
 
         });
@@ -1447,11 +1445,9 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const expectedEmptyQuickPickItems = [];
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue(expectedEmptyQuickPickItems);
-            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
             
             let emptyQuickPickItems: vscode.QuickPickItem[] = [];
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes');
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes', 'snowfakery');
             expect(actualQuickPickItems).toEqual(emptyQuickPickItems);
 
         });
@@ -1472,8 +1468,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             ];
 
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
-            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
             
             const expectedQuickPickItems:vscode.QuickPickItem[] = [
                 {
@@ -1491,7 +1485,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             ];   
 
             let emptyQuickPickItems: vscode.QuickPickItem[] = [];
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes');
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes', 'snowfakery');
 
             console.log('Actual Keys:', Object.keys(actualQuickPickItems));
             console.log('Expected Keys:', Object.keys(expectedQuickPickItems));
@@ -1514,10 +1508,9 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             ];
 
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
 
             let emptyQuickPickItems: vscode.QuickPickItem[] = [];
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, folderPathToParse);
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, folderPathToParse, 'snowfakery');
 
             expect(actualQuickPickItems).toHaveLength(1);
             expect(actualQuickPickItems[0].detail).toBe('/mock/generated-recipes/recipe1.yaml');
@@ -1532,8 +1525,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             jest.spyOn(fs.promises, 'readdir').mockImplementation(readdirMockFunctionImplementation);
 
-            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('faker-js');
             
             const expectedFakerJSOnlyQuickPickItems:vscode.QuickPickItem[] = [
                 {
@@ -1563,7 +1554,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             ];   
 
             let emptyQuickPickItems: vscode.QuickPickItem[] = [];
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/parent-path-mock/GeneratedRecipes');
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/parent-path-mock/GeneratedRecipes', 'faker-js');
 
             console.log('Actual Keys:', Object.keys(actualQuickPickItems));
             console.log('Expected Keys:', Object.keys(expectedFakerJSOnlyQuickPickItems));
@@ -1578,8 +1569,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             jest.spyOn(fs.promises, 'readdir').mockImplementation(readdirMockFunctionImplementation);
 
-            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
             
             const expectedSnowfakeryOnlyQuickPickItems:vscode.QuickPickItem[] = [
                 {
@@ -1615,7 +1604,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             ];   
 
             let emptyQuickPickItems: vscode.QuickPickItem[] = [];
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/parent-path-mock/GeneratedRecipes');
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/parent-path-mock/GeneratedRecipes', 'snowfakery');
 
             console.log('Actual Keys:', Object.keys(actualQuickPickItems));
             console.log('Expected Keys:', Object.keys(expectedSnowfakeryOnlyQuickPickItems));
@@ -1728,9 +1717,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             // workspace root so the derived relative-path label resolves correctly
             const directoryPath = 'theworkspaceroot/andotherthings';
 
-            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("snowfakery");
 
-            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems, "snowfakery");
 
             expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
@@ -1782,9 +1770,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             // workspace root so the derived relative-path label resolves correctly
             const directoryPath = 'theworkspaceroot/andotherthings';
 
-            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
 
-            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems, "faker-js");
 
             expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
@@ -1834,10 +1821,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
 
-            //mocking faker service to avoid test run time failure
-            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
-
-            const result = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+            const result = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems, "faker-js");
     
             expect(result).toEqual([]); 
         
@@ -1862,7 +1846,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'mkdirSync').mockImplementation();
 
-            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName);
+            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName, 'treecipe/FakeDataSets');
 
             expect(fs.existsSync).toHaveBeenCalledWith(mockExpectedFolderPath);
             expect(fs.mkdirSync).toHaveBeenCalledWith(mockFullPathToUniqueFolder);
@@ -1887,7 +1871,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
                 return undefined;
             });
 
-            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockFolderName);
+            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockFolderName, 'treecipe/FakeDataSets');
 
             expect(result).toBe(`${mockExpectedFolderPath}/${mockFolderName}-3`);
             expect(mkdirSpy.mock.calls.map(mkdirCall => mkdirCall[0])).toEqual([
@@ -1906,7 +1890,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
                 throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
             });
 
-            expect(() => VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName('dataset-2024-11-25T16-24-15')).toThrow('EACCES');
+            expect(() => VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName('dataset-2024-11-25T16-24-15', 'treecipe/FakeDataSets')).toThrow('EACCES');
             expect(mkdirSpy).toHaveBeenCalledTimes(1);
 
         });
@@ -1926,9 +1910,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const expectedFolderName = `dataset-${fakeTimestamp}`;
 
-            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('snowfakery');
 
-            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
+            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp, 'snowfakery');
             expect(actualFolderName).toBe(expectedFolderName);
 
         });
@@ -1944,9 +1927,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const expectedFolderName = `dataset-fakerjs-${fakeTimestamp}`;
 
-            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
 
-            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
+            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp, 'faker-js');
             expect(actualFolderName).toBe(expectedFolderName);
 
         });
@@ -2007,9 +1989,6 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
             configurationChangeListener = listener;
             return configurationListenerDisposable;
         });
-        jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockImplementation(
-            key => ( key === 'showRecipeCockpitStatusBarItem' ? settingValue : undefined ) as never
-        );
 
     });
 
@@ -2023,7 +2002,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
         const subscriptions: { dispose(): unknown }[] = [];
 
-        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions);
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions, () => settingValue);
 
         expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith('salesforce-data-treecipe.recipeCockpit', vscode.StatusBarAlignment.Left);
         expect(statusBarItem.name).toBe('Treecipe Recipe Cockpit');
@@ -2050,7 +2029,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         // A jest.fn() FROM THE MODULE FACTORY, WHICH restoreMocks DOES NOT COVER -- ITS CALLS ACCUMULATE
         (vscode.commands.executeCommand as jest.Mock).mockClear();
 
-        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([], () => settingValue);
 
         expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
         expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
@@ -2062,7 +2041,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         settingValue = false;
         const subscriptions: { dispose(): unknown }[] = [];
 
-        expect(() => VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions)).not.toThrow();
+        expect(() => VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions, () => settingValue)).not.toThrow();
 
         expect(vscode.window.createStatusBarItem).not.toHaveBeenCalled();
         expect(() => subscriptions.forEach(subscription => subscription.dispose())).not.toThrow();
@@ -2074,7 +2053,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
         const subscriptions: { dispose(): unknown }[] = [];
 
-        expect(() => VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions)).not.toThrow();
+        expect(() => VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions, () => settingValue)).not.toThrow();
 
         expect(vscode.window.createStatusBarItem).not.toHaveBeenCalled();
         expect(vscode.workspace.onDidChangeConfiguration).not.toHaveBeenCalled();
@@ -2087,7 +2066,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         const statusBarItem = buildFakeStatusBarItem();
         (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
 
-        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([], () => settingValue);
         expect(statusBarItem.show).toHaveBeenCalledTimes(1);
 
         changeSetting(false);
@@ -2105,7 +2084,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         const statusBarItem = buildFakeStatusBarItem();
         (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
 
-        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([], () => settingValue);
         expect(vscode.window.createStatusBarItem).not.toHaveBeenCalled();
 
         changeSetting(true);
@@ -2119,7 +2098,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
         const statusBarItem = buildFakeStatusBarItem();
         (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
 
-        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([], () => settingValue);
         changeSetting(false, 'salesforce-data-treecipe.recipeCockpitEnabled');
 
         expect(statusBarItem.hide).not.toHaveBeenCalled();

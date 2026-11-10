@@ -140,7 +140,7 @@ import {
 import { DirectoryProcessor, RecipeGenerationCancelledError } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 import { CHANGE_RECORD_TYPES_ACTION_LABEL, SavedRecordTypeSelection } from '../../RecordTypeSelectionService/SavedRecordTypeSelection';
-import { RecordTypeWrapper } from '../../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../../ObjectInfoWrapper/RecordTypesWrapper';
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { FakerJSRecipeProcessor } from "../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { SnowfakeryRecipeProcessor } from "../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
@@ -2861,7 +2861,7 @@ describe('ExtensionCommandService', () => {
 
                 await extensionCommandService.runFakerGenerationByRecipeFile();
 
-                expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalledWith('treecipe/GeneratedRecipes', 'Select recipe file to process');
+                expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalledWith('treecipe/GeneratedRecipes', 'Select recipe file to process', 'faker-js');
                 expect(readDatasetFolderNames()).toHaveLength(1);
 
             });

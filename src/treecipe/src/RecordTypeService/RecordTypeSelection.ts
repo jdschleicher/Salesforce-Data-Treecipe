@@ -1,4 +1,4 @@
-import { RecordTypeWrapper } from './RecordTypesWrapper';
+import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 
 export interface IObjectRecordTypeSelection {
     // EMPTY: NOTHING USABLE WAS SELECTED FOR THE OBJECT, SO GENERATION WRITES TODAY'S DEFAULT AND ITS COMMENTED ALTERNATIVES

@@ -1,4 +1,4 @@
-import { RecordTypeWrapper } from "../RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../ObjectInfoWrapper/RecordTypesWrapper";
 
 
 export class MockRecordTypeService {
