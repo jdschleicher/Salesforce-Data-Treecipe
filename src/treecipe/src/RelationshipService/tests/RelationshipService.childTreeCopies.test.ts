@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as yaml from 'js-yaml';
 
 import { RelationshipService } from '../RelationshipService';
@@ -8,6 +10,7 @@ import { ProcessedYamlWrapper } from '../../RecipeFakerService.ts/FakerJSRecipeF
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
+import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
@@ -185,6 +188,21 @@ describe('RelationshipService copies an object\'s children into each record type
 
     });
 
+    test('a lookup left a TODO inside a copy -- the one that closes a cycle -- names the blocks of its own copy in its record type block note', () => {
+
+        const recipeContent = generateRecipe([
+            { objectApiName: 'Account', recordTypeNames: ['Business', 'Partner'] },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account', Opportunity__c: 'Opportunity' } },
+            { objectApiName: 'Opportunity', lookups: { AccountId: 'Account', Contact__c: 'Contact' }, recordTypeNames: ['New', 'Renewal'] }
+        ], true);
+
+        expect(recipeContent.match(/^ *### TODO -- RECORD TYPE BLOCKS -- Opportunity__c .*$/gm).map(noteLine => noteLine.trim())).toEqual([
+            '### TODO -- RECORD TYPE BLOCKS -- Opportunity__c can reference any record type block of Opportunity: Opportunity_New_NickName, Opportunity_Renewal_NickName',
+            '### TODO -- RECORD TYPE BLOCKS -- Opportunity__c can reference any record type block of Opportunity: Opportunity_New_Account_Partner_NickName, Opportunity_Renewal_Account_Partner_NickName'
+        ]);
+
+    });
+
     test('record totals double for every child under a two-block parent', () => {
 
         const recipeContent = generateRecipe([
@@ -282,29 +300,86 @@ describe('RelationshipService copies an object\'s children into each record type
         expect(recipeEntries.map(recipeEntry => [recipeEntry.nickname, recipeEntry.fields.AccountId, recipeEntry.fields.ContactId])).toEqual([
             ['Account_Business_NickName', undefined, undefined],
             ['Account_Partner_NickName', undefined, undefined],
-            ['Contact_NickName', '${{reference(Account_Business_NickName)}}', undefined],
-            ['Contact_Account_Partner_NickName', '${{reference(Account_Partner_NickName)}}', undefined],
-            ['Case_NickName', '${{reference(Account_Business_NickName)}}', '${{reference(Contact_NickName)}}'],
-            ['Case_Account_Partner_NickName', '${{reference(Account_Partner_NickName)}}', '${{reference(Contact_Account_Partner_NickName)}}']
+            ['Contact_NickName', 'Account_Reference_${{reference(Account_Business_NickName).id}}', undefined],
+            ['Contact_Account_Partner_NickName', 'Account_Reference_${{reference(Account_Partner_NickName).id}}', undefined],
+            ['Case_NickName', 'Account_Reference_${{reference(Account_Business_NickName).id}}', 'Contact_Reference_${{reference(Contact_NickName).id}}'],
+            ['Case_Account_Partner_NickName', 'Account_Reference_${{reference(Account_Partner_NickName).id}}', 'Contact_Reference_${{reference(Contact_Account_Partner_NickName).id}}']
         ]);
         expect(recipeContent).not.toContain(RelationshipService.recordTypeBlocksTodo);
 
     });
 
-    test('a lookup that is not to an ancestor block stays the TODO snowfakery writes, with its record type block note', () => {
+    test('a lookup that is not to an ancestor block stays the TODO snowfakery writes, its record type block note naming the blocks of its own copy', () => {
 
         const recipeContent = generateRecipe([
             ...ACCOUNT_TWO_BLOCKS_AND_CONTACT,
-            { objectApiName: 'Opportunity', lookups: { AccountId: 'Account' } },
+            { objectApiName: 'Opportunity', lookups: { AccountId: 'Account' }, recordTypeNames: ['New', 'Renewal'] },
             { objectApiName: 'OpportunityContactRole', lookups: { ContactId: 'Contact', OpportunityId: 'Opportunity' } }
         ], false);
         const recipeEntries = yaml.load(recipeContent) as LoadedRecipeEntry[];
         const contactRoles = recipeEntries.filter(recipeEntry => recipeEntry.object === 'OpportunityContactRole');
 
         expect(contactRoles.map(contactRole => [contactRole.nickname, contactRole.fields.ContactId, contactRole.fields.OpportunityId])).toEqual([
-            ['OpportunityContactRole_NickName', '${{reference(Contact_NickName)}}', null],
-            ['OpportunityContactRole_Account_Partner_NickName', '${{reference(Contact_Account_Partner_NickName)}}', null]
+            ['OpportunityContactRole_NickName', 'Contact_Reference_${{reference(Contact_NickName).id}}', null],
+            ['OpportunityContactRole_Account_Partner_NickName', 'Contact_Reference_${{reference(Contact_Account_Partner_NickName).id}}', null]
         ]);
+        expect(recipeContent.match(/^ {4}### TODO -- RECORD TYPE BLOCKS -- OpportunityId .*$/gm)).toEqual([
+            '    ### TODO -- RECORD TYPE BLOCKS -- OpportunityId can reference any record type block of Opportunity: Opportunity_New_NickName, Opportunity_Renewal_NickName',
+            '    ### TODO -- RECORD TYPE BLOCKS -- OpportunityId can reference any record type block of Opportunity: Opportunity_New_Account_Partner_NickName, Opportunity_Renewal_Account_Partner_NickName'
+        ]);
+
+    });
+
+    test('a tree whose only later block with children has no nickname line copies nothing, and is written exactly as with the option off', () => {
+
+        const objectInfoWrapper = () => {
+            const wrapper = buildObjectInfoWrapper(ACCOUNT_TWO_BLOCKS_AND_CONTACT);
+            const accountInfo = wrapper.ObjectToObjectInfoMap['Account'];
+            accountInfo.AdditionalRecordTypeRecipes = [accountInfo.AdditionalRecordTypeRecipes[0].replace('  nickname: Account_Partner_NickName\n', '')];
+            return wrapper;
+        };
+
+        expect(new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper(), false, true))
+            .toEqual(new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper(), false, false));
+
+    });
+
+    /*
+        mocks/childTreeCopies holds this recipe and what snowfakery 4.2.1 wrote for it
+        (snowfakery <recipe> --output-format json): the lookups arrive as <Parent>_Reference_<row id>,
+        which is the referenceId SnowfakeryRecipeProcessor gives that row.
+    */
+    test('end to end with snowfakery\'s own output: every lookup resolves to an org Id of its own block, the block\'s latest record', () => {
+
+        const mocksPath = path.join(__dirname, 'mocks', 'childTreeCopies');
+        const recipeContent = generateRecipe([
+            ...ACCOUNT_TWO_BLOCKS_AND_CONTACT,
+            { objectApiName: 'Case', lookups: { AccountId: 'Account', ContactId: 'Contact' } }
+        ], false).replace(/^( {2}count:) 1$/gm, '$1 2').split('${{ faker.company.name() }}').join('${{fake.company}}');
+        expect(recipeContent).toBe(fs.readFileSync(path.join(mocksPath, 'recipe-snowfakery-child-copies.yml'), 'utf8'));
+
+        const collectionsByObject = new SnowfakeryRecipeProcessor().transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fs.readFileSync(path.join(mocksPath, 'snowfakery-output.json'), 'utf8'));
+        let referenceIdToOrgId: Record<string, string> = {};
+        const insertedRecordsByObject: Record<string, Record<string, unknown>[]> = {};
+        ['Account', 'Contact', 'Case'].forEach(objectApiName => {
+            const resolvedRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify(collectionsByObject.get(objectApiName)), referenceIdToOrgId)).records;
+            const fakeInsertResults = resolvedRecords.map((_resolvedRecord, recordIndex) => ({ id: `${objectApiName}${recordIndex + 1}`, success: true }));
+            referenceIdToOrgId = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgId, fakeInsertResults, resolvedRecords);
+            insertedRecordsByObject[objectApiName] = resolvedRecords.map((resolvedRecord, recordIndex) => ({ ...resolvedRecord, Id: fakeInsertResults[recordIndex].id }));
+        });
+
+        const recordTypeByAccountId = new Map(insertedRecordsByObject['Account'].map(account => [account.Id, account.RecordTypeId]));
+        const contactById = new Map(insertedRecordsByObject['Contact'].map(contact => [contact.Id, contact]));
+
+        expect(insertedRecordsByObject['Contact'].map(contact => [contact.AccountId, recordTypeByAccountId.get(contact.AccountId)])).toEqual([
+            ['Account2', 'Account.Business'], ['Account2', 'Account.Business'], ['Account4', 'Account.Partner'], ['Account4', 'Account.Partner']
+        ]);
+        insertedRecordsByObject['Case'].forEach(caseRecord => {
+            expect(contactById.get(caseRecord.ContactId as string).AccountId).toBe(caseRecord.AccountId);
+        });
+        // NO LOOKUP IS LEFT AS SNOWFAKERY'S TEXT; A RECORD'S OWN attributes.referenceId IS NEVER REWRITTEN
+        expect(Object.values(insertedRecordsByObject).flat().flatMap(({ attributes, ...fields }) => Object.values(fields)).filter(fieldValue => String(fieldValue).includes('_Reference_'))).toEqual([]);
+        expect(insertedRecordsByObject['Account'].map(account => (account.attributes as { referenceId: string }).referenceId)).toEqual(['Account_Reference_1', 'Account_Reference_2', 'Account_Reference_3', 'Account_Reference_4']);
 
     });
 
@@ -344,6 +419,17 @@ describe('RelationshipService.readNicknameStem (#622)', () => {
         const recipeEntries = yaml.load(new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true, true)[0].content) as LoadedRecipeEntry[];
 
         expect(describeFriends(recipeEntries[1], ['AccountId'])).toEqual([['Contact_PartnerAccounts_NickName', 'PartnerAccounts']]);
+
+    });
+
+});
+
+describe('RelationshipService.compareByCodeUnit (#622)', () => {
+
+    test('orders names by code unit, as "<" does, and an equal pair is 0', () => {
+
+        expect(['b', 'B', 'a', 'A'].sort(RelationshipService.compareByCodeUnit)).toEqual(['A', 'B', 'a', 'b']);
+        expect(RelationshipService.compareByCodeUnit('Account', 'Account')).toBe(0);
 
     });
 

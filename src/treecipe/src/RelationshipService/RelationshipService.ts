@@ -542,7 +542,7 @@ export class RelationshipService {
                                                     placement.resolveLowerLevelParentNickname,
                                                     recipeInfoByObjectName,
                                                     objectInfoWrapper);
-      return RelationshipService.annotateLookupsToRecordTypeBlocks(placement.objectName, wiredLines, blockNicknamesByObjectName, objectInfoWrapper)
+      return RelationshipService.annotateLookupsToRecordTypeBlocks(placement.objectName, wiredLines, placement.resolveBlockNicknamesByObjectName(blockNicknamesByObjectName), objectInfoWrapper)
         .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
     };
 
@@ -617,7 +617,7 @@ export class RelationshipService {
                             selfLookupObjectNames: Set<string>,
                             isChildTreeCopiedPerRecordTypeBlock: boolean,
                             objectInfoWrapper: ObjectInfoWrapper
-                          ): (objectName: string, ancestorNicknameByObjectName: Map<string, string>, copyContexts: ChildTreeCopyContext[]) => RecordTypeBlockPlacement[] {
+                          ): RecordTypeBlockPlacer {
 
     const recipeInfoByObjectName = new Map(recipeInfos.map(recipeInfo => [recipeInfo.objectName, recipeInfo]));
     const friendObjectNamesByParentName = new Map<string, string[]>();
@@ -636,8 +636,8 @@ export class RelationshipService {
 
     // ONE NAME PER (COPY, NICKNAME): THE BLOCK THAT WRITES IT AND EVERY LOOKUP THAT NAMES IT MUST AGREE
     const copyNicknameByKey = new Map<string, string>();
-    const nicknameInCopy = <Nickname extends string | undefined>(nickname: Nickname, copyContexts: ChildTreeCopyContext[]): Nickname | string => {
-      if ( nickname === undefined || copyContexts.length === 0 ) {
+    const nicknameInCopy = (nickname: string, copyContexts: ChildTreeCopyContext[]): string => {
+      if ( copyContexts.length === 0 ) {
         return nickname;
       }
       const copyStem = copyContexts[copyContexts.length - 1].nicknameStem;
@@ -664,35 +664,45 @@ export class RelationshipService {
       return false;
     };
 
-    // A LOWER-LEVEL PARENT INSIDE THE COPY BEING WRITTEN IS THAT COPY'S RECORDS, OTHERWISE THE ORIGINAL'S (#189)
-    const buildLowerLevelParentNicknameResolver = (copyContexts: ChildTreeCopyContext[]) => (parentName: string): string | undefined => {
-      const parentNickname = RelationshipService.readNickname(recipeInfoByObjectName.get(parentName).recipe);
-      if ( parentNickname === undefined ) {
-        return undefined;
-      }
+    // ANOTHER OBJECT'S NICKNAME AS WRITTEN IN THIS COPY: ITS OWN COPY WHEN IT SITS INSIDE ONE OF THE COPIES BEING WRITTEN, OTHERWISE THE ORIGINAL
+    const buildOtherObjectNicknameResolver = (copyContexts: ChildTreeCopyContext[]) => (otherObjectName: string, nickname: string): string => {
       for ( let contextIndex = copyContexts.length - 1; contextIndex >= 0; contextIndex-- ) {
-        if ( isFriendsDescendantOf(parentName, copyContexts[contextIndex].objectName) ) {
-          return nicknameInCopy(parentNickname, copyContexts.slice(0, contextIndex + 1));
+        if ( isFriendsDescendantOf(otherObjectName, copyContexts[contextIndex].objectName) ) {
+          return nicknameInCopy(nickname, copyContexts.slice(0, contextIndex + 1));
         }
       }
-      return parentNickname;
+      return nickname;
     };
 
-    const placeObject = (objectName: string, ancestorNicknameByObjectName: Map<string, string>, copyContexts: ChildTreeCopyContext[]): RecordTypeBlockPlacement[] => {
+    const placeObject: RecordTypeBlockPlacer = (objectName, ancestorNicknameByObjectName, copyContexts) => {
 
       const recipeInfo = recipeInfoByObjectName.get(objectName);
-      const resolveLowerLevelParentNickname = buildLowerLevelParentNicknameResolver(copyContexts);
+      const resolveOtherObjectNickname = buildOtherObjectNicknameResolver(copyContexts);
+      // A LOWER-LEVEL PARENT INSIDE THE COPY BEING WRITTEN IS THAT COPY'S RECORDS, OTHERWISE THE ORIGINAL'S (#189)
+      const resolveLowerLevelParentNickname = (parentName: string): string | undefined => {
+        const parentNickname = RelationshipService.readNickname(recipeInfoByObjectName.get(parentName).recipe);
+        return parentNickname === undefined ? undefined : resolveOtherObjectNickname(parentName, parentNickname);
+      };
+      // WHAT A RECORD TYPE BLOCKS NOTE IN THIS COPY OFFERS: EACH PARENT'S BLOCKS AS THIS COPY NAMES THEM
+      const resolveBlockNicknamesByObjectName = (blockNicknamesByObjectName: Map<string, string[]>): Map<string, string[]> => ( copyContexts.length === 0
+        ? blockNicknamesByObjectName
+        : new Map([...blockNicknamesByObjectName].map(([blockObjectName, blockNicknames]) => [
+          blockObjectName,
+          blockNicknames.map(blockNickname => resolveOtherObjectNickname(blockObjectName, blockNickname))
+        ])) );
 
       return [recipeInfo.recipe, ...recipeInfo.additionalRecordTypeRecipes].map((blockRecipe, blockIndex) => {
 
         // A BLOCK WITH NO NICKNAME LINE IS NO ANCESTOR TO WIRE, AND ITS LATER BLOCKS COPY NOTHING UNDER A NAME
-        const nickname = nicknameInCopy(RelationshipService.readNickname(blockRecipe), copyContexts);
+        const ownNickname = RelationshipService.readNickname(blockRecipe);
+        const nickname = ownNickname === undefined ? undefined : nicknameInCopy(ownNickname, copyContexts);
         const placement: RecordTypeBlockPlacement = {
           objectName,
           nickname,
-          blockRecipe: nickname === RelationshipService.readNickname(blockRecipe) ? blockRecipe : RelationshipService.renameRecipeNickname(blockRecipe, nickname),
+          blockRecipe: nickname === ownNickname ? blockRecipe : RelationshipService.renameRecipeNickname(blockRecipe, nickname),
           ancestorNicknameByObjectName,
           resolveLowerLevelParentNickname,
+          resolveBlockNicknamesByObjectName,
           friends: []
         };
 
@@ -720,6 +730,7 @@ export class RelationshipService {
             blockRecipe: RelationshipService.renameRecipeNickname(recipeInfo.recipe, selfLookupIterationNickname),
             ancestorNicknameByObjectName: friendAncestorNicknameByObjectName,
             resolveLowerLevelParentNickname,
+            resolveBlockNicknamesByObjectName,
             friends: []
           };
         }
@@ -734,6 +745,11 @@ export class RelationshipService {
 
   }
 
+  // NAMES IN CODE-UNIT ORDER, AS "<" -- NEVER localeCompare, SO THE OUTPUT DOES NOT DEPEND ON THE MACHINE (#166)
+  static compareByCodeUnit(first: string, second: string): number {
+    return first < second ? -1 : ( first > second ? 1 : 0 );
+  }
+
   // A NICKNAME WITHOUT ITS _NickName ENDING: Account_Partner_NickName -> Account_Partner
   static readNicknameStem(nickname: string): string {
     return nickname.endsWith('_NickName') && nickname.length > '_NickName'.length
@@ -743,10 +759,14 @@ export class RelationshipService {
 
   /*
     Snowfakery writes every tree flat (#46), so a child copied per parent record type block (#622)
-    is written once per block it belongs to, after every object of a lower level, each copy's
-    lookups to its ancestor blocks written as ${{reference(<nickname>)}} -- snowfakery's link to the
-    most recent record of that nickname. undefined when no object in the tree has a later block
-    with children, so such a tree is written by buildCombinedTreeRecipe exactly as before.
+    is written once per block it belongs to, after every object of a lower level. Each copy's lookup
+    to an ancestor block is <Parent>_Reference_${{reference(<nickname>).id}}: snowfakery renders it
+    as the referenceId SnowfakeryRecipeProcessor gives the latest record of that nickname, which
+    CollectionsApiService resolves to its org Id on insert. A bare ${{reference(...)}} renders as a
+    row number the insert cannot resolve. Being the LATEST record, every copy of a block's children
+    attaches to that block's last record, unlike faker-js, which gives each parent record its own.
+    undefined when no object in the tree has a later block (with a nickname) that has children, so
+    such a tree is written by buildCombinedTreeRecipe exactly as before.
   */
   private buildFlatTreeRecipeWithChildCopies(orderedTree: OrderedRelationshipTree, objectInfoWrapper: ObjectInfoWrapper): string | undefined {
 
@@ -754,7 +774,10 @@ export class RelationshipService {
     const objectNamesInInsertOrder = recipeInfosInInsertOrder.map(recipeInfo => recipeInfo.objectName);
     const friendsParentByObjectName = RelationshipService.selectFriendsParentByObjectName(objectNamesInInsertOrder, objectInfoWrapper);
     const parentNamesWithFriends = new Set(friendsParentByObjectName.values());
-    if ( !recipeInfosInInsertOrder.some(recipeInfo => recipeInfo.additionalRecordTypeRecipes.length > 0 && parentNamesWithFriends.has(recipeInfo.objectName)) ) {
+    // THE PLACER COPIES NOTHING UNDER A LATER BLOCK WITH NO NICKNAME LINE, SO NEITHER DOES THIS CHECK
+    const isAnyChildTreeCopied = recipeInfosInInsertOrder.some(recipeInfo => parentNamesWithFriends.has(recipeInfo.objectName)
+                                                                            && recipeInfo.additionalRecordTypeRecipes.some(blockRecipe => RelationshipService.readNickname(blockRecipe) !== undefined));
+    if ( !isAnyChildTreeCopied ) {
       return undefined;
     }
 
@@ -782,7 +805,7 @@ export class RelationshipService {
         // EVERY OBJECT WITH A RECIPE IS PLACED: A ROOT, OR A FRIEND OF ITS PARENT'S FIRST BLOCK
         placementsByObjectName.get(recipeInfo.objectName).forEach(placement => {
           const referencedLines = RelationshipService.referenceAncestorLookups(placement, objectInfoWrapper);
-          const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, referencedLines, blockNicknamesByObjectName, objectInfoWrapper).join('\n');
+          const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, referencedLines, placement.resolveBlockNicknamesByObjectName(blockNicknamesByObjectName), objectInfoWrapper).join('\n');
           flatRecipe += annotatedBlockRecipe;
           if ( !annotatedBlockRecipe.endsWith('\n') ) {
             flatRecipe += '\n';
@@ -799,27 +822,40 @@ export class RelationshipService {
   // ONLY A LINE THAT IS EXACTLY THE GENERATED TODO, TO AN ANCESTOR BLOCK, IS REWRITTEN; EVERY OTHER LOOKUP STAYS AS SNOWFAKERY WRITES IT
   static referenceAncestorLookups(placement: RecordTypeBlockPlacement, objectInfoWrapper: ObjectInfoWrapper): string[] {
 
-    const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[placement.objectName].RelationshipDetail.parentObjectToFieldReferences;
-    const ancestorNicknameByLookupLine = new Map<string, string>();
+    const ancestorByLookupLine = RelationshipService.buildAncestorByLookupLine(placement.objectName, placement.ancestorNicknameByObjectName, objectInfoWrapper);
+
+    return placement.blockRecipe.split('\n').map(objectLine => {
+      const ancestor = ancestorByLookupLine.get(objectLine);
+      return ancestor === undefined
+        ? objectLine
+        : `${objectLine.slice(0, objectLine.indexOf(':') + 1)} ${ancestor.parentName}_Reference_\${{reference(${ancestor.nickname}).id}}`;
+    });
+
+  }
+
+  /*
+    Each generated lookup TODO line of an object that looks up an ANCESTOR, with the ancestor and the
+    nickname of the block it sits under. A polymorphic lookup to two ancestors takes the first by name.
+  */
+  static buildAncestorByLookupLine(objectName: string,
+                                    ancestorNicknameByObjectName: Map<string, string>,
+                                    objectInfoWrapper: ObjectInfoWrapper): Map<string, { parentName: string; nickname: string }> {
+
+    const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
+    const ancestorByLookupLine = new Map<string, { parentName: string; nickname: string }>();
     Object.keys(lookupFieldNamesByParentName)
-      .filter(parentName => placement.ancestorNicknameByObjectName.has(parentName))
-      // CODE-UNIT ORDER, AS "<" -- A POLYMORPHIC LOOKUP TO TWO ANCESTORS REFERENCES THE FIRST BY NAME
-      .sort()
+      .filter(parentName => ancestorNicknameByObjectName.has(parentName))
+      .sort(RelationshipService.compareByCodeUnit)
       .forEach(parentName => {
         lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
           const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
-          if ( !ancestorNicknameByLookupLine.has(lookupLine) ) {
-            ancestorNicknameByLookupLine.set(lookupLine, placement.ancestorNicknameByObjectName.get(parentName));
+          if ( !ancestorByLookupLine.has(lookupLine) ) {
+            ancestorByLookupLine.set(lookupLine, { parentName, nickname: ancestorNicknameByObjectName.get(parentName) });
           }
         });
       });
 
-    return placement.blockRecipe.split('\n').map(objectLine => {
-      const ancestorNickname = ancestorNicknameByLookupLine.get(objectLine);
-      return ancestorNickname === undefined
-        ? objectLine
-        : `${objectLine.slice(0, objectLine.indexOf(':') + 1)} \${{reference(${ancestorNickname})}}`;
-    });
+    return ancestorByLookupLine;
 
   }
 
@@ -874,33 +910,31 @@ export class RelationshipService {
     const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
     const levelOf = (lookupObjectName: string): number => objectInfoWrapper.ObjectToObjectInfoMap[lookupObjectName].RelationshipDetail.level;
 
-    const ancestorNicknameByLookupLine = new Map<string, string>();
+    const ancestorByLookupLine = RelationshipService.buildAncestorByLookupLine(objectName, ancestorNicknameByObjectName, objectInfoWrapper);
     const lowerLevelNicknameByLookupLine = new Map<string, string>();
     const todoParentNamesByLookupLine = new Map<string, string[]>();
 
-    Object.keys(lookupFieldNamesByParentName).sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) )).forEach(parentName => {
+    Object.keys(lookupFieldNamesByParentName)
+      .filter(parentName => !ancestorNicknameByObjectName.has(parentName))
+      .sort(RelationshipService.compareByCodeUnit)
+      .forEach(parentName => {
 
-      const isAncestor = ancestorNicknameByObjectName.has(parentName);
-      const isLowerLevelParentWithRecipe = !isAncestor
-                                            && parentName !== objectName
-                                            && recipeInfoByObjectName.has(parentName)
-                                            && levelOf(parentName) < levelOf(objectName);
-      const parentNickname = isAncestor
-        ? ancestorNicknameByObjectName.get(parentName)
-        : ( isLowerLevelParentWithRecipe ? resolveLowerLevelParentNickname(parentName) : undefined );
+        const isLowerLevelParentWithRecipe = parentName !== objectName
+                                              && recipeInfoByObjectName.has(parentName)
+                                              && levelOf(parentName) < levelOf(objectName);
+        const parentNickname = isLowerLevelParentWithRecipe ? resolveLowerLevelParentNickname(parentName) : undefined;
 
-      lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
-        const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
-        const nicknameByLookupLine = isAncestor ? ancestorNicknameByLookupLine : lowerLevelNicknameByLookupLine;
-        // A POLYMORPHIC LOOKUP WITH TWO PARENTS THAT QUALIFY IS WIRED TO THE FIRST BY NAME
-        if ( parentNickname !== undefined && !nicknameByLookupLine.has(lookupLine) ) {
-          nicknameByLookupLine.set(lookupLine, parentNickname);
-        } else if ( parentNickname === undefined ) {
-          todoParentNamesByLookupLine.set(lookupLine, [...(todoParentNamesByLookupLine.get(lookupLine) ?? []), parentName]);
-        }
+        lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
+          const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
+          // A POLYMORPHIC LOOKUP WITH TWO PARENTS THAT QUALIFY IS WIRED TO THE FIRST BY NAME
+          if ( parentNickname !== undefined && !lowerLevelNicknameByLookupLine.has(lookupLine) ) {
+            lowerLevelNicknameByLookupLine.set(lookupLine, parentNickname);
+          } else if ( parentNickname === undefined ) {
+            todoParentNamesByLookupLine.set(lookupLine, [...(todoParentNamesByLookupLine.get(lookupLine) ?? []), parentName]);
+          }
+        });
+
       });
-
-    });
 
     const objectLines = objectRecipe.split('\n');
     while ( objectLines.length > 0 && !objectLines[0].trim() ) {
@@ -911,7 +945,7 @@ export class RelationshipService {
     }
 
     return objectLines.map(objectLine => {
-      const parentNickname = ancestorNicknameByLookupLine.get(objectLine) ?? lowerLevelNicknameByLookupLine.get(objectLine);
+      const parentNickname = ancestorByLookupLine.get(objectLine)?.nickname ?? lowerLevelNicknameByLookupLine.get(objectLine);
       if ( parentNickname !== undefined ) {
         return `${objectLine.slice(0, objectLine.indexOf(':') + 1)} ${parentNickname}`;
       }
@@ -1095,9 +1129,13 @@ interface RecordTypeBlockPlacement {
   blockRecipe: string;
   ancestorNicknameByObjectName: Map<string, string>;
   resolveLowerLevelParentNickname: (parentName: string) => string | undefined;
+  resolveBlockNicknamesByObjectName: (blockNicknamesByObjectName: Map<string, string[]>) => Map<string, string[]>;
   friends: { objectName: string; placements: RecordTypeBlockPlacement[] }[];
   selfLookupIteration?: RecordTypeBlockPlacement;
 }
+
+// Every record type block of an object, placed under the given ancestor blocks inside the given copies
+type RecordTypeBlockPlacer = (objectName: string, ancestorNicknameByObjectName: Map<string, string>, copyContexts: ChildTreeCopyContext[]) => RecordTypeBlockPlacement[];
 
 // One depth-first walk of a tree: the lookups it keeps (every one but those that close a cycle) and the order objects finish in
 interface CycleCuttingWalk {

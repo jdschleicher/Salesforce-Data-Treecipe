@@ -610,6 +610,56 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
 
+    /*
+        #622: a snowfakery record has no nickname, so its referenceId is <Object>_Reference_<id> alone, and
+        a recipe that copies children per record type block writes the child's lookup as that text.
+    */
+    describe('updateLookupReferencesInCollectionApiJson with a referenceId that carries no nickname (#622)', () => {
+
+        const objectReferenceIdToOrgCreatedRecordIdMap = {
+            'Account_Reference_2': '001SECOND',
+            'Account_Reference_21': '001TWENTYFIRST'
+        };
+
+        test('a field whose whole value is the referenceId is replaced with the org Id, and no other text is', () => {
+
+            const collectionsApiJson = JSON.stringify({ records: [ {
+                attributes: { type: 'Contact', referenceId: 'Contact_Reference_1' },
+                AccountId: 'Account_Reference_2',
+                Other__c: 'Account_Reference_21',
+                Description: 'see Account_Reference_2 for details'
+            } ] }, null, 2);
+
+            const parsed = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap));
+
+            expect(parsed.records[0].AccountId).toBe('001SECOND');
+            expect(parsed.records[0].Other__c).toBe('001TWENTYFIRST');
+            expect(parsed.records[0].Description).toBe('see Account_Reference_2 for details');
+
+        });
+
+        test('a record\'s own referenceId and a key equal to it are never replaced', () => {
+
+            const collectionsApiJson = '{"records":[{"attributes":{"type":"Account","referenceId" : "Account_Reference_2"},"Account_Reference_2":"x"}]}';
+
+            const parsed = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap));
+
+            expect(parsed.records[0]).toEqual({ attributes: { type: 'Account', referenceId: 'Account_Reference_2' }, Account_Reference_2: 'x' });
+
+        });
+
+        test('a key that is not a referenceId shape, or an org Id that is not a string, is never used', () => {
+
+            const collectionsApiJson = '{"records":[{"A":"Reference_2","B":"Account_Reference_3"}]}';
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, { 'Reference_2': '001X', 'Account_Reference_3': 7 as unknown as string });
+
+            expect(JSON.parse(result)).toEqual({ records: [ { A: 'Reference_2', B: 'Account_Reference_3' } ] });
+
+        });
+
+    });
+
     describe('updateLookupReferencesInCollectionApiJson with nested friends nicknames (#46)', () => {
 
         test('a friend whose nickname contains its parent nickname keeps its own referenceId, and only exact values are replaced', () => {

@@ -880,6 +880,9 @@ export class CollectionsApiService {
     }
 
     // THE NICKNAME A REFERENCE ID ENDS IN -- "Account_Reference_1__Account_NickName" GIVES "Account_NickName"
+    // WHAT SnowfakeryRecipeProcessor.createCombinedNickNameReferenceForRecord WRITES FOR A RECORD WITH NO NICKNAME: AN API NAME, _Reference_, ITS ROW ID
+    static readonly nicknamelessReferenceIdPattern = /^[A-Za-z][A-Za-z0-9_]*_Reference_\d+$/;
+
     static readNicknameFromReferenceId(referenceId: string): string | undefined {
 
         const referenceRegexMatch = /(Reference_\d+__)/;
@@ -969,10 +972,14 @@ export class CollectionsApiService {
 
         const nicknameToOrgIdEntries: { nicknameValue: string; orgRecordId: string }[] = [];
 
+        const wholeReferenceIdToOrgIdEntries: { referenceId: string; orgRecordId: string }[] = [];
+
         for (const [referenceIdKey, orgRecordId] of Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
             const nicknameValue = this.readNicknameFromReferenceId(referenceIdKey);
             if (nicknameValue && typeof orgRecordId === 'string') {
                 nicknameToOrgIdEntries.push({ nicknameValue, orgRecordId });
+            } else if ( typeof orgRecordId === 'string' && CollectionsApiService.nicknamelessReferenceIdPattern.test(referenceIdKey) ) {
+                wholeReferenceIdToOrgIdEntries.push({ referenceId: referenceIdKey, orgRecordId });
             }
         }
 
@@ -989,6 +996,17 @@ export class CollectionsApiService {
             const quotedNickname = JSON.stringify(nicknameValue);
             const quotedNicknameValuePattern = new RegExp(`${quotedNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\s*:)`, 'g');
             collectionsApiJson = collectionsApiJson.replace(quotedNicknameValuePattern, () => JSON.stringify(orgRecordId));
+        }
+
+        /*
+            A snowfakery record carries no nickname, so its referenceId is <Object>_Reference_<id> alone,
+            and a recipe that copies children per record type block (#622) writes its lookup as that same
+            text. Only a field value that IS the whole referenceId is replaced -- never a key, and never a
+            record's own attributes.referenceId.
+        */
+        for (const { referenceId, orgRecordId } of wholeReferenceIdToOrgIdEntries) {
+            const quotedReferenceIdValuePattern = new RegExp(`(?<!"referenceId"\\s*:\\s*)${JSON.stringify(referenceId)}(?!\\s*:)`, 'g');
+            collectionsApiJson = collectionsApiJson.replace(quotedReferenceIdValuePattern, () => JSON.stringify(orgRecordId));
         }
 
         return collectionsApiJson;
