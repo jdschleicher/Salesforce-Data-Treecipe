@@ -28,14 +28,14 @@ const WORKSPACE_CONFIG_MAX_BYTES = 1024 * 1024;
 const TARGET_ORG_CONFIG_KEY = 'target-org';
 
 export type OrgLoginOutcome =
-    | { kind: 'authorized'; username: string; aliasFailureMessage?: string }
+    | { kind: 'authorized'; username: string }
     | { kind: 'cancelled' }
     | { kind: 'timedOut' }
     | { kind: 'portInUse' }
     | { kind: 'failed'; failureMessage: string };
 
 export interface IOrgLoginRun {
-    openLoginPage: (authorizationUrl: string) => Promise<boolean> | PromiseLike<boolean>;
+    openLoginPage: (authorizationUrl: string) => PromiseLike<boolean>;
     onCancellationRequested: (cancelLogin: () => void) => void;
     timeoutMilliseconds?: number;
 }
@@ -83,9 +83,12 @@ export class SalesforceOrgLogin {
         The login page is opened by the caller, and the login is over when core's local server has
         the browser's answer, the caller cancels, or the time runs out. Core's server has no public
         stop and no timeout of its own, so a cancel or a timeout closes it here: left listening, it
-        would hold the port and refuse the next login.
+        would hold the port and refuse the next login. Core saves the authorization BEFORE the
+        browser has loaded its success page, so a cancel or a timeout that lands in between leaves
+        an org authorized: neither outcome may be worded as "nothing was authorized". No alias is
+        set here: the caller sets one only once it knows which kind of org answered.
     */
-    static async authorizeWithBrowser(loginUrl: string, alias: string | undefined, loginRun: IOrgLoginRun): Promise<OrgLoginOutcome> {
+    static async authorizeWithBrowser(loginUrl: string, loginRun: IOrgLoginRun): Promise<OrgLoginOutcome> {
 
         const normalizedLoginUrl = this.normalizeLoginUrl(loginUrl);
 
@@ -126,15 +129,17 @@ export class SalesforceOrgLogin {
 
         try {
 
-            let isLoginPageOpened = false;
+            // RACED TOO: A BROWSER THAT NEVER REPORTS BACK MUST NOT OUTLIVE THE CANCEL OR THE TIMEOUT
+            const loginPageOpened = Promise.resolve()
+                .then(() => loginRun.openLoginPage(oauthServer.getAuthorizationUrl()))
+                .then(isOpened => isOpened === true, () => false);
+            const openResult = await Promise.race([loginPageOpened, abandoned]);
 
-            try {
-                isLoginPageOpened = await loginRun.openLoginPage(oauthServer.getAuthorizationUrl());
-            } catch {
-                isLoginPageOpened = false;
+            if ( openResult === 'cancelled' || openResult === 'timedOut' ) {
+                return { kind: openResult };
             }
 
-            if ( !isLoginPageOpened ) {
+            if ( openResult !== true ) {
                 return { kind: 'failed', failureMessage: 'the login page could not be opened in a browser' };
             }
 
@@ -149,16 +154,10 @@ export class SalesforceOrgLogin {
             }
 
             if ( !SalesforceCli.isValidTargetOrgIdentifier(raceResult.username) ) {
-                return { kind: 'failed', failureMessage: 'the login answered without a usable username' };
+                return { kind: 'failed', failureMessage: 'the login answered with a username this extension cannot use, so it is not listed here' };
             }
 
-            const aliasFailureMessage = alias === undefined ? undefined : await this.setAlias(alias, raceResult.username);
-
-            return {
-                kind: 'authorized',
-                username: raceResult.username,
-                ...( aliasFailureMessage ? { aliasFailureMessage: aliasFailureMessage } : {} )
-            };
+            return { kind: 'authorized', username: raceResult.username };
 
         } finally {
 
@@ -169,8 +168,8 @@ export class SalesforceOrgLogin {
 
     }
 
-    // THE ORG IS AUTHORIZED WHETHER OR NOT ITS ALIAS LANDS, SO A FAILURE HERE IS TOLD, NOT THROWN
-    private static async setAlias(alias: string, username: string): Promise<string | undefined> {
+    // THE ORG IS AUTHORIZED WHETHER OR NOT ITS ALIAS LANDS, SO A FAILURE HERE IS ANSWERED AS ITS MESSAGE, NOT THROWN
+    static async setAlias(alias: string, username: string): Promise<string | undefined> {
 
         try {
             StateAggregator.clearInstance();
@@ -250,7 +249,7 @@ export class SalesforceOrgLogin {
 
         } catch (writeError) {
 
-            return { isWritten: false, failureMessage: `${displayPath} could not be written (${this.toFailureMessage(writeError)}). ${setByHandAdvice}` };
+            return { isWritten: false, failureMessage: `${displayPath} could not be written: ${this.toFailureMessage(writeError)}. ${setByHandAdvice}` };
 
         }
 

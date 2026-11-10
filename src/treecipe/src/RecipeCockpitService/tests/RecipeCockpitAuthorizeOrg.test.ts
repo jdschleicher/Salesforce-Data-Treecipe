@@ -283,6 +283,8 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         let workspaceStateUpdate: jest.Mock;
         let authorizedAuthorizations: object[];
         let loginSpy: jest.SpyInstance;
+        let aliasSpy: jest.SpyInstance;
+        let cancellationListeners: Array<() => void>;
         let cancellationToken: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void };
 
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
@@ -307,7 +309,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         };
 
         const answerLogin = (loginOutcome: OrgLoginOutcome, authorization?: object) => {
-            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async (_loginUrl: string, _alias: string | undefined, loginRun: IOrgLoginRun) => {
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async (_loginUrl: string, loginRun: IOrgLoginRun) => {
                 await loginRun.openLoginPage(AUTHORIZATION_URL);
                 if ( authorization ) {
                     authorizedAuthorizations.push(authorization);
@@ -337,7 +339,9 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
             (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => [...ORG_AUTHORIZATIONS, ...authorizedAuthorizations]);
             answerOrgConnectionPings(Org.create as jest.Mock, username => CONNECTED_ORG_USERNAMES.includes(username) || username === NEW_SANDBOX_USERNAME || username === PRODUCTION_USERNAME);
 
-            cancellationToken = { isCancellationRequested: false, onCancellationRequested: () => undefined };
+            cancellationListeners = [];
+            cancellationToken = { isCancellationRequested: false, onCancellationRequested: (listener: () => void) => { cancellationListeners.push(listener); } };
+            aliasSpy = jest.spyOn(SalesforceOrgLogin, 'setAlias').mockResolvedValue(undefined);
             (vscode.window.withProgress as jest.Mock).mockReset();
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, cancellationToken));
             [vscode.window.showWarningMessage, vscode.window.showErrorMessage, vscode.window.showInformationMessage, vscode.window.showInputBox, vscode.window.showQuickPick, vscode.env.openExternal]
@@ -430,7 +434,8 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             await receivedMessageHandler({ command: 'authorizeOrg' });
 
-            expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_URL, CHOSEN_ALIAS, expect.anything());
+            expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_URL, expect.anything());
+            expect(aliasSpy).toHaveBeenCalledWith(CHOSEN_ALIAS, NEW_SANDBOX_USERNAME);
             expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: AUTHORIZATION_URL, isStrict: true });
             expect(execFile).not.toHaveBeenCalled();
 
@@ -469,24 +474,91 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             await receivedMessageHandler({ command: 'authorizeOrg' });
 
-            expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_URL, undefined, expect.anything());
+            expect(aliasSpy).not.toHaveBeenCalled();
             expect(JSON.parse(fs.readFileSync(configFilePath(), 'utf8'))).toEqual({ 'target-org': NEW_SANDBOX_USERNAME });
 
         });
 
-        it('never selects a production org or makes it the default, even with the box ticked', async () => {
+        it('never selects a production org, makes it the default, or puts the alias on it, even with the box ticked', async () => {
 
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue('');
             answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL, isChecked: true });
             answerLogin({ kind: 'authorized', username: PRODUCTION_USERNAME }, PRODUCTION_AUTHORIZATION);
             await openRenderedCockpit();
 
             await receivedMessageHandler({ command: 'authorizeOrg' });
 
+            expect(aliasSpy).not.toHaveBeenCalled();
             expect(workspaceStateUpdate).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, PRODUCTION_USERNAME);
             expect(fs.existsSync(configFilePath())).toBe(false);
-            expect(notificationTexts(vscode.window.showWarningMessage))
-                .toEqual([`${PRODUCTION_USERNAME} is authorized, but it is not a sandbox or scratch org, so Target Org Manager does not list it. It was not selected or made this workspace's default org.`]);
+            expect(notificationTexts(vscode.window.showWarningMessage)).toEqual([
+                `${PRODUCTION_USERNAME} is authorized, but it is not a sandbox or scratch org. Target Org Manager lists only those and the Salesforce CLI's default org. It was not selected or made this workspace's default org.`
+                + ` The alias ${CHOSEN_ALIAS} was not set. If you still want it, set it with "sf alias set ${CHOSEN_ALIAS}=${PRODUCTION_USERNAME}".`
+            ]);
+
+        });
+
+        it('makes the username the default org, and says how to set the alias, when the alias does not land', async () => {
+
+            aliasSpy.mockResolvedValue('alias file is locked');
+            answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL, isChecked: true });
+            answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'authorizeOrg' });
+
+            expect(JSON.parse(fs.readFileSync(configFilePath(), 'utf8'))).toEqual({ 'target-org': NEW_SANDBOX_USERNAME });
+            expect(notificationTexts(vscode.window.showWarningMessage)[0]).toContain(`The alias ${CHOSEN_ALIAS} could not be set: alias file is locked.`);
+
+        });
+
+        it('says so when SF_TARGET_ORG still overrides the workspace default it wrote', async () => {
+
+            const savedTargetOrgVariable = process.env.SF_TARGET_ORG;
+            process.env.SF_TARGET_ORG = 'qa';
+
+            try {
+                answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL, isChecked: true });
+                answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'authorizeOrg' });
+
+                expect(JSON.parse(fs.readFileSync(configFilePath(), 'utf8'))).toEqual({ 'target-org': CHOSEN_ALIAS });
+                expect(notificationTexts(vscode.window.showWarningMessage)[0]).toContain('An environment variable still makes qa the default org');
+            } finally {
+                if ( savedTargetOrgVariable === undefined ) { delete process.env.SF_TARGET_ORG; } else { process.env.SF_TARGET_ORG = savedTargetOrgVariable; }
+            }
+
+        });
+
+        it('hands the progress notification\'s Cancel to the login, including one pressed before the login started listening', async () => {
+
+            let cancelCount = 0;
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async (_loginUrl: string, loginRun: IOrgLoginRun) => {
+                loginRun.onCancellationRequested(() => { cancelCount++; });
+                cancellationListeners.forEach(listener => listener());
+                return { kind: 'cancelled' };
+            });
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'authorizeOrg' });
+            expect(cancelCount).toBe(1);
+
+            cancellationToken.isCancellationRequested = true;
+            await receivedMessageHandler({ command: 'authorizeOrg' });
+            expect(cancelCount).toBeGreaterThanOrEqual(3);
+
+        });
+
+        it('releases the lock when the login throws', async () => {
+
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockRejectedValue(new Error('unexpected'));
+            await openRenderedCockpit();
+
+            await Promise.resolve(receivedMessageHandler({ command: 'authorizeOrg' })).catch(() => undefined);
+
+            expect(postedNamed('scratchOrgState').at(-1)).toEqual({ command: 'scratchOrgState', isRunning: false });
+            expect((RecipeCockpitService as any).isScratchOrgSetupInFlight).toBe(false);
 
         });
 
@@ -508,10 +580,10 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         });
 
         it.each([
-            [{ kind: 'cancelled' as const }, 'showInformationMessage' as const, 'Authorize org was cancelled. No org was authorized.'],
-            [{ kind: 'timedOut' as const }, 'showWarningMessage' as const, 'No login was completed in time'],
+            [{ kind: 'cancelled' as const }, 'showInformationMessage' as const, 'Authorize org was cancelled.'],
+            [{ kind: 'timedOut' as const }, 'showWarningMessage' as const, 'Authorize org stopped waiting'],
             [{ kind: 'portInUse' as const }, 'showWarningMessage' as const, 'Authorize org could not start'],
-            [{ kind: 'failed' as const, failureMessage: '[x](command:evil)' }, 'showErrorMessage' as const, 'No org was authorized:']
+            [{ kind: 'failed' as const, failureMessage: '[x](command:evil)' }, 'showErrorMessage' as const, 'Authorize org did not finish. The login reported:']
         ])('ends %j in one notification, lists nothing again, and releases the lock', async (loginOutcome, notificationName, expectedStart) => {
 
             answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL, isChecked: true });

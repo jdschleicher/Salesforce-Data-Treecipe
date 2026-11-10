@@ -102,7 +102,7 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
                 expectEqual(fs.existsSync(workspaceConfigPath(journey)), false, '.sf/config.json exists');
                 expectEqual(notificationsShown(journey), [{
                     kind: 'warning',
-                    text: 'admin@example.com.prod is authorized, but it is not a sandbox or scratch org, so Target Org Manager does not list it. It was not selected or made this workspace\'s default org.'
+                    text: 'admin@example.com.prod is authorized, but it is not a sandbox or scratch org. Target Org Manager lists only those and the Salesforce CLI\'s default org. It was not selected or made this workspace\'s default org.'
                 }], 'The notifications');
             });
 

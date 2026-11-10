@@ -66,13 +66,19 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
 
     describe('the one notification a login ends in', () => {
 
-        it.each([
-            [{ kind: 'cancelled' as const }, 'information', 'Authorize org was cancelled. No org was authorized.'],
-            [{ kind: 'timedOut' as const }, 'warning', `No login was completed in time, so no org was authorized. Press ${RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL} to try again.`],
-            [{ kind: 'failed' as const, failureMessage: 'end-user denied authorization' }, 'error', `No org was authorized: end-user denied authorization. Press ${RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL} to try again.`]
-        ])('says what to do when no org was authorized: %j', (loginOutcome, severity, text) => {
+        it('never says nothing was authorized after a cancel or a timeout, since core may already have saved the org', () => {
 
-            expect(notificationOf({ loginOutcome: loginOutcome, isDefaultRequested: true })).toEqual({ severity: severity, text: text });
+            expect(notificationOf({ loginOutcome: { kind: 'cancelled' }, isDefaultRequested: true }))
+                .toEqual({ severity: 'information', text: 'Authorize org was cancelled. If you had already logged in in your browser, the org may still have been authorized: press ⟳ to check.' });
+            expect(notificationOf({ loginOutcome: { kind: 'timedOut' } }))
+                .toEqual({ severity: 'warning', text: 'Authorize org stopped waiting: no login was completed in time. If you had already logged in in your browser, the org may still have been authorized: press ⟳ to check.' });
+
+        });
+
+        it('words a refused login as what the login reported, not as the extension\'s own words', () => {
+
+            expect(notificationOf({ loginOutcome: { kind: 'failed', failureMessage: 'end-user denied authorization' } }))
+                .toEqual({ severity: 'error', text: `Authorize org did not finish. The login reported: end-user denied authorization. Press ${RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL} to try again.` });
 
         });
 
@@ -81,7 +87,7 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
             const notification = notificationOf({ loginOutcome: { kind: 'portInUse' } });
 
             expect(notification.severity).toBe('warning');
-            expect(notification.text).toContain('1717 unless sfdx-project.json sets oauthLocalPort');
+            expect(notification.text).toContain('local port 1717');
             expect(notification.text).toEndWith(`then press ${RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL} again.`);
 
         });
@@ -110,11 +116,13 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
 
         });
 
-        it('says an org that is not a sandbox or scratch org is authorized but not listed, selected or made the default', () => {
+        it('says an org that is not a sandbox or scratch org is authorized but not selected or made the default, and that its alias was not set', () => {
 
             expect(notificationOf({ placement: 'notSandboxOrScratch', isDefaultRequested: true }))
-                .toEqual({ severity: 'warning', text: `${QA_USERNAME} is authorized, but it is not a sandbox or scratch org, so Target Org Manager does not list it. It was not selected or made this workspace's default org.` });
+                .toEqual({ severity: 'warning', text: `${QA_USERNAME} is authorized, but it is not a sandbox or scratch org. Target Org Manager lists only those and the Salesforce CLI's default org. It was not selected or made this workspace's default org.` });
             expect(notificationOf({ placement: 'notSandboxOrScratch' }).text).not.toContain('It was not selected');
+            expect(notificationOf({ placement: 'notSandboxOrScratch', alias: 'qa' }).text)
+                .toEndWith(`default org. The alias qa was not set. If you still want it, set it with "sf alias set qa=${QA_USERNAME}".`);
 
         });
 
@@ -127,10 +135,34 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
 
         it('names the org by username alone, and how to set the alias by hand, when the alias did not land', () => {
 
-            const notification = notificationOf({ loginOutcome: { ...AUTHORIZED, aliasFailureMessage: 'alias file is locked' }, alias: 'qa', placement: 'listed' });
+            const notification = notificationOf({ alias: 'qa', aliasFailureMessage: 'alias file is locked', placement: 'listed' });
 
             expect(notification.severity).toBe('warning');
-            expect(notification.text).toBe(`${QA_USERNAME} is authorized and listed in Target Org Manager. The alias qa could not be set (alias file is locked): set it with "sf alias set qa=${QA_USERNAME}".`);
+            expect(notification.text).toBe(`${QA_USERNAME} is authorized and listed in Target Org Manager. The alias qa could not be set: alias file is locked. To set it yourself, set it with "sf alias set qa=${QA_USERNAME}".`);
+
+        });
+
+        it('says an environment variable still decides the default org when one overrides the workspace config', () => {
+
+            const notification = notificationOf({ alias: 'qa', placement: 'listed', isDefaultRequested: true, targetOrgWrite: { isWritten: true }, overridingDefaultOrgIdentifier: 'other-org' });
+
+            expect(notification.severity).toBe('warning');
+            expect(notification.text).toBe(`qa · ${QA_USERNAME} is authorized, selected in Target Org Manager, and set as target-org in this workspace's .sf/config.json. An environment variable still makes other-org the default org: unset SF_TARGET_ORG to use the workspace's.`);
+
+        });
+
+        it('uses no parentheses in any ending, since a notification escapes them', () => {
+
+            const endings: Partial<IOrgAuthorizeResult>[] = [
+                { loginOutcome: { kind: 'cancelled' } }, { loginOutcome: { kind: 'timedOut' } }, { loginOutcome: { kind: 'portInUse' } },
+                { alias: 'qa', placement: 'listed' }, { alias: 'qa', placement: 'listed', aliasFailureMessage: 'locked' },
+                { alias: 'qa', placement: 'notSandboxOrScratch', isDefaultRequested: true }, { alias: 'qa', placement: 'notConnected' },
+                { placement: 'listed', isDefaultRequested: true, targetOrgWrite: { isWritten: true } },
+                { placement: 'listed', isDefaultRequested: true, targetOrgWrite: { isWritten: true }, overridingDefaultOrgIdentifier: 'other' },
+                { placement: 'listed', isDefaultRequested: true }
+            ];
+
+            endings.forEach(ending => expect(notificationOf(ending).text).not.toMatch(/[()]/));
 
         });
 

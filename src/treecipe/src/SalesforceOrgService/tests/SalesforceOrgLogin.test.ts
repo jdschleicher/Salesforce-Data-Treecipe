@@ -98,7 +98,7 @@ describe('SalesforceOrgLogin (#630)', () => {
             ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
             const loginRun = buildLoginRun();
 
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, undefined, loginRun);
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, loginRun);
 
             expect(loginOutcome).toEqual({ kind: 'authorized', username: QA_USERNAME });
             expect(WebOAuthServer.create).toHaveBeenCalledWith({ oauthConfig: { loginUrl: SANDBOX_LOGIN_URL } });
@@ -109,32 +109,9 @@ describe('SalesforceOrgLogin (#630)', () => {
 
         });
 
-        it('sets the alias on the username the login answered', async () => {
-
-            const setAndSave = jest.fn().mockResolvedValue(undefined);
-            ( StateAggregator.getInstance as jest.Mock ).mockResolvedValue({ aliases: { setAndSave: setAndSave } });
-            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME))));
-
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, 'qa', buildLoginRun());
-
-            expect(loginOutcome).toEqual({ kind: 'authorized', username: QA_USERNAME });
-            expect(setAndSave).toHaveBeenCalledWith('qa', QA_USERNAME);
-
-        });
-
-        it('keeps the authorization and says why when the alias cannot be set', async () => {
-
-            ( StateAggregator.getInstance as jest.Mock ).mockResolvedValue({ aliases: { setAndSave: jest.fn().mockRejectedValue(new Error('alias file is locked')) } });
-            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME))));
-
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, 'qa', buildLoginRun()))
-                .toEqual({ kind: 'authorized', username: QA_USERNAME, aliasFailureMessage: 'alias file is locked' });
-
-        });
-
         it('refuses an address that is not a Salesforce login page before any server starts', async () => {
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser('https://evil.example.com', undefined, buildLoginRun()))
+            expect(await SalesforceOrgLogin.authorizeWithBrowser('https://evil.example.com', buildLoginRun()))
                 .toEqual({ kind: 'failed', failureMessage: LOGIN_URL_REFUSAL });
             expect(WebOAuthServer.create).not.toHaveBeenCalled();
 
@@ -150,7 +127,7 @@ describe('SalesforceOrgLogin (#630)', () => {
             ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
             const loginRun = buildLoginRun();
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, undefined, loginRun)).toEqual({ kind: 'portInUse' });
+            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'portInUse' });
             expect(loginRun.openLoginPage).not.toHaveBeenCalled();
 
         });
@@ -165,8 +142,32 @@ describe('SalesforceOrgLogin (#630)', () => {
                 openLoginPage: jest.fn().mockImplementation(async () => { cancelLogin(); return true; })
             });
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, 'qa', loginRun)).toEqual({ kind: 'cancelled' });
+            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'cancelled' });
             expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('honours a cancel while the browser has still not reported that it opened', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+            let cancelLogin: () => void = () => undefined;
+            const loginRun = buildLoginRun({
+                onCancellationRequested: cancel => { cancelLogin = cancel; },
+                openLoginPage: jest.fn().mockImplementation(() => { setImmediate(cancelLogin); return new Promise<boolean>(() => undefined); })
+            });
+
+            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'cancelled' });
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('sets no alias itself: the caller does, once it knows which kind of org answered', async () => {
+
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME))));
+
+            await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun());
+
             expect(StateAggregator.getInstance).not.toHaveBeenCalled();
 
         });
@@ -176,7 +177,7 @@ describe('SalesforceOrgLogin (#630)', () => {
             const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
             ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, undefined, buildLoginRun({ timeoutMilliseconds: 5 })))
+            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun({ timeoutMilliseconds: 5 })))
                 .toEqual({ kind: 'timedOut' });
             expect(oauthServer.webServer.close).toHaveBeenCalled();
 
@@ -186,7 +187,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.reject(new Error(`end-user denied\nauthorization ${'x'.repeat(500)}`))));
 
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, undefined, buildLoginRun());
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun());
 
             expect(loginOutcome.kind).toBe('failed');
             const failureMessage = ( loginOutcome as { failureMessage: string } ).failureMessage;
@@ -201,7 +202,7 @@ describe('SalesforceOrgLogin (#630)', () => {
             const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
             ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, undefined, buildLoginRun({ openLoginPage: jest.fn().mockResolvedValue(false) })))
+            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun({ openLoginPage: jest.fn().mockResolvedValue(false) })))
                 .toEqual({ kind: 'failed', failureMessage: 'the login page could not be opened in a browser' });
             expect(oauthServer.webServer.close).toHaveBeenCalled();
 
@@ -211,8 +212,31 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.resolve(buildAuthInfo('--target-org'))));
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, undefined, buildLoginRun()))
-                .toEqual({ kind: 'failed', failureMessage: 'the login answered without a usable username' });
+            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun()))
+                .toEqual({ kind: 'failed', failureMessage: 'the login answered with a username this extension cannot use, so it is not listed here' });
+
+        });
+
+    });
+
+    describe('setAlias', () => {
+
+        it('sets the alias on the username, read from fresh state', async () => {
+
+            const setAndSave = jest.fn().mockResolvedValue(undefined);
+            ( StateAggregator.getInstance as jest.Mock ).mockResolvedValue({ aliases: { setAndSave: setAndSave } });
+
+            expect(await SalesforceOrgLogin.setAlias('qa', QA_USERNAME)).toBeUndefined();
+            expect(StateAggregator.clearInstance).toHaveBeenCalled();
+            expect(setAndSave).toHaveBeenCalledWith('qa', QA_USERNAME);
+
+        });
+
+        it('answers why, in one line, when the alias cannot be set', async () => {
+
+            ( StateAggregator.getInstance as jest.Mock ).mockResolvedValue({ aliases: { setAndSave: jest.fn().mockRejectedValue(new Error('alias file\nis locked')) } });
+
+            expect(await SalesforceOrgLogin.setAlias('qa', QA_USERNAME)).toBe('alias file is locked');
 
         });
 
@@ -262,6 +286,30 @@ describe('SalesforceOrgLogin (#630)', () => {
             expect(targetOrgWrite.isWritten).toBeFalse();
             expect(( targetOrgWrite as { failureMessage: string } ).failureMessage).toEndWith('Set it with "sf config set target-org=qa".');
             expect(fs.readFileSync(path.join(workspaceRoot, '.sf', 'config.json'), 'utf8')).toBe(configText);
+
+        });
+
+        it('leaves a config.json that is a folder, or over 1 MB, as it was', () => {
+
+            fs.mkdirSync(path.join(workspaceRoot, '.sf', 'config.json'), { recursive: true });
+            expect(SalesforceOrgLogin.writeWorkspaceTargetOrg(workspaceRoot, 'qa')).toMatchObject({ isWritten: false, failureMessage: expect.stringContaining('is not a file this extension can update') });
+
+            fs.rmdirSync(path.join(workspaceRoot, '.sf', 'config.json'));
+            const oversizedConfigText = JSON.stringify({ padding: 'x'.repeat(1024 * 1024) });
+            fs.writeFileSync(path.join(workspaceRoot, '.sf', 'config.json'), oversizedConfigText);
+            expect(SalesforceOrgLogin.writeWorkspaceTargetOrg(workspaceRoot, 'qa').isWritten).toBeFalse();
+            expect(fs.readFileSync(path.join(workspaceRoot, '.sf', 'config.json'), 'utf8')).toBe(oversizedConfigText);
+
+        });
+
+        it('answers a failure, never throws, when .sf cannot be made', () => {
+
+            fs.writeFileSync(path.join(workspaceRoot, '.sf'), 'a file where the folder belongs');
+
+            const targetOrgWrite = SalesforceOrgLogin.writeWorkspaceTargetOrg(workspaceRoot, 'qa');
+
+            expect(targetOrgWrite.isWritten).toBeFalse();
+            expect(( targetOrgWrite as { failureMessage: string } ).failureMessage).not.toMatch(/[()]/);
 
         });
 
