@@ -5,7 +5,7 @@ import { RecipeMockService } from "./mocks/RecipeMockService";
 
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
-import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../ObjectInfoWrapper/RecordTypesWrapper";
 
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";

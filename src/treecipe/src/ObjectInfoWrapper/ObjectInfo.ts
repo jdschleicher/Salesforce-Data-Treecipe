@@ -1,5 +1,5 @@
 import { FieldInfo } from "./FieldInfo";
-import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "./RecordTypesWrapper";
 import { RelationshipDetail } from "./RelationshipTypes";
 import { IValidationRuleNotApplied } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 

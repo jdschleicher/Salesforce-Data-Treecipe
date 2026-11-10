@@ -10,7 +10,7 @@ import {
     PICKLIST_DEPENDENCY_IN_ORG_GUIDE_FIXING_A_FAILURE_URL,
     PICKLIST_DEPENDENCY_TECHNICAL_DESIGN_URL
 } from "../PicklistDependencyTestService";
-import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../ObjectInfoWrapper/RecordTypesWrapper";
 import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";

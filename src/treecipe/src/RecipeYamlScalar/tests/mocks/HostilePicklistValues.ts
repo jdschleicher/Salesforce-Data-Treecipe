@@ -1,4 +1,4 @@
-import { RecordTypeWrapper } from '../../../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../../../ObjectInfoWrapper/RecordTypesWrapper';
 import { IRecipeFakerService } from '../../../RecipeFakerService.ts/IRecipeFakerService';
 import { RecordTypeSelection } from '../../../RecordTypeService/RecordTypeSelection';
 

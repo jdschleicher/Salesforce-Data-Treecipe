@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import path = require('path');
 import * as fs from 'fs';
 import * as os from 'os';
-import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
@@ -435,12 +434,11 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, quickPickItems: vscode.QuickPickItem[]): Promise<vscode.QuickPickItem[]> {
+    static async getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, quickPickItems: vscode.QuickPickItem[], selectedFakerService: string): Promise<vscode.QuickPickItem[]> {
 
         const datasetEntries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
-        const selectedFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
         const expectedFakerJSDirectoryName = 'dataset-fakerjs';
         const expectedSnowfakeryDirectoryName = 'dataset';
         const isFakerJS = (selectedFakerService === 'faker-js');
@@ -540,13 +538,13 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async promptForDirectoryToGenerateQuickItemsForFileSelection(directoryPathToParseSearchForRecipeFilesFrom: string, vsCodeQuickPickItemPromptLabel: string): Promise<vscode.QuickPickItem | undefined> {
+    static async promptForDirectoryToGenerateQuickItemsForFileSelection(directoryPathToParseSearchForRecipeFilesFrom: string, vsCodeQuickPickItemPromptLabel: string, selectedDataFakerService: string): Promise<vscode.QuickPickItem | undefined> {
 
         const workspaceRoot = this.getWorkspaceRoot();
         const generatedRecipesFolderPath = `${workspaceRoot}/${directoryPathToParseSearchForRecipeFilesFrom}`;
 
         let availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = [];
-        const quickPickItems = await this.getAvailableRecipeFileQuickPickItemsByDirectory(availableRecipeFileQuickPickitems, generatedRecipesFolderPath);
+        const quickPickItems = await this.getAvailableRecipeFileQuickPickItemsByDirectory(availableRecipeFileQuickPickitems, generatedRecipesFolderPath, selectedDataFakerService);
         availableRecipeFileQuickPickitems.concat(quickPickItems);
 
         const selection = await vscode.window.showQuickPick(
@@ -593,9 +591,8 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems: vscode.QuickPickItem[], folderPathToParse: string) {
+    static async getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems: vscode.QuickPickItem[], folderPathToParse: string, selectedDataFakerService: string) {
 
-        const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
         const expectedFakerJSRecipeFileIndicator = FAKER_JS_RECIPE_INDICATOR;
 
         const entries = await fs.promises.readdir(folderPathToParse, { withFileTypes: true });
@@ -637,7 +634,7 @@ export class VSCodeWorkspaceService {
                     continue;
                 }
                 
-                const recipeFileVSCodeItems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems, recipeDirectoryPathToParseUri);
+                const recipeFileVSCodeItems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems, recipeDirectoryPathToParseUri, selectedDataFakerService);
                 if ( recipeFileVSCodeItems.length > 0 ) {
                     recipeFileQuickPickItems.concat(recipeFileVSCodeItems);
                 }
@@ -682,9 +679,8 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName: string):string {
+    static createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName: string, fakeDataSetsFolderPath: string):string {
 
-        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
         const workspaceRoot = this.getWorkspaceRoot();
         const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
 
@@ -717,10 +713,9 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
+    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp, selectedDataFakerService: string):string {
         
         let fakeDataSetsFolderName = '';
-        const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
         if ( selectedDataFakerService === 'faker-js' ) {
             fakeDataSetsFolderName = `dataset-fakerjs-${isoDateTimestamp}`;
         } else {
@@ -961,7 +956,7 @@ export class VSCodeWorkspaceService {
         with no folder, has no item at all. The setting is followed live; the item and the listener
         are disposed with the extension.
     */
-    static registerRecipeCockpitStatusBarItem(subscriptions: { push(disposable: vscode.Disposable): void }) {
+    static registerRecipeCockpitStatusBarItem(subscriptions: { push(disposable: vscode.Disposable): void }, readIsStatusBarItemShownSetting: () => boolean | undefined) {
 
         if ( !vscode.workspace.workspaceFolders?.length ) {
             return;
@@ -971,7 +966,7 @@ export class VSCodeWorkspaceService {
 
         const applyVisibility = () => {
 
-            const isShown = ConfigurationService.getExtensionConfigValue(RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY) !== false;
+            const isShown = readIsStatusBarItemShownSetting() !== false;
 
             if ( !isShown ) {
                 recipeCockpitStatusBarItem?.hide();

@@ -7,7 +7,7 @@ import { XMLFieldDetail } from '../../XMLProcessingService/XMLFieldDetail';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import { RecordTypeWrapper } from '../../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../../ObjectInfoWrapper/RecordTypesWrapper';
 import { IValidationRuleFieldConstraint, ValidationRuleAnalyzerService } from '../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 
 /*

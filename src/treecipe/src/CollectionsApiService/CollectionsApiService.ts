@@ -83,7 +83,7 @@ export class CollectionsApiService {
 
         while (true) {
             
-            fakeDataSetDirectoryVSCodeQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(generatedFakeDataSetsPath, fakeDataSetDirectoryVSCodeQuickPickItems);
+            fakeDataSetDirectoryVSCodeQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(generatedFakeDataSetsPath, fakeDataSetDirectoryVSCodeQuickPickItems, ConfigurationService.getSelectedDataFakerServiceConfig());
 
             const selection = await vscode.window.showQuickPick(
                 fakeDataSetDirectoryVSCodeQuickPickItems,

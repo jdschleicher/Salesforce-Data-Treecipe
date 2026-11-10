@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import { ConfigurationService } from './treecipe/src/ConfigurationService/ConfigurationService';
 import { ExtensionCommandService, IRunFakerFilteredRecipe } from './treecipe/src/ExtensionCommandService/ExtensionCommandService';
-import { VSCodeWorkspaceService } from './treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
+import { RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY, VSCodeWorkspaceService } from './treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitService } from './treecipe/src/RecipeCockpitService/RecipeCockpitService';
 import { TreecipeSideBarService } from './treecipe/src/TreecipeSideBarService/TreecipeSideBarService';
 
@@ -30,7 +30,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// LETS LAZILY CREATED OUTPUT CHANNELS BE DISPOSED BY VS CODE WITHOUT CREATING THEM AT ACTIVATION
 	VSCodeWorkspaceService.registerExtensionSubscriptions(context.subscriptions);
 
-	VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(context.subscriptions);
+	VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(context.subscriptions, () => ConfigurationService.getExtensionConfigValue(RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY));
 
 	// THE ACTIVITY BAR'S TREECIPE VIEW: EVERY ROW RUNS A COMMAND REGISTERED BELOW, WITH NO ARGUMENTS (#456)
 	TreecipeSideBarService.register(context.subscriptions);

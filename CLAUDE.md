@@ -114,7 +114,7 @@ src/
 ├── extension.ts                             # Extension entry point, command registration
 └── treecipe/src/
     ├── tests/
-    │   └── ServiceLayers.test.ts            # SERVICE_LAYERS, the one layer table (#570), and KNOWN_LAYER_VIOLATIONS, which only shrinks
+    │   └── ServiceLayers.test.ts            # SERVICE_LAYERS, the one layer table (#570); fails on any upward import or cycle
     ├── CockpitKit/                          # What every cockpit shares (#524): palette, button kinds, org picker CSS, in-panel confirmation; imports only crypto
     │   └── tests/                           # Every kit piece appears verbatim and once in the Recipe Cockpit's document, so its suites cover the kit
     ├── CollectionsApiService/
@@ -160,6 +160,7 @@ src/
     ├── ObjectInfoWrapper/
     │   ├── ObjectInfo.ts                    # Typed wrapper for parsed Salesforce object metadata
     │   ├── RelationshipTypes.ts             # RelationshipDetail, RelationshipTree, RecipeFileOutput: what RelationshipService fills in (#574)
+    │   ├── RecordTypesWrapper.ts            # RecordTypeWrapper, the record type ObjectInfo.RecordTypesMap holds; RecordTypeService fills it in (#575)
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
     │   └── tests/
@@ -239,7 +240,6 @@ src/
     ├── RecordTypeService/
     │   ├── RecordTypeService.ts             # Detects record types and related picklist options
     │   ├── RecordTypeSelection.ts           # The record types chosen per object (#193, #194); imports only RecordTypeWrapper
-    │   ├── RecordTypesWrapper.ts
     │   └── tests/
     ├── RelationshipService/
     │   ├── RelationshipService.ts           # Builds the relationship hierarchy and tree recipes; faker-js nests under friends:
@@ -310,7 +310,7 @@ User runs command (Cmd+Shift+P)
 
 ### Layers
 
-**A folder under `src/treecipe/src` imports only its own layer or a lower one, never in a cycle** (epic #570). The layers run from 0 (leaf: imports no other service) through platform, metadata model, generation and insert, and features, to 5 (commands, `src/extension.ts`). Each folder's layer is `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table. That test fails on an upward import, a folder-level cycle, a folder with no layer, a file outside any folder, and a `KNOWN_LAYER_VIOLATIONS` entry that no longer happens or is no longer a violation. The list holds today's violations, each with the slice that removes it (#575), and only shrinks. A new folder gets its layer in the same change. Shared code a lower layer needs moves down; it is not added to the list.
+**A folder under `src/treecipe/src` imports only its own layer or a lower one, never in a cycle** (epic #570). The layers run from 0 (leaf: imports no other service) through platform, metadata model, generation and insert, and features, to 5 (commands, `src/extension.ts`). Each folder's layer is `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table. That test fails on an upward import, a folder-level cycle, a folder with no layer and a file outside any folder, with no exceptions (#575). A new folder gets its layer in the same change. Shared code a lower layer needs moves down.
 
 `ExtensionCommandService/tests/GenerationCommands.golden.test.ts` runs Generate Treecipe and Run Faker by Recipe and compares every file they write with `tests/golden/`. A move that claims "behaviour unchanged" passes it with no change to those files. `UPDATE_GOLDEN=1` rewrites them, and the PR then says what a user now gets differently.
 
