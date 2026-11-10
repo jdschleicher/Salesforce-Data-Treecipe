@@ -439,6 +439,26 @@ export class FakeOrgConnections {
         return this.authorizations.map(authorization => ({ ...authorization }));
     }
 
+    // THE ORG THE READER LOGS IN TO WITH "Authorize with @salesforce/core" (#630); UNSET, THE LOGIN FAILS AS AN UNSCRIPTED CALL DOES
+    browserLoginAuthorization: { username: string; orgId: string; instanceUrl: string; isSandbox?: boolean } | undefined;
+
+    async createWebOAuthServer(loginUrl: string) {
+        this.record('', 'WebOAuthServer.create', [loginUrl]);
+        return {
+            start: async () => undefined,
+            getAuthorizationUrl: () => `${loginUrl}/services/oauth2/authorize?client_id=PlatformCLI`,
+            authorizeAndSave: async () => {
+                const authorization = this.browserLoginAuthorization;
+                if ( !authorization ) {
+                    throw new Error('The journey\'s fake browser has no login to complete. Script it on journey.org.browserLoginAuthorization.');
+                }
+                this.addAuthorization(authorization);
+                return { getUsername: () => authorization.username };
+            },
+            webServer: { close: () => undefined }
+        };
+    }
+
     async setAlias(alias: string, username: string) {
         this.record(username, 'aliases.setAndSave', [alias, username]);
         this.authorizations.forEach(authorization => {
@@ -531,6 +551,7 @@ export const journeySalesforceCoreModule = {
         clearInstance: () => undefined,
         getInstance: async () => ({ aliases: { setAndSave: (alias: string, username: string) => orgConnections().setAlias(alias, username) } })
     },
+    WebOAuthServer: { create: ({ oauthConfig }: { oauthConfig: { loginUrl: string } }) => orgConnections().createWebOAuthServer(oauthConfig.loginUrl) },
     Lifecycle: { getInstance: () => ({ on: () => undefined, removeAllListeners: () => undefined }) },
     ScratchOrgCache: {},
     scratchOrgLifecycleEventName: 'scratchOrgLifecycleEvent',

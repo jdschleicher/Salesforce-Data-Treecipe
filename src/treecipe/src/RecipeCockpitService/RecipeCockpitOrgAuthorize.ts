@@ -9,8 +9,10 @@ import { OrgLoginOutcome, SANDBOX_LOGIN_URL, WorkspaceTargetOrgWrite } from '../
 */
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL = 'Authorize org';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL = 'Authorizing org…';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = 'Log in to an existing sandbox in your browser through the Salesforce CLI so Target Org Manager and every sf command can use it.';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL = 'Authorize org';
+export const RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = 'Log in to an existing sandbox in your browser so Target Org Manager can list it.';
+// TWO WAYS TO LOG IN, AS "+ New scratch org" OFFERS TWO WAYS TO CREATE: THE CLI'S FIRST, SINCE ONLY ITS LOGIN IS SURE TO BE READABLE BY sf
+export const RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL = 'Authorize with Salesforce CLI';
+export const RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL = 'Authorize with @salesforce/core';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL = 'Make this my selected target org and this workspace\'s default org';
 
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL = 'Sandbox';
@@ -77,7 +79,7 @@ export class RecipeCockpitOrgAuthorize {
 
         return {
             summary: [
-                'The Salesforce CLI opens the Salesforce login page in your browser. Once you log in and allow access, the CLI saves the org with your other authorizations, so every sf command can use it.',
+                'Your browser opens the Salesforce login page. Once you log in and allow access, the org is saved with your other Salesforce CLI authorizations.',
                 authorizePlan.alias ? `Alias: ${authorizePlan.alias}` : 'Alias: none'
             ],
             warnings: authorizePlan.alias && authorizePlan.aliasHolderUsername
@@ -90,6 +92,12 @@ export class RecipeCockpitOrgAuthorize {
                     'Target Org Manager lists the org once it answers a connection check, and only when it is a sandbox or scratch org.',
                     'Nothing is deployed to the org and no record is written.',
                     `Ticking the box also selects the org here and sets target-org in this workspace's .sf/config.json.`
+                ]
+            }, {
+                title: 'Salesforce CLI or @salesforce/core',
+                lines: [
+                    `${RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL} runs sf org login web, which opens the login page and saves the org the way a terminal login does, so every sf command can use it. The CLI must be installed and on PATH.`,
+                    `${RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL} logs in inside VS Code without starting the CLI. The org is saved where the CLI keeps its orgs, but its tokens are encrypted with the key VS Code's environment selects, so sf in a terminal set up differently may not be able to use it.`
                 ]
             }]
         };

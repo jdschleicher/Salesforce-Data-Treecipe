@@ -6,14 +6,16 @@ import * as os from 'os';
 import * as path from 'path';
 
 jest.mock('@salesforce/core', () => ({
+    WebOAuthServer: { create: jest.fn() },
     StateAggregator: { clearInstance: jest.fn(), getInstance: jest.fn() }
 }));
 
-import { StateAggregator } from '@salesforce/core';
+import { StateAggregator, WebOAuthServer } from '@salesforce/core';
 
 import { ISalesforceCliInvocationResult, SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import {
     CLI_NOT_FOUND_FAILURE_MESSAGE,
+    ICoreLibraryOrgLoginRun,
     IOrgLoginRun,
     LOGIN_URL_REFUSAL,
     ORG_LOGIN_TIMEOUT_MILLISECONDS,
@@ -35,6 +37,35 @@ function buildLoginSuccess(username: string): ISalesforceCliInvocationResult {
 
 function buildLoginFailure(errorName: string, errorMessage: string): ISalesforceCliInvocationResult {
     return { stdout: JSON.stringify({ status: 1, name: errorName, message: errorMessage, exitCode: 1 }), stderr: '', exitCode: 1 };
+}
+
+const AUTHORIZATION_URL = 'https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI&state=abc';
+interface IFakeOauthServer {
+    start: jest.Mock;
+    getAuthorizationUrl: jest.Mock;
+    authorizeAndSave: jest.Mock;
+    webServer: { close: jest.Mock };
+}
+
+function buildFakeOauthServer(authorizeAndSave: () => Promise<unknown>): IFakeOauthServer {
+    return {
+        start: jest.fn().mockResolvedValue(undefined),
+        getAuthorizationUrl: jest.fn().mockReturnValue(AUTHORIZATION_URL),
+        authorizeAndSave: jest.fn().mockImplementation(authorizeAndSave),
+        webServer: { close: jest.fn() }
+    };
+}
+
+function buildAuthInfo(username: string) {
+    return { getUsername: () => username, getFields: () => ({ username: username, accessToken: ACCESS_TOKEN }) };
+}
+
+function buildCoreLoginRun(overrides: Partial<ICoreLibraryOrgLoginRun> = {}): ICoreLibraryOrgLoginRun & { openLoginPage: jest.Mock } {
+    return {
+        openLoginPage: jest.fn().mockResolvedValue(true),
+        onCancellationRequested: () => undefined,
+        ...overrides
+    } as ICoreLibraryOrgLoginRun & { openLoginPage: jest.Mock };
 }
 
 function buildLoginRun(overrides: Partial<IOrgLoginRun> = {}): IOrgLoginRun {
@@ -80,13 +111,13 @@ describe('SalesforceOrgLogin (#630)', () => {
 
     });
 
-    describe('authorizeWithBrowser', () => {
+    describe('authorizeWithSalesforceCli', () => {
 
         it('runs "sf org login web" on the login address with no alias, no default and no project folder, and answers the username only', async () => {
 
             const cliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue(buildLoginSuccess(QA_USERNAME));
 
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser('https://TEST.salesforce.com/', buildLoginRun());
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithSalesforceCli('https://TEST.salesforce.com/', buildLoginRun());
 
             expect(loginOutcome).toEqual({ kind: 'authorized', username: QA_USERNAME });
             expect(cliSpy).toHaveBeenCalledTimes(1);
@@ -104,7 +135,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             const cliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli');
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser('https://evil.example.com', buildLoginRun()))
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli('https://evil.example.com', buildLoginRun()))
                 .toEqual({ kind: 'failed', failureMessage: LOGIN_URL_REFUSAL });
             expect(cliSpy).not.toHaveBeenCalled();
 
@@ -114,7 +145,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue(buildLoginFailure('PortInUseError', 'Cannot start the OAuth redirect server on port 1717.'));
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun())).toEqual({ kind: 'portInUse' });
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun())).toEqual({ kind: 'portInUse' });
 
         });
 
@@ -128,7 +159,7 @@ describe('SalesforceOrgLogin (#630)', () => {
                 return { stdout: '', stderr: '', exitCode: null };
             });
 
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun({ onCancellationRequested: cancel => { cancelLogin = cancel; } }));
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun({ onCancellationRequested: cancel => { cancelLogin = cancel; } }));
 
             expect(loginOutcome).toEqual({ kind: 'cancelled' });
             expect(killLogin).toHaveBeenCalledTimes(1);
@@ -139,7 +170,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             const cliSpy = jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue({ stdout: '', stderr: '', exitCode: null, timedOut: true });
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun({ timeoutMilliseconds: 5 }))).toEqual({ kind: 'timedOut' });
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun({ timeoutMilliseconds: 5 }))).toEqual({ kind: 'timedOut' });
             expect(cliSpy.mock.calls[0][2]).toBe(5);
 
         });
@@ -148,7 +179,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue(buildLoginFailure('AuthCodeExchangeError', `end-user denied\nauthorization ${'x'.repeat(500)}`));
 
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun());
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun());
 
             expect(loginOutcome.kind).toBe('failed');
             const failureMessage = ( loginOutcome as { failureMessage: string } ).failureMessage;
@@ -164,8 +195,19 @@ describe('SalesforceOrgLogin (#630)', () => {
                 stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' })
             });
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun()))
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun()))
                 .toEqual({ kind: 'failed', failureMessage: CLI_NOT_FOUND_FAILURE_MESSAGE });
+
+        });
+
+        it('says what stopped a CLI that could not be started for another reason', async () => {
+
+            jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue({
+                stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf.cmd EINVAL'), { code: 'EINVAL' })
+            });
+
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun()))
+                .toEqual({ kind: 'failed', failureMessage: 'the Salesforce CLI could not be started: spawn sf.cmd EINVAL' });
 
         });
 
@@ -179,7 +221,7 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue(loginResult);
 
-            const loginOutcome = await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun());
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun());
 
             expect(loginOutcome).toEqual({ kind: 'failed', failureMessage: expectedFailureMessage });
             expect(JSON.stringify(loginOutcome)).not.toContain(ACCESS_TOKEN);
@@ -194,8 +236,174 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             jest.spyOn(SalesforceCli, 'runSalesforceCli').mockResolvedValue(loginResult);
 
-            expect(await SalesforceOrgLogin.authorizeWithBrowser(SANDBOX_LOGIN_URL, buildLoginRun()))
+            expect(await SalesforceOrgLogin.authorizeWithSalesforceCli(SANDBOX_LOGIN_URL, buildLoginRun()))
                 .toEqual({ kind: 'failed', failureMessage: 'the login answered with a username this extension cannot use, so it is not listed here' });
+
+        });
+
+    });
+
+    describe('authorizeWithCoreLibrary', () => {
+
+        it('opens core\'s authorization address, answers the username, and closes the local server', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME)));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+            const loginRun = buildCoreLoginRun();
+
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, loginRun);
+
+            expect(loginOutcome).toEqual({ kind: 'authorized', username: QA_USERNAME });
+            expect(WebOAuthServer.create).toHaveBeenCalledWith({ oauthConfig: { loginUrl: SANDBOX_LOGIN_URL } });
+            expect(loginRun.openLoginPage).toHaveBeenCalledWith(AUTHORIZATION_URL);
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+            expect(StateAggregator.getInstance).not.toHaveBeenCalled();
+            expect(JSON.stringify(loginOutcome)).not.toContain(ACCESS_TOKEN);
+
+        });
+
+        it('refuses an address that is not a Salesforce login page before any server starts', async () => {
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary('https://evil.example.com', buildCoreLoginRun()))
+                .toEqual({ kind: 'failed', failureMessage: LOGIN_URL_REFUSAL });
+            expect(WebOAuthServer.create).not.toHaveBeenCalled();
+
+        });
+
+        it.each([
+            ['core\'s PortInUseError', Object.assign(new Error('Cannot start the OAuth redirect server on port 1717.'), { name: 'PortInUseError' })],
+            ['the socket\'s EADDRINUSE', Object.assign(new Error('listen EADDRINUSE'), { code: 'EADDRINUSE' })]
+        ])('answers portInUse for %s and opens no browser', async (_caseName, startError) => {
+
+            const oauthServer = buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME)));
+            oauthServer.start.mockRejectedValue(startError);
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+            const loginRun = buildCoreLoginRun();
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'portInUse' });
+            expect(loginRun.openLoginPage).not.toHaveBeenCalled();
+
+        });
+
+        it('answers cancelled when the caller cancels, and closes the local server so the port is free', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+            let cancelLogin: () => void = () => undefined;
+            const loginRun = buildCoreLoginRun({
+                onCancellationRequested: cancel => { cancelLogin = cancel; },
+                openLoginPage: jest.fn().mockImplementation(async () => { cancelLogin(); return true; })
+            });
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'cancelled' });
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('honours a cancel while the browser has still not reported that it opened', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+            let cancelLogin: () => void = () => undefined;
+            const loginRun = buildCoreLoginRun({
+                onCancellationRequested: cancel => { cancelLogin = cancel; },
+                openLoginPage: jest.fn().mockImplementation(() => { setImmediate(cancelLogin); return new Promise<boolean>(() => undefined); })
+            });
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'cancelled' });
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('sets no alias itself: the caller does, once it knows which kind of org answered', async () => {
+
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME))));
+
+            await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun());
+
+            expect(StateAggregator.getInstance).not.toHaveBeenCalled();
+
+        });
+
+        it('answers timedOut when no login is completed in time', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun({ timeoutMilliseconds: 5 })))
+                .toEqual({ kind: 'timedOut' });
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('answers failed with one short line when the login is refused', async () => {
+
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.reject(new Error(`end-user denied\nauthorization ${'x'.repeat(500)}`))));
+
+            const loginOutcome = await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun());
+
+            expect(loginOutcome.kind).toBe('failed');
+            const failureMessage = ( loginOutcome as { failureMessage: string } ).failureMessage;
+            expect(failureMessage).toStartWith('end-user denied authorization');
+            expect(failureMessage).not.toContain('\n');
+            expect(failureMessage.length).toBeLessThanOrEqual(300);
+
+        });
+
+        it('answers failed when the browser cannot be opened, and closes the local server', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun({ openLoginPage: jest.fn().mockResolvedValue(false) })))
+                .toEqual({ kind: 'failed', failureMessage: 'the login page could not be opened in a browser' });
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('answers failed when the login names no usable username', async () => {
+
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(buildFakeOauthServer(() => Promise.resolve(buildAuthInfo('--target-org'))));
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun()))
+                .toEqual({ kind: 'failed', failureMessage: 'the login answered with a username this extension cannot use, so it is not listed here' });
+
+        });
+
+    });
+
+    describe('authorizeWithCoreLibrary, when core\'s server misbehaves', () => {
+
+        it('answers failed, opening no browser, when the local server fails to start for a reason other than its port', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME)));
+            oauthServer.start.mockRejectedValue(new Error('the keychain\nis locked'));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+            const loginRun = buildCoreLoginRun();
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, loginRun)).toEqual({ kind: 'failed', failureMessage: 'the keychain is locked' });
+            expect(loginRun.openLoginPage).not.toHaveBeenCalled();
+
+        });
+
+        it('answers failed when opening the browser throws, and closes the local server', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => new Promise(() => undefined));
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun({ openLoginPage: jest.fn().mockRejectedValue(new Error('no browser')) })))
+                .toEqual({ kind: 'failed', failureMessage: 'the login page could not be opened in a browser' });
+            expect(oauthServer.webServer.close).toHaveBeenCalled();
+
+        });
+
+        it('still answers the login when closing an already closed local server throws', async () => {
+
+            const oauthServer = buildFakeOauthServer(() => Promise.resolve(buildAuthInfo(QA_USERNAME)));
+            oauthServer.webServer.close.mockImplementation(() => { throw new Error('Not running'); });
+            ( WebOAuthServer.create as jest.Mock ).mockResolvedValue(oauthServer);
+
+            expect(await SalesforceOrgLogin.authorizeWithCoreLibrary(SANDBOX_LOGIN_URL, buildCoreLoginRun())).toEqual({ kind: 'authorized', username: QA_USERNAME });
 
         });
 

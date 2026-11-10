@@ -260,7 +260,7 @@ src/
     │   └── tests/                            # SalesforceCliCallSites.test.ts: every remaining sf call site by file and method (#496), child_process importers, no direct jsforce import
     ├── SalesforceOrgService/
     │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection, connected-org listing, describe cache, org type and default org reads
-    │   ├── SalesforceOrgLogin.ts             # "Authorize org" (#630): browser login through "sf org login web", login address rule, workspace target-org write; no vscode
+    │   ├── SalesforceOrgLogin.ts             # "Authorize org" (#630): browser login through "sf org login web" or WebOAuthServer, login address rule, workspace target-org write; no vscode
     │   └── tests/
     │       └── mocks/                        # Describe, authorization and ping fixtures, AuthInfo answers
     ├── SOQLTemplateService/

@@ -1,14 +1,14 @@
 # Change Log
 
-## [3.199.1] - Recipe Cockpit: "Authorize org" logs in through the Salesforce CLI, so `sf` commands can use the org (#630)
+## [3.200.0] - Recipe Cockpit: "Authorize org" can log in through the Salesforce CLI, so `sf` commands can use the org (#630)
 
 An org authorized with **Authorize org** in Target Org Manager could be listed in the cockpit but not used by `sf` in a terminal. 3.198.0 logged in inside VS Code with `@salesforce/core`, which encrypts the saved tokens with a key from the keychain that VS Code's own environment selects. When VS Code and the terminal see different environment settings, such as `SF_USE_GENERIC_UNIX_KEYCHAIN`, the CLI cannot read what VS Code saved.
 
-- **The login is now `sf org login web --instance-url <address> --no-prompt --json`.** The CLI opens the login page in your browser and saves the org itself, the way a login typed in a terminal does. The Salesforce CLI must be installed and on PATH. If it is not, the notification says so.
-- **The CLI runs outside the project folder**, so a repository's `sfdx-project.json` cannot change the login address or the local login port.
-- **Nothing else changes.** The alias is still set only on a sandbox or scratch org that answers its connection check, `target-org` is still written to `.sf/config.json` only when the box is ticked, and every ending is still one notification. Cancel and the five-minute limit now stop the CLI process, which frees the local login port.
-- The confirmation, the button's tooltip, the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say the CLI does the login.
-- **Tests.** `SalesforceOrgLogin`: the argv, each ending read from the CLI's answer, and that no outcome carries the access token the answer holds. The suite that checked core's private login server is removed. `SalesforceCliCallSites` lists the new call site. The three Authorize org journeys answer the login from the fake CLI.
+- **The confirmation now offers two buttons, as + New scratch org does.** **Authorize with Salesforce CLI**, first, runs `sf org login web --instance-url <address> --no-prompt --json`: the CLI opens the login page in your browser and saves the org the same way a login typed in a terminal does. **Authorize with @salesforce/core** is 3.198.0's login inside VS Code, with no CLI needed. A section on the confirmation says that `sf` in a differently set-up terminal may not be able to use that login.
+- **The CLI login runs outside the project folder**, so a repository's `sfdx-project.json` cannot change the login address or the local login port. Cancel and the five-minute limit stop the CLI process, which frees the local login port. If the CLI is not installed or not on PATH, the notification says so.
+- **Nothing else changes.** The alias is still set only on a sandbox or scratch org that answers its connection check, `target-org` is still written to `.sf/config.json` only when the box is ticked, and every ending is still one notification.
+- The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe both buttons.
+- **Tests.** `SalesforceOrgLogin`: the CLI's argv, each ending read from its answer, and that no outcome carries the access token the answer holds; the in-process login's tests are kept. `SalesforceCliCallSites` lists the new call site. `RecipeCockpitAuthorizeOrg`: both buttons, and a label the confirmation did not offer starting no login. A fourth journey logs in with @salesforce/core; the other three press Authorize with Salesforce CLI.
 
 ## [3.199.0] - Recipe Cockpit: the ticked record types are used at "Generate fake data and insert", in one folded data set (#623, slice C of #620)
 

@@ -7,12 +7,15 @@ import { expectEqual } from './TreecipeTabWorkspace';
     Authorize org (#630): a reader with a sandbox that is not authorized yet logs in to it from Target
     Org Manager. Ticking the confirmation's box selects it and makes it this workspace's default org;
     leaving it unticked only lists it; and a production org is authorized but never listed or made the
-    default. Each on its own copy of treecipeTabWorkspace. The login is the CLI's "sf org login web",
-    answered by the journey's fake CLI, which saves the org as the real one would.
+    default. Each on its own copy of treecipeTabWorkspace. "Authorize with Salesforce CLI" is the
+    CLI's "sf org login web", answered by the journey's fake CLI, which saves the org as the real one
+    would; "Authorize with @salesforce/core" is core's WebOAuthServer, answered by the fake org.
 */
 
 const ORG_PICKER_NAME = 'Salesforce org the generated data goes to';
 const DEFAULT_ORG_CHECKBOX_NAME = 'Make this my selected target org and this workspace\'s default org';
+const CLI_LOGIN_BUTTON_NAME = 'Authorize with Salesforce CLI';
+const CORE_LOGIN_BUTTON_NAME = 'Authorize with @salesforce/core';
 const CONFIRMATION_TITLE = 'Log in to a Salesforce org at test.salesforce.com in your browser?';
 const NEW_SANDBOX = { username: 'new@example.com.newsbx', orgId: '00D000000000NEWAAA', instanceUrl: 'https://acme--newsbx.sandbox.my.salesforce.com', isSandbox: true };
 const PRODUCTION_ORG = { username: 'admin@example.com.prod', orgId: '00D000000000PRDAAA', instanceUrl: 'https://example.my.salesforce.com', isSandbox: false };
@@ -33,7 +36,7 @@ function answerBrowserLogin(journey: RecipeCockpitJourney, authorization: Browse
 const workspaceConfigPath = (journey: RecipeCockpitJourney) => path.join(journey.workspaceRoot, '.sf', 'config.json');
 const notificationsShown = (journey: RecipeCockpitJourney) => journey.notifications.map(notification => ({ kind: notification.kind, text: notification.text }));
 
-async function logInFromTheButton(journey: RecipeCockpitJourney, alias: string, isDefaultTicked: boolean): Promise<void> {
+async function logInFromTheButton(journey: RecipeCockpitJourney, alias: string, isDefaultTicked: boolean, loginButtonName: string = CLI_LOGIN_BUTTON_NAME): Promise<void> {
 
     await journey.click('button', 'Authorize org');
     await journey.answerQuickPick('Sandbox');
@@ -44,14 +47,15 @@ async function logInFromTheButton(journey: RecipeCockpitJourney, alias: string, 
         const screen = journey.screen();
         const confirmation = screen.get('dialog', CONFIRMATION_TITLE);
         expectEqual(screen.get('checkbox', DEFAULT_ORG_CHECKBOX_NAME, confirmation).states.includes('checked'), false, 'The box starts ticked');
-        expectEqual(journey.cli.calls.filter(cliCall => isLoginWeb(cliCall.argv)).length, 0, 'Logins started before the confirmation is answered');
+        expectEqual(journey.cli.calls.filter(cliCall => isLoginWeb(cliCall.argv)).length, 0, 'CLI logins started before the confirmation is answered');
+        expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'WebOAuthServer.create').length, 0, 'In-process logins started before the confirmation is answered');
     });
 
     if ( isDefaultTicked ) {
         await journey.click('checkbox', DEFAULT_ORG_CHECKBOX_NAME);
     }
 
-    await journey.answerConfirmation('Authorize org');
+    await journey.answerConfirmation(loginButtonName);
 
 }
 
@@ -68,6 +72,7 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
             await journey.step('the Salesforce CLI logged in at the sandbox login page, with no alias and no project folder', () => {
                 expectEqual(journey.cli.calls, [{ argv: ['org', 'login', 'web', '--instance-url', 'https://test.salesforce.com', '--no-prompt', '--json'] }], 'sf processes run');
                 expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'env.openExternal').length, 0, 'Browsers the extension opened itself');
+                expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'WebOAuthServer.create').length, 0, 'In-process logins');
             });
 
             await journey.step('newsbx is the org selected, and the workspace\'s default org', () => {
@@ -96,6 +101,31 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
                 expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value.startsWith('newsbx'), false, 'newsbx is the org chosen');
                 expectEqual(fs.existsSync(workspaceConfigPath(journey)), false, '.sf/config.json exists');
                 expectEqual(notificationsShown(journey), [{ kind: 'information', text: 'newsbx · new@example.com.newsbx is authorized and listed in Target Org Manager.' }], 'The notifications');
+            });
+
+        }
+    },
+
+    {
+        name: 'authorize a sandbox with @salesforce/core and the box ticked: VS Code opens the login page, no sf process runs, and it becomes the default org',
+        run: async journey => {
+
+            journey.org.browserLoginAuthorization = NEW_SANDBOX;
+            await logInFromTheButton(journey, 'newsbx', true, CORE_LOGIN_BUTTON_NAME);
+            await journey.waitFor('button', 'Authorize org', undefined, { isEnabled: true });
+
+            await journey.step('the browser was opened on the sandbox login page by VS Code, through @salesforce/core and no sf process', () => {
+                expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'WebOAuthServer.create').map(orgCall => orgCall.args), [['https://test.salesforce.com']], 'The login address');
+                expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'env.openExternal').map(hostCall => hostCall.args[0]),
+                    ['https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI'], 'What the browser opened');
+                expectEqual(journey.cli.calls, [], 'sf processes run');
+            });
+
+            await journey.step('newsbx is the org selected, and the workspace\'s default org', () => {
+                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'newsbx (default)', 'The org chosen');
+                expectEqual(JSON.parse(fs.readFileSync(workspaceConfigPath(journey), 'utf8')), { 'target-org': 'newsbx' }, '.sf/config.json');
+                expectEqual(notificationsShown(journey),
+                    [{ kind: 'information', text: 'newsbx · new@example.com.newsbx is authorized, selected in Target Org Manager, and this workspace\'s default org.' }], 'The notifications');
             });
 
         }
