@@ -2,7 +2,7 @@ import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingServi
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
-import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../ObjectInfoWrapper/RecordTypesWrapper";
 import { IRecordTypeBlock, RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";

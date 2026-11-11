@@ -13,7 +13,7 @@ import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { IRecordTypeBlock, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';

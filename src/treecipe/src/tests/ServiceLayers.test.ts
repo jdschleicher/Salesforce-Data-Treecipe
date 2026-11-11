@@ -64,22 +64,6 @@ export const SERVICE_LAYERS: Readonly<Record<string, number>> = {
 
 };
 
-/*
-    Every import the rule refuses today, as "importing file → imported file", each with the slice of
-    #570 that removes it. The list only shrinks: a new violation fails, and so does an entry that no
-    longer happens or is no longer a violation. Paths are named from src/treecipe/src.
-
-    Both remaining entries are same-layer imports that close a cycle no upward import explains; one edge per
-    cycle is listed, and #575 removes the cycle.
-*/
-export const KNOWN_LAYER_VIOLATIONS: readonly string[] = [
-
-    // #575: THE METADATA MODEL CYCLE AND THE CONFIGURATION / WORKSPACE PAIR
-    'ObjectInfoWrapper/ObjectInfo.ts → RecordTypeService/RecordTypesWrapper.ts', // #575
-    'VSCodeWorkspace/VSCodeWorkspaceService.ts → ConfigurationService/ConfigurationService.ts' // #575
-
-];
-
 export interface IServiceImport {
     importingFile: string;
     importedFile: string;
@@ -168,10 +152,7 @@ export function describeUpwardImport(serviceImport: IServiceImport, serviceLayer
 
 }
 
-/*
-    Folder-level cycles (Tarjan's strongly connected components), with every listed violation taken
-    out first: a cycle a listed edge explains is already on its way out.
-*/
+// FOLDER-LEVEL CYCLES (TARJAN'S STRONGLY CONNECTED COMPONENTS)
 export function findFolderCycles(serviceImports: IServiceImport[]): string[][] {
 
     const importedFoldersByFolder = new Map<string, Set<string>>();
@@ -250,38 +231,8 @@ export function describeFolderCycle(cycleFolders: string[], serviceImports: ISer
 
 }
 
-/*
-    An entry stays only while it is still a violation: an import that still happens and is still
-    upward, or a same-layer import whose two folders are still in one cycle of the whole graph.
-*/
-export function findStaleViolations(serviceImports: IServiceImport[], knownViolations: readonly string[], serviceLayers: Readonly<Record<string, number>>): string[] {
-
-    const importsThatHappen = new Set(serviceImports.map(formatServiceImport));
-    const upwardImports = new Set(findUpwardImports(serviceImports, serviceLayers).map(formatServiceImport));
-    const cycleIndexByFolder = new Map<string, number>();
-    findFolderCycles(serviceImports).forEach((cycleFolders, cycleIndex) => cycleFolders.forEach(cycleFolder => cycleIndexByFolder.set(cycleFolder, cycleIndex)));
-
-    return knownViolations.flatMap(knownViolation => {
-
-        if ( !importsThatHappen.has(knownViolation) ) {
-            return [`"${knownViolation}" no longer happens: delete it from KNOWN_LAYER_VIOLATIONS.`];
-        }
-
-        const [importingFile, importedFile] = knownViolation.split(' → ');
-        const importingCycle = cycleIndexByFolder.get(toServiceFolder(importingFile));
-        const isInCycle = importingCycle !== undefined && importingCycle === cycleIndexByFolder.get(toServiceFolder(importedFile));
-
-        return upwardImports.has(knownViolation) || isInCycle
-            ? []
-            : [`"${knownViolation}" is no longer upward or in a cycle: delete it from KNOWN_LAYER_VIOLATIONS.`];
-
-    });
-
-}
-
 const SERVICE_SOURCE_FILE_PATHS = [...listServiceSourceFilePaths(SERVICES_DIRECTORY_PATH), EXTENSION_ENTRY_POINT_PATH];
 const SERVICE_IMPORTS = readServiceImports(SERVICE_SOURCE_FILE_PATHS);
-const KNOWN_LAYER_VIOLATION_SET = new Set(KNOWN_LAYER_VIOLATIONS);
 
 describe('ServiceLayers -- a folder imports only its own layer or a lower one, never in a cycle (#570)', () => {
 
@@ -312,51 +263,17 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
     });
 
-    test('no import reaches a higher layer unless KNOWN_LAYER_VIOLATIONS lists it', () => {
+    test('no import reaches a higher layer', () => {
 
-        const newUpwardImports = findUpwardImports(SERVICE_IMPORTS, SERVICE_LAYERS)
-            .filter(serviceImport => !KNOWN_LAYER_VIOLATION_SET.has(formatServiceImport(serviceImport)));
-
-        expect(newUpwardImports.map(serviceImport => describeUpwardImport(serviceImport, SERVICE_LAYERS))).toEqual([]);
+        const upwardImports = findUpwardImports(SERVICE_IMPORTS, SERVICE_LAYERS);
+        expect(upwardImports.map(serviceImport => describeUpwardImport(serviceImport, SERVICE_LAYERS))).toEqual([]);
 
     });
 
-    test('no folder-level import cycle remains once the listed violations are taken out', () => {
+    test('no folders import each other in a cycle', () => {
 
-        const unlistedImports = SERVICE_IMPORTS.filter(serviceImport => !KNOWN_LAYER_VIOLATION_SET.has(formatServiceImport(serviceImport)));
-        const folderCycles = findFolderCycles(unlistedImports);
-
-        expect(folderCycles.map(cycleFolders => describeFolderCycle(cycleFolders, unlistedImports))).toEqual([]);
-
-    });
-
-    // 27 BEFORE #572, 15 BEFORE #574; WHAT REMAINS IS #575'S: ObjectInfoWrapper, RecordTypeService, XMLProcessingService
-    const MOST_FOLDERS_IN_ONE_CYCLE = 3;
-
-    test(`no cycle in the whole import graph, listed violations included, holds more than ${MOST_FOLDERS_IN_ONE_CYCLE} folders`, () => {
-
-        const oversizedCycles = findFolderCycles(SERVICE_IMPORTS)
-            .filter(cycleFolders => cycleFolders.length > MOST_FOLDERS_IN_ONE_CYCLE)
-            .map(cycleFolders => `${cycleFolders.length} folders import each other in a cycle (${cycleFolders.join(', ')}), more than ${MOST_FOLDERS_IN_ONE_CYCLE}: `
-                + 'a new import has joined two folders the layers keep apart. Move the shared code into a lower layer.');
-
-        expect(oversizedCycles).toEqual([]);
-
-    });
-
-    test('ExtensionCommandService and RecipeCockpitService are not in one cycle (#572)', () => {
-
-        const commandAndCockpitCycles = findFolderCycles(SERVICE_IMPORTS)
-            .filter(cycleFolders => cycleFolders.includes('ExtensionCommandService') && cycleFolders.includes('RecipeCockpitService'));
-
-        expect(commandAndCockpitCycles).toEqual([]);
-
-    });
-
-    test('every entry in KNOWN_LAYER_VIOLATIONS is still a violation, so the list only shrinks', () => {
-
-        expect(findStaleViolations(SERVICE_IMPORTS, KNOWN_LAYER_VIOLATIONS, SERVICE_LAYERS)).toEqual([]);
-        expect(new Set(KNOWN_LAYER_VIOLATIONS).size).toBe(KNOWN_LAYER_VIOLATIONS.length);
+        const folderCycles = findFolderCycles(SERVICE_IMPORTS);
+        expect(folderCycles.map(cycleFolders => describeFolderCycle(cycleFolders, SERVICE_IMPORTS))).toEqual([]);
 
     });
 
@@ -423,27 +340,6 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
             expect(folderCycles).toEqual([['MermaidService', 'RecipeService', 'RelationshipService']]);
             expect(describeFolderCycle(folderCycles[0], cycleImports)).toContain('RelationshipService/RelationshipService.ts → MermaidService/MermaidService.ts');
             expect(findFolderCycles(cycleImports.slice(1))).toEqual([]);
-
-        });
-
-        test('an entry that still happens but is no longer upward or in a cycle is stale', () => {
-
-            const upwardImport = { importingFile: 'XMLProcessingService/XmlFileProcessor.ts', importedFile: 'RecipeService/RecipeService.ts' };
-            const cycleImport = { importingFile: 'ObjectInfoWrapper/ObjectInfo.ts', importedFile: 'RecordTypeService/RecordTypesWrapper.ts' };
-            const cycleReturnImport = { importingFile: 'RecordTypeService/RecordTypeService.ts', importedFile: 'ObjectInfoWrapper/FieldInfo.ts' };
-            const knownViolations = [formatServiceImport(upwardImport), formatServiceImport(cycleImport)];
-
-            expect(findStaleViolations([upwardImport, cycleImport, cycleReturnImport], knownViolations, SERVICE_LAYERS)).toEqual([]);
-
-            // THE OTHER EDGE OF THE CYCLE IS GONE, AND THE UPWARD IMPORT'S FOLDER MOVED UP A LAYER
-            expect(findStaleViolations([upwardImport, cycleImport], knownViolations, { ...SERVICE_LAYERS, XMLProcessingService: 3 })).toEqual([
-                '"XMLProcessingService/XmlFileProcessor.ts → RecipeService/RecipeService.ts" is no longer upward or in a cycle: delete it from KNOWN_LAYER_VIOLATIONS.',
-                '"ObjectInfoWrapper/ObjectInfo.ts → RecordTypeService/RecordTypesWrapper.ts" is no longer upward or in a cycle: delete it from KNOWN_LAYER_VIOLATIONS.'
-            ]);
-
-            expect(findStaleViolations([], knownViolations.slice(0, 1), SERVICE_LAYERS)).toEqual([
-                '"XMLProcessingService/XmlFileProcessor.ts → RecipeService/RecipeService.ts" no longer happens: delete it from KNOWN_LAYER_VIOLATIONS.'
-            ]);
 
         });
 

@@ -7,7 +7,7 @@ import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/Snowfa
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
-import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../ObjectInfoWrapper/RecordTypesWrapper";
 
 import * as yaml from 'js-yaml';
 import { PythonTestHarness } from "../../RecipeYamlScalar/tests/mocks/PythonTestHarness";

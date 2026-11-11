@@ -214,7 +214,7 @@ export class ExtensionCommandService {
             if ( recipeFilePath === undefined ) {
 
                 const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
-                const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
+                const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel, ConfigurationService.getSelectedDataFakerServiceConfig());
                 if (!selectedRecipeFilePathNameQuickPickItem) {
                     return;
                 }
@@ -284,8 +284,8 @@ export class ExtensionCommandService {
             const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(generationRecipeFilePath) as string;
 
             const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            const uniqueTimeStampedFakeDataSetsFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
-            const fullPathToUniqueTimeStampedFakeDataSetsFolder = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
+            const uniqueTimeStampedFakeDataSetsFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp, ConfigurationService.getSelectedDataFakerServiceConfig());
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName, ConfigurationService.getFakeDataSetsFolderPath());
 
             const mappedSObjectApiToRecords = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJsonResult);
 

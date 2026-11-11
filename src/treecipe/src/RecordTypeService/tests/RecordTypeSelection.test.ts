@@ -1,5 +1,5 @@
 import { RecordTypeSelection } from '../RecordTypeSelection';
-import { RecordTypeWrapper } from '../RecordTypesWrapper';
+import { RecordTypeWrapper } from '../../ObjectInfoWrapper/RecordTypesWrapper';
 
 const buildRecordTypeWrapper = (developerName: string, picklistSections: Record<string, string[]> = {}): RecordTypeWrapper => ({
     DeveloperName: developerName,

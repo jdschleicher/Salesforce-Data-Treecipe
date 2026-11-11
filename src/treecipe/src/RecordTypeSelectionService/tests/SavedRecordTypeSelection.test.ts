@@ -4,7 +4,7 @@ import {
     SavedRecordTypeSelection
 } from '../SavedRecordTypeSelection';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
-import { RecordTypeWrapper } from '../../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../../ObjectInfoWrapper/RecordTypesWrapper';
 
 const writableMapOf = (...developerNames: string[]): Record<string, RecordTypeWrapper> =>
     Object.fromEntries(developerNames.map(developerName => [developerName, new RecordTypeWrapper()]));

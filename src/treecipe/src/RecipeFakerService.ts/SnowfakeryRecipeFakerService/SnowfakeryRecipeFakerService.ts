@@ -1,6 +1,6 @@
 
 
-import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../../ObjectInfoWrapper/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 import { RecipeYamlScalar } from "../../RecipeYamlScalar/RecipeYamlScalar";
 import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../../RecipeFieldConstraint/RecipeFieldConstraint";

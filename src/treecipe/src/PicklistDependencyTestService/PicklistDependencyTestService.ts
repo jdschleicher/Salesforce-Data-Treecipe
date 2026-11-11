@@ -1,7 +1,7 @@
 import { GlobalValueSetSingleton } from '../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RecipeService } from '../RecipeService/RecipeService';
 import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
-import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';

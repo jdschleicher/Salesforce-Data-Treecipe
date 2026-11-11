@@ -1,5 +1,5 @@
 import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
-import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
+import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 

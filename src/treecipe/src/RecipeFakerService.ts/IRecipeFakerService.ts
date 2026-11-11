@@ -1,4 +1,4 @@
-import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { RecordTypeWrapper } from "../ObjectInfoWrapper/RecordTypesWrapper";
 import { ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
 import { IValidationRuleRegexAtom } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 

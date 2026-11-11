@@ -150,7 +150,13 @@ describe('activate', () => {
 
         await activate(extensionContext as never);
 
-        expect(VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem).toHaveBeenCalledWith(extensionContext.subscriptions);
+        expect(VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem).toHaveBeenCalledWith(extensionContext.subscriptions, expect.any(Function));
+
+        // THE ITEM IS HANDED A READER OF ITS SETTING, SO IT FOLLOWS A CHANGE WITHOUT IMPORTING ConfigurationService (#575)
+        const readIsStatusBarItemShownSetting = (VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem as jest.Mock).mock.calls[0][1];
+        const getExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue(false);
+        expect(readIsStatusBarItemShownSetting()).toBe(false);
+        expect(getExtensionConfigValueSpy).toHaveBeenCalledWith('showRecipeCockpitStatusBarItem');
 
     });
 
