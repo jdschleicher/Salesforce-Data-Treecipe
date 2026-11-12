@@ -3,8 +3,7 @@ import * as path from 'path';
 
 import { DatasetInsertAttemptService } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
-import type { RunHistoryOutcome } from './RecipeCockpitTroubleshootingConstants';
-import type { RunHistoryRowStatus } from './RecipeCockpitTroubleshootingConstants';
+import type { RunHistoryOutcome, RunHistoryRowStatus } from './RecipeCockpitTroubleshootingConstants';
 
 /*
     The Troubleshooting tab's History (#485): every Troubleshooting step taken for a tree, read from

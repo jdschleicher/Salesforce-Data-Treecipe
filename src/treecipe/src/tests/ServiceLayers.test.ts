@@ -236,8 +236,8 @@ export function describeFolderCycle(cycleFolders: string[], serviceImports: ISer
     esbuild.panel.js into a script that runs in the webview, not the extension host. It is a layer
     below 0: a panel module imports only other panel modules and host-free files, so no vscode, Node
     module or host service ever reaches the webview. A host-free file imports nothing, or only other
-    host-free files by a relative path (#639: the Troubleshooting constants take a type from the recipe
-    writer). It may sit in any folder, beside the host code that also reads it (#638).
+    host-free files by a relative path (#639: the Troubleshooting constants import a type from
+    RecipeCockpitPanelConstants.ts). It may sit in any folder, beside the host code that also reads it (#638).
 */
 export const PANEL_DIRECTORY_NAME = 'panel';
 
