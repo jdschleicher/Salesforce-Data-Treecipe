@@ -16,7 +16,8 @@ import {
     IOrgLoginRun,
     LOGIN_URL_REFUSAL,
     SalesforceOrgLogin,
-    SANDBOX_LOGIN_URL
+    SANDBOX_LOGIN_URL,
+    SANDBOX_SUBDOMAIN_REFUSAL
 } from '../SalesforceOrgLogin';
 
 const AUTHORIZATION_URL = 'https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI&state=abc';
@@ -85,6 +86,70 @@ describe('SalesforceOrgLogin (#630)', () => {
 
             expect(SalesforceOrgLogin.normalizeLoginUrl(loginUrl)).toBeUndefined();
             expect(SalesforceOrgLogin.validateLoginUrl(loginUrl)).toBe(LOGIN_URL_REFUSAL);
+
+        });
+
+    });
+
+    describe('buildSandboxLoginUrl and validateSandboxSubdomain', () => {
+
+        const QA_SANDBOX_LOGIN_URL = 'https://acme--qa.sandbox.my.salesforce.com';
+
+        it.each([
+            ['the subdomain', 'acme--qa'],
+            ['the subdomain with spaces and capitals', '  ACME--QA '],
+            ['the whole address', 'https://acme--qa.sandbox.my.salesforce.com'],
+            ['the whole address with a trailing slash', 'https://acme--qa.sandbox.my.salesforce.com/'],
+            ['the whole address with https\'s own port, which the address drops', 'https://acme--qa.sandbox.my.salesforce.com:443'],
+            ['the host without https://', 'acme--qa.sandbox.my.salesforce.com']
+        ])('answers the sandbox login address for %s', (_caseName, typedSubdomain) => {
+
+            expect(SalesforceOrgLogin.buildSandboxLoginUrl(typedSubdomain)).toBe(QA_SANDBOX_LOGIN_URL);
+            expect(SalesforceOrgLogin.validateSandboxSubdomain(typedSubdomain)).toBeUndefined();
+
+        });
+
+        it('accepts single hyphens on either side of the "--", and answers an address normalizeLoginUrl accepts', () => {
+
+            const loginUrl = SalesforceOrgLogin.buildSandboxLoginUrl('my-co--uat-2');
+
+            expect(loginUrl).toBe('https://my-co--uat-2.sandbox.my.salesforce.com');
+            expect(SalesforceOrgLogin.normalizeLoginUrl(loginUrl)).toBe(loginUrl);
+
+        });
+
+        it.each([
+            ['nothing', ''],
+            ['only spaces', '   '],
+            ['a production My Domain name, with no "--"', 'acme'],
+            ['a Developer Edition name', 'acme-dev-ed'],
+            ['a leading hyphen', '-acme--qa'],
+            ['a trailing hyphen', 'acme--qa-'],
+            ['two "--"', 'a--b--c'],
+            ['a triple hyphen', 'acme---qa'],
+            ['a slash', 'acme--qa/x'],
+            ['an at sign', 'someone@acme--qa'],
+            ['a question mark', 'acme--qa?x'],
+            ['a hash', 'acme--qa#x'],
+            ['a space inside', 'acme --qa'],
+            ['an underscore', 'acme--q_a'],
+            ['a subdomain longer than a DNS label', `${'a'.repeat(30)}--${'b'.repeat(32)}`],
+            ['another host', 'acme--qa.evil.com'],
+            ['a sandbox host under another host', 'acme--qa.sandbox.my.salesforce.com.evil.com'],
+            ['a production My Domain address', 'https://acme.my.salesforce.com'],
+            ['a Developer Edition address', 'https://acme--qa.develop.my.salesforce.com'],
+            ['the shared sandbox login', SANDBOX_LOGIN_URL],
+            ['http, not https', 'http://acme--qa.sandbox.my.salesforce.com'],
+            ['a port', 'https://acme--qa.sandbox.my.salesforce.com:8443'],
+            ['a path', 'https://acme--qa.sandbox.my.salesforce.com/path'],
+            ['a query', 'https://acme--qa.sandbox.my.salesforce.com/?q=1'],
+            ['a user name in the address', 'https://someone@acme--qa.sandbox.my.salesforce.com'],
+            ['a nested subdomain', 'x.acme--qa.sandbox.my.salesforce.com'],
+            ['a value that is not text', 42]
+        ])('refuses %s', (_caseName, typedSubdomain) => {
+
+            expect(SalesforceOrgLogin.buildSandboxLoginUrl(typedSubdomain)).toBeUndefined();
+            expect(SalesforceOrgLogin.validateSandboxSubdomain(typedSubdomain)).toBe(SANDBOX_SUBDOMAIN_REFUSAL);
 
         });
 

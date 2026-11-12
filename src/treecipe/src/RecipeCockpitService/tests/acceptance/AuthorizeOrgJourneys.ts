@@ -12,7 +12,9 @@ import { expectEqual } from './TreecipeTabWorkspace';
 
 const ORG_PICKER_NAME = 'Salesforce org the generated data goes to';
 const DEFAULT_ORG_CHECKBOX_NAME = 'Make this my selected target org and this workspace\'s default org';
-const CONFIRMATION_TITLE = 'Log in to a Salesforce org at test.salesforce.com in your browser?';
+const SANDBOX_SUBDOMAIN = 'acme--newsbx';
+const SANDBOX_LOGIN_ADDRESS = 'https://acme--newsbx.sandbox.my.salesforce.com';
+const CONFIRMATION_TITLE = 'Log in to a Salesforce org at acme--newsbx.sandbox.my.salesforce.com in your browser?';
 const NEW_SANDBOX = { username: 'new@example.com.newsbx', orgId: '00D000000000NEWAAA', instanceUrl: 'https://acme--newsbx.sandbox.my.salesforce.com', isSandbox: true };
 const PRODUCTION_ORG = { username: 'admin@example.com.prod', orgId: '00D000000000PRDAAA', instanceUrl: 'https://example.my.salesforce.com', isSandbox: false };
 
@@ -22,7 +24,7 @@ const notificationsShown = (journey: RecipeCockpitJourney) => journey.notificati
 async function logInFromTheButton(journey: RecipeCockpitJourney, alias: string, isDefaultTicked: boolean): Promise<void> {
 
     await journey.click('button', 'Authorize org');
-    await journey.answerQuickPick('Sandbox');
+    await journey.answerInputBox(SANDBOX_SUBDOMAIN);
     await journey.answerInputBox(alias);
     await journey.waitForConfirmation();
 
@@ -52,9 +54,9 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
             await journey.waitFor('button', 'Authorize org', undefined, { isEnabled: true });
 
             await journey.step('the browser was opened on the sandbox login page, through @salesforce/core and no sf process', () => {
-                expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'WebOAuthServer.create').map(orgCall => orgCall.args), [['https://test.salesforce.com']], 'The login address');
+                expectEqual(journey.org.calls.filter(orgCall => orgCall.call === 'WebOAuthServer.create').map(orgCall => orgCall.args), [[SANDBOX_LOGIN_ADDRESS]], 'The login address');
                 expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'env.openExternal').map(hostCall => hostCall.args[0]),
-                    ['https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI'], 'What the browser opened');
+                    [`${SANDBOX_LOGIN_ADDRESS}/services/oauth2/authorize?client_id=PlatformCLI`], 'What the browser opened');
                 expectEqual(journey.cli.calls, [], 'sf processes run');
             });
 

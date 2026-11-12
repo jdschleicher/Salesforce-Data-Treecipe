@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.200.0] - Recipe Cockpit: "Authorize org" asks only for the sandbox subdomain (#635)
+
+**Authorize org** asked you to choose **Sandbox** or **Custom My Domain**, then to type the whole address, `https://acme--qa.sandbox.my.salesforce.com`. Now it asks for the subdomain alone.
+
+- **One input box, placeholder `acme--qa`.** What you type becomes `https://acme--qa.sandbox.my.salesforce.com`. Spaces and capitals are ignored, and a full address pasted from the browser, with or without `https://` or a trailing `/`, works too. The confirmation's **Login address** line shows the full address.
+- **Only a sandbox subdomain is accepted:** letters, digits and single hyphens with exactly one `--`, at most 63 characters. `acme`, `acme-dev-ed`, a production or Developer Edition address, another host, a port, path or query are refused in the box, which says Authorize org is for sandboxes and points other orgs to `sf org login web`. No login starts.
+- **The Sandbox / Custom My Domain choice is gone**, and with it the shared `https://test.salesforce.com` login from the cockpit. A login still reaches only a Salesforce host: the built address passes the same host check before any login starts, and again after the confirmation.
+- The alias question, the confirmation and its box, the notifications and the palette commands are unchanged.
+- The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the README describe the subdomain box.
+- **Tests.** `SalesforceOrgLogin`: every accepted and refused subdomain and pasted address. `RecipeCockpitAuthorizeOrg`: no quick pick, the subdomain box first, Escape there is a cancel, and a refused answer starts no login.
+
 ## [3.199.1] - The last two import cycles are gone, and the layer test has no exceptions (#575, slice D of #570)
 
 Nothing a user sees changes: the golden files, the generated-YAML and hostile-picklist suites and the Recipe Cockpit journeys pass untouched.
