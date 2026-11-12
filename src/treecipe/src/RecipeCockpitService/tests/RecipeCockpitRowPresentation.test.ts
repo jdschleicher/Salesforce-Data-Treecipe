@@ -28,10 +28,11 @@ const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 
+// A FUNCTION IN THE TEMPLATE-LITERAL SCRIPT ENDS AT A 4-SPACE }, ONE IN THE BUNDLE (#638) AT esbuild'S 2-SPACE }
 const functionBodyOf = (scriptText: string, functionName: string) => {
     const start = scriptText.indexOf(`function ${functionName}(`);
-    const end = scriptText.indexOf('\n    }\n', start);
-    return scriptText.substring(start, end);
+    const ends = ['\n    }\n', '\n  }\n'].map(closing => scriptText.indexOf(closing, start)).filter(end => end !== -1);
+    return scriptText.substring(start, Math.min(...ends));
 };
 
 const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
@@ -83,7 +84,7 @@ describe('RecipeCockpitService, row presentation (#558)', () => {
             const builderBody = functionBodyOf(scriptText, 'buildRowTable');
 
             ['table', 'thead', 'th'].forEach(tagName => {
-                const pattern = new RegExp(`createElement\\('${tagName}'`, 'g');
+                const pattern = new RegExp(`createElement\\(['"]${tagName}['"]`, 'g');
                 expect({ tagName, count: (scriptText.match(pattern) || []).length }).toEqual({ tagName, count: 1 });
                 expect({ tagName, count: (builderBody.match(pattern) || []).length }).toEqual({ tagName, count: 1 });
             });

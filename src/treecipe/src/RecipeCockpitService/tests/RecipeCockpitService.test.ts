@@ -217,7 +217,8 @@ describe('RecipeCockpitService', () => {
             expect(actualShellHtml).not.toMatch(/<link\b/);
             // THE ONE URL IS THE SVG NAMESPACE createElementNS NAMES THE TREE GLYPH BY (#219) -- AN IDENTIFIER, NEVER FETCHED
             expect(actualShellHtml.match(/https?:\/\/[^'"\s]*/g)).toEqual(['http://www.w3.org/2000/svg']);
-            expect(actualShellHtml).toContain("const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';");
+            // DECLARED ONCE, BY THE KIT'S BUNDLED ELEMENTS MODULE (#638); THE SCRIPT BINDS IT FROM THE BUNDLE
+            expect(actualShellHtml).toContain('var SVG_NAMESPACE = "http://www.w3.org/2000/svg";');
 
         });
 

@@ -59,14 +59,30 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
         expect(bundleStart).toBeGreaterThan(outerFunctionStart);
         expect(bundleStart).toBeLessThan(html.indexOf('</script>', scriptStart));
         expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT.startsWith(`var ${PANEL_MODULES_NAME} = (() => {`)).toBe(true);
-        expect(html.indexOf(`${PANEL_MODULES_NAME}.renderConfirmRequest`)).toBeGreaterThan(bundleStart);
+        expect(html.indexOf(`} = ${PANEL_MODULES_NAME};`)).toBeGreaterThan(bundleStart);
+
+    });
+
+    it('binds every export of the bundle under its own name, and no moved function is defined again in the script (#638)', () => {
+
+        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
+        const exportedNames = Object.keys(new Function(`${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}\nreturn ${PANEL_MODULES_NAME};`)()).sort();
+        const bridge = /const \{([^}]*)\} = recipeCockpitPanelModules;/.exec(html);
+        const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
+
+        expect(exportedNames).toEqual(expect.arrayContaining(['buildActionCard', 'buildRowTable', 'buildTabSearch', 'createButton', 'createElement', 'renderConfirmRequest', 'setShownWithMotion']));
+        expect(bridge).not.toBeNull();
+        expect((bridge as RegExpExecArray)[1].split(',').map(boundName => boundName.trim()).filter(Boolean).sort()).toEqual(exportedNames);
+        exportedNames.forEach(exportedName =>
+            expect({ exportedName, isDefinedAgain: new RegExp(`function ${exportedName}\\(`).test(scriptOutsideBundle) }).toEqual({ exportedName, isDefinedAgain: false }));
 
     });
 
     it('holds no closing script tag and loads nothing from outside the document', () => {
 
         expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT).not.toMatch(/<\/script|<!--/i);
-        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT).not.toMatch(/\brequire\(|\bimport\(|https?:\/\//);
+        // THE ONE URL IN IT IS THE SVG NAMESPACE createElementNS NAMES, WHICH LOADS NOTHING
+        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT.split('"http://www.w3.org/2000/svg"').join('')).not.toMatch(/\brequire\(|\bimport\(|https?:\/\//);
 
     });
 

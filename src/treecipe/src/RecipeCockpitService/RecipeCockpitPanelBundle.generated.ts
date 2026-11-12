@@ -22,13 +22,158 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanel.ts
   var RecipeCockpitPanel_exports = {};
   __export(RecipeCockpitPanel_exports, {
+    SVG_NAMESPACE: () => SVG_NAMESPACE,
+    buildActionCard: () => buildActionCard,
+    buildPencilGlyph: () => buildPencilGlyph,
+    buildRowTable: () => buildRowTable,
+    buildSearchIconElement: () => buildSearchIconElement,
+    buildTabSearch: () => buildTabSearch,
+    buildToggleElement: () => buildToggleElement,
+    buildTreeGlyph: () => buildTreeGlyph,
     closeConfirmDialog: () => closeConfirmDialog,
-    renderConfirmRequest: () => renderConfirmRequest
+    createButton: () => createButton,
+    createElement: () => createElement,
+    drawToggle: () => drawToggle,
+    isMotionReduced: () => isMotionReduced,
+    renderConfirmRequest: () => renderConfirmRequest,
+    setShown: () => setShown,
+    setShownWithMotion: () => setShownWithMotion
   });
 
   // src/treecipe/src/CockpitKit/CockpitConfirmLabels.ts
   var COCKPIT_CONFIRM_WARNINGS_LABEL = "Before you confirm";
   var COCKPIT_CONFIRM_CHANGE_ORG_LABEL = "Change org…";
+
+  // src/treecipe/src/CockpitKit/CockpitButtonKinds.ts
+  var COCKPIT_BUTTON_KINDS = Object.freeze(["primary", "secondary", "icon", "check", "link", "card"]);
+  var COCKPIT_ACTION_CARD_HEIGHT = "10.5rem";
+  var COCKPIT_KIT_BUTTON_KIND_STATE_STYLES = \`    .sdtButton-primary:disabled, .sdtButton-secondary:disabled {
+        color: var(--sdt-disabled-text);
+        background-color: var(--sdt-disabled-bg);
+        border-color: var(--sdt-border);
+        cursor: not-allowed;
+        opacity: 1;
+    }
+    .sdtButton-compact { min-height: 0; min-width: 0; padding: 0.15rem 0.6rem; font-size: inherit; }
+    .sdtButton-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        color: var(--sdt-text);
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .sdtButton-icon:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
+    .sdtButton-icon:disabled { cursor: not-allowed; }
+    .sdtButton-link {
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: var(--sdt-accent);
+        text-align: left;
+        cursor: pointer;
+    }
+    .sdtButton-link:focus-visible { outline-offset: -1px; }
+    .sdtButton-card {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 0.3rem;
+        width: 100%;
+        height: \${COCKPIT_ACTION_CARD_HEIGHT};
+        overflow: hidden;
+        padding: 0.6rem 0.75rem;
+        font: inherit;
+        text-align: left;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .sdtButton-card:hover:not(:disabled) { border-color: var(--sdt-accent); background-color: var(--sdt-row-hover); }
+    .sdtButton-card:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+    .sdtButton-card:disabled .actionCardTitle, .sdtButton-card:disabled .actionCardDetail { color: var(--sdt-disabled-text); }
+    .sdtButton-link:hover { text-decoration: underline; }\`;
+
+  // src/treecipe/src/CockpitKit/CockpitMotion.ts
+  var COCKPIT_MOTION_REVEAL_MILLISECONDS = 160;
+  var COCKPIT_MOTION_CONCEAL_MILLISECONDS = 140;
+
+  // src/treecipe/src/CockpitKit/panel/CockpitPanelElements.ts
+  var SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+  function createElement(tagName, className, textContent) {
+    const element = document.createElement(tagName);
+    if (className) {
+      element.className = className;
+    }
+    if (textContent !== void 0) {
+      element.textContent = textContent;
+    }
+    return element;
+  }
+  function createButton(kind, className, textContent, size) {
+    if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1) {
+      throw new Error("Unknown button kind: " + kind);
+    }
+    const buttonClassName = "sdtButton sdtButton-" + kind + (size === "compact" ? " sdtButton-compact" : "") + (className ? " " + className : "");
+    return createElement("button", buttonClassName, textContent);
+  }
+  function setShown(element, isShown) {
+    if (isShown) {
+      element.classList.remove("hidden");
+    } else {
+      element.classList.add("hidden");
+    }
+  }
+  function isMotionReduced() {
+    return typeof window.matchMedia === "function" && !!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+  var motionTimers = /* @__PURE__ */ new WeakMap();
+  function endMotion(element) {
+    const motionTimer = motionTimers.get(element);
+    if (motionTimer === void 0) {
+      return;
+    }
+    clearTimeout(motionTimer);
+    motionTimers.delete(element);
+    element.classList.remove("motionReveal");
+    element.classList.remove("motionConceal");
+    element.removeAttribute("aria-hidden");
+    element.removeAttribute("inert");
+  }
+  function setShownWithMotion(element, isShown, isAnimated) {
+    const wasShown = !element.classList.contains("hidden");
+    endMotion(element);
+    setShown(element, isShown);
+    if (!isAnimated || wasShown === isShown || isMotionReduced()) {
+      return;
+    }
+    if (isShown) {
+      element.classList.add("motionReveal");
+    } else {
+      element.classList.add("motionConceal");
+      element.setAttribute("aria-hidden", "true");
+      element.setAttribute("inert", "");
+    }
+    motionTimers.set(element, setTimeout(function() {
+      endMotion(element);
+    }, isShown ? COCKPIT_MOTION_REVEAL_MILLISECONDS : COCKPIT_MOTION_CONCEAL_MILLISECONDS));
+  }
+  function drawToggle(toggleElement, isExpanded, isAnimated) {
+    if (isAnimated) {
+      toggleElement.classList.remove("noMotion");
+    } else {
+      toggleElement.classList.add("noMotion");
+    }
+    toggleElement.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  }
 
   // src/treecipe/src/CockpitKit/panel/CockpitConfirmDialogPanel.ts
   function isRecord(value) {
@@ -398,6 +543,195 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     if (isFocusReturned && openerElement && !openerElement.disabled) {
       focusElement(openerElement);
     }
+  }
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitPanelConstants.ts
+  var RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = "0 0 24 24";
+  var RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = "rotate(45 12 12)";
+  var RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = "M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z";
+  var RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = "M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5";
+  var RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = "M8.5 5 L15.5 12 L8.5 19";
+  var RECIPE_COCKPIT_SEARCH_GLYPH_PATH = "M10.5 4 A6.5 6.5 0 1 1 10.5 17 A6.5 6.5 0 1 1 10.5 4 Z M15.2 15.2 L20 20";
+  var RECIPE_COCKPIT_ACTION_VERB_EMOJI = Object.freeze({
+    deploy: "🚀",
+    retrieve: "📥",
+    assign: "👤",
+    generate: "🛠️",
+    run: "▶️",
+    export: "💾",
+    create: "➕",
+    generateData: "🌱",
+    update: "✍️",
+    authorize: "🔑"
+  });
+  var RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI = Object.freeze({
+    todos: "📝",
+    validationRules: "📏"
+  });
+  var RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS = Object.freeze({
+    assignPermissionSets: { verb: "assign", why: "Insert refused for access? Assign permission sets the org already holds for these objects." },
+    generatePermissionSet: { verb: "generate", why: "No permission set grants these objects? Write a create/read one into the project. Deploys nothing." },
+    deployPermissionSet: { verb: "deploy", why: "Push the tree's permission sets to the sandbox or scratch org before assigning them." },
+    deployFields: { verb: "deploy", why: "Insert failed with INVALID_FIELD? The org is missing custom fields or objects this tree writes, or the pages they open." },
+    retrieveFields: { verb: "retrieve", why: "Project behind the org? Pull this tree's custom fields so Generate Treecipe writes what the org holds." },
+    retrieveValidationRules: { verb: "retrieve", why: "Pull the org's validation rules so Generate Treecipe can respect them." },
+    retrieveRecordTypes: { verb: "retrieve", why: "Pull the org's record types for these objects so Generate Treecipe can choose among them." },
+    retrieveGlobalValueSets: { verb: "retrieve", why: "Pull the value sets these fields name so picklists generate the org's values." },
+    deployRecordTypes: { verb: "deploy", why: "Insert failed on RecordTypeId? The org is missing record types this recipe sets." },
+    deployGlobalValueSets: { verb: "deploy", why: "Restricted picklist rejected a value? The org is missing value sets these fields use." }
+  });
+  var RECIPE_COCKPIT_STANDALONE_ACTION_CARDS = Object.freeze({
+    generateTreecipe: { verb: "generate", why: "No recipe run yet? Read this project's object metadata and write a Treecipe run to open here." },
+    runQuery: { verb: "run", why: "Read what this query returns from the org chosen in Target Org Manager. It only reads." },
+    exportQueryJson: { verb: "export", why: "Write every record the last run returned to RunArtifacts in the tree folder as JSON." },
+    exportQueryCsv: { verb: "export", why: "Write every record the last run returned to RunArtifacts in the tree folder as CSV." },
+    loadUpdaterRecords: { verb: "retrieve", why: "Read this tree's records, with the chosen fields, from the selected sandbox. It only reads." },
+    generateUpdaterValues: { verb: "generateData", why: "Make a new value for each chosen field of every loaded record. Nothing is written yet." },
+    updateUpdaterRecords: { verb: "update", why: "Write the new values to the loaded records by Id. Their old values are saved first." }
+  });
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelBuilders.ts
+  var ACTION_CARDS = { ...RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS, ...RECIPE_COCKPIT_STANDALONE_ACTION_CARDS };
+  var actionCardCount = 0;
+  function buildActionCard(action, className, title) {
+    const card = Object.prototype.hasOwnProperty.call(ACTION_CARDS, action) ? ACTION_CARDS[action] : void 0;
+    if (!card || typeof RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb] !== "string") {
+      throw new Error("Unknown action: " + action);
+    }
+    actionCardCount++;
+    const buttonElement = createButton("card", "actionCard " + className);
+    const headingElement = createElement("span", "actionCardHeading");
+    const emojiElement = createElement("span", "actionCardEmoji", RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb]);
+    const titleElement = createElement("span", "actionCardTitle", title);
+    const whyElement = createElement("span", "actionCardWhy", card.why);
+    const detailElement = createElement("span", "actionCardDetail muted hidden");
+    const reasonElement = createElement("span", "actionCardReason hidden");
+    emojiElement.setAttribute("aria-hidden", "true");
+    titleElement.setAttribute("id", "actionCardTitle" + actionCardCount);
+    whyElement.setAttribute("id", "actionCardWhy" + actionCardCount);
+    detailElement.setAttribute("id", "actionCardDetail" + actionCardCount);
+    reasonElement.setAttribute("id", "actionCardReason" + actionCardCount);
+    buttonElement.setAttribute("aria-labelledby", "actionCardTitle" + actionCardCount);
+    buttonElement.setAttribute("aria-describedby", ["actionCardWhy", "actionCardDetail", "actionCardReason"].map(function(idPrefix) {
+      return idPrefix + actionCardCount;
+    }).join(" "));
+    headingElement.appendChild(emojiElement);
+    headingElement.appendChild(titleElement);
+    buttonElement.appendChild(headingElement);
+    buttonElement.appendChild(whyElement);
+    buttonElement.appendChild(detailElement);
+    buttonElement.appendChild(reasonElement);
+    return { action, buttonElement, titleElement, detailElement, reasonElement };
+  }
+  function buildRowTable(tableOptions) {
+    const wrapElement = createElement("div", "sdtRowTableWrap " + tableOptions.className + "Wrap");
+    const tableElement = createElement("table", "sdtRowTable " + tableOptions.className);
+    const headElement = createElement("thead", "");
+    const headRowElement = createElement("tr", "");
+    const bodyElement = createElement("tbody", "");
+    const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
+    const sortButtons = /* @__PURE__ */ Object.create(null);
+    const columnClassName = typeof tableOptions.columnClassName === "string" ? tableOptions.columnClassName : "";
+    tableOptions.columns.forEach(function(column) {
+      const headerElement = createElement("th", columnClassName ? columnClassName + "Header " + columnClassName + "Header-" + column.key : "");
+      headerElement.setAttribute("scope", "col");
+      if (!tableOptions.sort || sortColumns.indexOf(column.key) === -1) {
+        headerElement.textContent = column.label;
+      } else {
+        const isSorted = tableOptions.sort.column === column.key;
+        const sortArrow = isSorted ? tableOptions.sort.isDescending ? " ↓" : " ↑" : "";
+        headerElement.setAttribute("aria-sort", isSorted ? tableOptions.sort.isDescending ? "descending" : "ascending" : "none");
+        const sortButton = createButton("link", columnClassName + "Sort " + columnClassName + "Sort-" + column.key, column.label + sortArrow);
+        sortButton.addEventListener("click", function() {
+          if (tableOptions.onSort) {
+            tableOptions.onSort(column.key);
+          }
+        });
+        sortButtons[column.key] = sortButton;
+        headerElement.appendChild(sortButton);
+      }
+      headRowElement.appendChild(headerElement);
+    });
+    headElement.appendChild(headRowElement);
+    tableElement.appendChild(headElement);
+    tableElement.appendChild(bodyElement);
+    wrapElement.appendChild(tableElement);
+    return { wrapElement, bodyElement, sortButtons };
+  }
+  function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
+    const searchElement = createElement("div", "tabSearch");
+    const fieldElement = createElement("div", "tabSearchField");
+    const inputElement = createElement("input", "tabSearchInput");
+    const matchCountElement = createElement("span", "tabMatchCount muted");
+    const iconElement = buildSearchIconElement();
+    iconElement.addEventListener("click", function() {
+      if (typeof inputElement.focus === "function") {
+        inputElement.focus();
+      }
+    });
+    inputElement.setAttribute("type", "search");
+    inputElement.setAttribute("placeholder", placeholderText);
+    inputElement.setAttribute("aria-label", placeholderText + " (" + displayTitleOf(treeState.tree) + ")");
+    inputElement.value = treeState.searchTexts[tabName];
+    inputElement.addEventListener("input", function() {
+      treeState.searchTexts[tabName] = String(inputElement.value || "");
+      treeState.searchQueries[tabName] = treeState.searchTexts[tabName].trim().toLowerCase();
+      applySearch(treeState);
+      savePanelPlace();
+    });
+    fieldElement.appendChild(iconElement);
+    fieldElement.appendChild(inputElement);
+    searchElement.appendChild(fieldElement);
+    searchElement.appendChild(matchCountElement);
+    return { element: searchElement, inputElement, matchCountElement };
+  }
+  function buildSearchIconElement() {
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", "tabSearchIcon");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_SEARCH_GLYPH_PATH);
+    glyphElement.appendChild(pathElement);
+    return glyphElement;
+  }
+  function buildToggleElement(className) {
+    const toggleElement = createButton("secondary", "chevronToggle " + className);
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", "toggleGlyph");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+    glyphElement.appendChild(pathElement);
+    toggleElement.appendChild(glyphElement);
+    return toggleElement;
+  }
+  function buildTreeGlyph(treeObjectState) {
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", "treeGlyph");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
+    pathElement.setAttribute("transform", RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM);
+    glyphElement.appendChild(pathElement);
+    treeObjectState.glyphPathElement = pathElement;
+    return glyphElement;
+  }
+  function buildPencilGlyph(size) {
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", size === "large" ? "fixedValueGlyph fixedValueGlyph-large" : "fixedValueGlyph");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
+    glyphElement.appendChild(pathElement);
+    return glyphElement;
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();

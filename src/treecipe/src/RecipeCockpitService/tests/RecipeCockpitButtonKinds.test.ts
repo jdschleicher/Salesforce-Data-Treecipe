@@ -85,7 +85,8 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
         expect(panelScript).toContain('function createButton(kind, className, textContent, size)');
         // ONE createElement('button', …) IS LEFT: THE ONE INSIDE createButton
         expect(panelScript.match(/createElement\(\s*['"]button['"]/g)).toHaveLength(1);
-        expect(panelScript).toMatch(/function createButton[\s\S]{0,400}?createElement\('button', buttonClassName, textContent\)/);
+        // createButton IS A BUNDLED PANEL MODULE (#638): esbuild WRITES ITS STRINGS IN DOUBLE QUOTES
+        expect(panelScript).toMatch(/function createButton[\s\S]{0,400}?createElement\(['"]button['"], buttonClassName, textContent\)/);
         expect(panelScript).not.toMatch(/innerHTML|<button/);
 
     });
@@ -93,11 +94,13 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
     it('names a kind the stylesheet styles at every call, and only those kinds', () => {
 
         const html = shellHtml();
-        const calledKinds = Array.from(new Set(Array.from(panelScriptOf(html).matchAll(/createButton\('([^']*)'/g), match => match[1])));
+        const calledKinds = Array.from(new Set(Array.from(panelScriptOf(html).matchAll(/createButton\(['"]([^'"]*)['"]/g), match => match[1])));
 
         expect(calledKinds.sort()).toEqual([...RECIPE_COCKPIT_BUTTON_KINDS].sort());
         KIND_CLASSES.forEach(kindClass => expect(styleSheetOf(html)).toMatch(new RegExp('\\n\\s*[^{}\\n]*\\.' + kindClass + '[ ,][^{}\\n]*\\{')));
-        expect(panelScriptOf(html)).toContain(`const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};`);
+        // THE BUNDLED createButton CHECKS EVERY KIND AGAINST THE KIT'S ONE LIST (#638)
+        expect(panelScriptOf(html)).toContain('if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1)');
+        expect(panelScriptOf(html)).toContain(`COCKPIT_BUTTON_KINDS = Object.freeze(${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS).replace(/,/g, ', ')})`);
 
     });
 
@@ -154,7 +157,7 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
             .flatMap(buttonElement => buttonElement.className.split(' '))
             .filter((className: string) => className !== 'sdtButton' && !className.startsWith('sdtButton-') && className !== 'hidden' && className !== 'selected');
         const buttonClassNames = new Set([
-            ...Array.from(panelScriptOf(html).matchAll(/createButton\('[^']*', (?:isSelected \? )?'([A-Za-z]+)/g), match => match[1]),
+            ...Array.from(panelScriptOf(html).matchAll(/createButton\(['"][^'"]*['"], (?:isSelected \? )?['"]([A-Za-z]+)/g), match => match[1]),
             ...drawnClassNames
         ]);
         const stateRules = Array.from(styleSheetOf(html).matchAll(/\n\s*([^{}\n]*:(?:hover|active|disabled)[^{}\n]*) \{/g), match => match[1]);
