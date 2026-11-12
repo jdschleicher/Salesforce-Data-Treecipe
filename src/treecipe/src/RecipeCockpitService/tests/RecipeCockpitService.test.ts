@@ -217,7 +217,8 @@ describe('RecipeCockpitService', () => {
             expect(actualShellHtml).not.toMatch(/<link\b/);
             // THE ONE URL IS THE SVG NAMESPACE createElementNS NAMES THE TREE GLYPH BY (#219) -- AN IDENTIFIER, NEVER FETCHED
             expect(actualShellHtml.match(/https?:\/\/[^'"\s]*/g)).toEqual(['http://www.w3.org/2000/svg']);
-            expect(actualShellHtml).toContain("const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';");
+            // DECLARED ONCE, BY THE KIT'S BUNDLED ELEMENTS MODULE (#638); THE SCRIPT BINDS IT FROM THE BUNDLE
+            expect(actualShellHtml).toContain('var SVG_NAMESPACE = "http://www.w3.org/2000/svg";');
 
         });
 
@@ -672,7 +673,12 @@ describe('RecipeCockpitService', () => {
                 expect(styleSheet).toMatch(/\.treeObject\.excluded::after \{[^}]*background-color: var\(--sdt-excluded-overlay\);[^}]*pointer-events: none;[^}]*z-index: 1;/);
                 // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
                 expect(styleSheet).toMatch(/\.treeObjectInclude \{[^}]*position: relative;[^}]*z-index: 2;/);
-                expect(shellHtml).not.toMatch(/\.style\.|setAttribute\('style'/);
+                // EITHER QUOTE: THE BUNDLED PANEL MODULES ARE esbuild'S OUTPUT, IN DOUBLE QUOTES (#638)
+                const inlineStylePattern = /\.style\.|setAttribute\(['"]style['"]/;
+                expect(shellHtml).not.toMatch(inlineStylePattern);
+                // AND IT CATCHES THE BREAKAGE IN EITHER FORM: A STRING CALLER'S QUOTES OR THE BUNDLE'S
+                ["element.setAttribute('style', 'color: red')", 'element.setAttribute("style", "color: red")', 'element.style.color = "red"']
+                    .forEach(inlineStyle => expect(inlineStyle).toMatch(inlineStylePattern));
                 expect(findThemeColourReads(shellHtml)).toEqual([]);
 
             });

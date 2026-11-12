@@ -1,4 +1,5 @@
 import { COCKPIT_CONFIRM_CHANGE_ORG_LABEL, COCKPIT_CONFIRM_WARNINGS_LABEL, ICockpitConfirmRecordTypeSetMode } from '../CockpitConfirmLabels';
+import { SVG_NAMESPACE, createButton, createElement, drawToggle, isMotionReduced, setShownWithMotion } from './CockpitPanelElements';
 
 /*
     The panel half of the in-panel confirmation every cockpit asks with (#349, #402, #457, #480,
@@ -13,13 +14,7 @@ import { COCKPIT_CONFIRM_CHANGE_ORG_LABEL, COCKPIT_CONFIRM_WARNINGS_LABEL, ICock
 */
 declare const vscodeApi: { postMessage(message: unknown): void };
 declare const renderedSequence: number | null;
-declare function createElement(tagName: string, className?: string, textContent?: string): HTMLElement;
-declare function createButton(kind: string, className: string, textContent?: string, size?: string): HTMLButtonElement;
 declare function focusElement(element: Element | null): void;
-declare function isMotionReduced(): boolean;
-declare function drawToggle(toggleElement: HTMLElement, isExpanded: boolean, isAnimated: boolean): void;
-declare function setShownWithMotion(element: HTMLElement, isShown: boolean, isAnimated: boolean): void;
-declare const SVG_NAMESPACE: string;
 declare const TREE_GLYPH_VIEW_BOX: string;
 declare const TOGGLE_COLLAPSED_GLYPH_PATH: string;
 declare const cockpitDialogHostElement: HTMLElement;

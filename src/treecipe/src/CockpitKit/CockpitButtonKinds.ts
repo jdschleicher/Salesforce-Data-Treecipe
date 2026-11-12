@@ -7,8 +7,8 @@
     own rules, so its document stays byte for byte what it was; a cockpit with no such rules between
     them takes buildStyles(), the same pieces in the same order.
 */
-export type CockpitButtonKind = 'primary' | 'secondary' | 'icon' | 'check' | 'link' | 'card';
-export const COCKPIT_BUTTON_KINDS: readonly CockpitButtonKind[] = Object.freeze(['primary', 'secondary', 'icon', 'check', 'link', 'card'] as CockpitButtonKind[]);
+export { COCKPIT_BUTTON_KINDS } from './CockpitButtonKindNames';
+export type { CockpitButtonKind } from './CockpitButtonKindNames';
 
 // ONE SIZE FOR EVERY STANDALONE ACTION CARD (#381), SO A GRID OF THEM LINES UP
 export const COCKPIT_ACTION_CARD_HEIGHT = '10.5rem';
@@ -120,18 +120,7 @@ export const COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES = `    .sdtButton-check {
     .sdtButton-check[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
     .sdtButton-check:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }`;
 
-// PANEL SCRIPT: THE KINDS createButton CHECKS AGAINST
-export const COCKPIT_KIT_BUTTON_KINDS_SCRIPT = `    const BUTTON_KINDS = ${JSON.stringify(COCKPIT_BUTTON_KINDS)};`;
-
-// PANEL SCRIPT: THE ONLY createElement('button', …) A COCKPIT MAKES; IT NEEDS createElement AND BUTTON_KINDS DECLARED BESIDE IT
-export const COCKPIT_KIT_CREATE_BUTTON_SCRIPT = `    // THE ONLY WAY THE PANEL MAKES A BUTTON (#363): ITS KIND STYLES IT, ITS OWN CLASS ONLY SIZES AND PLACES IT
-    function createButton(kind, className, textContent, size) {
-
-        if (BUTTON_KINDS.indexOf(kind) === -1) { throw new Error('Unknown button kind: ' + kind); }
-        const buttonClassName = 'sdtButton sdtButton-' + kind + (size === 'compact' ? ' sdtButton-compact' : '') + (className ? ' ' + className : '');
-        return createElement('button', buttonClassName, textContent);
-
-    }`;
+// THE PANEL'S createButton (panel/CockpitPanelElements.ts, #638) CHECKS A KIND AGAINST COCKPIT_BUTTON_KINDS
 
 export class CockpitButtonKinds {
 

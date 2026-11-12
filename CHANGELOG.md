@@ -1,5 +1,27 @@
 # Change Log
 
+## [3.200.2] - The panel's shared builders are checked TypeScript modules: buttons, action cards, the column table, search boxes, toggles, glyphs and motion (#638, slice 2 of #565)
+
+Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.**
+  - Into the kit (`CockpitKit/panel/CockpitPanelElements.ts`): `createElement`, `createButton`, `setShown`, `isMotionReduced`, `setShownWithMotion` and `drawToggle`.
+  - Into the Recipe Cockpit (`RecipeCockpitService/panel/RecipeCockpitPanelBuilders.ts`): `buildActionCard`, `buildRowTable`, `buildTabSearch`, `buildSearchIconElement`, `buildToggleElement`, `buildTreeGlyph` and `buildPencilGlyph`.
+  - `npm run compile` type checks them all. A misspelt button kind in a module, `createButton('primay', …)`, now fails compile.
+- **One bridge for the code still in the string.** Right after the bundle, the panel script binds every export under its old name, so the tabs that have not moved call `createButton(…)` and `buildRowTable(…)` as before. The moved builders still throw on an unknown button kind or action, since calls from the string are not type checked. The bridge goes when the Treecipe tab moves (#643).
+- **The constants they draw with** (glyph paths, the action cards' verbs, emoji and words) moved into `RecipeCockpitPanelConstants.ts`, which imports nothing. `RecipeCockpitService.ts` re-exports every name. The reveal and conceal timings moved into the kit's `CockpitMotion.ts`, and `RECIPE_COCKPIT_MOTION_*` still names them.
+- **The confirmation imports these helpers** instead of declaring them, so `COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES` lists only what a cockpit alone has. `COCKPIT_KIT_CREATE_BUTTON_SCRIPT` and `COCKPIT_KIT_BUTTON_KINDS_SCRIPT` are gone.
+- **The panel layer rule now accepts any file that imports nothing,** not only a layer-0 one, so the Recipe Cockpit's constants can sit beside its host code.
+- **Place save and restore stays in the string** until the Treecipe tab moves (#643), because it reads about 20 pieces of that tab's state.
+- **Tests.**
+  - `RecipeCockpitPanelBundle.test.ts` checks that the bridge binds exactly the bundle's exports and that no bridged name is defined again in the string.
+  - `RecipeCockpitButtonKinds.test.ts` scans for calls in either quote, because esbuild writes double quotes. It also checks that the bundled `createButton` checks the kit's one list of kinds.
+  - `CockpitKit.test.ts` reads the elements module, and `ServiceLayers.test.ts` holds the relaxed rule.
+- **Review follow-ups.**
+  - The kind list and its type are in `CockpitButtonKindNames.ts`, which imports nothing, so the webview bundle no longer carries the button kinds' CSS. `CockpitButtonKinds.ts` re-exports them.
+  - `RecipeCockpitPanelBundle.test.ts` checks that every name a panel module takes from the script with `declare` is declared there, for every panel module.
+  - The no-inline-style scan, like the others, accepts either quote.
+
 ## [3.200.1] - The in-panel confirmation's panel code is a checked TypeScript module, bundled into the cockpit at build time (#637, slice 1 of #565)
 
 Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.
