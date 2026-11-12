@@ -106,6 +106,8 @@ class PanelBundler {
 
 module.exports = { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE, PANEL_BUNDLE_CONSTANT, PANEL_MODULES_NAME, REGENERATE_COMMAND };
 
+// THE COMMAND-LINE ENTRY ONLY: JEST REQUIRES THIS FILE, SO run() IS TESTED DIRECTLY IN esbuild.panel.test.js
+/* istanbul ignore next */
 if (require.main === module) {
     PanelBundler.run().then(exitCode => process.exit(exitCode));
 }
