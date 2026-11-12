@@ -81,8 +81,8 @@ export class SalesforceOrgLogin {
     }
 
     /*
-        What "Authorize org" asks for (#635): the sandbox's subdomain, acme--qa, or its whole address
-        pasted from the browser. Either answers https://acme--qa.sandbox.my.salesforce.com, and the
+        What "Authorize org" asks for (#635): the sandbox's subdomain, acme--qa, or its login page's
+        address, with no path. Either answers https://acme--qa.sandbox.my.salesforce.com, and the
         built address still passes normalizeLoginUrl, so the host rule has one owner.
     */
     static buildSandboxLoginUrl(typedSubdomain: unknown): string | undefined {
@@ -94,7 +94,7 @@ export class SalesforceOrgLogin {
         const trimmedText = typedSubdomain.trim();
         const isAddress = trimmedText.includes('.') || trimmedText.includes(':') || trimmedText.includes('/');
         const loginUrl = isAddress
-            ? this.normalizeLoginUrl(/^[a-z][a-z0-9+.-]*:/i.test(trimmedText) ? trimmedText : `https://${trimmedText}`)
+            ? this.normalizeLoginUrl(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmedText) ? trimmedText : `https://${trimmedText}`)
             : `https://${trimmedText.toLowerCase()}${SANDBOX_HOST_SUFFIX}`;
 
         if ( loginUrl === undefined || !loginUrl.endsWith(SANDBOX_HOST_SUFFIX) ) {

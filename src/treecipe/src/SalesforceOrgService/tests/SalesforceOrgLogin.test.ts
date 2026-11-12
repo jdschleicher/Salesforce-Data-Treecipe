@@ -101,7 +101,8 @@ describe('SalesforceOrgLogin (#630)', () => {
             ['the whole address', 'https://acme--qa.sandbox.my.salesforce.com'],
             ['the whole address with a trailing slash', 'https://acme--qa.sandbox.my.salesforce.com/'],
             ['the whole address with https\'s own port, which the address drops', 'https://acme--qa.sandbox.my.salesforce.com:443'],
-            ['the host without https://', 'acme--qa.sandbox.my.salesforce.com']
+            ['the host without https://', 'acme--qa.sandbox.my.salesforce.com'],
+            ['the host without https:// and with https\'s own port', 'acme--qa.sandbox.my.salesforce.com:443']
         ])('answers the sandbox login address for %s', (_caseName, typedSubdomain) => {
 
             expect(SalesforceOrgLogin.buildSandboxLoginUrl(typedSubdomain)).toBe(QA_SANDBOX_LOGIN_URL);
@@ -142,6 +143,10 @@ describe('SalesforceOrgLogin (#630)', () => {
             ['http, not https', 'http://acme--qa.sandbox.my.salesforce.com'],
             ['a port', 'https://acme--qa.sandbox.my.salesforce.com:8443'],
             ['a path', 'https://acme--qa.sandbox.my.salesforce.com/path'],
+            ['a page address copied after login', 'https://acme--qa.sandbox.my.salesforce.com/lightning/page/home'],
+            ['the Lightning address', 'https://acme--qa.sandbox.lightning.force.com'],
+            ['a scheme with no slashes', 'javascript:acme--qa.sandbox.my.salesforce.com'],
+            ['the host with another port and no scheme', 'acme--qa.sandbox.my.salesforce.com:8443'],
             ['a query', 'https://acme--qa.sandbox.my.salesforce.com/?q=1'],
             ['a user name in the address', 'https://someone@acme--qa.sandbox.my.salesforce.com'],
             ['a nested subdomain', 'x.acme--qa.sandbox.my.salesforce.com'],

@@ -4,7 +4,7 @@
 
 **Authorize org** asked you to choose **Sandbox** or **Custom My Domain**, then to type the whole address, `https://acme--qa.sandbox.my.salesforce.com`. Now it asks for the subdomain alone.
 
-- **One input box, placeholder `acme--qa`.** What you type becomes `https://acme--qa.sandbox.my.salesforce.com`. Spaces and capitals are ignored, and a full address pasted from the browser, with or without `https://` or a trailing `/`, works too. The confirmation's **Login address** line shows the full address.
+- **One input box, placeholder `acme--qa`.** What you type becomes `https://acme--qa.sandbox.my.salesforce.com`. Spaces and capitals are ignored, and the login page's address, `https://acme--qa.sandbox.my.salesforce.com`, works too, with or without `https://` or a trailing `/`. An address with a path, such as one copied from a page after login, is refused. The confirmation's **Login address** line shows the full address.
 - **Only a sandbox subdomain is accepted:** letters, digits and single hyphens with exactly one `--`, at most 63 characters. `acme`, `acme-dev-ed`, a production or Developer Edition address, another host, a port, path or query are refused in the box, which says Authorize org is for sandboxes and points other orgs to `sf org login web`. No login starts.
 - **The Sandbox / Custom My Domain choice is gone**, and with it the shared `https://test.salesforce.com` login from the cockpit. A login still reaches only a Salesforce host: the built address passes the same host check before any login starts, and again after the confirmation.
 - The alias question, the confirmation and its box, the notifications and the palette commands are unchanged.
