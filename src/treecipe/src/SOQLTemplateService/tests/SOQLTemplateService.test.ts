@@ -418,6 +418,78 @@ describe('SOQLTemplateService', () => {
 
 });
 
+describe('SOQLTemplateService selects a person\'s compound Name, which is never a recipe field (#114)', () => {
+
+    const buildPersonWrapper = () => buildMockWrapper({
+        Account: {
+            fields: [{ name: 'Industry', label: 'Industry', type: 'Text' }],
+            childRefs: { Contact: ['AccountId'] }
+        },
+        Contact: {
+            fields: [
+                { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' },
+                { name: 'OtherAddress', label: 'Other Address', type: 'Text' },
+                { name: 'ReportsToId', label: 'Reports To', type: 'Lookup', referenceTo: 'Contact' }
+            ],
+            recordTypes: { Partner: { DeveloperName: 'Partner', PicklistFieldSectionsToPicklistDetail: {} } }
+        }
+    });
+
+    it.each(['Contact', 'Lead', 'Individual'])('%s with no Name field gets Name', (objectApiName) => {
+
+        const wrapper = buildMockWrapper({ [objectApiName]: { fields: [] } });
+
+        expect(SOQLTemplateService.getCompoundNameFieldNames(objectApiName, wrapper.ObjectToObjectInfoMap[objectApiName])).toEqual(['Name']);
+
+    });
+
+    it('an object that is not person-style, or one that has its own Name field, gets nothing added', () => {
+
+        const wrapper = buildMockWrapper({
+            Account: { fields: [] },
+            Individual: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] }
+        });
+
+        expect(SOQLTemplateService.getCompoundNameFieldNames('Account', wrapper.ObjectToObjectInfoMap['Account'])).toEqual([]);
+        expect(SOQLTemplateService.getCompoundNameFieldNames('Individual', wrapper.ObjectToObjectInfoMap['Individual'])).toEqual([]);
+        expect(SOQLTemplateService.getCompoundNameFieldNames('Contact', undefined)).toEqual(['Name']);
+        expect(SOQLTemplateService.buildSelectAllQuery('Individual', wrapper.ObjectToObjectInfoMap['Individual'])).toBe('SELECT Id,\n       Name\nFROM Individual');
+
+    });
+
+    it('the select-all and record type queries select Name straight after Id', () => {
+
+        const contactInfo = buildPersonWrapper().ObjectToObjectInfoMap['Contact'];
+
+        expect(SOQLTemplateService.buildSelectAllQuery('Contact', contactInfo))
+            .toBe('SELECT Id,\n       Name,\n       AccountId,\n       OtherAddress,\n       ReportsToId\nFROM Contact');
+        expect(SOQLTemplateService.buildRecordTypeFilteredQueries('Contact', contactInfo)[0])
+            .toContain('SELECT Id,\n       Name,\n       OtherAddress\nFROM Contact');
+
+    });
+
+    it('a lookup to a person object traverses to its Name', () => {
+
+        const wrapper = buildPersonWrapper();
+        const queries = SOQLTemplateService.buildChildToParentQueries('Contact', wrapper.ObjectToObjectInfoMap['Contact'], wrapper);
+
+        expect(queries[1]).toContain('ReportsTo.Name,\n       ReportsTo.OtherAddress');
+        expect(queries[0]).not.toContain('Account.Name');
+
+    });
+
+    it('a subquery over a person child selects its Name', () => {
+
+        const wrapper = buildPersonWrapper();
+        const queries = SOQLTemplateService.buildParentToChildSubqueries('Account', wrapper.ObjectToObjectInfoMap['Account'], wrapper);
+
+        expect(queries[0]).toContain('(SELECT Id, Name, OtherAddress');
+
+    });
+
+});
+
+
 describe('SOQLTemplateService leaves out a name that is not a Salesforce api name (#164)', () => {
 
     const HOSTILE_LINE = 'Evil\nDELETE FROM Account';

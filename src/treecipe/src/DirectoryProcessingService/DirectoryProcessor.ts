@@ -5,6 +5,7 @@ import { ICompoundComponentRecipe } from '../RecipeService/ICompoundComponentRec
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
+import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
@@ -145,16 +146,38 @@ export class DirectoryProcessor {
 
   /*
     A standard Name field file carries no <type>, whether it is writable (Account, Product2) or the
-    read-only compound of a person's name, so the object is the only signal (#114). Account is not
-    listed: its Name is compound only on a person account, which source metadata does not say.
+    read-only compound of a person's name, so the object is the only signal (#114).
   */
-  static readonly personNameObjectApiNames: string[] = ['Contact', 'Lead', 'Individual'];
-
   isCompoundNameField(fieldInfo: FieldInfo, associatedObjectName: string): boolean {
 
     return fieldInfo?.fieldName === 'Name'
       && fieldInfo?.type === 'AUTO_GENERATED'
-      && DirectoryProcessor.personNameObjectApiNames.includes(associatedObjectName);
+      && PersonNameObjects.includes(associatedObjectName);
+
+  }
+
+  /*
+    Why a rule naming a person's Name, or a part the Name expansion wrote, was not applied. Neither
+    has a FieldInfo that carries rule constraints, and "not read from the fields folder" would be
+    false for both. Undefined for any other field.
+  */
+  buildCompoundNameRuleNotAppliedReason(objectName: string, fieldReference: string, fieldsInfo: FieldInfo[]): string | undefined {
+
+    if ( !PersonNameObjects.includes(objectName) ) {
+      return undefined;
+    }
+
+    const fieldKey = fieldReference.toLowerCase();
+    if ( fieldKey === 'name' ) {
+      return `Name on ${objectName} is a read-only compound of ${RecipeService.compoundNameComponentKeys.join(', ')}, so no Name value is generated`;
+    }
+
+    const expandedNamePart = fieldsInfo.find(fieldInfo => fieldInfo.validationRuleConstraints === undefined
+      && RecipeService.compoundNameComponentKeys.includes(fieldInfo.fieldName)
+      && fieldInfo.fieldName.toLowerCase() === fieldKey);
+    return expandedNamePart === undefined
+      ? undefined
+      : `${expandedNamePart.fieldName} is written as a part of ${objectName}'s compound Name, which validation rules do not change`;
 
   }
 
@@ -736,7 +759,8 @@ export class DirectoryProcessor {
       const fieldKey = analysis.constraint.fieldReference.toLowerCase();
       const fieldInfo = fieldsInfo.find(candidate => candidate.validationRuleConstraints !== undefined && candidate.fieldName?.toLowerCase() === fieldKey);
       if ( fieldInfo === undefined ) {
-        const reason = RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
+        const reason = this.buildCompoundNameRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
+          ?? RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
         objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
         notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));
         return;

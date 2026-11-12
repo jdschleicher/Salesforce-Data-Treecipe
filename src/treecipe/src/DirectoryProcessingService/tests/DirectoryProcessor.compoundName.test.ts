@@ -6,6 +6,8 @@ import { ConfigurationService } from '../../ConfigurationService/ConfigurationSe
 import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
+import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
+import { PersonNameObjects } from '../../ObjectInfoWrapper/PersonNameObjects';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -96,7 +98,7 @@ describe.each([
 
     describe('isCompoundNameField', () => {
 
-        test.each(DirectoryProcessor.personNameObjectApiNames)('a typeless Name on %s is compound', (objectApiName) => {
+        test.each(PersonNameObjects.objectApiNames)('a typeless Name on %s is compound', (objectApiName) => {
 
             const typelessNameFieldInfo: any = { fieldName: 'Name', type: 'AUTO_GENERATED' };
 
@@ -106,7 +108,7 @@ describe.each([
 
         test('the person-style objects are Contact, Lead and Individual, and no other', () => {
 
-            expect(DirectoryProcessor.personNameObjectApiNames).toEqual(['Contact', 'Lead', 'Individual']);
+            expect(PersonNameObjects.objectApiNames).toEqual(['Contact', 'Lead', 'Individual']);
 
         });
 
@@ -184,6 +186,109 @@ describe.each([
             expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual(['FirstName', 'Salutation', 'LastName']);
             expect(fieldInfoDetails[0].type).toBe('Text');
             expect(fieldInfoDetails[0].recipeValue).not.toBe(expectedNameComponentValues.FirstName);
+
+        });
+
+    });
+
+    describe('record type blocks', () => {
+
+        test('a block generated for a selected record type carries the same name lines as the default block', async () => {
+
+            const defaultBlockFieldInfos = await walkFields('Lead', { 'Name.field-meta.xml': TYPELESS_NAME_XML });
+
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(
+                () => Promise.resolve([['Name.field-meta.xml', vscode.FileType.File]]) as any
+            );
+            jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(() => Promise.resolve(Buffer.from(TYPELESS_NAME_XML)) as any);
+            const recordTypeBlockFieldInfos = await directoryProcessor.processFieldsDirectory(
+                vscode.Uri.file('/fake/Lead/fields'), 'Lead', {}, standardFieldMappings, 'Partner_Lead'
+            );
+
+            expect(toRecipeValueByFieldName(recordTypeBlockFieldInfos)).toEqual(toRecipeValueByFieldName(defaultBlockFieldInfos));
+            expect(recordTypeBlockFieldInfos.map(fieldInfo => fieldInfo.fieldName)).toEqual(['Salutation']);
+
+        });
+
+    });
+
+    describe('a validation rule that names the compound Name or one of its parts', () => {
+
+        const NOT_READ_REASON = 'is not a field Treecipe read from this object\'s fields folder';
+
+        const recordNotAppliedRule = async (objectApiName: string, ruleFieldReference: string, xmlByFieldFileName: Record<string, string>) => {
+
+            const ruleConstraint: any = { fieldReference: ruleFieldReference };
+            const ruleConstraintsByField = new Map([[ruleFieldReference.toLowerCase(), [ruleConstraint]]]);
+            const fieldsInfo = await walkFields(objectApiName, xmlByFieldFileName);
+            const objectInfoWrapper = new ObjectInfoWrapper();
+            objectInfoWrapper.addKeyToObjectInfoMap(objectApiName);
+            objectInfoWrapper.ObjectToObjectInfoMap[objectApiName].FullRecipe = '';
+
+            directoryProcessor.recordValidationRulesNotApplied(
+                objectInfoWrapper,
+                objectApiName,
+                [{ ruleName: 'Person_Rule', constraint: ruleConstraint } as any],
+                ruleConstraintsByField,
+                fieldsInfo,
+                standardFieldMappings
+            );
+
+            return objectInfoWrapper.ObjectToObjectInfoMap[objectApiName];
+
+        };
+
+        test.each(['Contact', 'Lead', 'Individual'])('a rule on %s.Name says Name is a read-only compound, not that it was not read', async (objectApiName) => {
+
+            const objectInfo = await recordNotAppliedRule(objectApiName, 'Name', { 'Name.field-meta.xml': TYPELESS_NAME_XML });
+
+            const expectedReason = `Name on ${objectApiName} is a read-only compound of Salutation, FirstName, LastName, so no Name value is generated`;
+            expect(objectInfo.ValidationRulesNotApplied).toEqual([{ ruleName: 'Person_Rule', reason: expectedReason }]);
+            expect(objectInfo.FullRecipe).toContain(`### TODO -- VALIDATION RULE NOT APPLIED -- "Person_Rule" -- ${expectedReason}`);
+            expect(objectInfo.FullRecipe).not.toContain(NOT_READ_REASON);
+
+        });
+
+        test('a rule on a part the expansion wrote (Lead.Salutation) says where the part comes from', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Lead', 'salutation', { 'Name.field-meta.xml': TYPELESS_NAME_XML });
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("Salutation is written as a part of Lead's compound Name, which validation rules do not change");
+
+        });
+
+        test.each(['Salutation', 'FirstName', 'LastName'])('a rule on Individual.%s says where the part comes from', async (namePartApiName) => {
+
+            const objectInfo = await recordNotAppliedRule('Individual', namePartApiName, { 'Name.field-meta.xml': TYPELESS_NAME_XML });
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe(`${namePartApiName} is written as a part of Individual's compound Name, which validation rules do not change`);
+
+        });
+
+        test('a part the standard field map writes (Contact.FirstName) keeps the standard-field reason', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Contact', 'FirstName', { 'Name.field-meta.xml': TYPELESS_NAME_XML });
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("FirstName is written from Treecipe's standard-field mapping, which validation rules do not change");
+
+        });
+
+        test('a part that was never written (Individual with no Name file) keeps the not-read reason', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Individual', 'Salutation', {});
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason).toBe(`Salutation ${NOT_READ_REASON}`);
+
+        });
+
+        test('a rule on Name of an object that is not person-style keeps the not-read reason', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Widget__c', 'Name', {});
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason).toBe(`Name ${NOT_READ_REASON}`);
 
         });
 

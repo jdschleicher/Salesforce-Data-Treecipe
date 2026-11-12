@@ -11,6 +11,7 @@ Objects: Lead
 
 ```sql
 SELECT Id,
+       Name,
        Address,
        CampaignId,
        CleanStatus,

@@ -58,7 +58,7 @@ FROM Account
 -- Children: Contact (via AccountId)
 -- Note: Verify 'Contacts' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, OtherAddress
+    (SELECT Id, Name, OtherAddress
      FROM Contacts)
 FROM Account
 ```
@@ -105,6 +105,7 @@ RETURNING Account(Id, SLASerialNumber__c)
 
 ```sql
 SELECT Id,
+       Name,
        AccountId,
        OtherAddress,
        ReportsToId,
@@ -131,6 +132,7 @@ FROM Contact
 -- Lookup to Contact via ReportsToId
 SELECT Id,
        ReportsToId,
+       ReportsTo.Name,
        ReportsTo.OtherAddress
 FROM Contact
 ```
@@ -155,7 +157,7 @@ FROM Contact
 -- Children: Contact (via ReportsToId)
 -- Note: Verify 'Contacts' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, OtherAddress
+    (SELECT Id, Name, OtherAddress
      FROM Contacts)
 FROM Contact
 ```
@@ -352,6 +354,7 @@ FROM MasterDetailMadness__c
 -- Lookup to Contact via LU_Contact__c
 SELECT Id,
        LU_Contact__c,
+       LU_Contact__r.Name,
        LU_Contact__r.OtherAddress
 FROM MasterDetailMadness__c
 ```
@@ -662,7 +665,7 @@ FROM User
 -- Children: Contact (via UserOfAContact_1__c, Userlookup_2__c)
 -- Note: Verify 'Contacts' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, OtherAddress
+    (SELECT Id, Name, OtherAddress
      FROM Contacts)
 FROM User
 ```
