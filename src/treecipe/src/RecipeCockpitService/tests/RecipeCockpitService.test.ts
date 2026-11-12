@@ -674,7 +674,11 @@ describe('RecipeCockpitService', () => {
                 // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
                 expect(styleSheet).toMatch(/\.treeObjectInclude \{[^}]*position: relative;[^}]*z-index: 2;/);
                 // EITHER QUOTE: THE BUNDLED PANEL MODULES ARE esbuild'S OUTPUT, IN DOUBLE QUOTES (#638)
-                expect(shellHtml).not.toMatch(/\.style\.|setAttribute\(['"]style['"]/);
+                const inlineStylePattern = /\.style\.|setAttribute\(['"]style['"]/;
+                expect(shellHtml).not.toMatch(inlineStylePattern);
+                // AND IT CATCHES THE BREAKAGE IN EITHER FORM: A STRING CALLER'S QUOTES OR THE BUNDLE'S
+                ["element.setAttribute('style', 'color: red')", 'element.setAttribute("style", "color: red")', 'element.style.color = "red"']
+                    .forEach(inlineStyle => expect(inlineStyle).toMatch(inlineStylePattern));
                 expect(findThemeColourReads(shellHtml)).toEqual([]);
 
             });
