@@ -44,63 +44,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   var COCKPIT_CONFIRM_WARNINGS_LABEL = "Before you confirm";
   var COCKPIT_CONFIRM_CHANGE_ORG_LABEL = "Change org…";
 
-  // src/treecipe/src/CockpitKit/CockpitButtonKinds.ts
+  // src/treecipe/src/CockpitKit/CockpitButtonKindNames.ts
   var COCKPIT_BUTTON_KINDS = Object.freeze(["primary", "secondary", "icon", "check", "link", "card"]);
-  var COCKPIT_ACTION_CARD_HEIGHT = "10.5rem";
-  var COCKPIT_KIT_BUTTON_KIND_STATE_STYLES = \`    .sdtButton-primary:disabled, .sdtButton-secondary:disabled {
-        color: var(--sdt-disabled-text);
-        background-color: var(--sdt-disabled-bg);
-        border-color: var(--sdt-border);
-        cursor: not-allowed;
-        opacity: 1;
-    }
-    .sdtButton-compact { min-height: 0; min-width: 0; padding: 0.15rem 0.6rem; font-size: inherit; }
-    .sdtButton-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        color: var(--sdt-text);
-        background-color: transparent;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .sdtButton-icon:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
-    .sdtButton-icon:disabled { cursor: not-allowed; }
-    .sdtButton-link {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: var(--sdt-accent);
-        text-align: left;
-        cursor: pointer;
-    }
-    .sdtButton-link:focus-visible { outline-offset: -1px; }
-    .sdtButton-card {
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        justify-content: flex-start;
-        gap: 0.3rem;
-        width: 100%;
-        height: \${COCKPIT_ACTION_CARD_HEIGHT};
-        overflow: hidden;
-        padding: 0.6rem 0.75rem;
-        font: inherit;
-        text-align: left;
-        color: var(--sdt-text);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 8px;
-        cursor: pointer;
-    }
-    .sdtButton-card:hover:not(:disabled) { border-color: var(--sdt-accent); background-color: var(--sdt-row-hover); }
-    .sdtButton-card:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
-    .sdtButton-card:disabled .actionCardTitle, .sdtButton-card:disabled .actionCardDetail { color: var(--sdt-disabled-text); }
-    .sdtButton-link:hover { text-decoration: underline; }\`;
 
   // src/treecipe/src/CockpitKit/CockpitMotion.ts
   var COCKPIT_MOTION_REVEAL_MILLISECONDS = 160;

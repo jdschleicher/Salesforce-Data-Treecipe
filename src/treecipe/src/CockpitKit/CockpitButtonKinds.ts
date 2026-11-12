@@ -7,8 +7,8 @@
     own rules, so its document stays byte for byte what it was; a cockpit with no such rules between
     them takes buildStyles(), the same pieces in the same order.
 */
-export type CockpitButtonKind = 'primary' | 'secondary' | 'icon' | 'check' | 'link' | 'card';
-export const COCKPIT_BUTTON_KINDS: readonly CockpitButtonKind[] = Object.freeze(['primary', 'secondary', 'icon', 'check', 'link', 'card'] as CockpitButtonKind[]);
+export { COCKPIT_BUTTON_KINDS } from './CockpitButtonKindNames';
+export type { CockpitButtonKind } from './CockpitButtonKindNames';
 
 // ONE SIZE FOR EVERY STANDALONE ACTION CARD (#381), SO A GRID OF THEM LINES UP
 export const COCKPIT_ACTION_CARD_HEIGHT = '10.5rem';

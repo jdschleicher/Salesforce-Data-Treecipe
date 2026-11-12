@@ -100,7 +100,9 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
         KIND_CLASSES.forEach(kindClass => expect(styleSheetOf(html)).toMatch(new RegExp('\\n\\s*[^{}\\n]*\\.' + kindClass + '[ ,][^{}\\n]*\\{')));
         // THE BUNDLED createButton CHECKS EVERY KIND AGAINST THE KIT'S ONE LIST (#638)
         expect(panelScriptOf(html)).toContain('if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1)');
-        expect(panelScriptOf(html)).toContain(`COCKPIT_BUTTON_KINDS = Object.freeze(${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS).replace(/,/g, ', ')})`);
+        const bundledKinds = /COCKPIT_BUTTON_KINDS = Object\.freeze\((\[[^\]]*\])\)/.exec(panelScriptOf(html));
+        expect(bundledKinds).not.toBeNull();
+        expect(JSON.parse((bundledKinds as RegExpExecArray)[1])).toEqual([...RECIPE_COCKPIT_BUTTON_KINDS]);
 
     });
 

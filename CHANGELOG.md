@@ -17,6 +17,10 @@ Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline 
   - `RecipeCockpitPanelBundle.test.ts` checks that the bridge binds exactly the bundle's exports and that no bridged name is defined again in the string.
   - `RecipeCockpitButtonKinds.test.ts` scans for calls in either quote, because esbuild writes double quotes. It also checks that the bundled `createButton` checks the kit's one list of kinds.
   - `CockpitKit.test.ts` reads the elements module, and `ServiceLayers.test.ts` holds the relaxed rule.
+- **Review follow-ups.**
+  - The kind list and its type are in `CockpitButtonKindNames.ts`, which imports nothing, so the webview bundle no longer carries the button kinds' CSS. `CockpitButtonKinds.ts` re-exports them.
+  - `RecipeCockpitPanelBundle.test.ts` checks that every name a panel module takes from the script with `declare` is declared there, for every panel module.
+  - The no-inline-style scan, like the others, accepts either quote.
 
 ## [3.200.1] - The in-panel confirmation's panel code is a checked TypeScript module, bundled into the cockpit at build time (#637, slice 1 of #565)
 

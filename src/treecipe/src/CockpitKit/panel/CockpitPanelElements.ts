@@ -1,4 +1,4 @@
-import { COCKPIT_BUTTON_KINDS, CockpitButtonKind } from '../CockpitButtonKinds';
+import { COCKPIT_BUTTON_KINDS, CockpitButtonKind } from '../CockpitButtonKindNames';
 import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitMotion';
 
 /*

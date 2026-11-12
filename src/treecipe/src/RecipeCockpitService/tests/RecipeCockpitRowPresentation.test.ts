@@ -28,11 +28,16 @@ const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 
-// A FUNCTION IN THE TEMPLATE-LITERAL SCRIPT ENDS AT A 4-SPACE }, ONE IN THE BUNDLE (#638) AT esbuild'S 2-SPACE }
+// THE FUNCTION'S TEXT UP TO THE BRACE THAT CLOSES ITS BODY, WHETHER IT IS IN THE TEMPLATE-LITERAL SCRIPT OR esbuild'S BUNDLE (#638)
 const functionBodyOf = (scriptText: string, functionName: string) => {
     const start = scriptText.indexOf(`function ${functionName}(`);
-    const ends = ['\n    }\n', '\n  }\n'].map(closing => scriptText.indexOf(closing, start)).filter(end => end !== -1);
-    return scriptText.substring(start, Math.min(...ends));
+    const bodyStart = scriptText.indexOf('{', scriptText.indexOf(')', start));
+    let depth = 0;
+    for ( let index = bodyStart; index < scriptText.length; index++ ) {
+        if ( scriptText[index] === '{' ) { depth++; }
+        if ( scriptText[index] === '}' && --depth === 0 ) { return scriptText.substring(start, index + 1); }
+    }
+    return scriptText.substring(start);
 };
 
 const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(

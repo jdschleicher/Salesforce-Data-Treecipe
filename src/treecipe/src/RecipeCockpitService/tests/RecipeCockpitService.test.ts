@@ -673,7 +673,8 @@ describe('RecipeCockpitService', () => {
                 expect(styleSheet).toMatch(/\.treeObject\.excluded::after \{[^}]*background-color: var\(--sdt-excluded-overlay\);[^}]*pointer-events: none;[^}]*z-index: 1;/);
                 // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
                 expect(styleSheet).toMatch(/\.treeObjectInclude \{[^}]*position: relative;[^}]*z-index: 2;/);
-                expect(shellHtml).not.toMatch(/\.style\.|setAttribute\('style'/);
+                // EITHER QUOTE: THE BUNDLED PANEL MODULES ARE esbuild'S OUTPUT, IN DOUBLE QUOTES (#638)
+                expect(shellHtml).not.toMatch(/\.style\.|setAttribute\(['"]style['"]/);
                 expect(findThemeColourReads(shellHtml)).toEqual([]);
 
             });

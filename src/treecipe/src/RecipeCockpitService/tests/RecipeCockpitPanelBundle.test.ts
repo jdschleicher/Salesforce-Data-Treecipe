@@ -78,6 +78,22 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
+    it('finds every name a panel module declares from the script around it declared in that script (#638)', () => {
+
+        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
+        const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
+        const panelModulePaths = ['CockpitKit/panel', 'RecipeCockpitService/panel'].flatMap(panelDirectory =>
+            fs.readdirSync(path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory)).filter(fileName => fileName.endsWith('.ts')).map(fileName => path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory, fileName)));
+        const ambientNames = panelModulePaths.flatMap(panelModulePath =>
+            Array.from(fs.readFileSync(panelModulePath, 'utf8').matchAll(/^declare (?:const|let|function) ([A-Za-z_$][\w$]*)/gm), match => ({ panelModule: path.basename(panelModulePath), ambientName: match[1] })));
+
+        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog']));
+        ambientNames.forEach(ambient =>
+            expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
+                .toEqual({ ...ambient, isDeclared: true }));
+
+    });
+
     it('holds no closing script tag and loads nothing from outside the document', () => {
 
         expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT).not.toMatch(/<\/script|<!--/i);

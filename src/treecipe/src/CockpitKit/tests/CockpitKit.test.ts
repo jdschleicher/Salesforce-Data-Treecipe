@@ -175,7 +175,7 @@ describe('CockpitKit (#524)', () => {
 
             const panelElementsSource = fs.readFileSync(path.join(KIT_DIRECTORY, 'panel', 'CockpitPanelElements.ts'), 'utf8');
 
-            expect(panelElementsSource).toContain("import { COCKPIT_BUTTON_KINDS, CockpitButtonKind } from '../CockpitButtonKinds';");
+            expect(panelElementsSource).toContain("import { COCKPIT_BUTTON_KINDS, CockpitButtonKind } from '../CockpitButtonKindNames';");
             expect(panelElementsSource).toContain('if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1) { throw new Error(\'Unknown button kind: \' + kind); }');
             expect(panelElementsSource.match(/createElement\('button'/g) ?? []).toHaveLength(1);
             expect(COCKPIT_BUTTON_KINDS).toEqual(['primary', 'secondary', 'icon', 'check', 'link', 'card']);
@@ -275,12 +275,12 @@ describe('CockpitKit (#524)', () => {
             const kitFiles = fs.readdirSync(KIT_DIRECTORY).filter(fileName => fileName.endsWith('.ts'));
             const isKitModule = (moduleName: string) => moduleName === 'crypto' || /^\.\/[A-Za-z]+$/.test(moduleName);
 
-            expect(kitFiles.sort()).toEqual(['CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
+            expect(kitFiles.sort()).toEqual(['CockpitButtonKindNames.ts', 'CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
             kitFiles.forEach(fileName => {
                 const importedModules = Array.from(fs.readFileSync(path.join(KIT_DIRECTORY, fileName), 'utf8').matchAll(/^import .* from '([^']+)';$/gm), match => match[1]);
                 expect({ fileName, importedModules: importedModules.filter(moduleName => !isKitModule(moduleName)) }).toEqual({ fileName, importedModules: [] });
             });
-            ['CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitButtonKinds.ts'].forEach(importFreeFileName =>
+            ['CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitButtonKindNames.ts'].forEach(importFreeFileName =>
                 expect({ importFreeFileName, imports: /^import /m.test(fs.readFileSync(path.join(KIT_DIRECTORY, importFreeFileName), 'utf8')) }).toEqual({ importFreeFileName, imports: false }));
             expect(Object.keys(CockpitPaletteModule).sort()).toEqual(['COCKPIT_PALETTE', 'CockpitPalette']);
 
