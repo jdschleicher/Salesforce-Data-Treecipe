@@ -49,7 +49,7 @@ FROM Account"
     text "Children: Contact (via AccountId)"
     text "Note: Verify 'Contacts' is the correct Child Relationship Name"
     textbox "SOQL for Account · Parent-to-Child Query" = "SELECT Id,
-    (SELECT Id, Title__c
+    (SELECT Id, Name, Title__c
      FROM Contacts)
 FROM Account"
     button "Reset"
@@ -83,6 +83,7 @@ WHERE RecordType.DeveloperName = 'Partner'"
   group "Contact · Base Query"
     text "Contact · Base Query"
     textbox "SOQL for Contact · Base Query" = "SELECT Id,
+       Name,
        AccountId,
        Title__c
 FROM Contact"
@@ -129,6 +130,7 @@ FROM Visit__c"
     text "Lookup to Contact via Contact__c"
     textbox "SOQL for Visit__c · Child-to-Parent Query" = "SELECT Id,
        Contact__c,
+       Contact__r.Name,
        Contact__r.Title__c
 FROM Visit__c"
     button "Reset"

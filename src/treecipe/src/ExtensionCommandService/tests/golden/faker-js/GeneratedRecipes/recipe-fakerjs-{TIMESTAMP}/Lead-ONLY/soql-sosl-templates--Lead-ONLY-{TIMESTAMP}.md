@@ -11,6 +11,7 @@ Objects: Lead
 
 ```sql
 SELECT Id,
+       Name,
        Address,
        CampaignId,
        CleanStatus,
@@ -26,14 +27,14 @@ SELECT Id,
        IndividualId,
        Jigsaw,
        LastTransferDate,
-       Name,
        NumberofLocations__c,
        OwnerId,
        Primary__c,
        ProductInterest__c,
        Pronouns,
        SICCode__c,
-       Website
+       Website,
+       Salutation
 FROM Lead
 ```
 
@@ -41,7 +42,7 @@ FROM Lead
 
 ```sosl
 FIND {searchTerm} IN ALL FIELDS
-RETURNING Lead(Id, CurrentGenerators__c, SICCode__c)
+RETURNING Lead(Id, CurrentGenerators__c, SICCode__c, Salutation)
 ```
 
 ---

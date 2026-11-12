@@ -633,6 +633,20 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     });
 
+    describe('buildCompoundNameComponentRecipes', () => {
+
+        test('returns Salutation, FirstName and LastName under their own api names with faker-js values', () => {
+
+            expect(recipeServiceWithFakerJS.buildCompoundNameComponentRecipes()).toEqual([
+                { componentKey: 'Salutation', componentApiName: 'Salutation', recipeValue: "${{faker.helpers.arrayElement(['Mr.', 'Ms.', 'Mrs.', 'Dr.'])}}" },
+                { componentKey: 'FirstName', componentApiName: 'FirstName', recipeValue: '${{faker.person.firstName()}}' },
+                { componentKey: 'LastName', componentApiName: 'LastName', recipeValue: '${{faker.person.lastName()}}' }
+            ]);
+
+        });
+
+    });
+
     describe('buildCompoundGeolocationComponentRecipes', () => {
 
         test('given a custom compound geolocation field, composes the component api names with the faker-js coordinate expressions', () => {

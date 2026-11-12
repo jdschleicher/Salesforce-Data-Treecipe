@@ -2,6 +2,7 @@ import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
+import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
 const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 const TEXT_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Html', 'Email', 'Phone', 'Url'];
@@ -183,10 +184,21 @@ export class SOQLTemplateService {
 
     }
 
+    /*
+        A person's compound Name is never a recipe field (#114), so it is not in Fields, but it is
+        the column that says which record a row is. It is selected straight after Id.
+    */
+    static getCompoundNameFieldNames(objectName: string, objectInfo: ObjectInfo | undefined): string[] {
+
+        const hasOwnNameField = (objectInfo?.Fields ?? []).some(f => f.fieldName === 'Name');
+        return PersonNameObjects.includes(objectName) && !hasOwnNameField ? ['Name'] : [];
+
+    }
+
     static buildSelectAllQuery(objectName: string, objectInfo: ObjectInfo): string {
 
         const fieldNames = this.getWritableFields(objectInfo).map(f => f.fieldName);
-        const allFields = ['Id', ...fieldNames];
+        const allFields = ['Id', ...this.getCompoundNameFieldNames(objectName, objectInfo), ...fieldNames];
         return `SELECT ${allFields.join(',\n       ')}\nFROM ${objectName}`;
 
     }
@@ -206,10 +218,12 @@ export class SOQLTemplateService {
 
             let parentFieldTraversals: string[] = [];
             if (parentInfo?.Fields) {
-                parentFieldTraversals = this.getWritableFields(parentInfo)
+                const parentFieldNames = this.getWritableFields(parentInfo)
                     .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
+                    .map(f => f.fieldName);
+                parentFieldTraversals = [...this.getCompoundNameFieldNames(parentName, parentInfo), ...parentFieldNames]
                     .slice(0, 5)
-                    .map(f => `${relationshipName}.${f.fieldName}`);
+                    .map(parentFieldName => `${relationshipName}.${parentFieldName}`);
             }
 
             const selectFields = ['Id', field.fieldName, ...parentFieldTraversals];
@@ -237,10 +251,11 @@ export class SOQLTemplateService {
             if (!(childObjectName in objectInfoWrapper.ObjectToObjectInfoMap)) { continue; }
 
             const childInfo = objectInfoWrapper.ObjectToObjectInfoMap[childObjectName];
-            const childFields = (childInfo ? this.getWritableFields(childInfo) : [])
+            const childWritableFieldNames = (childInfo ? this.getWritableFields(childInfo) : [])
                 .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
-                .slice(0, 5)
                 .map(f => f.fieldName);
+            const childFields = [...this.getCompoundNameFieldNames(childObjectName, childInfo), ...childWritableFieldNames]
+                .slice(0, 5);
 
             const childSelectFields = ['Id', ...childFields].join(', ');
             const childRelationshipName = this.deriveChildRelationshipName(childObjectName);
@@ -270,7 +285,7 @@ export class SOQLTemplateService {
             .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
             .map(f => f.fieldName);
 
-        const selectFields = ['Id', ...fieldNames].join(',\n       ');
+        const selectFields = ['Id', ...this.getCompoundNameFieldNames(objectName, objectInfo), ...fieldNames].join(',\n       ');
 
         return writableDeveloperNames.map(developerName =>
             `-- Record Type: ${developerName}\n` +

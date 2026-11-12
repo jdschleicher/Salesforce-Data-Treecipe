@@ -1,9 +1,11 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { RecipeService } from '../RecipeService/RecipeService';
+import { ICompoundComponentRecipe } from '../RecipeService/ICompoundComponentRecipe';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
+import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
@@ -143,14 +145,51 @@ export class DirectoryProcessor {
   }
 
   /*
+    A standard Name field file carries no <type>, whether it is writable (Account, Product2) or the
+    read-only compound of a person's name, so the object is the only signal (#114).
+  */
+  isCompoundNameField(fieldInfo: FieldInfo, associatedObjectName: string): boolean {
+
+    return fieldInfo?.fieldName === 'Name'
+      && fieldInfo?.type === 'AUTO_GENERATED'
+      && PersonNameObjects.includes(associatedObjectName);
+
+  }
+
+  /*
+    Why a rule naming a person's Name, or a part the Name expansion wrote, was not applied. Neither
+    has a FieldInfo that carries rule constraints, and "not read from the fields folder" would be
+    false for both. Undefined for any other field.
+  */
+  buildCompoundNameRuleNotAppliedReason(objectName: string, fieldReference: string, fieldsInfo: FieldInfo[]): string | undefined {
+
+    if ( !PersonNameObjects.includes(objectName) ) {
+      return undefined;
+    }
+
+    const fieldKey = fieldReference.toLowerCase();
+    if ( fieldKey === 'name' ) {
+      return `Name on ${objectName} is a read-only compound of ${RecipeService.compoundNameComponentKeys.join(', ')}, so no Name value is generated`;
+    }
+
+    const expandedNamePart = fieldsInfo.find(fieldInfo => fieldInfo.validationRuleConstraints === undefined
+      && RecipeService.compoundNameComponentKeys.includes(fieldInfo.fieldName)
+      && fieldInfo.fieldName.toLowerCase() === fieldKey);
+    return expandedNamePart === undefined
+      ? undefined
+      : `${expandedNamePart.fieldName} is written as a part of ${objectName}'s compound Name, which validation rules do not change`;
+
+  }
+
+  /*
     Returns one FieldInfo per writable component and NONE for the compound field itself, which is why
     an empty array is a valid result: on an object whose OOTB mappings already name every component
     (Account's BillingStreet/BillingCity/...) the compound field contributes nothing rather than a
     second set of the same recipe lines.
 
-    Address and Geolocation differ only in which component recipes they expand to -- the two reasons
-    a component is dropped are the same for both, so the dedupe below stays in one place rather than
-    once per compound type.
+    Address, Geolocation and a person's Name differ only in which component recipes they expand to --
+    the two reasons a component is dropped are the same for all three, so the dedupe below stays in
+    one place rather than once per compound type.
 
     A component is dropped for either of two reasons, and both produce the same duplicate key in the
     object recipe if missed: the OOTB mappings already emit it, or the object HAS that component as
@@ -166,9 +205,17 @@ export class DirectoryProcessor {
 
     const ootbFieldApiNamesForObject = salesforceOOTBFakerMappings?.[associatedObjectName] ?? {};
     const alreadyProcessedFieldApiNames = new Set(alreadyProcessedFieldInfos.map(fieldInfo => fieldInfo?.fieldName));
-    const compoundComponentRecipes = this.isCompoundGeolocationField(compoundFieldInfo)
-      ? this.recipeService.buildCompoundGeolocationComponentRecipes(compoundFieldInfo.fieldName)
-      : this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+    const isCompoundName = this.isCompoundNameField(compoundFieldInfo, associatedObjectName);
+    let compoundComponentRecipes: ICompoundComponentRecipe[];
+    if ( isCompoundName ) {
+      compoundComponentRecipes = this.recipeService.buildCompoundNameComponentRecipes();
+    } else if ( this.isCompoundGeolocationField(compoundFieldInfo) ) {
+      compoundComponentRecipes = this.recipeService.buildCompoundGeolocationComponentRecipes(compoundFieldInfo.fieldName);
+    } else {
+      compoundComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+    }
+    // A TYPELESS Name HAS NO <label> EITHER, SO ITS PARTS ARE LABELLED BY THEIR OWN NAMES
+    const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldInfo.fieldLabel} `;
 
     return compoundComponentRecipes
       .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
@@ -176,7 +223,7 @@ export class DirectoryProcessor {
       .map((componentRecipe) => FieldInfo.create(
         associatedObjectName,
         componentRecipe.componentApiName,
-        `${compoundFieldInfo.fieldLabel} ${componentRecipe.componentKey}`,
+        `${componentLabelPrefix}${componentRecipe.componentKey}`,
         'Text',
         null,
         null,
@@ -464,7 +511,9 @@ export class DirectoryProcessor {
                                                               ruleConstraintsByField
                                                             );
 
-        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) || this.isCompoundGeolocationField(fieldInfo) ) {
+        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName)
+              || this.isCompoundGeolocationField(fieldInfo)
+              || this.isCompoundNameField(fieldInfo, associatedObjectName) ) {
 
           compoundFieldInfos.push(fieldInfo);
 
@@ -710,7 +759,8 @@ export class DirectoryProcessor {
       const fieldKey = analysis.constraint.fieldReference.toLowerCase();
       const fieldInfo = fieldsInfo.find(candidate => candidate.validationRuleConstraints !== undefined && candidate.fieldName?.toLowerCase() === fieldKey);
       if ( fieldInfo === undefined ) {
-        const reason = RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
+        const reason = this.buildCompoundNameRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
+          ?? RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
         objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
         notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));
         return;

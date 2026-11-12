@@ -31,7 +31,6 @@ erDiagram
     }
     Contact {
         id Id
-        string Name
         string OtherAddress
     }
     Example_Everything__c {
