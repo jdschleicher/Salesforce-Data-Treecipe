@@ -62,12 +62,13 @@ import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER,
     RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT
 } from '../RecipeCockpitOrgAuthorize';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { IOrgLoginRun, OrgLoginOutcome, SalesforceOrgLogin, SANDBOX_SUBDOMAIN_REFUSAL } from '../../SalesforceOrgService/SalesforceOrgLogin';
+import { ICoreLibraryOrgLoginRun, IOrgLoginRun, OrgLoginOutcome, SalesforceOrgLogin, SANDBOX_SUBDOMAIN_REFUSAL } from '../../SalesforceOrgService/SalesforceOrgLogin';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -317,8 +318,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         };
 
         const answerLogin = (loginOutcome: OrgLoginOutcome, authorization?: object) => {
-            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async (_loginUrl: string, loginRun: IOrgLoginRun) => {
-                await loginRun.openLoginPage(AUTHORIZATION_URL);
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithSalesforceCli').mockImplementation(async () => {
                 if ( authorization ) {
                     authorizedAuthorizations.push(authorization);
                 }
@@ -413,7 +413,8 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
             expect(confirmOptions.inPanel).toBe(true);
             expect(confirmOptions.checkboxLabel).toBe(RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL);
             expect(confirmOptions.detail).toContain(`Alias: ${CHOSEN_ALIAS}`);
-            expect(confirmLabels).toEqual([RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL]);
+            expect(confirmLabels).toEqual([RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL]);
+            expect(confirmOptions.detail).toContain('Salesforce CLI or @salesforce/core');
 
             expect(loginSpy).not.toHaveBeenCalled();
             expect(vscode.window.withProgress).not.toHaveBeenCalled();
@@ -468,7 +469,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_ADDRESS, expect.anything());
             expect(aliasSpy).toHaveBeenCalledWith(CHOSEN_ALIAS, NEW_SANDBOX_USERNAME);
-            expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: AUTHORIZATION_URL, isStrict: true });
+            expect(vscode.env.openExternal).not.toHaveBeenCalled();
             expect(execFile).not.toHaveBeenCalled();
 
             expect(lastOrgList().orgLabels.some((orgLabel: string) => orgLabel.includes(CHOSEN_ALIAS))).toBe(true);
@@ -477,6 +478,43 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             expect(notificationTexts(vscode.window.showInformationMessage)).toEqual([`${CHOSEN_ALIAS} · ${NEW_SANDBOX_USERNAME} is authorized and listed in Target Org Manager.`]);
             expect(notificationTexts(vscode.window.showWarningMessage)).toEqual([]);
+            expect(postedNamed('scratchOrgState').at(-1)).toEqual({ command: 'scratchOrgState', isRunning: false });
+
+        });
+
+        it('with Authorize with @salesforce/core: logs in inside VS Code, which opens the authorization address, and starts no sf process', async () => {
+
+            answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL, isChecked: false });
+            answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
+            const coreLoginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithCoreLibrary').mockImplementation(async (_loginUrl: string, loginRun: ICoreLibraryOrgLoginRun) => {
+                await loginRun.openLoginPage(AUTHORIZATION_URL);
+                authorizedAuthorizations.push(NEW_SANDBOX_AUTHORIZATION);
+                return { kind: 'authorized', username: NEW_SANDBOX_USERNAME };
+            });
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'authorizeOrg' });
+
+            expect(coreLoginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_ADDRESS, expect.anything());
+            expect(loginSpy).not.toHaveBeenCalled();
+            expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: AUTHORIZATION_URL, isStrict: true });
+            expect(execFile).not.toHaveBeenCalled();
+            expect(aliasSpy).toHaveBeenCalledWith(CHOSEN_ALIAS, NEW_SANDBOX_USERNAME);
+            expect(notificationTexts(vscode.window.showInformationMessage)).toEqual([`${CHOSEN_ALIAS} · ${NEW_SANDBOX_USERNAME} is authorized and listed in Target Org Manager.`]);
+
+        });
+
+        it('starts no login for a chosen label the confirmation did not offer', async () => {
+
+            answerConfirmation({ chosenLabel: 'Authorize org', isChecked: true });
+            answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
+            const coreLoginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithCoreLibrary');
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'authorizeOrg' });
+
+            expect(loginSpy).not.toHaveBeenCalled();
+            expect(coreLoginSpy).not.toHaveBeenCalled();
             expect(postedNamed('scratchOrgState').at(-1)).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
@@ -566,7 +604,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         it('hands the progress notification\'s Cancel to the login, including one pressed before the login started listening', async () => {
 
             let cancelCount = 0;
-            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(async (_loginUrl: string, loginRun: IOrgLoginRun) => {
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithSalesforceCli').mockImplementation(async (_loginUrl: string, loginRun: IOrgLoginRun) => {
                 loginRun.onCancellationRequested(() => { cancelCount++; });
                 cancellationListeners.forEach(listener => listener());
                 return { kind: 'cancelled' };
@@ -584,7 +622,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
         it('releases the lock when the login throws', async () => {
 
-            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockRejectedValue(new Error('unexpected'));
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithSalesforceCli').mockRejectedValue(new Error('unexpected'));
             await openRenderedCockpit();
 
             await Promise.resolve(receivedMessageHandler({ command: 'authorizeOrg' })).catch(() => undefined);
@@ -638,7 +676,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         it('starts no second login while one is in flight, and tells the panel which run holds the picker', async () => {
 
             let finishLogin: (loginOutcome: OrgLoginOutcome) => void = () => undefined;
-            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithBrowser').mockImplementation(() => new Promise(resolve => { finishLogin = resolve; }));
+            loginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithSalesforceCli').mockImplementation(() => new Promise(resolve => { finishLogin = resolve; }));
             await openRenderedCockpit();
 
             const firstRun = receivedMessageHandler({ command: 'authorizeOrg' });

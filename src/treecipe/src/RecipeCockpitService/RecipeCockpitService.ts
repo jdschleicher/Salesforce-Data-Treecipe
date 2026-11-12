@@ -100,6 +100,7 @@ import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PLACEHOLDER,
     RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT,
     RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
@@ -108,7 +109,7 @@ import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP,
     RecipeCockpitOrgAuthorize
 } from './RecipeCockpitOrgAuthorize';
-import { OrgLoginOutcome, SalesforceOrgLogin } from '../SalesforceOrgService/SalesforceOrgLogin';
+import { IOrgLoginRun, OrgLoginMethod, OrgLoginOutcome, SalesforceOrgLogin } from '../SalesforceOrgService/SalesforceOrgLogin';
 import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -617,7 +618,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in Select Generated Treecipe runs by date:, the first line of the Treecipes section (or at the top of the panel, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
-            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Authorize org, next to it, logs in to a sandbox that already exists: it asks for the sandbox\'s subdomain, such as acme--qa, and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Tick the box in its confirmation to also choose the org here and make it this workspace\'s default org; an org that is not a sandbox or scratch org is authorized, but it is never chosen or made the default here, and it does not get the alias. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Authorize org, next to it, logs in to a sandbox that already exists: it asks for the sandbox\'s subdomain, such as acme--qa, and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Its confirmation offers Authorize with Salesforce CLI, which runs sf org login web so every sf command can use the org, and Authorize with @salesforce/core, which logs in inside VS Code without the CLI, though sf in a terminal set up differently from VS Code may not be able to use that login. Tick the box in its confirmation to also choose the org here and make it this workspace\'s default org; an org that is not a sandbox or scratch org is authorized, but it is never chosen or made the default here, and it does not get the alias. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field\'s row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -9344,10 +9345,10 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Authorize org" (#630): a browser login to an existing org through @salesforce/core, no sf
-        process. The login address and the alias are asked by VS Code, as "+ New scratch org" asks
-        its alias; the panel confirms, and its one checkbox asks for the org to be selected and
-        made this workspace's default org. Both answers are checked again after the confirmation.
+        "Authorize org" (#630): a browser login to an existing org, run by "sf org login web" or by
+        @salesforce/core in VS Code, as the confirmation's button says. The login address and the
+        alias are asked by VS Code, as "+ New scratch org" asks its alias; the panel confirms, and its
+        one checkbox asks for the org to be selected and made this workspace's default org. Both answers are checked again after the confirmation.
         Only an org the fresh listing shows -- a sandbox or scratch org that answered its ping --
         is selected or made the default. How the login ended is one notification.
     */
@@ -9362,10 +9363,15 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanelWithCheckbox(
             RecipeCockpitOrgAuthorize.buildConfirmMessage(authorizePlan),
             { ...RecipeCockpitOrgAuthorize.buildConfirmContent(authorizePlan), checkboxLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL },
-            RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL
+            RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
+            RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL
         );
 
-        if ( confirmation.chosenLabel !== RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL ) {
+        const loginMethod: OrgLoginMethod | undefined = confirmation.chosenLabel === RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL
+            ? 'salesforceCli'
+            : confirmation.chosenLabel === RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL ? 'coreLibrary' : undefined;
+
+        if ( loginMethod === undefined ) {
             return;
         }
 
@@ -9386,15 +9392,21 @@ export class RecipeCockpitService {
 
             progress.report({ message: 'Waiting for you to log in in your browser…' });
 
-            return await SalesforceOrgLogin.authorizeWithBrowser(loginUrl, {
-                openLoginPage: authorizationUrl => vscode.env.openExternal(vscode.Uri.parse(authorizationUrl, true)),
+            const loginRun: IOrgLoginRun = {
                 onCancellationRequested: cancelLogin => {
                     cancellationToken.onCancellationRequested(cancelLogin);
                     if ( cancellationToken.isCancellationRequested ) {
                         cancelLogin();
                     }
                 }
-            });
+            };
+
+            return loginMethod === 'salesforceCli'
+                ? await SalesforceOrgLogin.authorizeWithSalesforceCli(loginUrl, loginRun)
+                : await SalesforceOrgLogin.authorizeWithCoreLibrary(loginUrl, {
+                    ...loginRun,
+                    openLoginPage: authorizationUrl => vscode.env.openExternal(vscode.Uri.parse(authorizationUrl, true))
+                });
 
         });
 

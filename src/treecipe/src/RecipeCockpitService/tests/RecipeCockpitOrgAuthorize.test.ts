@@ -48,6 +48,8 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
             expect(confirmText).toContain('Nothing is deployed to the org and no record is written.');
             expect(confirmText).toContain('sets target-org in this workspace\'s .sf/config.json');
             expect(confirmText).not.toContain('will move it');
+            expect(confirmText).toContain('Authorize with Salesforce CLI runs sf org login web');
+            expect(confirmText).toContain('Authorize with @salesforce/core logs in inside VS Code without starting the CLI');
 
         });
 

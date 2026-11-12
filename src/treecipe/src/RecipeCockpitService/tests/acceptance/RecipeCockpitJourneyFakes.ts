@@ -439,7 +439,7 @@ export class FakeOrgConnections {
         return this.authorizations.map(authorization => ({ ...authorization }));
     }
 
-    // THE ORG THE READER LOGS IN TO WHEN "Authorize org" OPENS THE BROWSER (#630); UNSET, THE LOGIN FAILS AS AN UNSCRIPTED CALL DOES
+    // THE ORG THE READER LOGS IN TO WITH "Authorize with @salesforce/core" (#630); UNSET, THE LOGIN FAILS AS AN UNSCRIPTED CALL DOES
     browserLoginAuthorization: { username: string; orgId: string; instanceUrl: string; isSandbox?: boolean } | undefined;
 
     async createWebOAuthServer(loginUrl: string) {
