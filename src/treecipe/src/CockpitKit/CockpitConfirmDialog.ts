@@ -24,8 +24,7 @@ import { ICockpitConfirmAnswer } from './CockpitConfirmLabels';
     confirmInPanel would wait on it. A test holds this list to the module's declare block.
 */
 export const COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES: readonly string[] = Object.freeze([
-    'vscodeApi', 'renderedSequence', 'createElement', 'createButton', 'focusElement', 'isMotionReduced',
-    'drawToggle', 'setShownWithMotion', 'SVG_NAMESPACE', 'TREE_GLYPH_VIEW_BOX', 'TOGGLE_COLLAPSED_GLYPH_PATH',
+    'vscodeApi', 'renderedSequence', 'focusElement', 'TREE_GLYPH_VIEW_BOX', 'TOGGLE_COLLAPSED_GLYPH_PATH',
     'cockpitDialogHostElement', 'cockpitBodyElement', 'cockpitMetaElement', 'loadStatusElement'
 ]);
 

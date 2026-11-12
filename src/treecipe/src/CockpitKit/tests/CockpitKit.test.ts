@@ -79,7 +79,6 @@ describe('CockpitKit (#524)', () => {
             const pieces = kitPieces();
 
             expect(pieces.map(([pieceName]) => pieceName).sort()).toEqual([
-                'COCKPIT_KIT_BUTTON_KINDS_SCRIPT',
                 'COCKPIT_KIT_BUTTON_KIND_BASE_STYLES',
                 'COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES',
                 'COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES',
@@ -87,7 +86,6 @@ describe('CockpitKit (#524)', () => {
                 'COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP',
                 'COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT',
                 'COCKPIT_KIT_CONFIRM_DIALOG_STYLES',
-                'COCKPIT_KIT_CREATE_BUTTON_SCRIPT',
                 'COCKPIT_KIT_ORG_PICKER_REFRESH_STYLES',
                 'COCKPIT_KIT_ORG_PICKER_STYLES',
                 'COCKPIT_KIT_PINNED_SECTION_STYLES'
@@ -173,11 +171,14 @@ describe('CockpitKit (#524)', () => {
 
         });
 
-        it('declares the kinds createButton checks, and refuses any other', () => {
+        it('checks every kind against COCKPIT_BUTTON_KINDS, refuses any other, and makes the only button (#638)', () => {
 
-            expect(CockpitButtonKindsModule.COCKPIT_KIT_BUTTON_KINDS_SCRIPT).toBe(`    const BUTTON_KINDS = ${JSON.stringify(COCKPIT_BUTTON_KINDS)};`);
-            expect(CockpitButtonKindsModule.COCKPIT_KIT_CREATE_BUTTON_SCRIPT).toContain('if (BUTTON_KINDS.indexOf(kind) === -1) { throw new Error(\'Unknown button kind: \' + kind); }');
-            expect(CockpitButtonKindsModule.COCKPIT_KIT_CREATE_BUTTON_SCRIPT.match(/createElement\('button'/g) ?? []).toHaveLength(1);
+            const panelElementsSource = fs.readFileSync(path.join(KIT_DIRECTORY, 'panel', 'CockpitPanelElements.ts'), 'utf8');
+
+            expect(panelElementsSource).toContain("import { COCKPIT_BUTTON_KINDS, CockpitButtonKind } from '../CockpitButtonKindNames';");
+            expect(panelElementsSource).toContain('if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1) { throw new Error(\'Unknown button kind: \' + kind); }');
+            expect(panelElementsSource.match(/createElement\('button'/g) ?? []).toHaveLength(1);
+            expect(COCKPIT_BUTTON_KINDS).toEqual(['primary', 'secondary', 'icon', 'check', 'link', 'card']);
 
         });
 
@@ -274,12 +275,13 @@ describe('CockpitKit (#524)', () => {
             const kitFiles = fs.readdirSync(KIT_DIRECTORY).filter(fileName => fileName.endsWith('.ts'));
             const isKitModule = (moduleName: string) => moduleName === 'crypto' || /^\.\/[A-Za-z]+$/.test(moduleName);
 
-            expect(kitFiles.sort()).toEqual(['CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
+            expect(kitFiles.sort()).toEqual(['CockpitButtonKindNames.ts', 'CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
             kitFiles.forEach(fileName => {
                 const importedModules = Array.from(fs.readFileSync(path.join(KIT_DIRECTORY, fileName), 'utf8').matchAll(/^import .* from '([^']+)';$/gm), match => match[1]);
                 expect({ fileName, importedModules: importedModules.filter(moduleName => !isKitModule(moduleName)) }).toEqual({ fileName, importedModules: [] });
             });
-            expect(fs.readFileSync(path.join(KIT_DIRECTORY, 'CockpitConfirmLabels.ts'), 'utf8')).not.toMatch(/^import /m);
+            ['CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitButtonKindNames.ts'].forEach(importFreeFileName =>
+                expect({ importFreeFileName, imports: /^import /m.test(fs.readFileSync(path.join(KIT_DIRECTORY, importFreeFileName), 'utf8')) }).toEqual({ importFreeFileName, imports: false }));
             expect(Object.keys(CockpitPaletteModule).sort()).toEqual(['COCKPIT_PALETTE', 'CockpitPalette']);
 
         });
