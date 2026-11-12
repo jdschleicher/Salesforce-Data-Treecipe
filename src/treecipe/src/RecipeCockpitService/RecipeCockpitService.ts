@@ -28,12 +28,11 @@ import {
     COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
     COCKPIT_CONFIRM_WARNINGS_LABEL,
     COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP,
-    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
-    COCKPIT_KIT_CONFIRM_LABELS_SCRIPT,
     CockpitConfirmDialog
 } from '../CockpitKit/CockpitConfirmDialog';
+import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from './RecipeCockpitPanelBundle.generated';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
@@ -22908,6 +22907,11 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
     const cockpitMetaElement = document.getElementById('cockpitMeta');
     const cockpitDialogHostElement = document.getElementById('cockpitDialogHost');
 ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
+    // THE CHECKED PANEL MODULES (#565, #637), BUNDLED BY esbuild.panel.js; THEY READ THIS FUNCTION'S LOCALS WHEN CALLED.
+    // UNLIKE THE function DECLARATIONS THEY REPLACE, THESE consts ARE NOT HOISTED: NOTHING ABOVE MAY CALL THEM WHILE THE SCRIPT STARTS
+${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
+    const renderConfirmRequest = recipeCockpitPanelModules.renderConfirmRequest;
+    const closeConfirmDialog = recipeCockpitPanelModules.closeConfirmDialog;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
     const OBJECT_REFRESH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH)};
@@ -23140,7 +23144,6 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
     const FRIENDS_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_FRIENDS_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
-${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
     const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
@@ -34310,7 +34313,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT}
 
     function focusElement(element) {

@@ -5,9 +5,12 @@ src/**
 .yarnrc
 vsc-extension-quickstart.md
 **/tsconfig.json
+tsconfig.panel.json
 **/eslint.config.mjs
 esbuild.js
 esbuild.test.js
+esbuild.panel.js
+esbuild.panel.test.js
 **/*.map
 **/*.ts
 **/.vscode-test.*

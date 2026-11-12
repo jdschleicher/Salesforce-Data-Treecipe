@@ -54,9 +54,10 @@ describe('the rendered baselines catch a changed label and a changed order (#580
 
     test('swapping an in-panel confirmation\'s own button and its Cancel fails exactly the baselines with a confirmation open', async () => {
 
+        // THE DIALOG IS A BUNDLED PANEL MODULE (#637): THE EDIT IS MADE TO esbuild'S OUTPUT OF IT
         editShell(
-            'buttonElements.forEach(function (buttonElement) { actionsElement.appendChild(buttonElement); });\n        actionsElement.appendChild(cancelElement);',
-            'actionsElement.appendChild(cancelElement);\n        buttonElements.forEach(function (buttonElement) { actionsElement.appendChild(buttonElement); });'
+            'buttonElements.forEach(function(buttonElement) {\n      actionsElement.appendChild(buttonElement);\n    });\n    actionsElement.appendChild(cancelElement);',
+            'actionsElement.appendChild(cancelElement);\n    buttonElements.forEach(function(buttonElement) {\n      actionsElement.appendChild(buttonElement);\n    });'
         );
 
         const expected = screensWhoseBaseline(baselineText => /^(alert)?dialog "/m.test(baselineText));

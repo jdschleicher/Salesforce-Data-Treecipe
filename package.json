@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.png",
-  "version": "3.200.0",
+  "version": "3.200.1",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -155,8 +155,8 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && npm run bundle",
-    "compile": "tsc --noEmit -p ./ && tsc --noEmit -p ./jestSetup",
+    "vscode:prepublish": "npm run bundle-panel && npm run compile && npm run bundle",
+    "compile": "tsc --noEmit -p ./ && tsc --noEmit -p ./jestSetup && tsc --noEmit -p ./tsconfig.panel.json",
     "watch": "node esbuild.js --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src jestSetup",
@@ -166,6 +166,7 @@
     "e2e-test": "ts-node scripts/e2e-recipe-test.ts",
     "apex-test": "sf apex run test --tests SDTPicklistDependencyValidatorTest --tests SDTSchemaPicklistDependencySourceTest --result-format human --code-coverage --wait 20",
     "bundle": "node esbuild.js --production",
+    "bundle-panel": "node esbuild.panel.js",
     "watch:typecheck": "tsc --noEmit --watch -p ./"
   },
   "devDependencies": {

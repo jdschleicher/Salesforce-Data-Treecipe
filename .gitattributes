@@ -1,2 +1,5 @@
 # The golden test compares generated files byte for byte, line endings included (#571)
 src/treecipe/src/ExtensionCommandService/tests/golden/** -text
+
+# The stale-bundle test compares the committed panel bundle with esbuild's LF output byte for byte (#637)
+src/treecipe/src/RecipeCockpitService/RecipeCockpitPanelBundle.generated.ts text eol=lf
