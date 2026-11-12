@@ -680,6 +680,20 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
     });
 
+    describe('buildCompoundNameComponentRecipes', () => {
+
+        test('returns Salutation, FirstName and LastName under their own api names with snowfakery values', () => {
+
+            expect(recipeServiceWithSnow.buildCompoundNameComponentRecipes()).toEqual([
+                { componentKey: 'Salutation', componentApiName: 'Salutation', recipeValue: "${{random_choice('Mr.', 'Ms.', 'Mrs.', 'Dr.')}}" },
+                { componentKey: 'FirstName', componentApiName: 'FirstName', recipeValue: '${{fake.first_name}}' },
+                { componentKey: 'LastName', componentApiName: 'LastName', recipeValue: '${{fake.last_name}}' }
+            ]);
+
+        });
+
+    });
+
     describe('buildCompoundGeolocationComponentRecipes', () => {
 
         test('given a custom compound geolocation field, returns one recipe per component with snowfakery values', () => {

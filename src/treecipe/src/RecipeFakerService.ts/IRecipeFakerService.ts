@@ -20,6 +20,7 @@ export interface IRecipeFakerService {
     getMinimumRequiredFieldsTemplate(): Record<string, Record<string, string>>;
     getAddressComponentToRecipeValueMap(): Record<string, string>;
     getGeolocationComponentToRecipeValueMap(): Record<string, string>;
+    getNameComponentToRecipeValueMap(): Record<string, string>;
 
     buildRecordTypeBasedPicklistRecipeValue(
         recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,

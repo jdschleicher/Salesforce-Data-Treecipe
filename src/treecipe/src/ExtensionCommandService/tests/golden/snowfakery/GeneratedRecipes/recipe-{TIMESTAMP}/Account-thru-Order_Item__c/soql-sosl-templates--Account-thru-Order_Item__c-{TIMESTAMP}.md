@@ -107,8 +107,8 @@ RETURNING Account(Id, SLASerialNumber__c)
 
 ```sql
 SELECT Id,
-       AccountId,
        Name,
+       AccountId,
        OtherAddress,
        ReportsToId,
        UserOfAContact_1__c,

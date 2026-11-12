@@ -186,7 +186,7 @@ describe('RecipeCockpitJourney (#577)', () => {
         await journey.answerQuickPick('qa');
 
         expect(journey.prompts[0].isWaiting).toBeFalse();
-        expect(journey.org.calls).toContainEqual({ username: 'qa@example.com.qa', call: 'connection.query', args: ['SELECT Id,\n       Company,\n       Status\nFROM Lead'] });
+        expect(journey.org.calls).toContainEqual({ username: 'qa@example.com.qa', call: 'connection.query', args: ['SELECT Id,\n       Name,\n       Company,\n       Status\nFROM Lead'] });
         expect(journey.notifications).toEqual([expect.objectContaining({ kind: 'information', text: 'The Lead Base Query returned 0 records from qa · qa@example.com.qa.', buttons: [] })]);
 
         await journey.click('button', 'Export JSON');

@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.201.0] - Recipe Cockpit: "Authorize org" can log in through the Salesforce CLI, so `sf` commands can use the org (#630)
+## [3.202.0] - Recipe Cockpit: "Authorize org" can log in through the Salesforce CLI, so `sf` commands can use the org (#630)
 
 An org authorized with **Authorize org** in Target Org Manager could be listed in the cockpit but not used by `sf` in a terminal. 3.198.0 logged in inside VS Code with `@salesforce/core`, which encrypts the saved tokens with a key from the keychain that VS Code's own environment selects. When VS Code and the terminal see different environment settings, such as `SF_USE_GENERIC_UNIX_KEYCHAIN`, the CLI cannot read what VS Code saved.
 
@@ -9,6 +9,20 @@ An org authorized with **Authorize org** in Target Org Manager could be listed i
 - **Nothing else changes.** The alias is still set only on a sandbox or scratch org that answers its connection check, `target-org` is still written to `.sf/config.json` only when the box is ticked, and every ending is still one notification.
 - The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe both buttons.
 - **Tests.** `SalesforceOrgLogin`: the CLI's argv, each ending read from its answer, and that no outcome carries the access token the answer holds; the in-process login's tests are kept. `SalesforceCliCallSites` lists the new call site. `RecipeCockpitAuthorizeOrg`: both buttons, and a label the confirmation did not offer starting no login. A fourth journey logs in with @salesforce/core; the other three press Authorize with Salesforce CLI.
+
+## [3.201.0] - A person's compound Name never reaches a recipe: Contact and Lead lose their `Name` TODO line (#114)
+
+`Name` on Contact, Lead and Individual is a read-only compound of `Salutation`, `FirstName` and `LastName`. A retrieve writes its field file with no `<type>`, so every Contact and Lead recipe carried `Name: ### TODO -- REVIEW THIS LINE…`, and the faker-js data set carried `"Name": null`.
+
+- **Contact:** the `Name` line is gone. `FirstName`, `LastName` and `Salutation` are the lines the standard field map already wrote, each once.
+- **Lead:** the `Name` line is gone, and Lead gains one `Salutation` line, the one part of a name its standard field map does not write. The faker-js Lead data set gains a `Salutation` value; no other generated value moves.
+- **Individual**, which has no standard field map: `Salutation`, `FirstName` and `LastName` in place of the lone TODO line, with the values the Contact map uses in each backend. An object with its own `FirstName.field-meta.xml` gets `FirstName` once, from that file.
+- **SOQL templates and the Query tab still select `Name`** for these three objects, now straight after `Id` (`SELECT Id, Name, …`, `ReportsTo.Name`), because a compound `Name` cannot be written but can be read. This holds whether or not the project has a `Name.field-meta.xml` for the object, so a Contact, Lead or Individual with no such file gains `Name` in its queries. The Mermaid ERD lists recipe fields, so its Contact and Lead entities no longer show `Name`.
+- **A validation rule that names the compound `Name`, or a part the expansion wrote, says so.** `### TODO -- VALIDATION RULE NOT APPLIED -- "Rule" -- Name on Lead is a read-only compound of Salutation, FirstName, LastName, so no Name value is generated`, or `Salutation is written as a part of Lead's compound Name, which validation rules do not change`. Such a rule is still not applied: a rule on `Salutation`, `FirstName` or `LastName` of these objects does not narrow the generated value.
+- **Unchanged:** Account, Opportunity, Product2 and Pricebook2 (their `Name` is plain), a custom object's `Text` or `AutoNumber` `Name`, and Person Accounts, which source metadata cannot tell from a business account. `User` is not in the list.
+- **How.** `DirectoryProcessor.isCompoundNameField` is true for a typeless `Name` on an object in `PersonNameObjects.objectApiNames` (`ObjectInfoWrapper/PersonNameObjects.ts`, imports nothing, read by generation and by `SOQLTemplateService`). The field then takes the compound expansion path Address (#4) and Geolocation (#111) use, whose dedupe drops a part the map or the object's own field file already writes. Both faker services gain `getNameComponentToRecipeValueMap`.
+- **Golden files** regenerated: the diff is the removed Contact and Lead `Name` entries, Lead's new `Salutation`, `Name` leaving the two ERD entities, and `Name` moving to straight after `Id` in the SOQL templates.
+- **Tests.** `DirectoryProcessor.compoundName.test.ts` runs every case in both backends, a record type block and the validation rule reasons included, with a new `Individual` fixture in `mocks/CompoundNameSalesforceMetadataDirectory/`. `SOQLTemplateService.test.ts` covers the `Name` column and `PersonNameObjects.test.ts` the list. Both faker services and both `RecipeService` suites pin the new component values against the Contact map.
 
 ## [3.200.2] - The panel's shared builders are checked TypeScript modules: buttons, action cards, the column table, search boxes, toggles, glyphs and motion (#638, slice 2 of #565)
 
