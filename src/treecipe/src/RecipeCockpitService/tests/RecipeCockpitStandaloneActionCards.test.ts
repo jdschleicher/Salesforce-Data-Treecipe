@@ -97,9 +97,10 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
         it('draws every standalone card it declares, and draws no card it does not declare', () => {
 
             const panelScript = panelScriptOf(shellHtml());
-            const drawnActions = Array.from(panelScript.matchAll(/buildActionCard\('([A-Za-z]+)'/g), match => match[1]);
+            const drawnActions = Array.from(panelScript.matchAll(/buildActionCard\(['"]([A-Za-z]+)['"]/g), match => match[1]);
 
-            // THE TROUBLESHOOTING DEPLOYS AND RETRIEVES ARE DRAWN BY KIND, SO ONLY ASSIGN AND GENERATE NAME THEMSELVES
+            // THE TROUBLESHOOTING DEPLOYS AND RETRIEVES ARE DRAWN BY KIND, SO ONLY ASSIGN AND GENERATE NAME THEMSELVES;
+            // THOSE TWO ARE IN THE PANEL BUNDLE (#639), WHICH esbuild WRITES WITH DOUBLE QUOTES
             expect(drawnActions.sort()).toEqual([...Object.keys(RECIPE_COCKPIT_STANDALONE_ACTION_CARDS), 'assignPermissionSets', 'generatePermissionSet'].sort());
 
         });
@@ -107,7 +108,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
         it('keeps the primary kind only for the buttons the inventory kept primary, so a new main action has to be classed', () => {
 
             const panelScript = panelScriptOf(shellHtml());
-            const primaryClassNames = Array.from(panelScript.matchAll(/createButton\('primary', '([A-Za-z ]+)'/g), match => match[1]);
+            const primaryClassNames = Array.from(panelScript.matchAll(/createButton\(['"]primary['"], ['"]([A-Za-z ]+)['"]/g), match => match[1]);
 
             expect([...new Set(primaryClassNames)].sort()).toEqual(['adapterChildGenerate', 'dataOrgAuthorize', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
 

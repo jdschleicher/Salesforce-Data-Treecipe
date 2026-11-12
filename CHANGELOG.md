@@ -1,5 +1,25 @@
 # Change Log
 
+## [3.202.1] - The Recipe Cockpit's Troubleshooting tab and its History are checked TypeScript modules (#639, slice 3 of #565)
+
+Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.** The tab's 51 functions, about 1,400 lines, are now in `RecipeCockpitService/panel/troubleshooting/`:
+  - `TroubleshootingTab.ts`: the tab, its sub-tab strip, search and filter, group cards and the deploy and retrieve summary.
+  - `TroubleshootingActions.ts`: the deploy, retrieve, Assign and Generate permission set cards.
+  - `TroubleshootingTodos.ts`: the TODO's sub-tab, its open and removed lists.
+  - `TroubleshootingValidationRules.ts` and `TroubleshootingHistory.ts`.
+  - `npm run compile` type checks them against `TroubleshootingTypes.ts`, the shapes of what the host posts and what the tab keeps on a tree card.
+- **12 entry points join the bridge** (the tab, its sub-tab and view selects, the summary, validation rules and History renders, the permission set draws, `troubleshootingSearchKey`, `readHistorySort` and `buildValidationRuleSourceLink`), because code still in the string calls them. The other 39 functions are reached only from the modules.
+- **The tab's constants** (sub-tab and action labels, the TODO and validation rule notes, History's columns and status display) moved into `RecipeCockpitTroubleshootingConstants.ts`, which the modules import. `RecipeCockpitService.ts` re-exports every name, and the deploy, retrieve and run history modules take their kind and status unions from it. 39 constants the string injected with `JSON.stringify` are gone.
+- **The panel layer rule is transitive:** a panel module may import a "host-free" file, one that imports nothing or only other host-free files by a relative path, so the constants file can import types from `RecipeCockpitPanelConstants.ts`.
+- **Tests.**
+  - `RecipeCockpitPanelBundle.test.ts` fails when any function the bundle defines, exported or not, is defined again in the string. Its `declare` check reads every folder under a `panel/` folder.
+    It also checks that the service re-exports every Troubleshooting constant as the same value.
+  - `ServiceLayers.test.ts` checks the transitive rule, and that a file reaching a package, a Node module or a missing file is not host-free.
+  - `RecipeCockpitStandaloneActionCards.test.ts` reads the action card and primary button inventory in either quote, because esbuild writes double quotes.
+  - A compile-time check fails when the panel's TODO remove-lock union and the recipe writer's differ.
+
 ## [3.202.0] - Recipe Cockpit: "Authorize org" can log in through the Salesforce CLI, so `sf` commands can use the org (#630)
 
 An org authorized with **Authorize org** in Target Org Manager could be listed in the cockpit but not used by `sf` in a terminal. 3.198.0 logged in inside VS Code with `@salesforce/core`, which encrypts the saved tokens with a key from the keychain that VS Code's own environment selects. When VS Code and the terminal see different environment settings, such as `SF_USE_GENERIC_UNIX_KEYCHAIN`, the CLI cannot read what VS Code saved.

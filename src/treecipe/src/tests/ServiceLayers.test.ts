@@ -234,9 +234,10 @@ export function describeFolderCycle(cycleFolders: string[], serviceImports: ISer
 /*
     Webview panel code (#565, #637) lives in a panel/ folder inside a service folder and is bundled by
     esbuild.panel.js into a script that runs in the webview, not the extension host. It is a layer
-    below 0: a panel module imports only other panel modules and files that import nothing, so no
-    vscode, Node module or host service ever reaches the webview. An import-free file may sit in any
-    folder, beside the host code that also reads it (#638).
+    below 0: a panel module imports only other panel modules and host-free files, so no vscode, Node
+    module or host service ever reaches the webview. A host-free file imports nothing, or only other
+    host-free files by a relative path (#639: the Troubleshooting constants take a type from the recipe
+    writer). It may sit in any folder, beside the host code that also reads it (#638).
 */
 export const PANEL_DIRECTORY_NAME = 'panel';
 
@@ -244,22 +245,32 @@ export interface IPanelImport {
     importingFile: string;
     importSpecifier: string;
     importedFile: string | null;
-    isImportedFileImportFree: boolean;
+    isImportedFileHostFree: boolean;
 }
 
 export const isPanelModule = (servicePath: string): boolean => servicePath.split('/').slice(0, -1).includes(PANEL_DIRECTORY_NAME);
+
+// EVERY FILE IT IMPORTS, AND EVERY FILE THOSE IMPORT, IS A FILE IN THIS TREE: NO PACKAGE, NO NODE MODULE, NO vscode
+export function isHostFreeFile(filePath: string, filesOnPath: Set<string> = new Set()): boolean {
+
+    if ( !fs.existsSync(filePath) ) { return false; }
+    if ( filesOnPath.has(filePath) ) { return true; }
+    filesOnPath.add(filePath);
+
+    return ts.preProcessFile(fs.readFileSync(filePath, 'utf8'), true, true).importedFiles.every(importedFile =>
+        importedFile.fileName.startsWith('.') && isHostFreeFile(resolveImportedFilePath(filePath, importedFile.fileName), filesOnPath));
+
+}
 
 export function readPanelImports(sourceFilePaths: string[]): IPanelImport[] {
 
     return sourceFilePaths.filter(sourceFilePath => isPanelModule(toServicePath(sourceFilePath))).flatMap(sourceFilePath =>
         ts.preProcessFile(fs.readFileSync(sourceFilePath, 'utf8'), true, true).importedFiles.map(importedFile => {
             if ( !importedFile.fileName.startsWith('.') ) {
-                return { importingFile: toServicePath(sourceFilePath), importSpecifier: importedFile.fileName, importedFile: null, isImportedFileImportFree: false };
+                return { importingFile: toServicePath(sourceFilePath), importSpecifier: importedFile.fileName, importedFile: null, isImportedFileHostFree: false };
             }
             const importedFilePath = resolveImportedFilePath(sourceFilePath, importedFile.fileName);
-            const isImportedFileImportFree = fs.existsSync(importedFilePath)
-                && ts.preProcessFile(fs.readFileSync(importedFilePath, 'utf8'), true, true).importedFiles.length === 0;
-            return { importingFile: toServicePath(sourceFilePath), importSpecifier: importedFile.fileName, importedFile: toServicePath(importedFilePath), isImportedFileImportFree };
+            return { importingFile: toServicePath(sourceFilePath), importSpecifier: importedFile.fileName, importedFile: toServicePath(importedFilePath), isImportedFileHostFree: isHostFreeFile(importedFilePath) };
         }));
 
 }
@@ -270,10 +281,10 @@ export function describePanelImportViolations(panelImports: IPanelImport[], serv
         .filter(panelImport => {
             if ( panelImport.importedFile === null ) { return true; }
             if ( isPanelModule(panelImport.importedFile) ) { return false; }
-            return serviceLayers[toServiceFolder(panelImport.importedFile)] === undefined || !panelImport.isImportedFileImportFree;
+            return serviceLayers[toServiceFolder(panelImport.importedFile)] === undefined || !panelImport.isImportedFileHostFree;
         })
         .map(panelImport => `${panelImport.importingFile} is webview panel code and imports '${panelImport.importSpecifier}'. `
-            + 'A panel module may import only other panel/ modules and files that import nothing: '
+            + 'A panel module may import only other panel/ modules and host-free files, which import nothing or only other host-free files: '
             + 'move the value it needs into such a file, or pass it in a message from the host.');
 
 }
@@ -324,7 +335,7 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
     });
 
-    test('webview panel modules import only panel modules and files that import nothing (#637, #638)', () => {
+    test('webview panel modules import only panel modules and host-free files (#637, #638, #639)', () => {
 
         const panelImports = readPanelImports(SERVICE_SOURCE_FILE_PATHS);
 
@@ -385,8 +396,8 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
 
         test('a panel module importing vscode, a Node module, a host service or a file with imports is refused, and the message says what to do', () => {
 
-            const panelImport = (importSpecifier: string, importedFile: string | null, isImportedFileImportFree = false): IPanelImport =>
-                ({ importingFile: 'CockpitKit/panel/CockpitConfirmDialogPanel.ts', importSpecifier, importedFile, isImportedFileImportFree });
+            const panelImport = (importSpecifier: string, importedFile: string | null, isImportedFileHostFree = false): IPanelImport =>
+                ({ importingFile: 'CockpitKit/panel/CockpitConfirmDialogPanel.ts', importSpecifier, importedFile, isImportedFileHostFree });
 
             const refusedImports = [
                 panelImport('vscode', null),
@@ -403,11 +414,23 @@ describe('ServiceLayers -- a folder imports only its own layer or a lower one, n
             expect(describePanelImportViolations([...refusedImports, ...allowedImports], SERVICE_LAYERS)).toHaveLength(refusedImports.length);
             expect(describePanelImportViolations([panelImport('crypto', null)], SERVICE_LAYERS)).toEqual([
                 "CockpitKit/panel/CockpitConfirmDialogPanel.ts is webview panel code and imports 'crypto'. "
-                + 'A panel module may import only other panel/ modules and files that import nothing: '
+                + 'A panel module may import only other panel/ modules and host-free files, which import nothing or only other host-free files: '
                 + 'move the value it needs into such a file, or pass it in a message from the host.'
             ]);
             expect(isPanelModule('CockpitKit/panel/CockpitConfirmDialogPanel.ts')).toBe(true);
             expect(isPanelModule('CockpitKit/CockpitConfirmDialog.ts')).toBe(false);
+
+        });
+
+        test('a host-free file may import other host-free files, and no file that reaches a package, Node module or vscode (#639)', () => {
+
+            const servicePathOf = (servicePath: string) => path.join(SERVICES_DIRECTORY_PATH, servicePath);
+
+            expect(isHostFreeFile(servicePathOf('RecipeCockpitService/RecipeCockpitTroubleshootingConstants.ts'))).toBe(true);
+            expect(isHostFreeFile(servicePathOf('RecipeWriter/RecipeCockpitRecipeWriter.ts'))).toBe(true);
+            expect(isHostFreeFile(servicePathOf('CockpitKit/CockpitConfirmDialog.ts'))).toBe(false);
+            expect(isHostFreeFile(servicePathOf('RecipeCockpitService/RecipeCockpitRunHistory.ts'))).toBe(false);
+            expect(isHostFreeFile(servicePathOf('RecipeCockpitService/NoSuchFile.ts'))).toBe(false);
 
         });
 

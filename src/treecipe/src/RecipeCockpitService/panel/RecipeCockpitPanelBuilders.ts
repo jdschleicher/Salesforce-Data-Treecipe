@@ -84,8 +84,8 @@ export interface IRowTableColumn {
 export interface IRowTableOptions {
     className: string;
     columnClassName?: string;
-    columns: IRowTableColumn[];
-    sortColumns?: string[];
+    columns: readonly IRowTableColumn[];
+    sortColumns?: readonly string[];
     sort?: { column: string; isDescending: boolean } | null;
     onSort?: (columnKey: string) => void;
 }

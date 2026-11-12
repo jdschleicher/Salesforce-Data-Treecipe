@@ -8,6 +8,7 @@ import { ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../Scratc
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
+import type { MetadataDeployKind } from './RecipeCockpitTroubleshootingConstants';
 
 /*
     The Troubleshooting tab's deploys (#346): what one relationship tree would deploy -- its custom
@@ -29,7 +30,7 @@ import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './Recipe
     standard page (resolveObjectReferences) in the copy that is deployed, never in the project.
 */
 
-export type MetadataDeployKind = 'permissionSet' | 'fields' | 'globalValueSets' | 'recordTypes';
+export type { MetadataDeployKind } from './RecipeCockpitTroubleshootingConstants';
 
 export type MetadataDeployType = 'PermissionSet' | 'CustomField' | 'CustomObject' | 'GlobalValueSet' | 'RecordType' | 'ValidationRule';
 
