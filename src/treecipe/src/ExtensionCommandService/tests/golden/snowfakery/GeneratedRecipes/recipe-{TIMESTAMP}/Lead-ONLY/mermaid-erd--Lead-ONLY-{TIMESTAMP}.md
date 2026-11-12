@@ -27,13 +27,13 @@ erDiagram
         string HasOptedOutOfFax
         string Jigsaw
         string LastTransferDate
-        string Name
         number NumberofLocations__c
         string Primary__c
         string ProductInterest__c
         string Pronouns
         string SICCode__c
         string Website
+        string Salutation
     }
 
 ```

@@ -1,6 +1,7 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { RecipeService } from '../RecipeService/RecipeService';
+import { ICompoundComponentRecipe } from '../RecipeService/ICompoundComponentRecipe';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
@@ -143,14 +144,29 @@ export class DirectoryProcessor {
   }
 
   /*
+    A standard Name field file carries no <type>, whether it is writable (Account, Product2) or the
+    read-only compound of a person's name, so the object is the only signal (#114). Account is not
+    listed: its Name is compound only on a person account, which source metadata does not say.
+  */
+  static readonly personNameObjectApiNames: string[] = ['Contact', 'Lead', 'Individual'];
+
+  isCompoundNameField(fieldInfo: FieldInfo, associatedObjectName: string): boolean {
+
+    return fieldInfo?.fieldName === 'Name'
+      && fieldInfo?.type === 'AUTO_GENERATED'
+      && DirectoryProcessor.personNameObjectApiNames.includes(associatedObjectName);
+
+  }
+
+  /*
     Returns one FieldInfo per writable component and NONE for the compound field itself, which is why
     an empty array is a valid result: on an object whose OOTB mappings already name every component
     (Account's BillingStreet/BillingCity/...) the compound field contributes nothing rather than a
     second set of the same recipe lines.
 
-    Address and Geolocation differ only in which component recipes they expand to -- the two reasons
-    a component is dropped are the same for both, so the dedupe below stays in one place rather than
-    once per compound type.
+    Address, Geolocation and a person's Name differ only in which component recipes they expand to --
+    the two reasons a component is dropped are the same for all three, so the dedupe below stays in
+    one place rather than once per compound type.
 
     A component is dropped for either of two reasons, and both produce the same duplicate key in the
     object recipe if missed: the OOTB mappings already emit it, or the object HAS that component as
@@ -166,9 +182,17 @@ export class DirectoryProcessor {
 
     const ootbFieldApiNamesForObject = salesforceOOTBFakerMappings?.[associatedObjectName] ?? {};
     const alreadyProcessedFieldApiNames = new Set(alreadyProcessedFieldInfos.map(fieldInfo => fieldInfo?.fieldName));
-    const compoundComponentRecipes = this.isCompoundGeolocationField(compoundFieldInfo)
-      ? this.recipeService.buildCompoundGeolocationComponentRecipes(compoundFieldInfo.fieldName)
-      : this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+    const isCompoundName = this.isCompoundNameField(compoundFieldInfo, associatedObjectName);
+    let compoundComponentRecipes: ICompoundComponentRecipe[];
+    if ( isCompoundName ) {
+      compoundComponentRecipes = this.recipeService.buildCompoundNameComponentRecipes();
+    } else if ( this.isCompoundGeolocationField(compoundFieldInfo) ) {
+      compoundComponentRecipes = this.recipeService.buildCompoundGeolocationComponentRecipes(compoundFieldInfo.fieldName);
+    } else {
+      compoundComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+    }
+    // A TYPELESS Name HAS NO <label> EITHER, SO ITS PARTS ARE LABELLED BY THEIR OWN NAMES
+    const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldInfo.fieldLabel} `;
 
     return compoundComponentRecipes
       .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
@@ -176,7 +200,7 @@ export class DirectoryProcessor {
       .map((componentRecipe) => FieldInfo.create(
         associatedObjectName,
         componentRecipe.componentApiName,
-        `${compoundFieldInfo.fieldLabel} ${componentRecipe.componentKey}`,
+        `${componentLabelPrefix}${componentRecipe.componentKey}`,
         'Text',
         null,
         null,
@@ -464,7 +488,9 @@ export class DirectoryProcessor {
                                                               ruleConstraintsByField
                                                             );
 
-        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) || this.isCompoundGeolocationField(fieldInfo) ) {
+        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName)
+              || this.isCompoundGeolocationField(fieldInfo)
+              || this.isCompoundNameField(fieldInfo, associatedObjectName) ) {
 
           compoundFieldInfos.push(fieldInfo);
 

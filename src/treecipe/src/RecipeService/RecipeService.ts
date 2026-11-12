@@ -125,6 +125,27 @@ export class RecipeService {
 
     }
 
+    /*
+        A person's Name is read-only: an insert writes its three parts instead (#114). Each part's
+        api name is the part itself, with no prefix taken from "Name".
+    */
+    static readonly compoundNameComponentKeys: string[] = ['Salutation', 'FirstName', 'LastName'];
+
+    buildCompoundNameComponentRecipes(): ICompoundComponentRecipe[] {
+
+        const nameComponentToRecipeValue = this.fakerService.getNameComponentToRecipeValueMap();
+        return RecipeService.compoundNameComponentKeys.map((componentKey) => {
+
+            return {
+                componentKey: componentKey,
+                componentApiName: componentKey,
+                recipeValue: nameComponentToRecipeValue[componentKey]
+            };
+
+        });
+
+    }
+
     private static buildComponentRecipesByKeys(compoundFieldApiName: string,
                                                     componentKeys: string[],
                                                     componentKeyToRecipeValue: Record<string, string>

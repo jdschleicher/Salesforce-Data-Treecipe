@@ -404,6 +404,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+    // THE SAME VALUES THE Contact STANDARD FIELD MAP WRITES, SO A PERSON'S NAME READS ALIKE ON EVERY OBJECT (#114)
+    getNameComponentToRecipeValueMap(): Record<string, string> {
+
+        const nameComponentToFakerValue: Record<string, string> = {
+            'Salutation': `\${{faker.helpers.arrayElement(['Mr.', 'Ms.', 'Mrs.', 'Dr.'])}}`,
+            'FirstName': `\${{faker.person.firstName()}}`,
+            'LastName': `\${{faker.person.lastName()}}`
+        };
+
+        return nameComponentToFakerValue;
+
+    }
+
     /*
         The fields a standard parent object needs to be inserted, and nothing else: what the Recipe
         Cockpit writes when it adds a lookup's parent to a recipe (#294). Each value is this backend's

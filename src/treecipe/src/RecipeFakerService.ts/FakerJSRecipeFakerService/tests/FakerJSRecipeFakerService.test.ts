@@ -545,6 +545,29 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
     });
 
+    describe('getNameComponentToRecipeValueMap', () => {
+
+        test('returns an expression for every part of a person name, and only those', () => {
+
+            expect(Object.keys(fakerJSRecipeFakerService.getNameComponentToRecipeValueMap())).toEqual(['Salutation', 'FirstName', 'LastName']);
+
+        });
+
+        test('each part is the expression the Contact standard field map writes', () => {
+
+            const contactStandardFieldValues = fakerJSRecipeFakerService.getOOTBObjectApiNameToFieldApiNameMap().Contact;
+
+            expect(fakerJSRecipeFakerService.getNameComponentToRecipeValueMap()).toEqual({
+                'Salutation': contactStandardFieldValues.Salutation,
+                'FirstName': contactStandardFieldValues.FirstName,
+                'LastName': contactStandardFieldValues.LastName
+            });
+            expect(fakerJSRecipeFakerService.getNameComponentToRecipeValueMap().FirstName).toBe('${{faker.person.firstName()}}');
+
+        });
+
+    });
+
     describe('getGeolocationComponentToRecipeValueMap', () => {
 
         test('returns an expression for every compound geolocation component, and only those', () => {

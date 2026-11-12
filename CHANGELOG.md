@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.201.0] - A person's compound Name never reaches a recipe: Contact and Lead lose their `Name` TODO line (#114)
+
+`Name` on Contact, Lead and Individual is a read-only compound of `Salutation`, `FirstName` and `LastName`. A retrieve writes its field file with no `<type>`, so every Contact and Lead recipe carried `Name: ### TODO -- REVIEW THIS LINE…`, and the faker-js data set carried `"Name": null`.
+
+- **Contact:** the `Name` line is gone. `FirstName`, `LastName` and `Salutation` are the lines the standard field map already wrote, each once.
+- **Lead:** the `Name` line is gone, and Lead gains one `Salutation` line, the one part of a name its standard field map does not write. The faker-js Lead data set gains a `Salutation` value; no other generated value moves.
+- **Individual**, which has no standard field map: `Salutation`, `FirstName` and `LastName` in place of the lone TODO line, with the values the Contact map uses in each backend. An object with its own `FirstName.field-meta.xml` gets `FirstName` once, from that file.
+- **Also gone with the `Name` entry:** `Name` in the Contact and Lead entity of the Mermaid ERD, and in their SOQL templates (`SELECT Id, Name, OtherAddress` is now `SELECT Id, OtherAddress`; `ReportsTo.Name` and other lookups' `.Name` traversals to Contact are dropped). The templates list only the fields generation records for an object.
+- **Unchanged:** Account, Opportunity, Product2 and Pricebook2 (their `Name` is plain), a custom object's `Text` or `AutoNumber` `Name`, and Person Accounts, which source metadata cannot tell from a business account. `User` is not in the list.
+- **How.** `DirectoryProcessor.isCompoundNameField` is true for a typeless `Name` on an object in `personNameObjectApiNames`. The field then takes the compound expansion path Address (#4) and Geolocation (#111) use, whose dedupe drops a part the map or the object's own field file already writes. Both faker services gain `getNameComponentToRecipeValueMap`.
+- **Golden files** regenerated: the diff is the removed Contact and Lead `Name` entries, Lead's new `Salutation`, and the ERD and SOQL template lines above.
+- **Tests.** `DirectoryProcessor.compoundName.test.ts` runs every case in both backends, with a new `Individual` fixture in `mocks/CompoundNameSalesforceMetadataDirectory/`. Both faker services and both `RecipeService` suites pin the new component values against the Contact map.
+
 ## [3.200.1] - The in-panel confirmation's panel code is a checked TypeScript module, bundled into the cockpit at build time (#637, slice 1 of #565)
 
 Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.
