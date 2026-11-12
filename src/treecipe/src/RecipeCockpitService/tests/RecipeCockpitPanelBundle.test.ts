@@ -65,14 +65,15 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     it('holds no closing script tag and loads nothing from outside the document', () => {
 
-        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT).not.toMatch(/<\/script/i);
+        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT).not.toMatch(/<\/script|<!--/i);
         expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT).not.toMatch(/\brequire\(|\bimport\(|https?:\/\//);
 
     });
 
-    it('refuses a script holding a closing script tag, in any case, and says what to do', () => {
+    it('refuses a script holding a closing script tag or a comment opener, in any case, and says what to do', () => {
 
-        expect(() => PanelBundler.refuseClosingScriptTag('var label = "</SCRIPT>";')).toThrow('which would end the panel\'s <script> element early. Build that text from parts instead.');
+        expect(() => PanelBundler.refuseClosingScriptTag('var label = "</SCRIPT>";')).toThrow('holding "</script", which can end the panel\'s <script> element early. Build that text from parts instead.');
+        expect(() => PanelBundler.refuseClosingScriptTag('var label = "<!-- <script>";')).toThrow('holding "<!--"');
         expect(PanelBundler.refuseClosingScriptTag('var label = "<script";')).toBe('var label = "<script";');
 
     });

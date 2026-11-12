@@ -100,7 +100,7 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
     if (typeof confirmationId !== 'string' || !confirmationId) { return; }
 
     const content = readConfirmContent(hostMessage);
-    const buttonLabels = Array.isArray(hostMessage.buttons) ? hostMessage.buttons.filter(function (label: unknown): label is string { return typeof label === 'string' && !!label; }) : null;
+    const buttonLabels = Array.isArray(hostMessage.buttons) ? (hostMessage.buttons as unknown[]).filter(function (label: unknown): label is string { return typeof label === 'string' && !!label; }) : null;
 
     if (hostMessage.renderSequence !== renderedSequence || typeof hostMessage.title !== 'string' || !content || !buttonLabels || buttonLabels.length === 0) {
         vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
@@ -252,8 +252,8 @@ function readConfirmRecordTypeSetModes(hostMessage: ICockpitConfirmRequestMessag
         return isRecord(mode) && typeof mode.name === 'string' && !!mode.name && typeof mode.label === 'string' && !!mode.label;
     };
 
-    return Array.isArray(postedModes) && postedModes.every(isReadableMode)
-        ? postedModes.map(function (mode: ICockpitConfirmRecordTypeSetMode) { return { name: mode.name, label: mode.label }; })
+    return Array.isArray(postedModes) && (postedModes as unknown[]).every(isReadableMode)
+        ? (postedModes as ICockpitConfirmRecordTypeSetMode[]).map(function (mode) { return { name: mode.name, label: mode.label }; })
         : [];
 
 }
@@ -270,6 +270,7 @@ function readConfirmContent(hostMessage: ICockpitConfirmRequestMessage): IConfir
     const sections = hostMessage.sections;
 
     if (!isStringList(summary) || !isStringList(warnings) || !Array.isArray(sections)) { return null; }
+    const postedSections: unknown[] = sections;
     if (hostMessage.badge !== undefined && typeof hostMessage.badge !== 'string') { return null; }
     const org = hostMessage.org;
     if (org !== undefined && !(isRecord(org) && typeof org.username === 'string' && !!org.username && (org.alias === undefined || typeof org.alias === 'string'))) { return null; }
@@ -278,7 +279,7 @@ function readConfirmContent(hostMessage: ICockpitConfirmRequestMessage): IConfir
         return isRecord(section) && typeof section.title === 'string' && !!section.title && isStringList(section.lines)
             && (section.count === undefined || (typeof section.count === 'number' && Number.isSafeInteger(section.count) && section.count >= 0));
     };
-    if (!sections.every(isReadableSection)) { return null; }
+    if (!postedSections.every(isReadableSection)) { return null; }
 
     const readableOrg = isRecord(org) ? org as { alias?: string; username: string } : null;
 
@@ -287,7 +288,7 @@ function readConfirmContent(hostMessage: ICockpitConfirmRequestMessage): IConfir
         org: readableOrg ? { alias: readableOrg.alias || '', username: readableOrg.username } : null,
         badge: typeof hostMessage.badge === 'string' ? hostMessage.badge : '',
         warnings: warnings.filter(function (warning) { return warning.trim() !== ''; }),
-        sections: sections.filter(function (section: IConfirmSection) { return section.lines.some(function (line) { return line.trim() !== ''; }); })
+        sections: (postedSections as IConfirmSection[]).filter(function (section) { return section.lines.some(function (line) { return line.trim() !== ''; }); })
     };
 
 }

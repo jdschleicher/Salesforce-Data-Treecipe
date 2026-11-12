@@ -22907,7 +22907,8 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
     const cockpitMetaElement = document.getElementById('cockpitMeta');
     const cockpitDialogHostElement = document.getElementById('cockpitDialogHost');
 ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
-    // THE CHECKED PANEL MODULES (#565, #637), BUNDLED BY esbuild.panel.js; THEY READ THIS FUNCTION'S LOCALS WHEN CALLED
+    // THE CHECKED PANEL MODULES (#565, #637), BUNDLED BY esbuild.panel.js; THEY READ THIS FUNCTION'S LOCALS WHEN CALLED.
+    // UNLIKE THE function DECLARATIONS THEY REPLACE, THESE consts ARE NOT HOISTED: NOTHING ABOVE MAY CALL THEM WHILE THE SCRIPT STARTS
 ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
     const renderConfirmRequest = recipeCockpitPanelModules.renderConfirmRequest;
     const closeConfirmDialog = recipeCockpitPanelModules.closeConfirmDialog;

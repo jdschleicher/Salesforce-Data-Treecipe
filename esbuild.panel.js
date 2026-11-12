@@ -54,11 +54,16 @@ class PanelBundler {
 
     }
 
-    // THE BUNDLE IS INLINED IN AN HTML <script>: A CLOSING TAG IN IT WOULD END THE SCRIPT EARLY
+    /*
+        The bundle is inlined in an HTML <script>. A "</script" in it ends the element early, and a
+        "<!--" can put the HTML tokenizer into its double-escaped state, where the real </script> no
+        longer closes the element.
+    */
     static refuseClosingScriptTag(script) {
 
-        if (/<\/script/i.test(script)) {
-            throw new Error(`${PANEL_ENTRY_POINT} bundles to a script holding "</script", which would end the panel's <script> element early. Build that text from parts instead.`);
+        const scriptBreakingText = ['</script', '<!--'].find(text => script.toLowerCase().includes(text));
+        if (scriptBreakingText) {
+            throw new Error(`${PANEL_ENTRY_POINT} bundles to a script holding "${scriptBreakingText}", which can end the panel's <script> element early. Build that text from parts instead.`);
         }
 
         return script;

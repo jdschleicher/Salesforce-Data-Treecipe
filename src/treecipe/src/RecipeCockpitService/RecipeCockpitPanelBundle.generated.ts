@@ -206,6 +206,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     if (!isStringList(summary) || !isStringList(warnings) || !Array.isArray(sections)) {
       return null;
     }
+    const postedSections = sections;
     if (hostMessage.badge !== void 0 && typeof hostMessage.badge !== "string") {
       return null;
     }
@@ -216,7 +217,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     const isReadableSection = function(section) {
       return isRecord(section) && typeof section.title === "string" && !!section.title && isStringList(section.lines) && (section.count === void 0 || typeof section.count === "number" && Number.isSafeInteger(section.count) && section.count >= 0);
     };
-    if (!sections.every(isReadableSection)) {
+    if (!postedSections.every(isReadableSection)) {
       return null;
     }
     const readableOrg = isRecord(org) ? org : null;
@@ -227,7 +228,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
       warnings: warnings.filter(function(warning) {
         return warning.trim() !== "";
       }),
-      sections: sections.filter(function(section) {
+      sections: postedSections.filter(function(section) {
         return section.lines.some(function(line) {
           return line.trim() !== "";
         });
