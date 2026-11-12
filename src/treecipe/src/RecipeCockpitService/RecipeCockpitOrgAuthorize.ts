@@ -1,6 +1,6 @@
 import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
-import { OrgLoginOutcome, SANDBOX_LOGIN_URL, WorkspaceTargetOrgWrite } from '../SalesforceOrgService/SalesforceOrgLogin';
+import { OrgLoginOutcome, WorkspaceTargetOrgWrite } from '../SalesforceOrgService/SalesforceOrgLogin';
 
 /*
     What "Authorize org" (#630) asks and says: the button's labels, the prompts, the confirmation
@@ -15,11 +15,8 @@ export const RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL = 'Authorize with Salesf
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL = 'Authorize with @salesforce/core';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL = 'Make this my selected target org and this workspace\'s default org';
 
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL = 'Sandbox';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL = 'Custom My Domain';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_LOGIN_ADDRESS_PLACEHOLDER = 'Where to log in';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PROMPT = 'The org\'s My Domain address, as its login page shows it.';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PLACEHOLDER = 'https://acme--qa.sandbox.my.salesforce.com';
+export const RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT = 'The sandbox\'s subdomain: the part of its login address before .sandbox.my.salesforce.com.';
+export const RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER = 'acme--qa';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT = 'Alias for the org: the name the Salesforce CLI, the org picker and later commands will know it by. Leave it empty for no alias.';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PLACEHOLDER = 'for example qa-sandbox';
 
@@ -75,8 +72,6 @@ export class RecipeCockpitOrgAuthorize {
 
     static buildConfirmContent(authorizePlan: IOrgAuthorizePlan): IRecipeCockpitConfirmContent {
 
-        const isSandboxLogin = authorizePlan.loginUrl === SANDBOX_LOGIN_URL;
-
         return {
             summary: [
                 'Your browser opens the Salesforce login page. Once you log in and allow access, the org is saved with your other Salesforce CLI authorizations.',
@@ -88,7 +83,7 @@ export class RecipeCockpitOrgAuthorize {
             sections: [{
                 title: 'What happens',
                 lines: [
-                    `Login address: ${authorizePlan.loginUrl}${isSandboxLogin ? ' (sandboxes)' : ''}`,
+                    `Login address: ${authorizePlan.loginUrl}`,
                     'Target Org Manager lists the org once it answers a connection check, and only when it is a sandbox or scratch org.',
                     'Nothing is deployed to the org and no record is written.',
                     `Ticking the box also selects the org here and sets target-org in this workspace's .sf/config.json.`

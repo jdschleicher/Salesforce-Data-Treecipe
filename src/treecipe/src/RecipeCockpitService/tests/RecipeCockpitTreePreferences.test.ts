@@ -633,7 +633,8 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
 
-            expect(shellHtml.match(/setAttribute\('d', FIXED_VALUE_GLYPH_PATH\)/g)).toHaveLength(1);
+            // buildPencilGlyph IS A BUNDLED PANEL MODULE (#638): DOUBLE QUOTES, AND THE CONSTANT UNDER ITS IMPORTED NAME
+            expect(shellHtml.match(/setAttribute\(['"]d['"], (?:RECIPE_COCKPIT_)?FIXED_VALUE_GLYPH_PATH\)/g)).toHaveLength(1);
             expect(shellHtml.match(/buildPencilGlyph\('large'\)/g)).toHaveLength(1);
             expect(shellHtml).not.toMatch(/createButton\([^)]*'✎'/);
             expect(shellHtml).toMatch(/\.fixedValueGlyph-large \{ width: 1\.4em; height: 1\.4em; \}/);

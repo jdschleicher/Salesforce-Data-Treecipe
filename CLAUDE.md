@@ -34,6 +34,9 @@ npm run compile
 # Watch mode (auto-recompile on save)
 npm run watch
 
+# Rebuild the Recipe Cockpit panel bundle after changing a panel/ module
+npm run bundle-panel
+
 # Run all tests with coverage
 npm run jest-test
 
@@ -114,8 +117,9 @@ src/
 ├── extension.ts                             # Extension entry point, command registration
 └── treecipe/src/
     ├── tests/
-    │   └── ServiceLayers.test.ts            # SERVICE_LAYERS, the one layer table (#570); fails on any upward import or cycle
+    │   └── ServiceLayers.test.ts            # SERVICE_LAYERS, the one layer table (#570); fails on any upward import or cycle, and on a panel/ module importing beyond panel/ and files that import nothing (#637, #638)
     ├── CockpitKit/                          # What every cockpit shares (#524): palette, button kinds, org picker CSS, in-panel confirmation; imports only crypto
+    │   ├── panel/                           # Checked panel modules a cockpit bundles: the confirmation (#637); elements, createButton and motion (#638)
     │   └── tests/                           # Every kit piece appears verbatim and once in the Recipe Cockpit's document, so its suites cover the kit
     ├── CollectionsApiService/
     │   ├── CollectionsApiService.ts         # Formats fake data for Salesforce Collections API
@@ -166,6 +170,9 @@ src/
     │   └── tests/
     ├── RecipeCockpitService/
     │   ├── RecipeCockpitService.ts           # Owns the Recipe Cockpit webview panel: shell, model, message router and executor
+    │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and files that import nothing
+    │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, inlined by the shell; never edited, npm run bundle-panel rewrites it
+    │   ├── RecipeCockpitPanelConstants.ts    # Glyph paths and action card words the panel modules draw with (#638); imports nothing, re-exported by the service
     │   ├── RecipeCockpitOrgAuthorize.ts      # "Authorize org" (#630): its prompts, confirmation and the one notification a login ends in; no vscode
     │   ├── RecipeCockpitPermissionSetAssign.ts # "Assign permission sets to me…" (#274): discover, plan and insert assignments; no vscode
     │   ├── RecipeCockpitPermissionSetGenerate.ts # "Generate permission set…" (#306): one tree's create/read permission set; no vscode
@@ -312,6 +319,8 @@ User runs command (Cmd+Shift+P)
 ### Layers
 
 **A folder under `src/treecipe/src` imports only its own layer or a lower one, never in a cycle** (epic #570). The layers run from 0 (leaf: imports no other service) through platform, metadata model, generation and insert, and features, to 5 (commands, `src/extension.ts`). Each folder's layer is `SERVICE_LAYERS` in `src/treecipe/src/tests/ServiceLayers.test.ts`, the only copy of the table. That test fails on an upward import, a folder-level cycle, a folder with no layer and a file outside any folder, with no exceptions (#575). A new folder gets its layer in the same change. Shared code a lower layer needs moves down.
+
+Webview code in a `panel/` folder sits below layer 0 (#637): it imports only other `panel/` modules and files that import nothing, since `esbuild.panel.js` bundles it into the webview, where no vscode, Node module or host service exists. `RecipeCockpitService/DESIGN.md` has the build step.
 
 `ExtensionCommandService/tests/GenerationCommands.golden.test.ts` runs Generate Treecipe and Run Faker by Recipe and compares every file they write with `tests/golden/`. A move that claims "behaviour unchanged" passes it with no change to those files. `UPDATE_GOLDEN=1` rewrites them, and the PR then says what a user now gets differently.
 

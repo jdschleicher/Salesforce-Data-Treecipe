@@ -9,12 +9,10 @@ import { COCKPIT_PALETTE, CockpitPalette, CockpitPaletteToken } from '../Cockpit
 import {
     COCKPIT_ACTION_CARD_HEIGHT,
     COCKPIT_BUTTON_KINDS,
-    COCKPIT_KIT_BUTTON_KINDS_SCRIPT,
     COCKPIT_KIT_BUTTON_KIND_BASE_STYLES,
     COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES,
     COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES,
     COCKPIT_KIT_BUTTON_KIND_STATE_STYLES,
-    COCKPIT_KIT_CREATE_BUTTON_SCRIPT,
     CockpitButtonKind
 } from '../CockpitKit/CockpitButtonKinds';
 import {
@@ -28,12 +26,56 @@ import {
     COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
     COCKPIT_CONFIRM_WARNINGS_LABEL,
     COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP,
-    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
-    COCKPIT_KIT_CONFIRM_LABELS_SCRIPT,
     CockpitConfirmDialog
 } from '../CockpitKit/CockpitConfirmDialog';
+import {
+    RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX,
+    RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
+    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH,
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
+    RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
+    RECIPE_COCKPIT_SEARCH_GLYPH_PATH,
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
+    RECIPE_COCKPIT_STANDALONE_ACTION_CARDS
+} from './RecipeCockpitPanelConstants';
+import type {
+    RecipeCockpitActionVerb,
+    RecipeCockpitTroubleshootingGroupKind,
+    RecipeCockpitTroubleshootingAction,
+    IRecipeCockpitActionCard,
+    RecipeCockpitStandaloneAction
+} from './RecipeCockpitPanelConstants';
+import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitKit/CockpitMotion';
+import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from './RecipeCockpitPanelBundle.generated';
+
+// THE PANEL'S CONSTANTS LIVE IN AN IMPORT-FREE FILE THE PANEL MODULES IMPORT (#638); THE HOST'S NAMES STAY
+export {
+    RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX,
+    RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
+    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH,
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
+    RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
+    RECIPE_COCKPIT_SEARCH_GLYPH_PATH,
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
+    RECIPE_COCKPIT_STANDALONE_ACTION_CARDS
+};
+export type {
+    RecipeCockpitActionVerb,
+    RecipeCockpitTroubleshootingGroupKind,
+    RecipeCockpitTroubleshootingAction,
+    IRecipeCockpitActionCard,
+    RecipeCockpitStandaloneAction
+};
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
@@ -61,16 +103,13 @@ import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_LOGIN_ADDRESS_PLACEHOLDER,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PLACEHOLDER,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PROMPT,
     RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT,
     RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP,
     RecipeCockpitOrgAuthorize
 } from './RecipeCockpitOrgAuthorize';
-import { IOrgLoginRun, OrgLoginMethod, OrgLoginOutcome, SalesforceOrgLogin, SANDBOX_LOGIN_URL } from '../SalesforceOrgService/SalesforceOrgLogin';
+import { IOrgLoginRun, OrgLoginMethod, OrgLoginOutcome, SalesforceOrgLogin } from '../SalesforceOrgService/SalesforceOrgLogin';
 import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -364,33 +403,6 @@ export const RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
 // WHAT THE INLINE NAME EDITOR (#551) SAYS UNDER ITS BOX WHEN workspaceState WOULD NOT TAKE THE NAME; THE WARNING SAYS WHY
 export const RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL = 'The name could not be saved, so it was not changed.';
 
-/*
-    The cockpit's first SVG glyphs (#219, #257): a chain link, one path per state, drawn by the panel
-    script with createElementNS and coloured only from the --sdt-* palette by CSS. Joined is included;
-    broken -- the links pulled apart, a spark either side of the gap -- is excluded, and a dashed broken
-    link is excluded because a parent is. The SHAPE says the state, never the colour alone. Both are
-    stroked in a 24x24 box and turned 45 degrees clockwise, so the link runs from the bottom right to
-    the top left (#295). They fetch nothing, so the CSP, the nonce-only shell builder and
-    localResourceRoots: [] are unchanged.
-*/
-export const RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = '0 0 24 24';
-export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(45 12 12)';
-export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
-export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
-/*
-    IMPACTED (#449): the object is still included, but a lookup of it points at an excluded parent, so
-    that lookup is left out of what is generated. One link stays where the joined glyph has it, the
-    other is pulled away with one spark at the gap -- half joined, half broken -- stroked in
-    --sdt-changed, and the row's label, title and aria-label name the parent.
-*/
-export const RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M14.75 3.5 V6';
-/*
-    A field's edit button (#356, the pin of #262 and the ✎ of #323 in one), built the same way as the
-    chain link: one path -- a pencil -- stroked from the palette by CSS, and filled while the field
-    holds an edit, so the shape, aria-pressed, the title and the row's badge ("edited" for an
-    expression, "fixed" for a literal) all say it, never the colour alone.
-*/
-export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5';
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 /*
     A friend chip (#411) and a row's nickname (#380) each start with an emoji (#432), hidden from a
@@ -416,25 +428,16 @@ export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
 export const RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON = 'an edit replaces it';
 export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applied';
 /*
-    The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
-    font's triangle sits on the text baseline, so no button rule could centre it. An open chevron (#307)
-    whose box is centred on (12, 12) in the same 24x24 view box, stroked from the palette by CSS. Every
-    toggle carries chevronToggle, one 1.6rem box holding a 1.2rem glyph (#392), which lifts the
-    secondary kind's 2.25rem minimum; the stroke is in view box units, so it thins with the glyph.
-*/
-export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M8.5 5 L15.5 12 L8.5 19';
-// The magnifier inside every search box (#373): a lens and a handle in the same 24x24 view box, stroked from the palette.
-export const RECIPE_COCKPIT_SEARCH_GLYPH_PATH = 'M10.5 4 A6.5 6.5 0 1 1 10.5 17 A6.5 6.5 0 1 1 10.5 4 Z M15.2 15.2 L20 20';
-/*
     Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
     than swapping. A body the reader opens fades in once it is built; one the reader closes carries
     "hidden" at once -- aria-hidden and inert while it fades out -- so what is hidden is hidden from
     assistive technology for the whole animation. Only a reader's click animates: a restore, a
     focusTree and a search stay instant. prefers-reduced-motion turns every transition and
-    animation off, in the stylesheet and in the script.
+    animation off, in the stylesheet and in the script. The reveal and conceal timings are the kit's
+    (CockpitKit/CockpitMotion.ts), since setShownWithMotion is a kit panel module (#638).
 */
-export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = 160;
-export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = 140;
+export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = COCKPIT_MOTION_REVEAL_MILLISECONDS;
+export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = COCKPIT_MOTION_CONCEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
@@ -615,7 +618,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in Select Generated Treecipe runs by date:, the first line of the Treecipes section (or at the top of the panel, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.',
-            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Authorize org, next to it, logs in to a sandbox that already exists: it asks where to log in and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Its confirmation offers Authorize with Salesforce CLI, which runs sf org login web so every sf command can use the org, and Authorize with @salesforce/core, which logs in inside VS Code without the CLI, though sf in a terminal set up differently from VS Code may not be able to use that login. Tick the box in its confirmation to also choose the org here and make it this workspace\'s default org; an org that is not a sandbox or scratch org is authorized, but it is never chosen or made the default here, and it does not get the alias. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
+            'At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Authorize org, next to it, logs in to a sandbox that already exists: it asks for the sandbox\'s subdomain, such as acme--qa, and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Its confirmation offers Authorize with Salesforce CLI, which runs sf org login web so every sf command can use the org, and Authorize with @salesforce/core, which logs in inside VS Code without the CLI, though sf in a terminal set up differently from VS Code may not be able to use that login. Tick the box in its confirmation to also choose the org here and make it this workspace\'s default org; an org that is not a sandbox or scratch org is authorized, but it is never chosen or made the default here, and it does not get the alias. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org\'s objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row\'s pencil works the same way.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field\'s row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -2368,68 +2371,11 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
     recordTypes: 'Deploy record types…'
 });
 
-/*
-    Every standalone action is a card (#381, #384): the verb's emoji and the action's title, a line on
-    when it is needed, and a live detail line. The emoji is the VERB's, from one map, so every
-    deploy shares 🚀 and a later retrieve gets 📥 without choosing. A primary button that keeps its
-    place (the tree's insert, + New scratch org in the pinned org row) carries its verb's emoji too,
-    drawn before its label from the same map.
-*/
-export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'generateData' | 'update' | 'authorize';
+// EVERY STANDALONE ACTION IS A CARD (#381, #384): ITS VERBS, EMOJI AND WORDS ARE IN RecipeCockpitPanelConstants.ts, WHICH THE PANEL IMPORTS (#638)
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
 export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = COCKPIT_ACTION_CARD_HEIGHT;
 
-export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActionVerb, string>> = Object.freeze({
-    deploy: '🚀',
-    retrieve: '📥',
-    assign: '👤',
-    generate: '🛠️',
-    run: '▶️',
-    export: '💾',
-    create: '➕',
-    generateData: '🌱',
-    update: '✍️',
-    authorize: '🔑'
-});
 
-/*
-    The TODO's and Validation Rules lists draw each object group as a card (#383) on the action
-    cards' surface: one emoji per kind of group, never a verb's.
-*/
-export type RecipeCockpitTroubleshootingGroupKind = 'todos' | 'validationRules';
-export const RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI: Readonly<Record<RecipeCockpitTroubleshootingGroupKind, string>> = Object.freeze({
-    todos: '📝',
-    validationRules: '📏'
-});
-
-export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'retrieveRecordTypes' | 'deployGlobalValueSets' | 'retrieveGlobalValueSets';
-export interface IRecipeCockpitActionCard {
-    verb: RecipeCockpitActionVerb;
-    why: string;
-}
-export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<RecipeCockpitTroubleshootingAction, IRecipeCockpitActionCard>> = Object.freeze({
-    assignPermissionSets: { verb: 'assign', why: 'Insert refused for access? Assign permission sets the org already holds for these objects.' },
-    generatePermissionSet: { verb: 'generate', why: 'No permission set grants these objects? Write a create/read one into the project. Deploys nothing.' },
-    deployPermissionSet: { verb: 'deploy', why: 'Push the tree\'s permission sets to the sandbox or scratch org before assigning them.' },
-    deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields or objects this tree writes, or the pages they open.' },
-    retrieveFields: { verb: 'retrieve', why: 'Project behind the org? Pull this tree\'s custom fields so Generate Treecipe writes what the org holds.' },
-    retrieveValidationRules: { verb: 'retrieve', why: 'Pull the org\'s validation rules so Generate Treecipe can respect them.' },
-    retrieveRecordTypes: { verb: 'retrieve', why: 'Pull the org\'s record types for these objects so Generate Treecipe can choose among them.' },
-    retrieveGlobalValueSets: { verb: 'retrieve', why: 'Pull the value sets these fields name so picklists generate the org\'s values.' },
-    deployRecordTypes: { verb: 'deploy', why: 'Insert failed on RecordTypeId? The org is missing record types this recipe sets.' },
-    deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
-});
-// THE STANDALONE ACTIONS OUTSIDE THE TROUBLESHOOTING TAB THAT ARE CARDS (#384); THE PR'S INVENTORY SAYS WHY EVERY OTHER BUTTON IS NOT
-export type RecipeCockpitStandaloneAction = 'generateTreecipe' | 'runQuery' | 'exportQueryJson' | 'exportQueryCsv' | 'loadUpdaterRecords' | 'generateUpdaterValues' | 'updateUpdaterRecords';
-export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockpitStandaloneAction, IRecipeCockpitActionCard>> = Object.freeze({
-    generateTreecipe: { verb: 'generate', why: 'No recipe run yet? Read this project\'s object metadata and write a Treecipe run to open here.' },
-    runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
-    exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as JSON.' },
-    exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as CSV.' },
-    loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with the chosen fields, from the selected sandbox. It only reads.' },
-    generateUpdaterValues: { verb: 'generateData', why: 'Make a new value for each chosen field of every loaded record. Nothing is written yet.' },
-    updateUpdaterRecords: { verb: 'update', why: 'Write the new values to the loaded records by Id. Their old values are saved first.' }
-});
 
 // A PRIMARY BUTTON THAT STAYS A BUTTON BUT NAMES ITS VERB (#384): ITS EMOJI IS DRAWN BEFORE ITS LABEL BY THE STYLESHEET
 export type RecipeCockpitVerbButtonClassName = 'treeInsert' | 'dataOrgNewScratch' | 'dataOrgAuthorize';
@@ -9429,7 +9375,7 @@ export class RecipeCockpitService {
             return;
         }
 
-        const loginUrl = SalesforceOrgLogin.normalizeLoginUrl(authorizePlan.loginUrl);
+        const loginUrl = SalesforceOrgLogin.buildSandboxLoginUrl(authorizePlan.loginUrl);
         const alias = authorizePlan.alias;
 
         if ( loginUrl === undefined || ( alias !== undefined && RecipeCockpitOrgAuthorize.validateAlias(alias) !== undefined ) ) {
@@ -9567,25 +9513,14 @@ export class RecipeCockpitService {
     // ESCAPE AT EITHER QUESTION IS A CANCEL
     private static async promptForOrgAuthorizePlan(): Promise<IOrgAuthorizePlan | undefined> {
 
-        const loginAddressChoice = await vscode.window.showQuickPick([
-            { label: RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL, description: SANDBOX_LOGIN_URL },
-            { label: RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL, description: 'Type the org\'s own login address' }
-        ], { title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL, placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_LOGIN_ADDRESS_PLACEHOLDER, ignoreFocusOut: true });
-
-        if ( !loginAddressChoice ) {
-            return undefined;
-        }
-
-        const typedLoginUrl = loginAddressChoice.label === RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL
-            ? SANDBOX_LOGIN_URL
-            : await vscode.window.showInputBox({
-                title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
-                prompt: RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PROMPT,
-                placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_PLACEHOLDER,
-                ignoreFocusOut: true,
-                validateInput: (typedAddress: string) => SalesforceOrgLogin.validateLoginUrl(typedAddress)
-            });
-        const loginUrl = SalesforceOrgLogin.normalizeLoginUrl(typedLoginUrl);
+        const typedSubdomain = await vscode.window.showInputBox({
+            title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
+            prompt: RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT,
+            placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER,
+            ignoreFocusOut: true,
+            validateInput: (typedText: string) => SalesforceOrgLogin.validateSandboxSubdomain(typedText)
+        });
+        const loginUrl = SalesforceOrgLogin.buildSandboxLoginUrl(typedSubdomain);
 
         if ( loginUrl === undefined ) {
             return undefined;
@@ -22934,6 +22869,14 @@ ${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
     const cockpitMetaElement = document.getElementById('cockpitMeta');
     const cockpitDialogHostElement = document.getElementById('cockpitDialogHost');
 ${COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT}
+    // THE CHECKED PANEL MODULES (#565, #637), BUNDLED BY esbuild.panel.js; THEY READ THIS FUNCTION'S LOCALS WHEN CALLED.
+    // UNLIKE THE function DECLARATIONS THEY REPLACE, THESE consts ARE NOT HOISTED: NOTHING ABOVE MAY CALL THEM WHILE THE SCRIPT STARTS
+${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
+    const {
+        renderConfirmRequest, closeConfirmDialog,
+        SVG_NAMESPACE, createElement, createButton, setShown, isMotionReduced, setShownWithMotion, drawToggle,
+        buildActionCard, buildRowTable, buildTabSearch, buildSearchIconElement, buildToggleElement, buildTreeGlyph, buildPencilGlyph
+    } = recipeCockpitPanelModules;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
     const OBJECT_REFRESH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH)};
@@ -22974,10 +22917,7 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
-${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
-    const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
     const TROUBLESHOOTING_GROUP_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI)};
-    const ACTION_CARDS = ${JSON.stringify({ ...RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS, ...RECIPE_COCKPIT_STANDALONE_ACTION_CARDS })};
     const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
     const RETRIEVE_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND)};
     const RETRIEVE_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS)};
@@ -23152,25 +23092,17 @@ ${COCKPIT_KIT_BUTTON_KINDS_SCRIPT}
     const HELP_NO_DIFFERENCE = ${JSON.stringify(RECIPE_COCKPIT_HELP_NO_DIFFERENCE)};
     const HELP_BACKEND_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HELP_BACKEND_NOTE)};
     const HELP_SECTIONS = ${JSON.stringify(RECIPE_COCKPIT_HELP_SECTIONS)};
-    const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
     const TREE_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX)};
-    const TREE_GLYPH_TRANSFORM = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM)};
     const TREE_LINKED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH)};
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
     const TREE_IMPACTED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
-    const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
     const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const CHILD_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT)};
     const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
     const FRIENDS_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_FRIENDS_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
-${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
-    const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
-    const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
-    const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
-    const motionTimers = new WeakMap();
     const FIXED_VALUE_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL)};
     const EDITED_EXPRESSION_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL)};
     const EXPRESSION_OPENER = ${JSON.stringify(RECIPE_COCKPIT_EXPRESSION_OPENER)};
@@ -23339,62 +23271,7 @@ ${COCKPIT_KIT_CONFIRM_LABELS_SCRIPT}
     let favoritesCountElement = null;
     let noFavoritesElement = null;
 
-    /*
-        Every node the panel draws is made here and filled through textContent, so nothing from the
-        model is ever parsed as markup: object names, field names and faker expressions all come
-        from files this extension does not control.
-    */
-    function createElement(tagName, className, textContent) {
 
-        const element = document.createElement(tagName);
-        if (className) { element.className = className; }
-        if (textContent !== undefined) { element.textContent = textContent; }
-        return element;
-
-    }
-
-${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
-
-    let actionCardCount = 0;
-
-    /*
-        A standalone action as ONE card (#381, #384). The whole card is the button, so its parts are
-        spans and never controls: the verb's emoji (hidden from a screen reader) and the title, the
-        line on when it is needed, the live detail and the reason it is disabled. The title names
-        the button; the rest describes it.
-    */
-    function buildActionCard(action, className, title) {
-
-        const card = ACTION_CARDS[action];
-        if (!card || typeof ACTION_VERB_EMOJI[card.verb] !== 'string') { throw new Error('Unknown action: ' + action); }
-
-        actionCardCount++;
-        const buttonElement = createButton('card', 'actionCard ' + className);
-        const headingElement = createElement('span', 'actionCardHeading');
-        const emojiElement = createElement('span', 'actionCardEmoji', ACTION_VERB_EMOJI[card.verb]);
-        const titleElement = createElement('span', 'actionCardTitle', title);
-        const whyElement = createElement('span', 'actionCardWhy', card.why);
-        const detailElement = createElement('span', 'actionCardDetail muted hidden');
-        const reasonElement = createElement('span', 'actionCardReason hidden');
-
-        emojiElement.setAttribute('aria-hidden', 'true');
-        titleElement.setAttribute('id', 'actionCardTitle' + actionCardCount);
-        whyElement.setAttribute('id', 'actionCardWhy' + actionCardCount);
-        detailElement.setAttribute('id', 'actionCardDetail' + actionCardCount);
-        reasonElement.setAttribute('id', 'actionCardReason' + actionCardCount);
-        buttonElement.setAttribute('aria-labelledby', 'actionCardTitle' + actionCardCount);
-        buttonElement.setAttribute('aria-describedby', ['actionCardWhy', 'actionCardDetail', 'actionCardReason'].map(function (idPrefix) { return idPrefix + actionCardCount; }).join(' '));
-
-        headingElement.appendChild(emojiElement);
-        headingElement.appendChild(titleElement);
-        buttonElement.appendChild(headingElement);
-        buttonElement.appendChild(whyElement);
-        buttonElement.appendChild(detailElement);
-        buttonElement.appendChild(reasonElement);
-
-        return { action: action, buttonElement: buttonElement, titleElement: titleElement, detailElement: detailElement, reasonElement: reasonElement };
-
-    }
 
     /*
         A TODO or validation rule group as a card (#383). Its header is ONE card button that opens
@@ -24951,49 +24828,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    function setShown(element, isShown) {
-        if (isShown) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
-    }
-
-    function isMotionReduced() {
-        return typeof window.matchMedia === 'function' && !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    }
-
-    function endMotion(element) {
-        if (!motionTimers.has(element)) { return; }
-        clearTimeout(motionTimers.get(element));
-        motionTimers.delete(element);
-        element.classList.remove('motionReveal');
-        element.classList.remove('motionConceal');
-        element.removeAttribute('aria-hidden');
-        element.removeAttribute('inert');
-    }
-
-    /*
-        "hidden" is set or cleared FIRST, so it -- and every test of it -- is accurate for the whole
-        animation. A closing body stays drawn only while it fades, aria-hidden and inert meanwhile.
-        A body is revealed after it is built, so an animation never builds a row.
-    */
-    function setShownWithMotion(element, isShown, isAnimated) {
-
-        const wasShown = !element.classList.contains('hidden');
-
-        endMotion(element);
-        setShown(element, isShown);
-
-        if (!isAnimated || wasShown === isShown || isMotionReduced()) { return; }
-
-        if (isShown) {
-            element.classList.add('motionReveal');
-        } else {
-            element.classList.add('motionConceal');
-            element.setAttribute('aria-hidden', 'true');
-            element.setAttribute('inert', '');
-        }
-        motionTimers.set(element, setTimeout(function () { endMotion(element); }, isShown ? MOTION_REVEAL_MILLISECONDS : MOTION_CONCEAL_MILLISECONDS));
-
-    }
-
     /*
         The picker state drawn into one view. While a scratch org run is in flight the picker is
         held: the button, the dropdown, ⟳ and "Choose org…" are disabled, whatever a listing posted
@@ -25085,60 +24919,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
     }
 
     /*
-        Every tab of every card has its own search box (#217). Its text lives in the card's state
-        and its element stays in the tab's panel, so switching tabs or collapsing the card keeps
-        it; a new model draws new cards, which starts every box empty.
-    */
-    function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
-
-        const searchElement = createElement('div', 'tabSearch');
-        const fieldElement = createElement('div', 'tabSearchField');
-        const inputElement = createElement('input', 'tabSearchInput');
-        const matchCountElement = createElement('span', 'tabMatchCount muted');
-        const iconElement = buildSearchIconElement();
-
-        iconElement.addEventListener('click', function () {
-            if (typeof inputElement.focus === 'function') { inputElement.focus(); }
-        });
-
-        inputElement.setAttribute('type', 'search');
-        inputElement.setAttribute('placeholder', placeholderText);
-        inputElement.setAttribute('aria-label', placeholderText + ' (' + displayTitleOf(treeState.tree) + ')');
-        inputElement.value = treeState.searchTexts[tabName];
-        inputElement.addEventListener('input', function () {
-            treeState.searchTexts[tabName] = String(inputElement.value || '');
-            treeState.searchQueries[tabName] = treeState.searchTexts[tabName].trim().toLowerCase();
-            applySearch(treeState);
-            savePanelPlace();
-        });
-
-        fieldElement.appendChild(iconElement);
-        fieldElement.appendChild(inputElement);
-        searchElement.appendChild(fieldElement);
-        searchElement.appendChild(matchCountElement);
-
-        return { element: searchElement, inputElement: inputElement, matchCountElement: matchCountElement };
-
-    }
-
-    // DECORATIVE: THE INPUT'S OWN aria-label NAMES THE BOX, SO THE ICON IS HIDDEN FROM A SCREEN READER
-    function buildSearchIconElement() {
-
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', 'tabSearchIcon');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', SEARCH_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
-
-        return glyphElement;
-
-    }
-
-    /*
         The fields each object's record types restrict (#320): object api name -> field api name ->
         the developer names restricting it, in the order the Record types section lists them. Drawn
         from objects[].recordTypes[].impacts the model already carries, so the host sends nothing new.
@@ -25217,53 +24997,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
             const lookupText = parentLookup.fieldApiName + ' → ' + parentLookup.parentObjectApiName;
             return disabledFieldApiNames && disabledFieldApiNames.indexOf(parentLookup.fieldApiName) !== -1 ? lookupText + ' · parent excluded' : lookupText;
         }).join(', ') + ')';
-
-    }
-
-    /*
-        The tree icon (#219): a real button, keyboard operable, that never expands its row. Its SVG
-        is built node by node -- no markup string -- and coloured by CSS from the palette alone.
-        A click posts what the reader asked for; what that excludes comes back from the host.
-    */
-    function buildToggleElement(className) {
-
-        const toggleElement = createButton('secondary', 'chevronToggle ' + className);
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', 'toggleGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', TOGGLE_COLLAPSED_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
-        toggleElement.appendChild(glyphElement);
-
-        return toggleElement;
-
-    }
-
-    // THE STYLESHEET TURNS THE ONE ▸ PATH ON aria-expanded, SO IT ROTATES RATHER THAN SWAPPING (#227)
-    function drawToggle(toggleElement, isExpanded, isAnimated) {
-        if (isAnimated) { toggleElement.classList.remove('noMotion'); } else { toggleElement.classList.add('noMotion'); }
-        toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-    }
-
-    function buildTreeGlyph(treeObjectState) {
-
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', 'treeGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', TREE_LINKED_GLYPH_PATH);
-        pathElement.setAttribute('transform', TREE_GLYPH_TRANSFORM);
-        glyphElement.appendChild(pathElement);
-        treeObjectState.glyphPathElement = pathElement;
-
-        return glyphElement;
 
     }
 
@@ -25831,26 +25564,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
         noteElement.setAttribute('title', notAppliedRules.map(function (notAppliedRule) { return notAppliedRule.ruleName + (notAppliedRule.reason ? ' — ' + notAppliedRule.reason : ''); }).join('\\n'));
 
         return noteElement;
-
-    }
-
-    /*
-        The ONE pencil every edit button draws (#540), built node by node like the chain link. Its
-        size is a class: 'default' on a row's buttons, 'large' on a tree card's rename.
-    */
-    function buildPencilGlyph(size) {
-
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', size === 'large' ? 'fixedValueGlyph fixedValueGlyph-large' : 'fixedValueGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
-
-        return glyphElement;
 
     }
 
@@ -30480,49 +30193,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-    /*
-        The cockpit's ONE column table (#558): the History sub-tab, a data set's insert journey and a
-        record preview. Every table is made here and styled by sdtRowTable, so a new table needs no
-        rules of its own for its borders and cells. A column in sortColumns heads with a link button
-        and aria-sort; the caller draws the rows into bodyElement and keeps the sort.
-    */
-    function buildRowTable(tableOptions) {
-
-        const wrapElement = createElement('div', 'sdtRowTableWrap ' + tableOptions.className + 'Wrap');
-        const tableElement = createElement('table', 'sdtRowTable ' + tableOptions.className);
-        const headElement = createElement('thead', '');
-        const headRowElement = createElement('tr', '');
-        const bodyElement = createElement('tbody', '');
-        const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
-        const sortButtons = Object.create(null);
-        const columnClassName = typeof tableOptions.columnClassName === 'string' ? tableOptions.columnClassName : '';
-
-        tableOptions.columns.forEach(function (column) {
-            const headerElement = createElement('th', columnClassName ? columnClassName + 'Header ' + columnClassName + 'Header-' + column.key : '');
-            headerElement.setAttribute('scope', 'col');
-            if (!tableOptions.sort || sortColumns.indexOf(column.key) === -1) {
-                headerElement.textContent = column.label;
-            } else {
-                const isSorted = tableOptions.sort.column === column.key;
-                const sortArrow = isSorted ? (tableOptions.sort.isDescending ? ' ↓' : ' ↑') : '';
-                headerElement.setAttribute('aria-sort', isSorted ? (tableOptions.sort.isDescending ? 'descending' : 'ascending') : 'none');
-                const sortButton = createButton('link', columnClassName + 'Sort ' + columnClassName + 'Sort-' + column.key, column.label + sortArrow);
-                sortButton.addEventListener('click', function () { tableOptions.onSort(column.key); });
-                sortButtons[column.key] = sortButton;
-                headerElement.appendChild(sortButton);
-            }
-            headRowElement.appendChild(headerElement);
-        });
-
-        headElement.appendChild(headRowElement);
-        tableElement.appendChild(headElement);
-        tableElement.appendChild(bodyElement);
-        wrapElement.appendChild(tableElement);
-
-        return { wrapElement: wrapElement, bodyElement: bodyElement, sortButtons: sortButtons };
-
-    }
-
     // ONLY THIS ACK LETS A PREVIEW'S ROWS OPEN THEIR RECORD (#556), AND ONLY FOR THE MODEL ON SCREEN
     function acknowledgeRecordLinks(previewMessage) {
 
@@ -34336,7 +34006,6 @@ ${COCKPIT_KIT_CREATE_BUTTON_SCRIPT}
 
     }
 
-${COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT}
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_SCRIPT}
 
     function focusElement(element) {

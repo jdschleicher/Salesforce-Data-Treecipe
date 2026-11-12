@@ -28,10 +28,16 @@ const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 
+// THE FUNCTION'S TEXT UP TO THE BRACE THAT CLOSES ITS BODY, WHETHER IT IS IN THE TEMPLATE-LITERAL SCRIPT OR esbuild'S BUNDLE (#638)
 const functionBodyOf = (scriptText: string, functionName: string) => {
     const start = scriptText.indexOf(`function ${functionName}(`);
-    const end = scriptText.indexOf('\n    }\n', start);
-    return scriptText.substring(start, end);
+    const bodyStart = scriptText.indexOf('{', scriptText.indexOf(')', start));
+    let depth = 0;
+    for ( let index = bodyStart; index < scriptText.length; index++ ) {
+        if ( scriptText[index] === '{' ) { depth++; }
+        if ( scriptText[index] === '}' && --depth === 0 ) { return scriptText.substring(start, index + 1); }
+    }
+    return scriptText.substring(start);
 };
 
 const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
@@ -83,7 +89,7 @@ describe('RecipeCockpitService, row presentation (#558)', () => {
             const builderBody = functionBodyOf(scriptText, 'buildRowTable');
 
             ['table', 'thead', 'th'].forEach(tagName => {
-                const pattern = new RegExp(`createElement\\('${tagName}'`, 'g');
+                const pattern = new RegExp(`createElement\\(['"]${tagName}['"]`, 'g');
                 expect({ tagName, count: (scriptText.match(pattern) || []).length }).toEqual({ tagName, count: 1 });
                 expect({ tagName, count: (builderBody.match(pattern) || []).length }).toEqual({ tagName, count: 1 });
             });

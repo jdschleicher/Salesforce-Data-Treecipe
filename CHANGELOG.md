@@ -1,14 +1,63 @@
 # Change Log
 
-## [3.200.0] - Recipe Cockpit: "Authorize org" can log in through the Salesforce CLI, so `sf` commands can use the org (#630)
+## [3.201.0] - Recipe Cockpit: "Authorize org" can log in through the Salesforce CLI, so `sf` commands can use the org (#630)
 
 An org authorized with **Authorize org** in Target Org Manager could be listed in the cockpit but not used by `sf` in a terminal. 3.198.0 logged in inside VS Code with `@salesforce/core`, which encrypts the saved tokens with a key from the keychain that VS Code's own environment selects. When VS Code and the terminal see different environment settings, such as `SF_USE_GENERIC_UNIX_KEYCHAIN`, the CLI cannot read what VS Code saved.
 
 - **The confirmation now offers two buttons, as + New scratch org does.** **Authorize with Salesforce CLI**, first, runs `sf org login web --instance-url <address> --no-prompt --json`: the CLI opens the login page in your browser and saves the org the same way a login typed in a terminal does. **Authorize with @salesforce/core** is 3.198.0's login inside VS Code, with no CLI needed. A section on the confirmation says that `sf` in a differently set-up terminal may not be able to use that login.
-- **The CLI login is not run in the workspace folder**, and `--instance-url` overrides any login address a repository's `sfdx-project.json` sets. A My Domain address is now accepted only with letters, digits and hyphens in its host. Cancel and the five-minute limit stop the CLI process, which frees the local login port. If the CLI is not installed or not on PATH, the notification says so.
+- **Both logins go to the address 3.200.0's sandbox subdomain box builds** (#635): type `acme--qa` and either button logs in at `https://acme--qa.sandbox.my.salesforce.com`. The CLI login is not run in the workspace folder, and `--instance-url` overrides any login address a repository's `sfdx-project.json` sets. A login host is accepted only with letters, digits and hyphens. Cancel and the five-minute limit stop the CLI process, which frees the local login port. If the CLI is not installed or not on PATH, the notification says so.
 - **Nothing else changes.** The alias is still set only on a sandbox or scratch org that answers its connection check, `target-org` is still written to `.sf/config.json` only when the box is ticked, and every ending is still one notification.
 - The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe both buttons.
 - **Tests.** `SalesforceOrgLogin`: the CLI's argv, each ending read from its answer, and that no outcome carries the access token the answer holds; the in-process login's tests are kept. `SalesforceCliCallSites` lists the new call site. `RecipeCockpitAuthorizeOrg`: both buttons, and a label the confirmation did not offer starting no login. A fourth journey logs in with @salesforce/core; the other three press Authorize with Salesforce CLI.
+
+## [3.200.2] - The panel's shared builders are checked TypeScript modules: buttons, action cards, the column table, search boxes, toggles, glyphs and motion (#638, slice 2 of #565)
+
+Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.**
+  - Into the kit (`CockpitKit/panel/CockpitPanelElements.ts`): `createElement`, `createButton`, `setShown`, `isMotionReduced`, `setShownWithMotion` and `drawToggle`.
+  - Into the Recipe Cockpit (`RecipeCockpitService/panel/RecipeCockpitPanelBuilders.ts`): `buildActionCard`, `buildRowTable`, `buildTabSearch`, `buildSearchIconElement`, `buildToggleElement`, `buildTreeGlyph` and `buildPencilGlyph`.
+  - `npm run compile` type checks them all. A misspelt button kind in a module, `createButton('primay', …)`, now fails compile.
+- **One bridge for the code still in the string.** Right after the bundle, the panel script binds every export under its old name, so the tabs that have not moved call `createButton(…)` and `buildRowTable(…)` as before. The moved builders still throw on an unknown button kind or action, since calls from the string are not type checked. The bridge goes when the Treecipe tab moves (#643).
+- **The constants they draw with** (glyph paths, the action cards' verbs, emoji and words) moved into `RecipeCockpitPanelConstants.ts`, which imports nothing. `RecipeCockpitService.ts` re-exports every name. The reveal and conceal timings moved into the kit's `CockpitMotion.ts`, and `RECIPE_COCKPIT_MOTION_*` still names them.
+- **The confirmation imports these helpers** instead of declaring them, so `COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES` lists only what a cockpit alone has. `COCKPIT_KIT_CREATE_BUTTON_SCRIPT` and `COCKPIT_KIT_BUTTON_KINDS_SCRIPT` are gone.
+- **The panel layer rule now accepts any file that imports nothing,** not only a layer-0 one, so the Recipe Cockpit's constants can sit beside its host code.
+- **Place save and restore stays in the string** until the Treecipe tab moves (#643), because it reads about 20 pieces of that tab's state.
+- **Tests.**
+  - `RecipeCockpitPanelBundle.test.ts` checks that the bridge binds exactly the bundle's exports and that no bridged name is defined again in the string.
+  - `RecipeCockpitButtonKinds.test.ts` scans for calls in either quote, because esbuild writes double quotes. It also checks that the bundled `createButton` checks the kit's one list of kinds.
+  - `CockpitKit.test.ts` reads the elements module, and `ServiceLayers.test.ts` holds the relaxed rule.
+- **Review follow-ups.**
+  - The kind list and its type are in `CockpitButtonKindNames.ts`, which imports nothing, so the webview bundle no longer carries the button kinds' CSS. `CockpitButtonKinds.ts` re-exports them.
+  - `RecipeCockpitPanelBundle.test.ts` checks that every name a panel module takes from the script with `declare` is declared there, for every panel module.
+  - The no-inline-style scan, like the others, accepts either quote.
+
+## [3.200.1] - The in-panel confirmation's panel code is a checked TypeScript module, bundled into the cockpit at build time (#637, slice 1 of #565)
+
+Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.
+
+- **The panel code moves out of a string.** The in-panel confirmation's panel half was three template-literal strings in `CockpitConfirmDialog.ts` that no compiler or linter read. It is now `CockpitKit/panel/CockpitConfirmDialogPanel.ts`, checked by `tsconfig.panel.json` (DOM lib, strict, no node or jest types) as part of `npm run compile`, and linted. A misspelt message field such as `hostMessage.confirmationld` now fails `npm run compile`, where before it failed only when a confirmation opened.
+- **A build step bundles it into the same shell.** `esbuild.panel.js` (`npm run bundle-panel`, also run by `vscode:prepublish`) bundles `RecipeCockpitService/panel/RecipeCockpitPanel.ts` into one browser IIFE, not minified, and writes it as a string into the committed `RecipeCockpitPanelBundle.generated.ts`. `buildWebviewShellHtml` interpolates it once inside the panel script's outer function. The shell builder still takes only a nonce, the CSP and `localResourceRoots: []` are unchanged, and nothing is loaded from a file.
+- **The names the module takes from the cockpit are declared.** Its `declare` block lists the 15 names it reads from the script around it (`vscodeApi`, `createButton`, `renderedSequence` …) plus `confirmDialog`, and tsc checks every use against them. `COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES` is held to that block. `confirmDialog` stays in the kit's state script, because the object refresh dialog reads it too.
+- **The labels moved** into `CockpitConfirmLabels.ts`, which imports nothing, so the bundle never pulls in `crypto`. `CockpitConfirmDialog.ts` re-exports them.
+- **Tests.**
+  - `RecipeCockpitPanelBundle.test.ts` fails when the committed bundle is not what `esbuild.panel.js` builds today, and names `npm run bundle-panel`. It also checks that the template literal gives back every backslash, backtick and `${`, that the bundle is inlined once inside the outer function, and that a `</script` or `<!--` in a bundle is refused.
+  - `.gitattributes` keeps the generated bundle LF, so the stale-bundle test also passes on a Windows checkout.
+  - `ServiceLayers.test.ts` adds the panel rule: a `panel/` module imports only other `panel/` modules and layer-0 files that import nothing. It fails on `vscode`, a Node module, a host service, or a layer-0 file with imports.
+  - `esbuild.panel.test.js` pins the bundler's options.
+  - `CockpitKit.test.ts` reads the module for the required names and the classes it draws.
+  - `BaselinesCatchChanges.test.ts` patches esbuild's formatting of the dialog to swap its buttons. What it expects is unchanged.
+
+## [3.200.0] - Recipe Cockpit: "Authorize org" asks only for the sandbox subdomain (#635)
+
+**Authorize org** asked you to choose **Sandbox** or **Custom My Domain**, then to type the whole address, `https://acme--qa.sandbox.my.salesforce.com`. Now it asks for the subdomain alone.
+
+- **One input box, placeholder `acme--qa`.** What you type becomes `https://acme--qa.sandbox.my.salesforce.com`. Spaces and capitals are ignored, and the login page's address, `https://acme--qa.sandbox.my.salesforce.com`, works too, with or without `https://` or a trailing `/`. An address with a path, such as one copied from a page after login, is refused. The confirmation's **Login address** line shows the full address.
+- **Only a sandbox subdomain is accepted:** letters, digits and single hyphens with exactly one `--`, at most 63 characters. `acme`, `acme-dev-ed`, a production or Developer Edition address, another host, a port, path or query are refused in the box, which says Authorize org is for sandboxes and points other orgs to `sf org login web`. No login starts.
+- **The Sandbox / Custom My Domain choice is gone**, and with it the shared `https://test.salesforce.com` login from the cockpit. A login still reaches only a Salesforce host: the built address passes the same host check before any login starts, and again after the confirmation.
+- The alias question, the confirmation and its box, the notifications and the palette commands are unchanged.
+- The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the README describe the subdomain box.
+- **Tests.** `SalesforceOrgLogin`: every accepted and refused subdomain and pasted address. `RecipeCockpitAuthorizeOrg`: no quick pick, the subdomain box first, Escape there is a cancel, and a refused answer starts no login.
 
 ## [3.199.1] - The last two import cycles are gone, and the layer test has no exceptions (#575, slice D of #570)
 

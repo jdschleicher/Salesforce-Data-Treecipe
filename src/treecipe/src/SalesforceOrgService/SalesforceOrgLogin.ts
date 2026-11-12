@@ -24,6 +24,13 @@ const HOST_NAME_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 export const LOGIN_URL_REFUSAL = `Enter ${SANDBOX_LOGIN_URL} or the org's My Domain address, for example https://acme--qa.sandbox.my.salesforce.com.`;
 
+// A SANDBOX'S MY DOMAIN IS <my domain>--<sandbox name>.sandbox.my.salesforce.com: ONE DNS LABEL, EXACTLY ONE "--"
+const SANDBOX_HOST_SUFFIX = '.sandbox.my.salesforce.com';
+const SANDBOX_SUBDOMAIN_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*--[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const DNS_LABEL_MAX_LENGTH = 63;
+
+export const SANDBOX_SUBDOMAIN_REFUSAL = 'Enter the sandbox\'s subdomain, for example acme--qa: the part before .sandbox.my.salesforce.com. Authorize org is for sandboxes; for another org, run "sf org login web".';
+
 export const ORG_LOGIN_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
 
 const LOGIN_FAILURE_MESSAGE_MAX_LENGTH = 300;
@@ -88,6 +95,40 @@ export class SalesforceOrgLogin {
         return parsedUrl.protocol === 'https:' && isDnsHostName && isSalesforceLoginHost && isBareAddress
             ? `https://${hostName}`
             : undefined;
+
+    }
+
+    /*
+        What "Authorize org" asks for (#635): the sandbox's subdomain, acme--qa, or its login page's
+        address, with no path. Either answers https://acme--qa.sandbox.my.salesforce.com, and the
+        built address still passes normalizeLoginUrl, so the host rule has one owner.
+    */
+    static buildSandboxLoginUrl(typedSubdomain: unknown): string | undefined {
+
+        if ( typeof typedSubdomain !== 'string' ) {
+            return undefined;
+        }
+
+        const trimmedText = typedSubdomain.trim();
+        const isAddress = trimmedText.includes('.') || trimmedText.includes(':') || trimmedText.includes('/');
+        const loginUrl = isAddress
+            ? this.normalizeLoginUrl(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmedText) ? trimmedText : `https://${trimmedText}`)
+            : `https://${trimmedText.toLowerCase()}${SANDBOX_HOST_SUFFIX}`;
+
+        if ( loginUrl === undefined || !loginUrl.endsWith(SANDBOX_HOST_SUFFIX) ) {
+            return undefined;
+        }
+
+        const subdomain = loginUrl.slice('https://'.length, -SANDBOX_HOST_SUFFIX.length);
+        const isSandboxSubdomain = subdomain.length <= DNS_LABEL_MAX_LENGTH && SANDBOX_SUBDOMAIN_PATTERN.test(subdomain);
+
+        return isSandboxSubdomain ? this.normalizeLoginUrl(loginUrl) : undefined;
+
+    }
+
+    static validateSandboxSubdomain(typedSubdomain: unknown): string | undefined {
+
+        return this.buildSandboxLoginUrl(typedSubdomain) === undefined ? SANDBOX_SUBDOMAIN_REFUSAL : undefined;
 
     }
 

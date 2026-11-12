@@ -1,0 +1,17 @@
+{
+	// The webview panel modules (#637): browser-only code bundled by esbuild.panel.js. They get the
+	// DOM lib and strict checks, and no node or jest types, so a Node global in a panel module fails
+	// npm run compile. The root tsconfig excludes them, since it has no DOM lib.
+	"compilerOptions": {
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"target": "ES2020",
+		"lib": ["ES2023", "DOM"],
+		"types": [],
+		"strict": true,
+		"noEmit": true,
+		"isolatedModules": true,
+		"rootDir": "src"
+	},
+	"include": ["src/**/panel/**/*.ts"]
+}

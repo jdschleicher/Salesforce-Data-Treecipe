@@ -10,7 +10,7 @@ import {
     RecipeCockpitOrgAuthorize
 } from '../RecipeCockpitOrgAuthorize';
 import { RecipeCockpitConfirmContent } from '../RecipeCockpitConfirmContent';
-import { SANDBOX_LOGIN_URL } from '../../SalesforceOrgService/SalesforceOrgLogin';
+const QA_SANDBOX_LOGIN_URL = 'https://acme--qa.sandbox.my.salesforce.com';
 
 const QA_USERNAME = 'qa@example.com.qa';
 const AUTHORIZED = { kind: 'authorized' as const, username: QA_USERNAME };
@@ -37,14 +37,14 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
 
         it('names the login host in its question, and the address, the alias and what the box adds in its lines', () => {
 
-            const authorizePlan = { loginUrl: SANDBOX_LOGIN_URL, alias: 'qa' };
+            const authorizePlan = { loginUrl: QA_SANDBOX_LOGIN_URL, alias: 'qa' };
 
-            expect(RecipeCockpitOrgAuthorize.buildConfirmMessage(authorizePlan)).toBe('Log in to a Salesforce org at test.salesforce.com in your browser?');
+            expect(RecipeCockpitOrgAuthorize.buildConfirmMessage(authorizePlan)).toBe('Log in to a Salesforce org at acme--qa.sandbox.my.salesforce.com in your browser?');
 
             const confirmText = RecipeCockpitConfirmContent.flatten(RecipeCockpitOrgAuthorize.buildConfirmContent(authorizePlan));
 
             expect(confirmText).toContain('Alias: qa');
-            expect(confirmText).toContain('Login address: https://test.salesforce.com (sandboxes)');
+            expect(confirmText).toContain(`Login address: ${QA_SANDBOX_LOGIN_URL}`);
             expect(confirmText).toContain('Nothing is deployed to the org and no record is written.');
             expect(confirmText).toContain('sets target-org in this workspace\'s .sf/config.json');
             expect(confirmText).not.toContain('will move it');
@@ -58,7 +58,7 @@ describe('RecipeCockpitOrgAuthorize: what "Authorize org" asks and says (#630)',
             expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitOrgAuthorize.buildConfirmContent({ loginUrl: 'https://acme--qa.sandbox.my.salesforce.com' })))
                 .toContain('Alias: none');
 
-            const movedAliasContent = RecipeCockpitOrgAuthorize.buildConfirmContent({ loginUrl: SANDBOX_LOGIN_URL, alias: 'qa', aliasHolderUsername: 'old@example.com' });
+            const movedAliasContent = RecipeCockpitOrgAuthorize.buildConfirmContent({ loginUrl: QA_SANDBOX_LOGIN_URL, alias: 'qa', aliasHolderUsername: 'old@example.com' });
 
             expect(movedAliasContent.warnings).toEqual(['"qa" is currently old@example.com. Authorizing will move it to the org you log in to.']);
 

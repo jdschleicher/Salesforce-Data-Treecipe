@@ -22,9 +22,12 @@
 	//
 	// isolatedModules: ts-jest then transpiles each file without type checking it, which
 	// npm run compile already does; a cold cockpit suite went from 15 s to 5.5 s (#562).
+	//
+	// src/**/panel/** is webview code with a DOM lib of its own: tsconfig.panel.json checks it (#637).
 	"exclude": [
 		"node_modules",
 		"out",
-		"jestSetup"
+		"jestSetup",
+		"src/**/panel/**"
 	]
 }

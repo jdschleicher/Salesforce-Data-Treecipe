@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 jest.mock('vscode', () => ({
     workspace: { workspaceFolders: undefined, getConfiguration: jest.fn().mockReturnValue({ get: jest.fn(), update: jest.fn(), inspect: jest.fn() }) },
     env: { openExternal: jest.fn() },
@@ -19,12 +20,10 @@ import { COCKPIT_PALETTE, CockpitPalette, CockpitPaletteToken } from '../Cockpit
 import { COCKPIT_BUTTON_KINDS, CockpitButtonKinds } from '../CockpitButtonKinds';
 import { CockpitOrgPicker } from '../CockpitOrgPicker';
 import {
-    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES,
     COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES,
     COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
-    COCKPIT_KIT_CONFIRM_LABELS_SCRIPT,
     CockpitConfirmDialog
 } from '../CockpitConfirmDialog';
 import {
@@ -34,6 +33,7 @@ import {
     RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL,
     RECIPE_COCKPIT_PALETTE
 } from '../../RecipeCockpitService/RecipeCockpitService';
+import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../../RecipeCockpitService/RecipeCockpitPanelBundle.generated';
 
 /*
     #524: the first cut of the cockpit kit. The Recipe Cockpit's document must be what it was, so
@@ -52,37 +52,18 @@ const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="kitNonce">'), html.indexOf('</style>'));
 const countOccurrences = (text: string, piece: string) => text.split(piece).length - 1;
 
-// STRINGS, COMMENTS AND REGEX LITERALS OUT FIRST, SO A WORD INSIDE ONE IS NEVER READ AS A NAME
-const codeOf = (script: string) => script.replace(
-    /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|(?<=[(,=:!&|?{;]\s*)\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\n[])+\/[gimsuy]*/g,
-    ' '
-);
+// THE CONFIRMATION'S PANEL HALF (#637): A CHECKED MODULE, BUNDLED INTO THE COCKPIT'S SCRIPT
+const CONFIRM_DIALOG_PANEL_PATH = path.join(KIT_DIRECTORY, 'panel', 'CockpitConfirmDialogPanel.ts');
+const confirmDialogPanelSource = () => fs.readFileSync(CONFIRM_DIALOG_PANEL_PATH, 'utf8');
 
-const declaredNamesOf = (script: string): Set<string> => {
-    const code = codeOf(script);
-    const declaredNames = new Set<string>();
-    Array.from(code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)).forEach(match => declaredNames.add(match[1]));
-    Array.from(code.matchAll(/\bfunction\s*([A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/g)).forEach(match => {
-        if (match[1]) { declaredNames.add(match[1]); }
-        match[2].split(',').map(parameterName => parameterName.trim()).filter(Boolean).forEach(parameterName => declaredNames.add(parameterName));
-    });
-    return declaredNames;
-};
-
-const JAVASCRIPT_NAMES = new Set([
-    'if', 'else', 'for', 'while', 'return', 'function', 'const', 'let', 'var', 'new', 'typeof', 'instanceof', 'in', 'of',
-    'true', 'false', 'null', 'undefined', 'this', 'break', 'continue', 'throw', 'try', 'catch', 'switch', 'case', 'default',
-    'Array', 'Number', 'String', 'Object', 'JSON', 'Math', 'Error', 'Infinity', 'NaN', 'document', 'window'
-]);
-
-// EVERY NAME THE SCRIPT READS THAT IT DOES NOT DECLARE: NOT A PROPERTY (.name), NOT AN OBJECT KEY ({ name: / , name:), NOT THE LANGUAGE'S
-const freeIdentifiersOf = (script: string): Set<string> => {
-    const code = codeOf(script);
-    const declaredNames = declaredNamesOf(script);
-    return new Set(Array.from(code.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)(?![\w$])/g))
-        .filter(match => !/[{,]\s*$/.test(code.slice(0, match.index)) || !/^\s*:/.test(code.slice((match.index ?? 0) + match[1].length)))
-        .map(match => match[1])
-        .filter(name => !declaredNames.has(name) && !JAVASCRIPT_NAMES.has(name)));
+// THE NAMES A MODULE TAKES FROM THE SCRIPT AROUND IT: ITS TOP-LEVEL declare const / let / function
+const ambientNamesOf = (moduleSource: string): Set<string> => {
+    const sourceFile = ts.createSourceFile('panelModule.ts', moduleSource, ts.ScriptTarget.Latest, true);
+    const isDeclared = (statement: ts.Statement) => ts.canHaveModifiers(statement) && !!ts.getModifiers(statement)?.some(modifier => modifier.kind === ts.SyntaxKind.DeclareKeyword);
+    return new Set(sourceFile.statements.filter(isDeclared).flatMap(statement => {
+        if (ts.isVariableStatement(statement)) { return statement.declarationList.declarations.map(declaration => declaration.name.getText(sourceFile)); }
+        return ts.isFunctionDeclaration(statement) && statement.name ? [statement.name.text] : [];
+    }));
 };
 
 const classSelectorsOf = (styleSheet: string): Set<string> =>
@@ -98,17 +79,13 @@ describe('CockpitKit (#524)', () => {
             const pieces = kitPieces();
 
             expect(pieces.map(([pieceName]) => pieceName).sort()).toEqual([
-                'COCKPIT_KIT_BUTTON_KINDS_SCRIPT',
                 'COCKPIT_KIT_BUTTON_KIND_BASE_STYLES',
                 'COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES',
                 'COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES',
                 'COCKPIT_KIT_BUTTON_KIND_STATE_STYLES',
                 'COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP',
-                'COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT',
                 'COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT',
                 'COCKPIT_KIT_CONFIRM_DIALOG_STYLES',
-                'COCKPIT_KIT_CONFIRM_LABELS_SCRIPT',
-                'COCKPIT_KIT_CREATE_BUTTON_SCRIPT',
                 'COCKPIT_KIT_ORG_PICKER_REFRESH_STYLES',
                 'COCKPIT_KIT_ORG_PICKER_STYLES',
                 'COCKPIT_KIT_PINNED_SECTION_STYLES'
@@ -194,11 +171,14 @@ describe('CockpitKit (#524)', () => {
 
         });
 
-        it('declares the kinds createButton checks, and refuses any other', () => {
+        it('checks every kind against COCKPIT_BUTTON_KINDS, refuses any other, and makes the only button (#638)', () => {
 
-            expect(CockpitButtonKindsModule.COCKPIT_KIT_BUTTON_KINDS_SCRIPT).toBe(`    const BUTTON_KINDS = ${JSON.stringify(COCKPIT_BUTTON_KINDS)};`);
-            expect(CockpitButtonKindsModule.COCKPIT_KIT_CREATE_BUTTON_SCRIPT).toContain('if (BUTTON_KINDS.indexOf(kind) === -1) { throw new Error(\'Unknown button kind: \' + kind); }');
-            expect(CockpitButtonKindsModule.COCKPIT_KIT_CREATE_BUTTON_SCRIPT.match(/createElement\('button'/g) ?? []).toHaveLength(1);
+            const panelElementsSource = fs.readFileSync(path.join(KIT_DIRECTORY, 'panel', 'CockpitPanelElements.ts'), 'utf8');
+
+            expect(panelElementsSource).toContain("import { COCKPIT_BUTTON_KINDS, CockpitButtonKind } from '../CockpitButtonKindNames';");
+            expect(panelElementsSource).toContain('if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1) { throw new Error(\'Unknown button kind: \' + kind); }');
+            expect(panelElementsSource.match(/createElement\('button'/g) ?? []).toHaveLength(1);
+            expect(COCKPIT_BUTTON_KINDS).toEqual(['primary', 'secondary', 'icon', 'check', 'link', 'card']);
 
         });
 
@@ -222,17 +202,19 @@ describe('CockpitKit (#524)', () => {
 
     describe('confirmation dialog', () => {
 
-        it('lists exactly the free identifiers of the dialog script, and the Recipe Cockpit declares each', () => {
+        it('lists exactly the names the dialog\'s panel module declares from the cockpit, and the Recipe Cockpit declares each', () => {
 
-            const kitDeclared = declaredNamesOf(COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT + '\n' + COCKPIT_KIT_CONFIRM_LABELS_SCRIPT);
+            const recipePanelScript = panelScriptOf(recipeShell());
 
-            expect(kitDeclared).toEqual(new Set(['confirmDialog', 'CONFIRM_WARNINGS_LABEL', 'CONFIRM_CHANGE_ORG_LABEL']));
-            expect(new Set(Array.from(freeIdentifiersOf(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT)).filter(name => !kitDeclared.has(name))))
+            expect(new Set(Array.from(ambientNamesOf(confirmDialogPanelSource())).filter(name => name !== 'confirmDialog')))
                 .toEqual(new Set(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES));
+            expect(ambientNamesOf(confirmDialogPanelSource())).toContain('confirmDialog');
+            expect(COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT).toMatch(/\blet confirmDialog = null;/);
+            expect(countOccurrences(recipePanelScript, RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT)).toBe(1);
 
-            const recipePanelScript = panelScriptOf(recipeShell()).replace(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT, '');
+            const cockpitScript = recipePanelScript.replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
             COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES.forEach(requiredName =>
-                expect({ requiredName, isDeclared: new RegExp(`(?:function ${requiredName}\\(|(?:const|let) ${requiredName}\\b)`).test(recipePanelScript) })
+                expect({ requiredName, isDeclared: new RegExp(`(?:function ${requiredName}\\(|(?:const|let) ${requiredName}\\b)`).test(cockpitScript) })
                     .toEqual({ requiredName, isDeclared: true }));
 
         });
@@ -240,11 +222,11 @@ describe('CockpitKit (#524)', () => {
         it('names every class it draws with that its own styles do not, and the Recipe Cockpit styles each outside them', () => {
 
             const styledByKit = classSelectorsOf(COCKPIT_KIT_CONFIRM_DIALOG_STYLES);
-            const namedByScript = Array.from(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT.matchAll(/(?:classList\.add\(|setAttribute\('class', )'([A-Za-z][\w-]*)'/g), match => match[1]);
+            const namedByModule = Array.from(confirmDialogPanelSource().matchAll(/(?:classList\.add\(|setAttribute\('class', )'([A-Za-z][\w-]*)'/g), match => match[1]);
             const recipeStyleSheet = styleSheetOf(recipeShell()).replace(COCKPIT_KIT_CONFIRM_DIALOG_STYLES, '');
 
-            expect(namedByScript.length).toBeGreaterThan(0);
-            namedByScript.filter(className => !styledByKit.has(className)).forEach(className =>
+            expect(namedByModule.length).toBeGreaterThan(0);
+            namedByModule.filter(className => !styledByKit.has(className)).forEach(className =>
                 expect(COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES).toContain(className));
             COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES.forEach(className =>
                 expect({ className, isStyled: classSelectorsOf(recipeStyleSheet).has(className) }).toEqual({ className, isStyled: true }));
@@ -291,12 +273,15 @@ describe('CockpitKit (#524)', () => {
         it('imports no vscode and no other service, so any cockpit can take it', () => {
 
             const kitFiles = fs.readdirSync(KIT_DIRECTORY).filter(fileName => fileName.endsWith('.ts'));
+            const isKitModule = (moduleName: string) => moduleName === 'crypto' || /^\.\/[A-Za-z]+$/.test(moduleName);
 
-            expect(kitFiles.sort()).toEqual(['CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
+            expect(kitFiles.sort()).toEqual(['CockpitButtonKindNames.ts', 'CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
             kitFiles.forEach(fileName => {
                 const importedModules = Array.from(fs.readFileSync(path.join(KIT_DIRECTORY, fileName), 'utf8').matchAll(/^import .* from '([^']+)';$/gm), match => match[1]);
-                expect({ fileName, importedModules: importedModules.filter(moduleName => moduleName !== 'crypto') }).toEqual({ fileName, importedModules: [] });
+                expect({ fileName, importedModules: importedModules.filter(moduleName => !isKitModule(moduleName)) }).toEqual({ fileName, importedModules: [] });
             });
+            ['CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitButtonKindNames.ts'].forEach(importFreeFileName =>
+                expect({ importFreeFileName, imports: /^import /m.test(fs.readFileSync(path.join(KIT_DIRECTORY, importFreeFileName), 'utf8')) }).toEqual({ importFreeFileName, imports: false }));
             expect(Object.keys(CockpitPaletteModule).sort()).toEqual(['COCKPIT_PALETTE', 'CockpitPalette']);
 
         });

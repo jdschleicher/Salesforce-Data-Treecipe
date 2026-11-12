@@ -38,7 +38,8 @@ jest.mock('vscode', () => ({
 jest.mock('@salesforce/core', () => ({
     AuthInfo: { listAllAuthorizations: jest.fn() },
     StateAggregator: { clearInstance: jest.fn() },
-    Org: { create: jest.fn() }
+    Org: { create: jest.fn() },
+    WebOAuthServer: { create: jest.fn() }
 }));
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
@@ -62,12 +63,12 @@ import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL
+    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT
 } from '../RecipeCockpitOrgAuthorize';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { ICoreLibraryOrgLoginRun, IOrgLoginRun, OrgLoginOutcome, SalesforceOrgLogin, SANDBOX_LOGIN_URL } from '../../SalesforceOrgService/SalesforceOrgLogin';
+import { ICoreLibraryOrgLoginRun, IOrgLoginRun, OrgLoginOutcome, SalesforceOrgLogin, SANDBOX_SUBDOMAIN_REFUSAL } from '../../SalesforceOrgService/SalesforceOrgLogin';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -82,6 +83,9 @@ const NEW_SANDBOX_AUTHORIZATION = { username: NEW_SANDBOX_USERNAME, aliases: ['n
 const PRODUCTION_USERNAME = 'admin@example.com';
 const PRODUCTION_AUTHORIZATION = { username: PRODUCTION_USERNAME, aliases: [], isExpired: false, instanceUrl: 'https://acme.my.salesforce.com' };
 const CHOSEN_ALIAS = 'newsbx';
+const TYPED_SANDBOX_SUBDOMAIN = 'acme--newsbx';
+const SANDBOX_LOGIN_ADDRESS = 'https://acme--newsbx.sandbox.my.salesforce.com';
+const AUTHORIZATION_URL = 'https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
 beforeEach(() => {
@@ -301,6 +305,12 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         };
 
         // THE CONFIRMATION IS THE ONE showWarningMessage CALL MARKED inPanel; EVERY OTHER IS A NOTIFICATION, WHICH ANSWERS NOTHING
+        // EACH INPUT BOX IS ANSWERED BY ITS PROMPT, SO A TEST CAN ESCAPE ONE QUESTION AND NOT THE OTHER
+        const answerInputBoxes = (subdomainAnswer: string | undefined, aliasAnswer: string | undefined) => {
+            (vscode.window.showInputBox as jest.Mock).mockImplementation(async (inputBoxOptions: { prompt: string }) =>
+                inputBoxOptions.prompt === RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT ? subdomainAnswer : aliasAnswer);
+        };
+
         const answerConfirmation = (confirmAnswer: unknown) => {
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, firstOption: any) => (
                 firstOption && typeof firstOption === 'object' && firstOption.inPanel ? confirmAnswer : undefined
@@ -345,8 +355,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
             [vscode.window.showWarningMessage, vscode.window.showErrorMessage, vscode.window.showInformationMessage, vscode.window.showInputBox, vscode.window.showQuickPick, vscode.env.openExternal]
                 .forEach(windowMock => (windowMock as jest.Mock).mockReset());
             answerConfirmation(RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL);
-            (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (choices: { label: string }[]) => choices.find(choice => choice.label === RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL));
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(CHOSEN_ALIAS);
+            answerInputBoxes(TYPED_SANDBOX_SUBDOMAIN, CHOSEN_ALIAS);
             (vscode.env.openExternal as jest.Mock).mockResolvedValue(true);
 
             (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => ({
@@ -380,7 +389,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
-        it('asks the login address and the alias, then confirms in the panel with one checkbox, and Cancel starts no login', async () => {
+        it('asks the sandbox subdomain and the alias, with no quick pick, then confirms in the panel with one checkbox, and Cancel starts no login', async () => {
 
             answerConfirmation(undefined);
             answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
@@ -388,12 +397,19 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             await receivedMessageHandler({ command: 'authorizeOrg' });
 
-            expect((vscode.window.showQuickPick as jest.Mock).mock.calls[0][0].map((choice: { label: string }) => choice.label))
-                .toEqual([RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_CHOICE_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_MY_DOMAIN_CHOICE_LABEL]);
-            expect((vscode.window.showInputBox as jest.Mock).mock.calls.map(([inputBoxOptions]) => inputBoxOptions.prompt)).toEqual([RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT]);
+            expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
+            expect((vscode.window.showInputBox as jest.Mock).mock.calls.map(([inputBoxOptions]) => inputBoxOptions.prompt))
+                .toEqual([RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT, RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT]);
+
+            const subdomainBoxOptions = (vscode.window.showInputBox as jest.Mock).mock.calls[0][0];
+            expect(subdomainBoxOptions.placeHolder).toBe(RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER);
+            expect(`${subdomainBoxOptions.prompt} ${subdomainBoxOptions.placeHolder}`).not.toContain('https://');
+            expect(subdomainBoxOptions.validateInput(TYPED_SANDBOX_SUBDOMAIN)).toBeUndefined();
+            expect(subdomainBoxOptions.validateInput('acme')).toBe(SANDBOX_SUBDOMAIN_REFUSAL);
 
             const [confirmMessage, confirmOptions, ...confirmLabels] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
-            expect(confirmMessage).toBe('Log in to a Salesforce org at test.salesforce.com in your browser?');
+            expect(confirmMessage).toBe('Log in to a Salesforce org at acme--newsbx.sandbox.my.salesforce.com in your browser?');
+            expect(confirmOptions.detail).toContain(`Login address: ${SANDBOX_LOGIN_ADDRESS}`);
             expect(confirmOptions.inPanel).toBe(true);
             expect(confirmOptions.checkboxLabel).toBe(RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL);
             expect(confirmOptions.detail).toContain(`Alias: ${CHOSEN_ALIAS}`);
@@ -410,11 +426,29 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
         });
 
         it.each([
-            ['the login address', () => (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined)],
-            ['the alias', () => (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined)]
+            ['the sandbox subdomain', () => answerInputBoxes(undefined, CHOSEN_ALIAS)],
+            ['the alias', () => answerInputBoxes(TYPED_SANDBOX_SUBDOMAIN, undefined)]
         ])('treats Escape at %s as a cancel: no confirmation, no login, the lock released', async (_caseName, escapeQuestion) => {
 
             escapeQuestion();
+            answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'authorizeOrg' });
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(loginSpy).not.toHaveBeenCalled();
+            expect(postedNamed('scratchOrgState').at(-1)).toEqual({ command: 'scratchOrgState', isRunning: false });
+
+        });
+
+        it.each([
+            ['a production My Domain name', 'acme'],
+            ['another host', 'acme--qa.evil.com'],
+            ['the shared sandbox login', 'https://test.salesforce.com']
+        ])('starts no login for %s, even when the input box answers it', async (_caseName, typedText) => {
+
+            answerInputBoxes(typedText, CHOSEN_ALIAS);
             answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
             await openRenderedCockpit();
 
@@ -433,7 +467,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             await receivedMessageHandler({ command: 'authorizeOrg' });
 
-            expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_URL, expect.anything());
+            expect(loginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_ADDRESS, expect.anything());
             expect(aliasSpy).toHaveBeenCalledWith(CHOSEN_ALIAS, NEW_SANDBOX_USERNAME);
             expect(vscode.env.openExternal).not.toHaveBeenCalled();
             expect(execFile).not.toHaveBeenCalled();
@@ -450,11 +484,10 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
         it('with Authorize with @salesforce/core: logs in inside VS Code, which opens the authorization address, and starts no sf process', async () => {
 
-            const authorizationUrl = 'https://test.salesforce.com/services/oauth2/authorize?client_id=PlatformCLI';
             answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL, isChecked: false });
             answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
             const coreLoginSpy = jest.spyOn(SalesforceOrgLogin, 'authorizeWithCoreLibrary').mockImplementation(async (_loginUrl: string, loginRun: ICoreLibraryOrgLoginRun) => {
-                await loginRun.openLoginPage(authorizationUrl);
+                await loginRun.openLoginPage(AUTHORIZATION_URL);
                 authorizedAuthorizations.push(NEW_SANDBOX_AUTHORIZATION);
                 return { kind: 'authorized', username: NEW_SANDBOX_USERNAME };
             });
@@ -462,9 +495,9 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             await receivedMessageHandler({ command: 'authorizeOrg' });
 
-            expect(coreLoginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_URL, expect.anything());
+            expect(coreLoginSpy).toHaveBeenCalledWith(SANDBOX_LOGIN_ADDRESS, expect.anything());
             expect(loginSpy).not.toHaveBeenCalled();
-            expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: authorizationUrl, isStrict: true });
+            expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0]).toMatchObject({ parsedFrom: AUTHORIZATION_URL, isStrict: true });
             expect(execFile).not.toHaveBeenCalled();
             expect(aliasSpy).toHaveBeenCalledWith(CHOSEN_ALIAS, NEW_SANDBOX_USERNAME);
             expect(notificationTexts(vscode.window.showInformationMessage)).toEqual([`${CHOSEN_ALIAS} · ${NEW_SANDBOX_USERNAME} is authorized and listed in Target Org Manager.`]);
@@ -504,7 +537,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
         it('with the box ticked and no alias: the default org is the username', async () => {
 
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue('');
+            answerInputBoxes(TYPED_SANDBOX_SUBDOMAIN, '');
             answerConfirmation({ chosenLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL, isChecked: true });
             answerLogin({ kind: 'authorized', username: NEW_SANDBOX_USERNAME }, NEW_SANDBOX_AUTHORIZATION);
             await openRenderedCockpit();
