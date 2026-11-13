@@ -19,6 +19,8 @@ import * as RecipeCockpitQueryTabConstants from '../RecipeCockpitQueryTabConstan
 import * as RecipeCockpitAdapterConstants from '../RecipeCockpitAdapterConstants';
 import * as RecipeCockpitTroubleshootingConstants from '../RecipeCockpitTroubleshootingConstants';
 import * as RecipeCockpitTreecipeFieldEditorConstants from '../RecipeCockpitTreecipeFieldEditorConstants';
+import * as RecipeCockpitDataOrgConstants from '../RecipeCockpitDataOrgConstants';
+import * as RecipeCockpitOrgAuthorizeModule from '../RecipeCockpitOrgAuthorize';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
 
 const { PanelBundler, PANEL_BUNDLE_FILE, PANEL_MODULES_NAME, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
@@ -99,6 +101,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
         expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning', 'isTreeQueryRunning', 'QUERY_MAX_LENGTH',
             'updaterLoadRunningTreeKey', 'updaterRunKind', 'adapterChildPreparingKey', 'UPDATER_WHERE_MAX_LENGTH', 'isExpressionValue', 'answeredDatasetCounts', 'buildNameEditor', 'isDataOrgChecking',
             'isLookupField', 'findEditorStartValue', 'findFixedValueLockReason', 'pendingPicklistValueElements', 'isAddFriendRunning', 'isWireLookupRunning', 'lookupDecisions', 'FIELD_PARENT_EXCLUDED_REASON',
+            'dataOrgViews', 'dataOrgPickerBeforeCheck', 'dataOrgUnansweredListingCount', 'insertRunningTreeKey', 'isOrgAuthorizeRunning', 'revealTreeObjectRow', 'buildTreeObjectKey',
             'recordTypeChoices', 'recordTypeRowStates', 'isRecordTypeSelectionRemembered', 'applyStructureFilter', 'filterTreeObjectRows']));
         ambientNames.forEach(ambient =>
             expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
@@ -106,8 +109,8 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
-    // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639, #640, #641, #642, #652, #653)
-    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section and field editor included (#639, #640, #641, #642, #652, #653)', () => {
+    // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639, #640, #641, #642, #652, #653, #654)
+    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section, field editor and Target Org Manager included (#639, #640, #641, #642, #652, #653, #654)', () => {
 
         const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
         const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
@@ -124,6 +127,10 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'appendPicklistValueList', 'buildPicklistKey', 'requestPicklistValues', 'renderPicklistValues', 'findPicklistChoiceLockReason', 'drawPicklistValueEditor', 'drawTile', 'renderPicklistChoiceResult',
             'appendAddFriendControls', 'setAddFriendRunning', 'lookupWiringKeyOf', 'findLookupWiring', 'buildWireLookupElement', 'findAddableParent', 'findEmptyLookup', 'buildLookupDecisionElement',
             'drawFieldRowLookupDecision', 'describeCreateParentRefusal', 'drawLookupDecisionButtons', 'buildWireAllLookupsElement', 'setWireLookupRunning',
+            'buildDataOrgView', 'drawDataOrgView', 'drawDataOrgViews', 'buildTreeInsertElement', 'isTreeRunning', 'listTreeInsertObjectApiNames', 'findTreeInsertReason', 'findTreeInsertBlock',
+            'findInsertReasonLink', 'followInsertReasonLink', 'drawTreeInsert', 'drawTreeInserts', 'setInsertRunning', 'renderScratchOrgState', 'renderDataOrgReadiness', 'setDataOrgStatus',
+            'requestDataOrgs', 'renderDataOrgList', 'clearDataOrgSelection', 'showDataOrgConnectionCheck', 'holdDataOrgPickerBeforeCheck', 'renderDataOrgListingRefused', 'startDataOrgCheck',
+            'renderDataOrgProvisional', 'renderDataOrgSelection',
             'hasRecordTypeObjects', 'isRecordTypeFieldsOnlyIn', 'appendRecordTypeFieldsToggle', 'drawRecordTypeFieldsToggle', 'indexRecordTypeFields',
             'todoCountOf', 'isTodosOnlyIn', 'appendTodosToggle', 'drawTodosToggle', 'buildTodoListElement', 'isObjectTodosOnlyIn', 'buildObjectTodosToggle', 'drawObjectTodosToggle',
             'listRecordTypeObjects', 'describeRecordTypeImpacts', 'buildRecordTypesSection', 'appendUnavailableRecordTypesButton', 'setRecordTypesExpanded', 'recordTypeObjectSearchText',
@@ -133,10 +140,10 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
-    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653)
-    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section and the field editor, as the same value (#639, #640, #641, #642, #652, #653)', () => {
+    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654)
+    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor and Target Org Manager, as the same value (#639, #640, #641, #642, #652, #653, #654)', () => {
 
-        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants };
+        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants };
         const constantNames = Object.keys(tabConstants);
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
 
@@ -144,9 +151,21 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'RECIPE_COCKPIT_UPDATER_INTRO', 'RECIPE_COCKPIT_ADAPTER_APPLY_LABEL', 'RECIPE_COCKPIT_UPDATER_LOOKUP_REASON', 'RECIPE_COCKPIT_RECORD_LINK_TITLE',
             'RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY', 'RECIPE_COCKPIT_FAVORITE_TREE_LABEL',
             'RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH', 'RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES', 'RECIPE_COCKPIT_PICKLIST_RESET_LABEL', 'RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS', 'RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL',
+            'RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON', 'RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS', 'RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL',
             'RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL', 'RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE']));
         constantNames.forEach(constantName =>
             expect({ constantName, isSameValue: serviceExports[constantName] === tabConstants[constantName] })
+                .toEqual({ constantName, isSameValue: true }));
+
+    });
+
+    // RecipeCockpitOrgAuthorize's NOTIFICATIONS QUOTE THE BUTTON'S WORDS, SO ITS IMPORTERS KEEP READING THEM THERE (#654)
+    it('gives the Authorize org words from RecipeCockpitOrgAuthorize as the same values the panel draws (#654)', () => {
+
+        const orgAuthorizeExports: Record<string, unknown> = RecipeCockpitOrgAuthorizeModule;
+
+        ['RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL', 'RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL', 'RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP'].forEach(constantName =>
+            expect({ constantName, isSameValue: orgAuthorizeExports[constantName] === (RecipeCockpitDataOrgConstants as Record<string, unknown>)[constantName] })
                 .toEqual({ constantName, isSameValue: true }));
 
     });

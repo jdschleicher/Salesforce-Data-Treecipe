@@ -42,6 +42,9 @@ export {
     setAddFriendRunning,
     setWireLookupRunning
 } from './treecipe/fieldEditor/LookupWiring';
+export { buildDataOrgView, drawDataOrgViews } from './treecipe/dataOrg/DataOrgView';
+export { buildTreeInsertElement, drawTreeInsert, drawTreeInserts, setInsertRunning } from './treecipe/dataOrg/TreeInsert';
+export { renderDataOrgList, renderDataOrgListingRefused, renderDataOrgProvisional, renderDataOrgReadiness, renderDataOrgSelection, renderScratchOrgState, requestDataOrgs } from './treecipe/dataOrg/DataOrgListing';
 export { appendRecordTypeFieldsToggle, drawRecordTypeFieldsToggle, indexRecordTypeFields, isRecordTypeFieldsOnlyIn } from './treecipe/recordTypes/RecordTypeFieldsToggle';
 export { appendTodosToggle, buildObjectTodosToggle, buildTodoListElement, drawObjectTodosToggle, drawTodosToggle, isObjectTodosOnlyIn, isTodosOnlyIn } from './treecipe/recordTypes/TodosToggles';
 export {
