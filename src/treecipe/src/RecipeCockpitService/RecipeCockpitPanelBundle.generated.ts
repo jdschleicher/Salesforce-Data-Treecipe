@@ -25,6 +25,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     SVG_NAMESPACE: () => SVG_NAMESPACE,
     buildActionCard: () => buildActionCard,
     buildPencilGlyph: () => buildPencilGlyph,
+    buildQueryTab: () => buildQueryTab,
     buildRowTable: () => buildRowTable,
     buildSearchIconElement: () => buildSearchIconElement,
     buildTabSearch: () => buildTabSearch,
@@ -37,13 +38,17 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     createElement: () => createElement,
     drawToggle: () => drawToggle,
     drawTreePermissionSet: () => drawTreePermissionSet,
+    drawTreeQueryButtons: () => drawTreeQueryButtons,
     isMotionReduced: () => isMotionReduced,
     readHistorySort: () => readHistorySort,
     renderConfirmRequest: () => renderConfirmRequest,
     renderPermissionSetAssignState: () => renderPermissionSetAssignState,
+    renderTreeQueries: () => renderTreeQueries,
+    renderTreeQueryResult: () => renderTreeQueryResult,
     renderTreeValidationRules: () => renderTreeValidationRules,
     renderTroubleshootingHistory: () => renderTroubleshootingHistory,
     renderTroubleshootingSummary: () => renderTroubleshootingSummary,
+    requestTreeQueries: () => requestTreeQueries,
     requestTroubleshootingSummary: () => requestTroubleshootingSummary,
     selectTodosView: () => selectTodosView,
     selectTroubleshootingSubTab: () => selectTroubleshootingSubTab,
@@ -1995,6 +2000,280 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   }
   function describeRunningInsert() {
     return insertRunningDatasetFolderName !== null ? RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON : "A tree is being inserted.";
+  }
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitQueryTabConstants.ts
+  var RECIPE_COCKPIT_QUERY_INTRO = "The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks), then export what it returned as JSON or CSV. A query only reads.";
+
+  // src/treecipe/src/RecipeCockpitService/panel/query/QueryTab.ts
+  function buildQueryTab(treeState, panelElement) {
+    const querySearch = buildTabSearch(treeState, "query", "Search queries", applyQueryFilter);
+    treeState.querySearch = querySearch;
+    panelElement.appendChild(querySearch.element);
+    panelElement.appendChild(createElement("div", "treeQueryIntro muted", RECIPE_COCKPIT_QUERY_INTRO));
+    const queryListElement = createElement("div", "treeQueryList");
+    treeState.queryListElement = queryListElement;
+    queryListElement.appendChild(createElement("div", "treeQueryIntro muted", "Reading this run’s queries…"));
+    panelElement.appendChild(queryListElement);
+    treeState.queryStates = [];
+    applyQueryFilter(treeState);
+  }
+  function requestTreeQueries(treeState) {
+    if (renderedSequence === null) {
+      treeState.isTreeQueriesWanted = true;
+      return;
+    }
+    treeState.isTreeQueriesWanted = false;
+    vscodeApi.postMessage({ command: "loadTreeQueries", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+  }
+  function renderTreeQueries(queriesMessage) {
+    if (renderedSequence === null || queriesMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = treeStates.find(function(candidateTreeState) {
+      return candidateTreeState.tree.treeKey === queriesMessage.treeKey;
+    });
+    if (!treeState || !treeState.queryListElement) {
+      return;
+    }
+    const queryListElement = treeState.queryListElement;
+    if (treeState.queryStates.length > 0 && !queriesMessage.failureMessage) {
+      return;
+    }
+    queryListElement.textContent = "";
+    treeState.queryStates = [];
+    if (queriesMessage.failureMessage) {
+      queryListElement.appendChild(createElement("div", "treeQueryIntro muted", String(queriesMessage.failureMessage)));
+    } else if (!Array.isArray(queriesMessage.queries) || queriesMessage.queries.length === 0) {
+      queryListElement.appendChild(createElement("div", "treeQueryIntro muted", "This tree has no generated queries."));
+    } else {
+      queriesMessage.queries.forEach(function(treeQuery) {
+        buildTreeQuery(treeState, treeQuery);
+      });
+    }
+    if (treeState.pendingQueryResult) {
+      const pendingQueryResult = treeState.pendingQueryResult;
+      treeState.pendingQueryResult = null;
+      renderTreeQueryResult(pendingQueryResult);
+    }
+    drawTreeQueryButtons();
+    applyQueryFilter(treeState);
+  }
+  function buildTreeQuery(treeState, treeQuery) {
+    const generatedText = String(treeQuery.generatedText || "");
+    const queryTitle = String(treeQuery.objectApiName) + " · " + String(treeQuery.kindLabel);
+    const notes = Array.isArray(treeQuery.notes) ? treeQuery.notes : [];
+    const queryElement = createElement("div", "treeQuery");
+    const textElement = createElement("textarea", "treeQueryText");
+    const editedElement = createElement("span", "treeQueryEdited muted hidden", "edited");
+    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
+    const controlsElement = createElement("div", "treeQueryControls");
+    const runCard = buildActionCard("runQuery", "treeQueryRun", "Run…");
+    const runButtonElement = runCard.buttonElement;
+    const resetButtonElement = createButton("secondary", "treeQueryReset", "Reset");
+    const exportJsonCard = buildActionCard("exportQueryJson", "treeQueryExport treeQueryExport-json", "Export JSON");
+    const exportCsvCard = buildActionCard("exportQueryCsv", "treeQueryExport treeQueryExport-csv", "Export CSV");
+    const exportJsonButtonElement = exportJsonCard.buttonElement;
+    const exportCsvButtonElement = exportCsvCard.buttonElement;
+    const cardsElement = createElement("div", "treeQueryCards actionCards");
+    const resultElement = createElement("div", "treeQueryResult hidden");
+    const titleElement = createElement("div", "treeQueryTitle", queryTitle);
+    queryElement.setAttribute("role", "group");
+    queryElement.setAttribute("aria-label", queryTitle);
+    titleElement.appendChild(editedElement);
+    queryElement.appendChild(titleElement);
+    notes.forEach(function(note) {
+      queryElement.appendChild(createElement("div", "treeQueryNote muted", String(note)));
+    });
+    textElement.value = typeof treeQuery.editedText === "string" ? treeQuery.editedText : generatedText;
+    textElement.setAttribute("aria-label", "SOQL for " + queryTitle);
+    textElement.setAttribute("spellcheck", "false");
+    textElement.setAttribute("maxlength", String(QUERY_MAX_LENGTH));
+    textElement.setAttribute("rows", String(Math.min(12, Math.max(3, generatedText.split("\\n").length))));
+    queryElement.appendChild(textElement);
+    queryElement.appendChild(refusalElement);
+    const queryState = {
+      queryKey: String(treeQuery.queryKey),
+      objectApiName: String(treeQuery.objectApiName),
+      kindLabel: String(treeQuery.kindLabel),
+      notes: notes.map(String),
+      generatedText,
+      savedText: textElement.value,
+      element: queryElement,
+      textElement,
+      editedElement,
+      refusalElement,
+      runCard,
+      drawnRunLabel: null,
+      exportCards: [exportJsonCard, exportCsvCard],
+      resultElement,
+      hasResult: false
+    };
+    const drawEdited = function() {
+      if (textElement.value !== generatedText) {
+        editedElement.classList.remove("hidden");
+      } else {
+        editedElement.classList.add("hidden");
+      }
+    };
+    const saveEdit = function() {
+      if (renderedSequence === null || textElement.value === queryState.savedText) {
+        return;
+      }
+      queryState.savedText = textElement.value;
+      vscodeApi.postMessage({ command: "saveTreeQueryEdit", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value === generatedText ? "" : textElement.value });
+    };
+    textElement.addEventListener("input", function() {
+      drawEdited();
+      refusalElement.classList.add("hidden");
+      if (treeState.searchQueries.query) {
+        applyQueryFilter(treeState);
+      }
+    });
+    textElement.addEventListener("change", saveEdit);
+    runButtonElement.addEventListener("click", function() {
+      if (runButtonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      const refusal = describeQueryRefusal(textElement.value);
+      if (refusal) {
+        refusalElement.textContent = refusal;
+        refusalElement.setAttribute("role", "alert");
+        refusalElement.classList.remove("hidden");
+        return;
+      }
+      saveEdit();
+      isTreeQueryRunning = true;
+      drawTreeQueryButtons();
+      vscodeApi.postMessage({ command: "runTreeQuery", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value });
+    });
+    resetButtonElement.addEventListener("click", function() {
+      if (resetButtonElement.disabled) {
+        return;
+      }
+      textElement.value = generatedText;
+      drawEdited();
+      refusalElement.classList.add("hidden");
+      saveEdit();
+      applyQueryFilter(treeState);
+    });
+    const exportEntries = [["json", exportJsonButtonElement], ["csv", exportCsvButtonElement]];
+    exportEntries.forEach(function(exportEntry) {
+      const exportButtonElement = exportEntry[1];
+      exportButtonElement.addEventListener("click", function() {
+        if (exportButtonElement.disabled || renderedSequence === null) {
+          return;
+        }
+        vscodeApi.postMessage({ command: "exportTreeQueryResult", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, exportFormat: exportEntry[0] });
+      });
+    });
+    controlsElement.appendChild(resetButtonElement);
+    cardsElement.appendChild(runButtonElement);
+    cardsElement.appendChild(exportJsonButtonElement);
+    cardsElement.appendChild(exportCsvButtonElement);
+    queryElement.appendChild(controlsElement);
+    queryElement.appendChild(cardsElement);
+    queryElement.appendChild(resultElement);
+    drawEdited();
+    treeState.queryStates.push(queryState);
+    treeState.queryListElement.appendChild(queryElement);
+  }
+  function describeQueryRefusal(queryText) {
+    const trimmedText = String(queryText || "").trim();
+    if (!trimmedText) {
+      return "The query is empty.";
+    }
+    if (trimmedText.length > QUERY_MAX_LENGTH) {
+      return "The query is longer than " + QUERY_MAX_LENGTH + " characters.";
+    }
+    if (!/^select\\s/i.test(trimmedText)) {
+      return "The query must be one SOQL SELECT statement.";
+    }
+    return "";
+  }
+  function drawTreeQueryButtons() {
+    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : "";
+    const runLabel = orgLabel ? "Run in " + orgLabel : "Run…";
+    const runTitle = orgLabel ? "Run this query against " + orgLabel + ", the org chosen in Target Org Manager" : "Choose the org to run this query against; it becomes the Target Org Manager selection";
+    treeStates.forEach(function(treeState) {
+      (treeState.queryStates || []).forEach(function(queryState) {
+        drawActionCardState(queryState.runCard, isTreeQueryRunning ? "A query is running." : "", runTitle);
+        if (queryState.drawnRunLabel !== runLabel) {
+          queryState.drawnRunLabel = runLabel;
+          queryState.runCard.titleElement.textContent = runLabel;
+        }
+        queryState.exportCards.forEach(function(exportCard) {
+          drawActionCardState(exportCard, isTreeQueryRunning ? "A query is running." : queryState.hasResult ? "" : "Run this query first", "Write what this query returned to RunArtifacts in the tree folder");
+        });
+      });
+    });
+  }
+  function renderTreeQueryResult(resultMessage) {
+    if (renderedSequence === null || resultMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = treeStates.find(function(candidateTreeState) {
+      return candidateTreeState.tree.treeKey === resultMessage.treeKey;
+    });
+    if (!treeState) {
+      return;
+    }
+    const queryState = (treeState.queryStates || []).find(function(candidateQueryState) {
+      return candidateQueryState.queryKey === resultMessage.queryKey;
+    });
+    if (!queryState) {
+      treeState.pendingQueryResult = resultMessage;
+      return;
+    }
+    treeStates.forEach(function(eachTreeState) {
+      (eachTreeState.queryStates || []).forEach(function(eachQueryState) {
+        eachQueryState.hasResult = false;
+        eachQueryState.resultElement.textContent = "";
+        eachQueryState.resultElement.classList.add("hidden");
+      });
+    });
+    const columns = Array.isArray(resultMessage.columns) ? resultMessage.columns.map(String) : [];
+    const rows = Array.isArray(resultMessage.rows) ? resultMessage.rows : [];
+    const recordCount = Number(resultMessage.recordCount) || 0;
+    let summaryText = pluralize(recordCount, "record", "records") + " from " + String(resultMessage.orgLabel || "the org");
+    if (resultMessage.isTruncated) {
+      summaryText += ", the first of " + String(resultMessage.totalSize) + " it matched";
+    }
+    const hiddenColumnCount = Number(resultMessage.hiddenColumnCount) || 0;
+    if (rows.length < recordCount) {
+      summaryText += ". Showing the first " + rows.length + " rows";
+    }
+    if (hiddenColumnCount > 0) {
+      summaryText += (rows.length < recordCount ? " and " : ". Showing ") + pluralize(columns.length, "column", "columns") + ", " + hiddenColumnCount + " more not shown";
+    }
+    if (rows.length < recordCount || hiddenColumnCount > 0) {
+      summaryText += "; Export writes them all.";
+    }
+    queryState.resultElement.appendChild(createElement("div", "treeQueryResultSummary muted", summaryText));
+    if (columns.length > 0) {
+      queryState.resultElement.appendChild(buildRecordTable(columns, rows, resultMessage.recordLinks, resultMessage.recordLinkSequence, void 0));
+    }
+    queryState.hasResult = true;
+    queryState.resultElement.classList.remove("hidden");
+    drawTreeQueryButtons();
+  }
+  function applyQueryFilter(treeState) {
+    const searchQuery = treeState.searchQueries.query;
+    const queryStates = treeState.queryStates || [];
+    let matchingCount = 0;
+    queryStates.forEach(function(queryState) {
+      const searchText = [queryState.objectApiName, queryState.kindLabel].concat(queryState.notes).concat([String(queryState.textElement.value || "")]).join("\\n").toLowerCase();
+      const isMatch = !searchQuery || searchText.indexOf(searchQuery) !== -1;
+      if (isMatch) {
+        matchingCount++;
+        queryState.element.classList.remove("hidden");
+      } else {
+        queryState.element.classList.add("hidden");
+      }
+    });
+    if (treeState.querySearch) {
+      treeState.querySearch.matchCountElement.textContent = !searchQuery ? pluralize(queryStates.length, "query", "queries") : matchingCount > 0 ? matchingCount + " of " + pluralize(queryStates.length, "query", "queries") : "no matches";
+    }
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();

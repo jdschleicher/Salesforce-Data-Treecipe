@@ -20,3 +20,4 @@ export { selectTodosView } from './troubleshooting/TroubleshootingTodos';
 export { drawTreePermissionSet, renderPermissionSetAssignState } from './troubleshooting/TroubleshootingActions';
 export { buildValidationRuleSourceLink, renderTreeValidationRules } from './troubleshooting/TroubleshootingValidationRules';
 export { readHistorySort, renderTroubleshootingHistory } from './troubleshooting/TroubleshootingHistory';
+export { buildQueryTab, drawTreeQueryButtons, renderTreeQueries, renderTreeQueryResult, requestTreeQueries } from './query/QueryTab';
