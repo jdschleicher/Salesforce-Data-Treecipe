@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { DatasetInsertAttemptService } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
+import type { RunHistoryOutcome, RunHistoryRowStatus } from './RecipeCockpitTroubleshootingConstants';
 
 /*
     The Troubleshooting tab's History (#485): every Troubleshooting step taken for a tree, read from
@@ -44,12 +45,12 @@ export const RUN_HISTORY_STEP_LABELS: Readonly<Record<RunHistoryStep, string>> =
 });
 
 // unknown: THE CLI RAN AND ITS ANSWER COULD NOT SAY WHETHER THE STEP LANDED
-export type RunHistoryOutcome = 'succeeded' | 'partial' | 'failed' | 'cancelled' | 'unknown';
+export type { RunHistoryOutcome } from './RecipeCockpitTroubleshootingConstants';
 
 const RUN_HISTORY_OUTCOMES: readonly RunHistoryOutcome[] = ['succeeded', 'partial', 'failed', 'cancelled', 'unknown'];
 
 // A ROW'S STATUS: HOW THE STEP ENDED, OR WHY THAT IS NOT KNOWN
-export type RunHistoryRowStatus = RunHistoryOutcome | 'unreadable' | 'unrecorded';
+export type { RunHistoryRowStatus } from './RecipeCockpitTroubleshootingConstants';
 
 export const RUN_HISTORY_ROW_LIMIT = 500;
 

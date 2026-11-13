@@ -30,14 +30,26 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     buildTabSearch: () => buildTabSearch,
     buildToggleElement: () => buildToggleElement,
     buildTreeGlyph: () => buildTreeGlyph,
+    buildTroubleshootingTab: () => buildTroubleshootingTab,
+    buildValidationRuleSourceLink: () => buildValidationRuleSourceLink,
     closeConfirmDialog: () => closeConfirmDialog,
     createButton: () => createButton,
     createElement: () => createElement,
     drawToggle: () => drawToggle,
+    drawTreePermissionSet: () => drawTreePermissionSet,
     isMotionReduced: () => isMotionReduced,
+    readHistorySort: () => readHistorySort,
     renderConfirmRequest: () => renderConfirmRequest,
+    renderPermissionSetAssignState: () => renderPermissionSetAssignState,
+    renderTreeValidationRules: () => renderTreeValidationRules,
+    renderTroubleshootingHistory: () => renderTroubleshootingHistory,
+    renderTroubleshootingSummary: () => renderTroubleshootingSummary,
+    requestTroubleshootingSummary: () => requestTroubleshootingSummary,
+    selectTodosView: () => selectTodosView,
+    selectTroubleshootingSubTab: () => selectTroubleshootingSubTab,
     setShown: () => setShown,
-    setShownWithMotion: () => setShownWithMotion
+    setShownWithMotion: () => setShownWithMotion,
+    troubleshootingSearchKey: () => troubleshootingSearchKey
   });
 
   // src/treecipe/src/CockpitKit/CockpitConfirmLabels.ts
@@ -677,6 +689,1312 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     pathElement.setAttribute("d", RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
     glyphElement.appendChild(pathElement);
     return glyphElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitTroubleshootingConstants.ts
+  var RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = "Assign permission sets to me…";
+  var RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL = "Generate permission set…";
+  var RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL = "Retrieve validation rules…";
+  var RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS = Object.freeze({
+    validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
+    fields: "Retrieve fields…",
+    recordTypes: "Retrieve record types…",
+    globalValueSets: "Retrieve global value sets…"
+  });
+  var RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND = Object.freeze({
+    validationRules: "retrieveTreeValidationRules",
+    fields: "retrieveTreeFields",
+    recordTypes: "retrieveTreeRecordTypes",
+    globalValueSets: "retrieveTreeGlobalValueSets"
+  });
+  var RECIPE_COCKPIT_DEPLOY_ACTION_LABELS = Object.freeze({
+    permissionSet: "Deploy permission set…",
+    fields: "Deploy fields & dependencies…",
+    globalValueSets: "Deploy global value sets…",
+    recordTypes: "Deploy record types…"
+  });
+  var RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND = Object.freeze({
+    validationRules: "retrieveValidationRules",
+    fields: "retrieveFields",
+    recordTypes: "retrieveRecordTypes",
+    globalValueSets: "retrieveGlobalValueSets"
+  });
+  var RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND = Object.freeze({
+    permissionSet: "deployPermissionSet",
+    fields: "deployFields",
+    globalValueSets: "deployGlobalValueSets",
+    recordTypes: "deployRecordTypes"
+  });
+  var RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND = Object.freeze({
+    permissionSet: "deployTreePermissionSet",
+    fields: "deployTreeFields",
+    globalValueSets: "deployTreeGlobalValueSets",
+    recordTypes: "deployTreeRecordTypes"
+  });
+  var RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL = "Troubleshooting";
+  var RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS = ["todos", "fields", "permissions", "validationRules", "recordTypes", "globalValueSets", "history"];
+  var RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS = Object.freeze({
+    todos: "TODO's",
+    fields: "Fields",
+    permissions: "Permissions",
+    validationRules: "Validation Rules",
+    recordTypes: "Record Types",
+    globalValueSets: "Global Value Sets",
+    history: "History"
+  });
+  var RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS = Object.freeze({
+    todos: "Search TODOs by object, field or text",
+    fields: "Search field actions",
+    permissions: "Search permission set actions",
+    validationRules: "Search validation rules by object, rule, field or message",
+    recordTypes: "Search record type actions",
+    globalValueSets: "Search global value set actions",
+    history: "Search history by step, org, outcome, run or file"
+  });
+  var RECIPE_COCKPIT_NO_TREE_TODOS_NOTE = "No TODO comments in this tree's recipe.";
+  var RECIPE_COCKPIT_HISTORY_COLUMNS = [
+    { key: "time", label: "Time" },
+    { key: "step", label: "Step" },
+    { key: "org", label: "Org" },
+    { key: "outcome", label: "Outcome" },
+    { key: "run", label: "Run" },
+    { key: "files", label: "Files" }
+  ];
+  var RECIPE_COCKPIT_HISTORY_SORT_COLUMNS = ["time", "step", "org", "outcome", "run"];
+  var RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY = {
+    succeeded: { emoji: "✅", label: "Succeeded" },
+    partial: { emoji: "⚠️", label: "Partly succeeded" },
+    failed: { emoji: "❌", label: "Failed" },
+    cancelled: { emoji: "🚫", label: "Cancelled" },
+    unknown: { emoji: "❔", label: "Outcome unknown" },
+    unreadable: { emoji: "❗", label: "Summary unreadable" },
+    unrecorded: { emoji: "➖", label: "Not recorded" }
+  };
+  var RECIPE_COCKPIT_HISTORY_LOADING_NOTE = "Reading this tree's history…";
+  var RECIPE_COCKPIT_HISTORY_EMPTY_NOTE = "No Troubleshooting step has been run for this tree yet. Each deploy, retrieve, permission set assignment and Generate permission set is listed here once it has run.";
+  var RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE = "This step ran before Treecipe recorded how a step ended, so only its time and files are known.";
+  var RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE = "This step's summary file could not be read, so how it ended is not shown.";
+  var RECIPE_COCKPIT_TODOS_VIEWS = Object.freeze(["open", "removed"]);
+  var RECIPE_COCKPIT_TODOS_VIEW_LABELS = Object.freeze({ open: "Open", removed: "Removed" });
+  var RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER = "Search removed TODOs by object, field or text";
+  var RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE = "No TODO has been removed from this tree's recipe. Remove TODO on an open TODO moves it here, and Restore puts it back.";
+  var RECIPE_COCKPIT_TODO_REMOVE_LABEL = "Remove TODO";
+  var RECIPE_COCKPIT_TODO_RESTORE_LABEL = "Restore";
+  var RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS = Object.freeze({
+    "field-value": "This TODO is the field's whole value: removing it would leave the field empty. Edit or untick the field in the Treecipe tab instead.",
+    "record-type-options": "The Recipe Cockpit and Run Faker read this line to find the field's record type sections, so it stays.",
+    "commented-out-marker": "This line is the Recipe Cockpit's marker for a commented-out field, which restoring the field needs.",
+    "scalar-content": "This line is inside the field's multi-line value, where YAML reads it as part of the value rather than a comment, so it stays.",
+    "indistinct-occurrence": "This object is written more than once without a nickname that tells this one apart, so the TODO could not be put back in the same place."
+  });
+  var RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON = "This TODO is the lookup's whole value: removing it would leave the lookup empty. In the Treecipe tab, give it a record Id with its pencil or wire it to a parent instead.";
+  var RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON = "This TODO is in another recipe file than this tree's, so it can be removed only from that tree's card.";
+  var RECIPE_COCKPIT_TODO_NO_RECIPE_REASON = "This tree has no single recipe file to write, so its TODOs cannot be removed here.";
+  var RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS = Object.freeze({
+    applied: "Applied",
+    notApplied: "Not applied",
+    inactive: "Inactive",
+    notInRun: "Not in this run",
+    unreadable: "Unreadable"
+  });
+  var RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE = "Reading this project's validation rules…";
+  var RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE = "This project holds no validation rule files for this tree's objects. Retrieve validation rules… brings them from an org; run Generate Treecipe afterwards so they shape the recipe.";
+  var RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE = "No validation rules.";
+  var RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE = "Added or activated since Generate Treecipe ran. Run Generate Treecipe to apply it.";
+  var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = "↗ xml";
+  var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX = "Open the validation rule file of";
+  var RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE = "This run recorded the rule, and its file is no longer in this project.";
+  var RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE = "Constrains no field this run read.";
+  var RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = "TODO in this field's value";
+  var RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON = "A data set is being inserted.";
+  var RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingActions.ts
+  function buildDeployAction(treeState, deployKind) {
+    const actionCard = buildActionCard(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND[deployKind], "troubleshootingDeploy troubleshootingDeploy-" + deployKind, RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind]);
+    const buttonElement = actionCard.buttonElement;
+    actionCard.detailElement.classList.add("troubleshootingSummary");
+    setTextShown(actionCard.detailElement, "Reading this project…");
+    buttonElement.addEventListener("click", function() {
+      if (buttonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      isMetadataDeployRunning = true;
+      metadataDeployRunningKey = treeState.tree.treeKey + "\\n" + deployKind;
+      drawTreeInserts();
+      drawDataOrgViews();
+      const deployMessage = { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: treeState.tree.treeKey };
+      if (dataOrgSelectedIndex !== null) {
+        deployMessage.orgIndex = dataOrgSelectedIndex;
+      }
+      vscodeApi.postMessage(deployMessage);
+    });
+    treeState.deployCards[deployKind] = actionCard;
+    return actionCard;
+  }
+  function describeDeploySummary(summary, deployKind) {
+    if (!summary) {
+      return { text: "Reading this project…", emptyReason: "Reading this project…" };
+    }
+    if (summary.failureMessage) {
+      return { text: summary.failureMessage, emptyReason: summary.failureMessage };
+    }
+    if (deployKind === "permissionSet") {
+      return {
+        text: pluralize(summary.permissionSetCount, "permission set", "permission sets") + " in this project grant access to this tree.",
+        emptyReason: summary.permissionSetCount === 0 ? "No permission set in this project grants access to this tree. Generate permission set… writes one." : ""
+      };
+    }
+    if (deployKind === "fields") {
+      const notes = [];
+      if (summary.standardFieldCount > 0) {
+        notes.push(pluralize(summary.standardFieldCount, "standard field", "standard fields") + " never deployed");
+      }
+      if (summary.unreadableFieldCount > 0) {
+        notes.push(pluralize(summary.unreadableFieldCount, "custom field", "custom fields") + " with no readable source file");
+      }
+      const missingObjectCount = (summary.missingCustomObjectCount || 0) + (summary.unreadableCustomObjectCount || 0);
+      if (missingObjectCount > 0) {
+        notes.push(pluralize(missingObjectCount, "custom object", "custom objects") + " with no readable .object-meta.xml");
+      }
+      return {
+        text: pluralize(summary.customFieldCount, "CustomField", "CustomField") + (summary.customObjectCount > 0 ? " and " + pluralize(summary.customObjectCount, "CustomObject", "CustomObject") : "") + (notes.length > 0 ? "; " + notes.join("; ") : "") + ".",
+        emptyReason: summary.customFieldCount === 0 ? "This tree has no custom field whose source file this project holds." : ""
+      };
+    }
+    if (deployKind === "globalValueSets") {
+      return {
+        text: pluralize(summary.globalValueSetCount, "GlobalValueSet", "GlobalValueSet") + (summary.missingGlobalValueSetCount > 0 ? "; " + pluralize(summary.missingGlobalValueSetCount, "named value set", "named value sets") + " this project does not hold" : "") + ".",
+        emptyReason: summary.globalValueSetCount === 0 ? "No field of this tree names a global value set this project holds." : ""
+      };
+    }
+    return {
+      text: pluralize(summary.recordTypeCount, "RecordType", "RecordType") + ".",
+      emptyReason: summary.recordTypeCount === 0 ? "No object of this tree has a record type in this project." : ""
+    };
+  }
+  function buildRetrieveAction(treeState, retrieveKind) {
+    const className = retrieveKind === "validationRules" ? "treeRetrieveValidationRules" : "troubleshootingRetrieve troubleshootingRetrieve-" + retrieveKind;
+    const actionCard = buildActionCard(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND[retrieveKind], className, RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind]);
+    const retrieveButtonElement = actionCard.buttonElement;
+    retrieveButtonElement.addEventListener("click", function() {
+      if (retrieveButtonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      isMetadataRetrieveRunning = true;
+      metadataRetrieveRunningKey = treeState.tree.treeKey + "\\n" + retrieveKind;
+      drawTreeInserts();
+      drawDataOrgViews();
+      vscodeApi.postMessage({ command: RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[retrieveKind], treeKey: treeState.tree.treeKey });
+    });
+    treeState.retrieveCards[retrieveKind] = actionCard;
+    return actionCard;
+  }
+  function describeRetrieveSummary(treeState, retrieveKind) {
+    const summary = treeState.troubleshootingSummary;
+    if (retrieveKind === "validationRules") {
+      return { text: "", emptyReason: "" };
+    }
+    if (retrieveKind === "recordTypes") {
+      return {
+        text: pluralize(treeState.tree.objects.length, "object", "objects") + ", each asked for every record type the org holds.",
+        emptyReason: treeState.tree.objects.length === 0 ? "This tree has no object." : ""
+      };
+    }
+    if (!summary) {
+      return { text: "Reading this project…", emptyReason: "Reading this project…" };
+    }
+    if (summary.failureMessage) {
+      const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, "Nothing can be retrieved: ");
+      return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
+    }
+    if (retrieveKind === "fields") {
+      const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
+      return {
+        text: pluralize(fieldCount, "custom field", "custom fields") + "; " + summary.customFieldCount + " with a source file here.",
+        emptyReason: fieldCount === 0 ? "This tree has no custom field to retrieve." : ""
+      };
+    }
+    const valueSetCount = summary.globalValueSetCount + summary.missingGlobalValueSetCount;
+    return {
+      text: pluralize(valueSetCount, "named value set", "named value sets") + "; " + summary.globalValueSetCount + " held here.",
+      emptyReason: valueSetCount === 0 ? "No field of this tree names a global value set." : ""
+    };
+  }
+  function buildAssignPermissionSetCard(treeState) {
+    const actionCard = buildActionCard("assignPermissionSets", "treePermissionSets", RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL);
+    const buttonElement = actionCard.buttonElement;
+    buttonElement.setAttribute("title", RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
+    buttonElement.addEventListener("click", function() {
+      if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) {
+        return;
+      }
+      isPermissionSetAssignRunning = true;
+      drawTreeInserts();
+      drawDataOrgViews();
+      const permissionSetMessage = { command: "assignTreePermissionSets", treeKey: treeState.tree.treeKey };
+      if (dataOrgSelectedIndex !== null) {
+        permissionSetMessage.orgIndex = dataOrgSelectedIndex;
+      }
+      vscodeApi.postMessage(permissionSetMessage);
+    });
+    treeState.permissionSetCard = actionCard;
+    return actionCard;
+  }
+  function buildGeneratePermissionSetCard(treeState) {
+    const actionCard = buildActionCard("generatePermissionSet", "treeGeneratePermissionSet", RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL);
+    const generateButtonElement = actionCard.buttonElement;
+    generateButtonElement.addEventListener("click", function() {
+      if (generateButtonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      vscodeApi.postMessage({ command: "generateTreePermissionSet", treeKey: treeState.tree.treeKey });
+    });
+    treeState.generatePermissionSetCard = actionCard;
+    return actionCard;
+  }
+  function drawTreePermissionSet(treeState) {
+    const permissionSetCard = treeState.permissionSetCard;
+    if (permissionSetCard) {
+      const assignReason = isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : insertRunningTreeKey !== null ? describeRunningInsert() : isScratchOrgRunning ? "A scratch org is being set up." : "";
+      drawActionCardState(permissionSetCard, assignReason, RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
+    }
+    const generateCard = treeState.generatePermissionSetCard;
+    if (generateCard) {
+      const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? "Every object of this tree is excluded, so there is nothing to grant." : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : "";
+      drawActionCardState(generateCard, generateReason, "Write a permission set granting Create and Read on this tree's objects and access to its fields into this project's permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.");
+    }
+    const retrieveCards = treeState.retrieveCards || {};
+    Object.keys(retrieveCards).forEach(function(retrieveKind) {
+      const retrieveCard = retrieveCards[retrieveKind];
+      const described = describeRetrieveSummary(treeState, retrieveKind);
+      const busyReason = isMetadataRetrieveRunning ? "Metadata is being retrieved." : insertRunningTreeKey !== null ? describeRunningInsert() : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : "";
+      const title = metadataRetrieveRunningKey === treeState.tree.treeKey + "\\n" + retrieveKind ? "Retrieving…" : RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind];
+      setTextShown(retrieveCard.detailElement, described.text);
+      if (retrieveCard.titleElement.textContent !== title) {
+        retrieveCard.titleElement.textContent = title;
+      }
+      drawActionCardState(retrieveCard, described.emptyReason || busyReason, retrieveKind === "validationRules" ? "Retrieve the validation rules of this tree's objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them." : "Retrieve these components of this tree from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; run Generate Treecipe afterwards.");
+    });
+    const deployCards = treeState.deployCards || {};
+    Object.keys(deployCards).forEach(function(deployKind) {
+      const deployCard = deployCards[deployKind];
+      const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
+      const busyReason = isMetadataDeployRunning ? "Metadata is being deployed." : insertRunningTreeKey !== null ? describeRunningInsert() : isScratchOrgRunning ? "A scratch org is being set up." : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataRetrieveRunning ? "Metadata is being retrieved." : "";
+      const deployReason = described.emptyReason || busyReason;
+      const title = metadataDeployRunningKey === treeState.tree.treeKey + "\\n" + deployKind ? "Deploying…" : RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind];
+      setTextShown(deployCard.detailElement, described.text);
+      if (deployCard.titleElement.textContent !== title) {
+        deployCard.titleElement.textContent = title;
+      }
+      drawActionCardState(deployCard, deployReason, "Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.");
+    });
+    if (treeState.troubleshootingSubTabStates) {
+      applyTroubleshootingFilter(treeState, "actions");
+    }
+  }
+  function renderPermissionSetAssignState(hostMessage) {
+    isPermissionSetAssignRunning = !!hostMessage.isRunning;
+    drawDataOrgViews();
+    drawTreeInserts();
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingHistory.ts
+  function buildTroubleshootingHistory(treeState, subTabState) {
+    subTabState.noun = ["step", "steps"];
+    subTabState.historyRows = [];
+    treeState.historySubTabState = subTabState;
+    if (!treeState.historySort) {
+      treeState.historySort = readHistorySort(null);
+    }
+    const historyListElement = createElement("div", "troubleshootingHistory");
+    treeState.historyListElement = historyListElement;
+    historyListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_HISTORY_LOADING_NOTE));
+    subTabState.listElement.appendChild(historyListElement);
+  }
+  function readHistorySort(savedSort) {
+    if (savedSort && typeof savedSort === "object") {
+      const { column, isDescending } = savedSort;
+      if (RECIPE_COCKPIT_HISTORY_SORT_COLUMNS.indexOf(column) !== -1 && typeof isDescending === "boolean") {
+        return { column, isDescending };
+      }
+    }
+    return { column: "time", isDescending: true };
+  }
+  function requestTroubleshootingHistory(treeState) {
+    if (renderedSequence === null || treeState.isHistoryRequested || !treeState.historyListElement) {
+      return;
+    }
+    treeState.isHistoryRequested = true;
+    vscodeApi.postMessage({ command: "loadTroubleshootingHistory", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+  }
+  function renderTroubleshootingHistory(historyMessage) {
+    if (renderedSequence === null || historyMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(historyMessage.treeKey);
+    if (!treeState || !treeState.historyListElement) {
+      return;
+    }
+    treeState.historyMessage = historyMessage;
+    drawTroubleshootingHistory(treeState);
+    vscodeApi.postMessage({ command: "troubleshootingHistoryRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence });
+  }
+  function historyStatusOf(row) {
+    return hasOwnKey(RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY, row.status) ? RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY[row.status] : { emoji: "", label: String(row.status) };
+  }
+  function historySortValue(treeState, row, column) {
+    if (column === "time") {
+      return Number(row.timeMs) || 0;
+    }
+    if (column === "step") {
+      return String(row.stepLabel).toLowerCase();
+    }
+    if (column === "org") {
+      return typeof row.orgLabel === "string" ? row.orgLabel.toLowerCase() : "";
+    }
+    if (column === "outcome") {
+      return historyStatusOf(row).label.toLowerCase();
+    }
+    return versionLabelOf(treeState, typeof row.runFolderName === "string" ? row.runFolderName : null).toLowerCase();
+  }
+  function sortHistoryRowStates(treeState, rowStates) {
+    const sort = treeState.historySort;
+    return rowStates.slice().sort(function(first, second) {
+      const firstValue = historySortValue(treeState, first.row, sort.column);
+      const secondValue = historySortValue(treeState, second.row, sort.column);
+      const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
+      if (order !== 0) {
+        return sort.isDescending ? -order : order;
+      }
+      return (Number(second.row.timeMs) || 0) - (Number(first.row.timeMs) || 0);
+    });
+  }
+  function drawTroubleshootingHistory(treeState) {
+    const historyMessage = treeState.historyMessage;
+    const subTabState = treeState.historySubTabState;
+    const listElement = treeState.historyListElement;
+    const rows = Array.isArray(historyMessage.rows) ? historyMessage.rows : [];
+    const historyRows = [];
+    listElement.textContent = "";
+    subTabState.historyRows = historyRows;
+    if (rows.length === 0) {
+      listElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_HISTORY_EMPTY_NOTE));
+      applyTroubleshootingFilter(treeState, "history");
+      return;
+    }
+    const rowTable = buildRowTable({
+      className: "historyTable",
+      columnClassName: "history",
+      columns: RECIPE_COCKPIT_HISTORY_COLUMNS,
+      sortColumns: RECIPE_COCKPIT_HISTORY_SORT_COLUMNS,
+      sort: treeState.historySort,
+      onSort: function(column) {
+        sortTroubleshootingHistory(treeState, column);
+      }
+    });
+    treeState.historySortButtons = rowTable.sortButtons;
+    rows.forEach(function(row) {
+      historyRows.push(buildHistoryRow(treeState, historyMessage, row));
+    });
+    sortHistoryRowStates(treeState, historyRows).forEach(function(rowState) {
+      rowTable.bodyElement.appendChild(rowState.element);
+    });
+    listElement.appendChild(rowTable.wrapElement);
+    treeState.historyBodyElement = rowTable.bodyElement;
+    if (historyMessage.hiddenRowCount > 0) {
+      listElement.appendChild(createElement("div", "historyHiddenNote muted", pluralize(historyMessage.hiddenRowCount, "older step is", "older steps are") + " not shown."));
+    }
+    applyTroubleshootingFilter(treeState, "history");
+  }
+  function buildHistoryRow(treeState, historyMessage, row) {
+    const rowElement = createElement("tr", "historyRow historyRow-" + String(row.status));
+    const statusDisplay = historyStatusOf(row);
+    const runLabel = versionLabelOf(treeState, typeof row.runFolderName === "string" ? row.runFolderName : null);
+    const files = Array.isArray(row.files) ? row.files : [];
+    const timeCell = createElement("td", "historyTime", String(row.timeLabel));
+    if (typeof row.finishedAtLabel === "string") {
+      timeCell.setAttribute("title", "Ended " + row.finishedAtLabel);
+    }
+    const orgCell = createElement("td", "historyOrg", typeof row.orgLabel === "string" ? row.orgLabel : "");
+    if (typeof row.orgUsername === "string") {
+      orgCell.setAttribute("title", row.orgUsername);
+    }
+    const outcomeCell = createElement("td", "historyOutcome");
+    const statusElement = createElement("span", "historyStatus historyStatus-" + String(row.status));
+    const emojiElement = createElement("span", "historyStatusEmoji", statusDisplay.emoji);
+    emojiElement.setAttribute("aria-hidden", "true");
+    statusElement.appendChild(emojiElement);
+    statusElement.appendChild(createElement("span", "historyStatusLabel", statusDisplay.label));
+    outcomeCell.appendChild(statusElement);
+    const detailParts = [];
+    if (typeof row.succeededCount === "number") {
+      detailParts.push(row.succeededCount + " succeeded");
+    }
+    if (typeof row.failedCount === "number") {
+      detailParts.push(row.failedCount + " failed");
+    }
+    if (typeof row.detail === "string") {
+      detailParts.push(row.detail);
+    }
+    if (row.status === "unrecorded") {
+      detailParts.push(RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE);
+    }
+    if (row.status === "unreadable") {
+      detailParts.push(RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE);
+    }
+    const detailText = detailParts.join(" · ");
+    if (detailText) {
+      outcomeCell.appendChild(createElement("span", "historyDetail muted", detailText));
+    }
+    const filesCell = createElement("td", "historyFiles");
+    files.forEach(function(file) {
+      const fileButton = createButton("link", "historyFile", String(file.fileName));
+      fileButton.addEventListener("click", function() {
+        vscodeApi.postMessage({ command: "openTroubleshootingHistoryFile", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence, fileIndex: file.fileIndex });
+      });
+      filesCell.appendChild(fileButton);
+    });
+    rowElement.appendChild(timeCell);
+    rowElement.appendChild(createElement("td", "historyStep", String(row.stepLabel)));
+    rowElement.appendChild(orgCell);
+    rowElement.appendChild(outcomeCell);
+    rowElement.appendChild(createElement("td", "historyRun", runLabel));
+    rowElement.appendChild(filesCell);
+    const searchTexts = [String(row.timeLabel), String(row.stepLabel), statusDisplay.label, runLabel, detailText].concat(typeof row.orgLabel === "string" ? [row.orgLabel] : []).concat(typeof row.orgUsername === "string" ? [row.orgUsername] : []).concat(files.map(function(file) {
+      return String(file.fileName);
+    }));
+    return { row, element: rowElement, isShown: true, searchText: searchTexts.join("\\n").toLowerCase() };
+  }
+  function sortTroubleshootingHistory(treeState, column) {
+    const currentSort = treeState.historySort;
+    treeState.historySort = currentSort.column === column ? { column, isDescending: !currentSort.isDescending } : { column, isDescending: column === "time" };
+    drawTroubleshootingHistory(treeState);
+    const sortButton = treeState.historySortButtons && treeState.historySortButtons[column];
+    if (sortButton && typeof sortButton.focus === "function") {
+      sortButton.focus();
+    }
+    savePanelPlace();
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingTodos.ts
+  function buildTroubleshootingTodos(treeState, subTabState) {
+    subTabState.noun = ["TODO", "TODOs"];
+    const todoGroups = [];
+    subTabState.todoGroups = todoGroups;
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (treeObjectState.todoCount === 0) {
+        return;
+      }
+      const object = treeObjectState.object;
+      const hasNickname = !!object.nickname && (!!object.iteration || Array.isArray(object.iterations));
+      const objectLabel = object.objectApiName + (hasNickname ? " · " + object.nickname : "");
+      const groupState = {
+        object,
+        treeState,
+        element: null,
+        toggleElement: null,
+        countElement: createElement("span", "troubleshootingTodoCount muted"),
+        bodyElement: createElement("div", "troubleshootingTodoRows hidden"),
+        entries: [],
+        matchingCount: 0,
+        isBuilt: false,
+        isExpanded: false,
+        isShown: true
+      };
+      const addEntry = function(fieldLabel, todo, todoText, isFieldTodo) {
+        groupState.entries.push({
+          fieldLabel,
+          todo,
+          todoText,
+          isFieldTodo,
+          removeReason: findTodoRemoveReason(treeState.tree, object, todo, todoText),
+          searchText: [object.objectApiName, object.nickname || "", fieldLabel, todoText].join("\\n").toLowerCase(),
+          isMatch: true,
+          element: null
+        });
+      };
+      treeObjectState.objectTodos.forEach(function(todo) {
+        addEntry("on the object", todo, typeof todo.text === "string" ? todo.text : "", false);
+      });
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        fieldState.todos.forEach(function(todo) {
+          addEntry(fieldState.field.fieldApiName, todo, readFieldTodoText(todo, fieldState.field.recipeValue), true);
+        });
+      });
+      const groupCard = buildTroubleshootingGroupCard("todos", "troubleshootingTodoGroup", "troubleshootingTodoToggle", objectLabel, "troubleshootingTodoObject", groupState.countElement, groupState.bodyElement, true);
+      groupState.element = groupCard.element;
+      groupState.toggleElement = groupCard.headerElement;
+      groupState.toggleElement.addEventListener("click", function() {
+        setTodoGroupExpanded(groupState, !groupState.isExpanded, true);
+      });
+      if (!subTabState.groupGridElement) {
+        subTabState.groupGridElement = createElement("div", "troubleshootingGroupCards");
+        subTabState.listElement.appendChild(subTabState.groupGridElement);
+      }
+      subTabState.groupGridElement.appendChild(groupState.element);
+      todoGroups.push(groupState);
+    });
+    const todoCount = todoGroups.reduce(function(count, groupState) {
+      return count + groupState.entries.length;
+    }, 0);
+    subTabState.tabElement.textContent = todoCount > 0 ? RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS.todos + " (" + todoCount + ")" : RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS.todos;
+    subTabState.tabElement.setAttribute("data-label", subTabState.tabElement.textContent);
+    if (todoCount === 0) {
+      subTabState.listElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_NO_TREE_TODOS_NOTE));
+    }
+    buildRemovedTodos(treeState, subTabState);
+    drawTodosViewLabels(subTabState, todoCount);
+    selectTodosView(treeState, treeState.todosView, false);
+  }
+  function buildTodosViewFrame(treeState, subPanelElement) {
+    const stripElement = createElement("div", "todosViews");
+    stripElement.setAttribute("role", "tablist");
+    stripElement.setAttribute("aria-label", RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS.todos);
+    subPanelElement.appendChild(stripElement);
+    const viewStates = /* @__PURE__ */ Object.create(null);
+    RECIPE_COCKPIT_TODOS_VIEWS.forEach(function(todosView) {
+      const tabElement = createButton("secondary", "todosView todosView-" + todosView, RECIPE_COCKPIT_TODOS_VIEW_LABELS[todosView]);
+      const panelElement = createElement("div", "todosViewPanel todosViewPanel-" + todosView + (todosView === "open" ? "" : " hidden"));
+      tabElement.setAttribute("role", "tab");
+      tabElement.setAttribute("aria-selected", todosView === "open" ? "true" : "false");
+      panelElement.setAttribute("role", "tabpanel");
+      panelElement.setAttribute("aria-label", RECIPE_COCKPIT_TODOS_VIEW_LABELS[todosView]);
+      tabElement.addEventListener("click", function() {
+        selectTodosView(treeState, todosView, true);
+      });
+      stripElement.appendChild(tabElement);
+      subPanelElement.appendChild(panelElement);
+      viewStates[todosView] = { tabElement, panelElement };
+    });
+    if (treeState.todosView === void 0 || RECIPE_COCKPIT_TODOS_VIEWS.indexOf(treeState.todosView) === -1) {
+      treeState.todosView = RECIPE_COCKPIT_TODOS_VIEWS[0];
+    }
+    return { stripElement, viewStates };
+  }
+  function selectTodosView(treeState, todosView, isAnimated) {
+    const subTabState = (treeState.troubleshootingSubTabStates || []).find(function(candidate) {
+      return candidate.subTab === "todos";
+    });
+    if (!subTabState || !subTabState.todosFrame || todosView === void 0 || RECIPE_COCKPIT_TODOS_VIEWS.indexOf(todosView) === -1) {
+      return;
+    }
+    const todosFrame = subTabState.todosFrame;
+    treeState.todosView = todosView;
+    RECIPE_COCKPIT_TODOS_VIEWS.forEach(function(candidateView) {
+      const viewState = todosFrame.viewStates[candidateView];
+      const isSelected = candidateView === todosView;
+      if (isSelected) {
+        viewState.tabElement.classList.add("selected");
+      } else {
+        viewState.tabElement.classList.remove("selected");
+      }
+      viewState.tabElement.setAttribute("aria-selected", isSelected ? "true" : "false");
+      setShownWithMotion(viewState.panelElement, isSelected, isSelected && isAnimated);
+    });
+    savePanelPlace();
+  }
+  function drawTodosViewLabels(subTabState, openCount) {
+    const viewStates = subTabState.todosFrame.viewStates;
+    const removedCount = subTabState.removedEntries.length;
+    viewStates.open.tabElement.textContent = RECIPE_COCKPIT_TODOS_VIEW_LABELS.open + " (" + openCount + ")";
+    viewStates.removed.tabElement.textContent = RECIPE_COCKPIT_TODOS_VIEW_LABELS.removed + " (" + removedCount + ")";
+  }
+  function findTodoRemoveReason(tree, object, todo, todoText) {
+    if (!tree.runFakerRecipeFileName) {
+      return RECIPE_COCKPIT_TODO_NO_RECIPE_REASON;
+    }
+    if (fileNameOf(object.recipeFilePath) !== tree.runFakerRecipeFileName) {
+      return RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON;
+    }
+    if (typeof todo.removeLock !== "string") {
+      return "";
+    }
+    if (todo.removeLock === "field-value" && todoText.indexOf(REFERENCE_ID_REQUIRED_TODO_TEXT) === 0) {
+      return RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON;
+    }
+    return hasOwnKey(RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS, todo.removeLock) ? RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS[todo.removeLock] : RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS["field-value"];
+  }
+  function buildTodoRowElement(isMatch, ownerLabel, isFieldOwner, sourceLinkElement, actionElement, todoText) {
+    const todoElement = createElement("div", isMatch ? "troubleshootingTodo" : "troubleshootingTodo hidden");
+    const headElement = createElement("div", "troubleshootingTodoHead");
+    headElement.appendChild(createElement("span", isFieldOwner ? "troubleshootingTodoField" : "troubleshootingTodoField muted", ownerLabel));
+    if (sourceLinkElement) {
+      headElement.appendChild(sourceLinkElement);
+    }
+    headElement.appendChild(actionElement);
+    todoElement.appendChild(headElement);
+    todoElement.appendChild(createElement("span", todoText ? "troubleshootingTodoText" : "troubleshootingTodoText muted", todoText || RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL));
+    return todoElement;
+  }
+  function buildRemoveTodoButton(treeState, entry) {
+    const removeElement = createButton("secondary", "troubleshootingTodoAction troubleshootingTodoRemove", RECIPE_COCKPIT_TODO_REMOVE_LABEL, "compact");
+    removeElement.setAttribute("aria-label", RECIPE_COCKPIT_TODO_REMOVE_LABEL + ": " + entry.fieldLabel + ", line " + entry.todo.lineNumber);
+    if (entry.removeReason) {
+      removeElement.disabled = true;
+      removeElement.setAttribute("title", entry.removeReason);
+      return removeElement;
+    }
+    removeElement.setAttribute("title", "Remove this TODO comment from the recipe file, after a confirmation. It is kept under Removed, where Restore puts it back.");
+    removeElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      vscodeApi.postMessage({ command: "removeTodo", treeKey: treeState.tree.treeKey, lineNumber: entry.todo.lineNumber });
+    });
+    removeElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(removeElement);
+    return removeElement;
+  }
+  function buildRemovedTodos(treeState, subTabState) {
+    const removedPanelElement = subTabState.todosFrame.viewStates.removed.panelElement;
+    const searchKey = troubleshootingSearchKey("todosRemoved");
+    if (typeof treeState.searchTexts[searchKey] !== "string") {
+      treeState.searchTexts[searchKey] = "";
+      treeState.searchQueries[searchKey] = "";
+    }
+    const removedSearch = buildTabSearch(treeState, searchKey, RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER, function() {
+      applyTroubleshootingFilter(treeState, "todos");
+    });
+    const removedListElement = createElement("div", "troubleshootingList troubleshootingGroupCards");
+    const removedGroups = [];
+    const removedEntries = [];
+    subTabState.removedSearch = removedSearch;
+    subTabState.removedListElement = removedListElement;
+    subTabState.removedGroups = removedGroups;
+    subTabState.removedEntries = removedEntries;
+    removedPanelElement.appendChild(removedSearch.element);
+    removedPanelElement.appendChild(removedListElement);
+    const removedTodos = Array.isArray(treeState.tree.removedTodos) ? treeState.tree.removedTodos : [];
+    const groupsByLabel = /* @__PURE__ */ Object.create(null);
+    removedTodos.forEach(function(removedTodo) {
+      const objectLabel = removedTodo.objectApiName + (removedTodo.objectNickname ? " · " + removedTodo.objectNickname : "");
+      let groupState = groupsByLabel[objectLabel];
+      if (!groupState) {
+        const countElement = createElement("span", "troubleshootingTodoCount muted");
+        const bodyElement = createElement("div", "troubleshootingTodoRows");
+        groupState = {
+          element: buildTroubleshootingGroupCard("todos", "troubleshootingTodoGroup expanded", "", objectLabel, "troubleshootingTodoObject", countElement, bodyElement, false).element,
+          countElement,
+          bodyElement,
+          entries: [],
+          matchingCount: 0,
+          isShown: true
+        };
+        removedListElement.appendChild(groupState.element);
+        groupsByLabel[objectLabel] = groupState;
+        removedGroups.push(groupState);
+      }
+      const fieldLabel = removedTodo.fieldApiName || "on the object";
+      const restoreElement = createButton("secondary", "troubleshootingTodoAction troubleshootingTodoRestore", RECIPE_COCKPIT_TODO_RESTORE_LABEL, "compact");
+      restoreElement.setAttribute("aria-label", RECIPE_COCKPIT_TODO_RESTORE_LABEL + ": " + fieldLabel + ", " + removedTodo.text);
+      restoreElement.setAttribute("title", "Put this TODO comment back in the recipe file where it was, after a confirmation");
+      restoreElement.addEventListener("click", function() {
+        if (isWireLookupRunning) {
+          return;
+        }
+        setWireLookupRunning(true);
+        vscodeApi.postMessage({ command: "restoreTodo", treeKey: treeState.tree.treeKey, removalKey: removedTodo.removalKey });
+      });
+      restoreElement.disabled = isWireLookupRunning;
+      wireLookupButtonElements.push(restoreElement);
+      const entry = {
+        searchText: [removedTodo.objectApiName, removedTodo.objectNickname || "", fieldLabel, removedTodo.text].join("\\n").toLowerCase(),
+        isMatch: true,
+        isShown: true,
+        element: buildTodoRowElement(true, fieldLabel, !!removedTodo.fieldApiName, null, restoreElement, removedTodo.text)
+      };
+      groupState.entries.push(entry);
+      groupState.bodyElement.appendChild(entry.element);
+      removedEntries.push(entry);
+    });
+    if (removedTodos.length === 0) {
+      removedListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE));
+    }
+  }
+  function setTodoGroupExpanded(groupState, isExpanded, isAnimated) {
+    if (isExpanded && !groupState.isBuilt) {
+      groupState.entries.forEach(function(entry) {
+        const object = groupState.object;
+        const sourceLinkElement = object.recipeFilePath && entry.todo.lineNumber ? buildSourceLink("treeTodoSource", "↗ yml", object.recipeFilePath, entry.todo.lineNumber) : null;
+        const todoElement = buildTodoRowElement(entry.isMatch, entry.fieldLabel, entry.isFieldTodo, sourceLinkElement, buildRemoveTodoButton(groupState.treeState, entry), entry.todoText);
+        entry.element = todoElement;
+        groupState.bodyElement.appendChild(todoElement);
+      });
+      groupState.isBuilt = true;
+    }
+    groupState.isExpanded = isExpanded;
+    setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+    drawTroubleshootingGroupExpanded(groupState, isExpanded);
+  }
+  function readFieldTodoText(todo, recipeValue) {
+    if (typeof todo.text === "string") {
+      return todo.text;
+    }
+    const value = typeof recipeValue === "string" ? recipeValue : "";
+    const valueStart = todo.valueStart;
+    const valueLength = todo.valueLength;
+    const isUsableSpan = Number.isInteger(valueStart) && Number.isInteger(valueLength) && valueStart >= 0 && valueLength > 0 && valueStart + valueLength <= value.length;
+    return isUsableSpan ? value.substr(valueStart, valueLength) : "";
+  }
+  function applyRemovedTodosFilter(treeState, subTabState) {
+    if (!subTabState.removedGroups) {
+      return;
+    }
+    const searchQuery = treeState.searchQueries[troubleshootingSearchKey("todosRemoved")] || "";
+    let matchingCount = 0;
+    subTabState.removedGroups.forEach(function(groupState) {
+      groupState.matchingCount = 0;
+      groupState.entries.forEach(function(entry) {
+        entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+        if (entry.isMatch) {
+          groupState.matchingCount++;
+        }
+        setShownIfChanged(entry, entry.element, entry.isMatch);
+      });
+      matchingCount += groupState.matchingCount;
+      setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
+      groupState.countElement.textContent = searchQuery ? groupState.matchingCount + " of " + pluralize(groupState.entries.length, "TODO", "TODOs") : pluralize(groupState.entries.length, "TODO", "TODOs");
+    });
+    const total = subTabState.removedEntries.length;
+    subTabState.removedSearch.matchCountElement.textContent = !searchQuery ? pluralize(total, "removed TODO", "removed TODOs") : matchingCount > 0 ? matchingCount + " of " + pluralize(total, "removed TODO", "removed TODOs") : "no matches";
+  }
+  function fileNameOf(filePath) {
+    const pathParts = String(filePath || "").split(/[\\\\/]/);
+    return pathParts[pathParts.length - 1];
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingValidationRules.ts
+  function buildTroubleshootingValidationRules(treeState, subTabState) {
+    subTabState.noun = ["rule", "rules"];
+    subTabState.ruleGroups = [];
+    treeState.validationRuleSubTabState = subTabState;
+    const validationRuleListElement = createElement("div", "validationRuleList troubleshootingGroupCards");
+    treeState.validationRuleListElement = validationRuleListElement;
+    validationRuleListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE));
+    subTabState.listElement.appendChild(validationRuleListElement);
+  }
+  function requestTreeValidationRules(treeState) {
+    if (renderedSequence === null || treeState.isValidationRulesRequested || !treeState.validationRuleListElement) {
+      return;
+    }
+    treeState.isValidationRulesRequested = true;
+    vscodeApi.postMessage({ command: "loadValidationRules", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+  }
+  function buildValidationRuleSearchText(objectApiName, entry) {
+    const texts = [objectApiName, entry.ruleName, entry.statusLabel, entry.activeLabel, entry.messageText, entry.fieldsText].concat(entry.reasonTexts);
+    if (entry.isFormulaExpanded) {
+      texts.push(entry.rule.formula);
+    }
+    return texts.join("\\n").toLowerCase();
+  }
+  function renderTreeValidationRules(rulesMessage) {
+    if (renderedSequence === null || rulesMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(rulesMessage.treeKey);
+    if (!treeState || !treeState.validationRuleListElement) {
+      return;
+    }
+    const listElement = treeState.validationRuleListElement;
+    const subTabState = treeState.validationRuleSubTabState;
+    const ruleGroups = [];
+    listElement.textContent = "";
+    subTabState.ruleGroups = ruleGroups;
+    if (rulesMessage.failureMessage) {
+      treeState.isValidationRulesRequested = false;
+      listElement.appendChild(createElement("div", "treeEmpty muted", String(rulesMessage.failureMessage)));
+      applyTroubleshootingFilter(treeState, "validationRules");
+      return;
+    }
+    const objects = Array.isArray(rulesMessage.objects) ? rulesMessage.objects : [];
+    const openableRuleKeys = /* @__PURE__ */ Object.create(null);
+    (Array.isArray(rulesMessage.openableRules) ? rulesMessage.openableRules : []).forEach(function(openableRule) {
+      openableRuleKeys[String(openableRule.objectApiName) + "\\n" + String(openableRule.ruleName)] = true;
+    });
+    const hasLocalRules = objects.some(function(object) {
+      return Array.isArray(object.rules) && object.rules.some(function(rule) {
+        return !rule.isFileMissing;
+      }) || object.unreadRuleCount > 0;
+    });
+    if (!hasLocalRules) {
+      listElement.appendChild(createElement("div", "validationRuleNoLocalRules muted", RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE));
+    }
+    objects.forEach(function(object) {
+      const rules = Array.isArray(object.rules) ? object.rules : [];
+      const objectApiName = String(object.objectApiName);
+      const groupState = {
+        objectApiName,
+        element: null,
+        toggleElement: null,
+        countElement: createElement("span", "validationRuleCount muted"),
+        bodyElement: createElement("div", "validationRuleRows hidden"),
+        entries: rules.map(function(rule) {
+          const entry = buildValidationRuleEntryState(objectApiName, rule);
+          entry.isSourceOpenable = !rule.isFileMissing && hasOwnKey(openableRuleKeys, objectApiName + "\\n" + entry.ruleName);
+          return entry;
+        }),
+        matchingCount: 0,
+        isBuilt: false,
+        isExpanded: false,
+        isShown: true
+      };
+      const groupCard = buildTroubleshootingGroupCard("validationRules", "validationRuleObject", "validationRuleToggle", objectApiName, "validationRuleObjectName", groupState.countElement, null, groupState.entries.length > 0);
+      const groupElement = groupCard.element;
+      groupState.element = groupElement;
+      const statusDetail = describeValidationRuleStatuses(groupState.entries);
+      if (statusDetail) {
+        groupCard.headerElement.appendChild(createElement("span", "validationRuleDetail muted", statusDetail));
+      }
+      if (groupState.entries.length > 0) {
+        groupState.toggleElement = groupCard.headerElement;
+        groupState.toggleElement.addEventListener("click", function() {
+          setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
+        });
+      }
+      if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
+        groupElement.appendChild(createElement("div", "validationRuleEmpty muted", RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE));
+      }
+      groupElement.appendChild(groupState.bodyElement);
+      if (object.unreadRuleCount > 0) {
+        groupElement.appendChild(createElement("div", "validationRuleUnread muted", pluralize(object.unreadRuleCount, "more rule file was", "more rule files were") + " not read."));
+      }
+      listElement.appendChild(groupElement);
+      ruleGroups.push(groupState);
+    });
+    applyTroubleshootingFilter(treeState, "validationRules");
+    if (Object.keys(openableRuleKeys).length > 0) {
+      vscodeApi.postMessage({ command: "validationRulesRendered", treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence, listSequence: rulesMessage.listSequence });
+    }
+  }
+  function buildValidationRuleEntryState(objectApiName, rule) {
+    const fieldApiNames = Array.isArray(rule.fieldApiNames) ? rule.fieldApiNames : [];
+    const reasonTexts = (Array.isArray(rule.reasons) ? rule.reasons : []).map(function(reason) {
+      return "Why not applied: " + String(reason);
+    });
+    if (rule.status === "notInRun") {
+      reasonTexts.push(RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE);
+    }
+    if (rule.isFileMissing) {
+      reasonTexts.push(RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE);
+    }
+    const entry = {
+      rule,
+      ruleName: String(rule.ruleName),
+      statusLabel: hasOwnKey(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS, rule.status) ? RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS[rule.status] : String(rule.status),
+      activeLabel: rule.isActive === true ? "active" : rule.isActive === false ? "inactive" : "",
+      messageText: typeof rule.errorMessage === "string" && rule.errorMessage !== "" ? "Error message: " + rule.errorMessage : "",
+      fieldsText: fieldApiNames.length > 0 ? "Constrains: " + fieldApiNames.map(String).join(", ") : RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE,
+      reasonTexts,
+      hasFormula: typeof rule.formula === "string" && rule.formula !== "",
+      isFormulaExpanded: false,
+      formulaElement: null,
+      searchText: "",
+      isMatch: true,
+      isShown: true,
+      element: null
+    };
+    entry.searchText = buildValidationRuleSearchText(objectApiName, entry);
+    return entry;
+  }
+  function setValidationRuleGroupExpanded(treeState, groupState, isExpanded, isAnimated) {
+    if (!groupState.toggleElement) {
+      return;
+    }
+    if (isExpanded && !groupState.isBuilt) {
+      groupState.entries.forEach(function(entry) {
+        const ruleElement = buildValidationRuleRow(treeState, groupState, entry);
+        entry.element = ruleElement;
+        if (!entry.isMatch) {
+          ruleElement.classList.add("hidden");
+        }
+        entry.isShown = entry.isMatch;
+        groupState.bodyElement.appendChild(ruleElement);
+      });
+      groupState.isBuilt = true;
+    }
+    groupState.isExpanded = isExpanded;
+    setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+    drawTroubleshootingGroupExpanded(groupState, isExpanded);
+  }
+  function describeValidationRuleStatuses(entries) {
+    const countsByLabel = /* @__PURE__ */ Object.create(null);
+    const labels = [];
+    Object.keys(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS).forEach(function(status) {
+      labels.push(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS[status]);
+    });
+    entries.forEach(function(entry) {
+      if (!hasOwnKey(countsByLabel, entry.statusLabel)) {
+        countsByLabel[entry.statusLabel] = 0;
+        if (labels.indexOf(entry.statusLabel) === -1) {
+          labels.push(entry.statusLabel);
+        }
+      }
+      countsByLabel[entry.statusLabel]++;
+    });
+    return labels.filter(function(label) {
+      return hasOwnKey(countsByLabel, label);
+    }).map(function(label) {
+      return countsByLabel[label] + " " + label.toLowerCase();
+    }).join(" · ");
+  }
+  function buildValidationRuleRow(treeState, groupState, entry) {
+    const rule = entry.rule;
+    const ruleElement = createElement("div", "validationRule validationRule-" + String(rule.status));
+    const headerElement = createElement("div", "validationRuleHeader");
+    headerElement.appendChild(createElement("span", "validationRuleName", entry.ruleName));
+    headerElement.appendChild(createElement("span", "validationRuleStatus", entry.statusLabel));
+    if (entry.activeLabel) {
+      headerElement.appendChild(createElement("span", "validationRuleActive muted", entry.activeLabel));
+    }
+    if (entry.isSourceOpenable) {
+      headerElement.appendChild(buildValidationRuleSourceLink("validationRuleSource", RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL, groupState.objectApiName, entry.ruleName));
+    }
+    ruleElement.appendChild(headerElement);
+    if (entry.messageText) {
+      ruleElement.appendChild(createElement("div", "validationRuleMessage", entry.messageText));
+    }
+    ruleElement.appendChild(createElement("div", "validationRuleFields muted", entry.fieldsText));
+    entry.reasonTexts.forEach(function(reasonText) {
+      ruleElement.appendChild(createElement("div", "validationRuleReason muted", reasonText));
+    });
+    if (entry.hasFormula) {
+      const toggleElement = createButton("secondary", "validationRuleFormulaToggle", "Show formula", "compact");
+      toggleElement.setAttribute("aria-expanded", "false");
+      toggleElement.addEventListener("click", function() {
+        if (!entry.formulaElement) {
+          entry.formulaElement = createElement("div", "validationRuleFormula hidden", rule.formula);
+          ruleElement.appendChild(entry.formulaElement);
+        }
+        entry.isFormulaExpanded = !entry.isFormulaExpanded;
+        entry.searchText = buildValidationRuleSearchText(groupState.objectApiName, entry);
+        toggleElement.textContent = entry.isFormulaExpanded ? "Hide formula" : "Show formula";
+        toggleElement.setAttribute("aria-expanded", entry.isFormulaExpanded ? "true" : "false");
+        setShownWithMotion(entry.formulaElement, entry.isFormulaExpanded, true);
+        applyTroubleshootingFilter(treeState, "validationRules");
+      });
+      ruleElement.appendChild(toggleElement);
+    }
+    return ruleElement;
+  }
+  function buildValidationRuleSourceLink(className, labelText, objectApiName, ruleName) {
+    const sourceLinkElement = createButton("link", className + " sourceLink", labelText);
+    const description = RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX + " " + objectApiName + "." + ruleName;
+    sourceLinkElement.setAttribute("title", description);
+    sourceLinkElement.setAttribute("aria-label", description);
+    sourceLinkElement.addEventListener("click", function() {
+      vscodeApi.postMessage({ command: "openValidationRuleSource", objectApiName, ruleName });
+    });
+    return sourceLinkElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingTab.ts
+  function buildTroubleshootingTab(treeState, panelElement) {
+    const tree = treeState.tree;
+    const stripElement = createElement("div", "troubleshootingSubTabs");
+    stripElement.setAttribute("role", "tablist");
+    stripElement.setAttribute("aria-label", RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL);
+    panelElement.appendChild(stripElement);
+    treeState.troubleshootingStripElement = stripElement;
+    treeState.troubleshootingSubTabStates = [];
+    treeState.deployCards = /* @__PURE__ */ Object.create(null);
+    treeState.retrieveCards = /* @__PURE__ */ Object.create(null);
+    if (treeState.troubleshootingSubTab === void 0 || RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
+      treeState.troubleshootingSubTab = RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS[0];
+    }
+    const addActionItem = function(subTabState, actionCard) {
+      if (!subTabState.cardGridElement) {
+        subTabState.cardGridElement = createElement("div", "troubleshootingCards");
+        subTabState.listElement.appendChild(subTabState.cardGridElement);
+      }
+      const actionElement = createElement("div", "troubleshootingAction");
+      actionElement.appendChild(actionCard.buttonElement);
+      subTabState.cardGridElement.appendChild(actionElement);
+      subTabState.items.push({ element: actionElement });
+    };
+    const addDeployItem = function(subTabState, deployKind) {
+      addActionItem(subTabState, buildDeployAction(treeState, deployKind));
+    };
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.forEach(function(subTab) {
+      const subTabState = addTroubleshootingSubTab(treeState, subTab, panelElement);
+      if (subTab === "todos") {
+        buildTroubleshootingTodos(treeState, subTabState);
+      } else if (subTab === "fields") {
+        addDeployItem(subTabState, "fields");
+        addActionItem(subTabState, buildRetrieveAction(treeState, "fields"));
+      } else if (subTab === "permissions") {
+        if (tree.objects.length > 0) {
+          addActionItem(subTabState, buildAssignPermissionSetCard(treeState));
+        }
+        addActionItem(subTabState, buildGeneratePermissionSetCard(treeState));
+        addDeployItem(subTabState, "permissionSet");
+      } else if (subTab === "validationRules") {
+        addActionItem(subTabState, buildRetrieveAction(treeState, "validationRules"));
+        buildTroubleshootingValidationRules(treeState, subTabState);
+      } else if (subTab === "recordTypes") {
+        addDeployItem(subTabState, "recordTypes");
+        addActionItem(subTabState, buildRetrieveAction(treeState, "recordTypes"));
+      } else if (subTab === "globalValueSets") {
+        addDeployItem(subTabState, "globalValueSets");
+        addActionItem(subTabState, buildRetrieveAction(treeState, "globalValueSets"));
+      } else if (subTab === "history") {
+        buildTroubleshootingHistory(treeState, subTabState);
+      }
+    });
+    selectTroubleshootingSubTab(treeState, treeState.troubleshootingSubTab, false);
+    drawTreePermissionSet(treeState);
+    applyTroubleshootingFilter(treeState);
+  }
+  function troubleshootingSearchKey(subTab) {
+    return "troubleshooting." + subTab;
+  }
+  function addTroubleshootingSubTab(treeState, subTab, panelElement) {
+    const label = RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS[subTab];
+    const tabElement = createButton("secondary", "troubleshootingSubTab troubleshootingSubTab-" + subTab, label);
+    tabElement.setAttribute("data-label", label);
+    const subPanelElement = createElement("div", "troubleshootingSubPanel troubleshootingSubPanel-" + subTab + " hidden");
+    const searchKey = troubleshootingSearchKey(subTab);
+    tabElement.setAttribute("role", "tab");
+    tabElement.setAttribute("aria-selected", "false");
+    subPanelElement.setAttribute("role", "tabpanel");
+    subPanelElement.setAttribute("aria-label", label);
+    tabElement.addEventListener("click", function() {
+      selectTroubleshootingSubTab(treeState, subTab, true);
+    });
+    if (typeof treeState.searchTexts[searchKey] !== "string") {
+      treeState.searchTexts[searchKey] = "";
+      treeState.searchQueries[searchKey] = "";
+    }
+    const search = buildTabSearch(treeState, searchKey, RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS[subTab], function() {
+      applyTroubleshootingFilter(treeState, subTab);
+    });
+    const listElement = createElement("div", "troubleshootingList");
+    const todosFrame = subTab === "todos" ? buildTodosViewFrame(treeState, subPanelElement) : null;
+    const contentElement = todosFrame ? todosFrame.viewStates.open.panelElement : subPanelElement;
+    contentElement.appendChild(search.element);
+    contentElement.appendChild(listElement);
+    treeState.troubleshootingStripElement.appendChild(tabElement);
+    panelElement.appendChild(subPanelElement);
+    const subTabState = { subTab, tabElement, panelElement: subPanelElement, search, listElement, items: [], noun: ["action", "actions"], todosFrame };
+    treeState.troubleshootingSubTabStates.push(subTabState);
+    return subTabState;
+  }
+  function selectTroubleshootingSubTab(treeState, subTab, isAnimated) {
+    const subTabStates = treeState.troubleshootingSubTabStates || [];
+    if (!subTabStates.some(function(subTabState) {
+      return subTabState.subTab === subTab;
+    })) {
+      return;
+    }
+    const subTabNames = subTabStates.map(function(subTabState) {
+      return subTabState.subTab;
+    });
+    const fromIndex = treeState.troubleshootingSubTab === void 0 ? -1 : subTabNames.indexOf(treeState.troubleshootingSubTab);
+    const toIndex = subTabNames.indexOf(subTab);
+    const stripElement = treeState.troubleshootingStripElement;
+    ["movingLeft", "movingRight", "noMotion"].forEach(function(className) {
+      stripElement.classList.remove(className);
+    });
+    if (!isAnimated) {
+      stripElement.classList.add("noMotion");
+    } else if (fromIndex !== toIndex) {
+      stripElement.classList.add(toIndex > fromIndex ? "movingRight" : "movingLeft");
+    }
+    treeState.troubleshootingSubTab = subTab;
+    if (isAnimated && subTab === "validationRules") {
+      requestTreeValidationRules(treeState);
+    }
+    if (isAnimated && subTab === "history") {
+      requestTroubleshootingHistory(treeState);
+    }
+    subTabStates.forEach(function(subTabState) {
+      const isSelected = subTabState.subTab === subTab;
+      if (isSelected) {
+        subTabState.tabElement.classList.add("selected");
+      } else {
+        subTabState.tabElement.classList.remove("selected");
+      }
+      subTabState.tabElement.setAttribute("aria-selected", isSelected ? "true" : "false");
+      setShownWithMotion(subTabState.panelElement, isSelected, isSelected && isAnimated);
+    });
+    savePanelPlace();
+  }
+  function applyTroubleshootingFilter(treeState, onlySubTab) {
+    (treeState.troubleshootingSubTabStates || []).forEach(function(subTabState) {
+      if (onlySubTab === "actions" ? subTabState.subTab === "todos" : onlySubTab && onlySubTab !== subTabState.subTab) {
+        return;
+      }
+      const searchQuery = treeState.searchQueries[troubleshootingSearchKey(subTabState.subTab)] || "";
+      let matchingCount = 0;
+      let total = 0;
+      if (subTabState.todoGroups) {
+        subTabState.todoGroups.forEach(function(groupState) {
+          groupState.matchingCount = 0;
+          groupState.entries.forEach(function(entry) {
+            entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+            if (entry.isMatch) {
+              groupState.matchingCount++;
+            }
+            if (entry.element) {
+              setShownIfChanged(entry, entry.element, entry.isMatch);
+            }
+          });
+          total += groupState.entries.length;
+          matchingCount += groupState.matchingCount;
+          setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
+          groupState.countElement.textContent = searchQuery ? groupState.matchingCount + " of " + pluralize(groupState.entries.length, "TODO", "TODOs") : pluralize(groupState.entries.length, "TODO", "TODOs");
+        });
+        expandMatchesWithinBudget(
+          subTabState.todoGroups,
+          function(groupState) {
+            return groupState.matchingCount;
+          },
+          function(groupState) {
+            return groupState.entries.length;
+          },
+          function(groupState, isExpanded) {
+            setTodoGroupExpanded(groupState, isExpanded, false);
+          }
+        );
+        applyRemovedTodosFilter(treeState, subTabState);
+      } else {
+        subTabState.items.forEach(function(item) {
+          const isMatch = !searchQuery || collectElementText(item.element).join("\\n").toLowerCase().indexOf(searchQuery) !== -1;
+          if (isMatch) {
+            matchingCount++;
+          }
+          if (item.isShown === void 0) {
+            item.isShown = true;
+          }
+          setShownIfChanged(item, item.element, isMatch);
+        });
+        total = subTabState.items.length;
+        if (subTabState.ruleGroups) {
+          matchingCount = 0;
+          total = 0;
+          subTabState.ruleGroups.forEach(function(groupState) {
+            groupState.matchingCount = 0;
+            groupState.entries.forEach(function(entry) {
+              entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+              if (entry.isMatch) {
+                groupState.matchingCount++;
+              }
+              if (entry.element) {
+                setShownIfChanged(entry, entry.element, entry.isMatch);
+              }
+            });
+            total += groupState.entries.length;
+            matchingCount += groupState.matchingCount;
+            const isObjectNamed = groupState.objectApiName.toLowerCase().indexOf(searchQuery) !== -1;
+            setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0 || isObjectNamed);
+            groupState.countElement.textContent = groupState.entries.length === 0 ? "" : searchQuery ? groupState.matchingCount + " of " + pluralize(groupState.entries.length, "rule", "rules") : pluralize(groupState.entries.length, "rule", "rules");
+          });
+          expandMatchesWithinBudget(
+            subTabState.ruleGroups.filter(function(groupState) {
+              return groupState.entries.length > 0;
+            }),
+            function(groupState) {
+              return groupState.matchingCount;
+            },
+            function(groupState) {
+              return groupState.entries.length;
+            },
+            function(groupState, isExpanded) {
+              setValidationRuleGroupExpanded(treeState, groupState, isExpanded, false);
+            }
+          );
+        }
+        if (subTabState.historyRows) {
+          matchingCount = 0;
+          total = subTabState.historyRows.length;
+          subTabState.historyRows.forEach(function(rowState) {
+            const isMatch = !searchQuery || rowState.searchText.indexOf(searchQuery) !== -1;
+            if (isMatch) {
+              matchingCount++;
+            }
+            setShownIfChanged(rowState, rowState.element, isMatch);
+          });
+        }
+      }
+      subTabState.search.matchCountElement.textContent = !searchQuery ? pluralize(total, subTabState.noun[0], subTabState.noun[1]) : matchingCount > 0 ? matchingCount + " of " + pluralize(total, subTabState.noun[0], subTabState.noun[1]) : "no matches";
+    });
+  }
+  function requestTroubleshootingSummary(treeState) {
+    if (renderedSequence === null) {
+      treeState.isTroubleshootingSummaryWanted = true;
+      return;
+    }
+    treeState.isTroubleshootingSummaryWanted = false;
+    vscodeApi.postMessage({ command: "loadTroubleshootingSummary", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+    if (treeState.troubleshootingSubTab === "validationRules") {
+      requestTreeValidationRules(treeState);
+    }
+    if (treeState.troubleshootingSubTab === "history") {
+      requestTroubleshootingHistory(treeState);
+    }
+  }
+  function renderTroubleshootingSummary(summaryMessage) {
+    if (renderedSequence === null || summaryMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = treeStates.find(function(candidateTreeState) {
+      return candidateTreeState.tree.treeKey === summaryMessage.treeKey;
+    });
+    if (!treeState) {
+      return;
+    }
+    treeState.troubleshootingSummary = summaryMessage;
+    drawTreePermissionSet(treeState);
+    applyTroubleshootingFilter(treeState, "actions");
+  }
+  function buildTroubleshootingGroupCard(groupKind, groupClassName, headerClassName, label, labelClassName, countElement, bodyElement, isToggle) {
+    const element = createElement("div", "troubleshootingGroupCard " + groupClassName);
+    const headerElement = isToggle ? createButton("card", "troubleshootingGroupCardHeader " + headerClassName) : createElement("div", "troubleshootingGroupCardHeader");
+    const headingElement = createElement("span", "actionCardHeading troubleshootingGroupCardHeading");
+    const emojiElement = createElement("span", "actionCardEmoji", RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI[groupKind]);
+    emojiElement.setAttribute("aria-hidden", "true");
+    if (isToggle) {
+      headerElement.setAttribute("aria-expanded", "false");
+    }
+    headingElement.appendChild(emojiElement);
+    headingElement.appendChild(createElement("span", labelClassName + " troubleshootingGroupCardLabel", label));
+    headingElement.appendChild(countElement);
+    headerElement.appendChild(headingElement);
+    element.appendChild(headerElement);
+    if (bodyElement) {
+      element.appendChild(bodyElement);
+    }
+    return { element, headerElement };
+  }
+  function drawTroubleshootingGroupExpanded(groupState, isExpanded) {
+    groupState.toggleElement.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    if (isExpanded) {
+      groupState.element.classList.add("expanded");
+    } else {
+      groupState.element.classList.remove("expanded");
+    }
+  }
+  function setShownIfChanged(state, element, isShown) {
+    if (state.isShown === isShown) {
+      return;
+    }
+    state.isShown = isShown;
+    if (isShown) {
+      element.classList.remove("hidden");
+    } else {
+      element.classList.add("hidden");
+    }
+  }
+  function collectElementText(element) {
+    const texts = [String(element.textContent || "")];
+    Array.prototype.forEach.call(element.children || [], function(childElement) {
+      texts.push.apply(texts, collectElementText(childElement));
+    });
+    return texts;
+  }
+  function describeRunningInsert() {
+    return insertRunningDatasetFolderName !== null ? RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON : "A tree is being inserted.";
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();

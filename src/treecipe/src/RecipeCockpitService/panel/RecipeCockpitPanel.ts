@@ -15,3 +15,8 @@ export {
     buildToggleElement,
     buildTreeGlyph
 } from './RecipeCockpitPanelBuilders';
+export { buildTroubleshootingTab, renderTroubleshootingSummary, requestTroubleshootingSummary, selectTroubleshootingSubTab, troubleshootingSearchKey } from './troubleshooting/TroubleshootingTab';
+export { selectTodosView } from './troubleshooting/TroubleshootingTodos';
+export { drawTreePermissionSet, renderPermissionSetAssignState } from './troubleshooting/TroubleshootingActions';
+export { buildValidationRuleSourceLink, renderTreeValidationRules } from './troubleshooting/TroubleshootingValidationRules';
+export { readHistorySort, renderTroubleshootingHistory } from './troubleshooting/TroubleshootingHistory';

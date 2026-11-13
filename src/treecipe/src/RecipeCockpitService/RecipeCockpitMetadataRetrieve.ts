@@ -4,6 +4,7 @@ import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, METADATA_RETRIEVE_PACKAGE_XML_TYPES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
+import type { MetadataRetrieveKind } from './RecipeCockpitTroubleshootingConstants';
 
 /*
     The Troubleshooting tab's retrieves (#326, #382): the argv that brings one relationship tree's
@@ -21,7 +22,7 @@ import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './Recipe
     org's listing, never from a panel message, and reaches an argv or a manifest only as an api name.
 */
 
-export type MetadataRetrieveKind = 'validationRules' | 'fields' | 'recordTypes' | 'globalValueSets';
+export type { MetadataRetrieveKind } from './RecipeCockpitTroubleshootingConstants';
 
 // THE KINDS WHOSE COMPONENTS ARE LISTED IN THE ORG BEFORE THEY ARE RETRIEVED (#401)
 export type MetadataRetrieveListedKind = Extract<MetadataRetrieveKind, 'validationRules' | 'recordTypes'>;

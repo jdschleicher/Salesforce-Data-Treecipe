@@ -11,7 +11,9 @@ jest.mock('vscode', () => ({
     ConfigurationTarget: { Workspace: 2 },
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }), parse: (uriValue: string) => ({ toString: () => uriValue }) }
 }), { virtual: true });
+import * as RecipeCockpitServiceModule from '../RecipeCockpitService';
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import * as RecipeCockpitTroubleshootingConstants from '../RecipeCockpitTroubleshootingConstants';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
 
 const { PanelBundler, PANEL_BUNDLE_FILE, PANEL_MODULES_NAME, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
@@ -82,15 +84,44 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
         const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
         const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
+        // EVERY FOLDER UNDER A panel/ FOLDER, SO A NEW ONE (#639's troubleshooting/) IS READ WITHOUT BEING LISTED HERE
         const panelModulePaths = ['CockpitKit/panel', 'RecipeCockpitService/panel'].flatMap(panelDirectory =>
-            fs.readdirSync(path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory)).filter(fileName => fileName.endsWith('.ts')).map(fileName => path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory, fileName)));
+            (fs.readdirSync(path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory), { recursive: true }) as string[]).filter(fileName => fileName.endsWith('.ts')).map(fileName => path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory, fileName)));
         const ambientNames = panelModulePaths.flatMap(panelModulePath =>
             Array.from(fs.readFileSync(panelModulePath, 'utf8').matchAll(/^declare (?:const|let|function) ([A-Za-z_$][\w$]*)/gm), match => ({ panelModule: path.basename(panelModulePath), ambientName: match[1] })));
 
-        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog']));
+        expect(panelModulePaths.map(panelModulePath => path.basename(panelModulePath))).toEqual(expect.arrayContaining(['TroubleshootingTab.ts', 'TroubleshootingHistory.ts']));
+        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning']));
         ambientNames.forEach(ambient =>
             expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
                 .toEqual({ ...ambient, isDeclared: true }));
+
+    });
+
+    // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639)
+    it('defines no function of the bundle again in the script around it, the Troubleshooting tab\'s included (#639)', () => {
+
+        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
+        const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
+        const definedFunctionNamesOf = (scriptText: string): string[] => Array.from(scriptText.matchAll(/function ([A-Za-z_$][\w$]*)\(/g), match => match[1]);
+        const bundleFunctionNames = definedFunctionNamesOf(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT);
+        const scriptFunctionNames = new Set(definedFunctionNamesOf(scriptOutsideBundle));
+
+        expect(bundleFunctionNames).toEqual(expect.arrayContaining(['buildTroubleshootingTab', 'buildRemovedTodos', 'buildDeployAction', 'buildValidationRuleRow', 'sortTroubleshootingHistory']));
+        expect(bundleFunctionNames.filter(functionName => scriptFunctionNames.has(functionName))).toEqual([]);
+
+    });
+
+    // CALLERS AND TESTS STILL IMPORT THE TROUBLESHOOTING TAB'S CONSTANTS FROM THE SERVICE (#639)
+    it('re-exports from the service every constant the panel modules import for the Troubleshooting tab, as the same value (#639)', () => {
+
+        const constantNames = Object.keys(RecipeCockpitTroubleshootingConstants);
+        const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
+
+        expect(constantNames).toEqual(expect.arrayContaining(['RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS', 'RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY', 'RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE']));
+        constantNames.forEach(constantName =>
+            expect({ constantName, isSameValue: serviceExports[constantName] === (RecipeCockpitTroubleshootingConstants as Record<string, unknown>)[constantName] })
+                .toEqual({ constantName, isSameValue: true }));
 
     });
 

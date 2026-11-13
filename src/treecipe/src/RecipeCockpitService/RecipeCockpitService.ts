@@ -53,6 +53,57 @@ import type {
 } from './RecipeCockpitPanelConstants';
 import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitKit/CockpitMotion';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from './RecipeCockpitPanelBundle.generated';
+import {
+    RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON,
+    RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
+    RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
+    RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND,
+    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL,
+    RECIPE_COCKPIT_HISTORY_COLUMNS,
+    RECIPE_COCKPIT_HISTORY_EMPTY_NOTE,
+    RECIPE_COCKPIT_HISTORY_LOADING_NOTE,
+    RECIPE_COCKPIT_HISTORY_SORT_COLUMNS,
+    RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY,
+    RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE,
+    RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE,
+    RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE,
+    RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE,
+    RECIPE_COCKPIT_NO_TREE_TODOS_NOTE,
+    RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE,
+    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
+    RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER,
+    RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND,
+    RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
+    RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND,
+    RECIPE_COCKPIT_TODOS_VIEWS,
+    RECIPE_COCKPIT_TODOS_VIEW_LABELS,
+    RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL,
+    RECIPE_COCKPIT_TODO_NO_RECIPE_REASON,
+    RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON,
+    RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON,
+    RECIPE_COCKPIT_TODO_REMOVE_LABEL,
+    RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS,
+    RECIPE_COCKPIT_TODO_RESTORE_LABEL,
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX,
+    RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS,
+    RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE
+} from './RecipeCockpitTroubleshootingConstants';
+import type {
+    RecipeCockpitHistorySortColumn,
+    RecipeCockpitTodosView,
+    RecipeCockpitTodoRemoveLock,
+    RecipeCockpitTroubleshootingSubTab
+} from './RecipeCockpitTroubleshootingConstants';
 
 // THE PANEL'S CONSTANTS LIVE IN AN IMPORT-FREE FILE THE PANEL MODULES IMPORT (#638); THE HOST'S NAMES STAY
 export {
@@ -76,6 +127,64 @@ export type {
     IRecipeCockpitActionCard,
     RecipeCockpitStandaloneAction
 };
+
+// THE TROUBLESHOOTING TAB'S CONSTANTS LIVE IN A FILE THE PANEL MODULES IMPORT (#639); THE HOST'S NAMES STAY
+export {
+    RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON,
+    RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
+    RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
+    RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND,
+    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL,
+    RECIPE_COCKPIT_HISTORY_COLUMNS,
+    RECIPE_COCKPIT_HISTORY_EMPTY_NOTE,
+    RECIPE_COCKPIT_HISTORY_LOADING_NOTE,
+    RECIPE_COCKPIT_HISTORY_SORT_COLUMNS,
+    RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY,
+    RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE,
+    RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE,
+    RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE,
+    RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE,
+    RECIPE_COCKPIT_NO_TREE_TODOS_NOTE,
+    RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE,
+    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
+    RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER,
+    RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND,
+    RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
+    RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND,
+    RECIPE_COCKPIT_TODOS_VIEWS,
+    RECIPE_COCKPIT_TODOS_VIEW_LABELS,
+    RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL,
+    RECIPE_COCKPIT_TODO_NO_RECIPE_REASON,
+    RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON,
+    RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON,
+    RECIPE_COCKPIT_TODO_REMOVE_LABEL,
+    RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS,
+    RECIPE_COCKPIT_TODO_RESTORE_LABEL,
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX,
+    RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS,
+    RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE
+};
+export type {
+    RecipeCockpitHistorySortColumn,
+    RecipeCockpitTodosView,
+    RecipeCockpitTodoRemoveLock,
+    RecipeCockpitTroubleshootingSubTab
+};
+
+// THE PANEL'S LOCK UNION IS SPELLED OUT (#639); A WRITER LOCK ADDED OR RENAMED WITHOUT IT FAILS HERE
+type WriterTodoRemoveLock = RecipeTodoRemoveLock | 'indistinct-occurrence';
+type TodoRemoveLocksMatch<Expected extends WriterTodoRemoveLock & RecipeCockpitTodoRemoveLock> = Expected;
+export type RecipeCockpitTodoRemoveLockMatchesWriter = TodoRemoveLocksMatch<WriterTodoRemoveLock | RecipeCockpitTodoRemoveLock>;
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
@@ -772,9 +881,6 @@ export interface IRecipeCockpitTodoViewModel {
     valueStart?: number;
     valueLength?: number;
 }
-
-// WHY A TODO CANNOT BE REMOVED (#391): THE WRITER'S LOCKS, AND AN OCCURRENCE NO NICKNAME TELLS APART, WHICH A RESTORE COULD NOT FIND AGAIN
-export type RecipeCockpitTodoRemoveLock = RecipeTodoRemoveLock | 'indistinct-occurrence';
 
 /*
     One TODO the reader removed from a card's recipe (#391), as the Removed sub-tab lists it.
@@ -1512,9 +1618,6 @@ export interface IRecipeCockpitTreeFocus {
     // WITH troubleshootingSubTab 'todos': WHICH OF ITS LISTS A REMOVE OR A RESTORE (#391) RELOADS ONTO
     todosView?: RecipeCockpitTodosView;
 }
-
-// THE TODO'S SUB-TAB'S TWO LISTS (#391): THE TODOS IN THE RECIPE, AND THE ONES THE READER REMOVED
-export type RecipeCockpitTodosView = 'open' | 'removed';
 
 // WHAT AN OPEN OF THE COCKPIT CAN BE ASKED TO FOCUS ONCE ITS RUN IS LOADED
 export type RecipeCockpitOpenFocusRequest = IRecipeCockpitRecordTypesFocusRequest | IRecipeCockpitTroubleshootingFocusRequest;
@@ -2302,11 +2405,7 @@ export interface IRecipeCockpitExtensionInfoMessage {
 
 export const RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL = 'View output';
 
-export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Assign permission sets to me…';
-
 export const RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL = 'Assign';
-
-export const RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL = 'Generate permission set…';
 
 export const RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL = 'Write permission set';
 
@@ -2318,8 +2417,6 @@ export const RECIPE_COCKPIT_PERMISSION_SET_PICK_PLACEHOLDER = 'Choose the permis
 
 export const RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to assign this tree\'s permission sets in';
 
-export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL = 'Retrieve validation rules…';
-
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL = 'Retrieve';
 
 // #326: ASKED EVERY TIME, IN THE COMMAND PALETTE, OVER EVERY CONNECTED ORG: A RETRIEVE ONLY READS
@@ -2328,24 +2425,6 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose t
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
 
 export const RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL = 'Nothing was retrieved: an insert, a permission set assignment or a metadata deploy is running. Try again once it has finished.';
-
-/*
-    The Troubleshooting tab's other retrieves (#382): each section's own 📥 card, posting its tree's
-    KEY and nothing else. Every one asks for the org in the command palette, as #326's does.
-*/
-export const RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
-    validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
-    fields: 'Retrieve fields…',
-    recordTypes: 'Retrieve record types…',
-    globalValueSets: 'Retrieve global value sets…'
-});
-
-export const RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
-    validationRules: 'retrieveTreeValidationRules',
-    fields: 'retrieveTreeFields',
-    recordTypes: 'retrieveTreeRecordTypes',
-    globalValueSets: 'retrieveTreeGlobalValueSets'
-});
 
 // A RETRIEVE READS FROM THE TARGET ORG MANAGER SELECTION (#480); THESE ARE SAID WHEN IT CANNOT
 export const RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL = 'Nothing was retrieved: no org is selected in Target Org Manager, and another run is holding the selection. Try again once it has finished.';
@@ -2357,18 +2436,6 @@ export const RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS: Readonly<Record<MetadataR
     fields: 'Choose the org to retrieve this tree\'s custom fields from',
     recordTypes: 'Choose the org to retrieve this tree\'s record types from',
     globalValueSets: 'Choose the org to retrieve the global value sets this tree\'s fields name from'
-});
-
-/*
-    The Troubleshooting tab's deploys (#346): each section's own button, its confirmation, and what a
-    deploy says when another run holds the window. The org is the Treecipe tab's selection or one
-    picked from the same non-production list, and must answer that it is a sandbox.
-*/
-export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeployKind, string>> = Object.freeze({
-    permissionSet: 'Deploy permission set…',
-    fields: 'Deploy fields & dependencies…',
-    globalValueSets: 'Deploy global value sets…',
-    recordTypes: 'Deploy record types…'
 });
 
 // EVERY STANDALONE ACTION IS A CARD (#381, #384): ITS VERBS, EMOJI AND WORDS ARE IN RecipeCockpitPanelConstants.ts, WHICH THE PANEL IMPORTS (#638)
@@ -2385,27 +2452,6 @@ export const RECIPE_COCKPIT_VERB_BUTTON_VERBS: Readonly<Record<RecipeCockpitVerb
     dataOrgAuthorize: 'authorize'
 });
 
-export const RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND: Readonly<Record<MetadataRetrieveKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
-    validationRules: 'retrieveValidationRules',
-    fields: 'retrieveFields',
-    recordTypes: 'retrieveRecordTypes',
-    globalValueSets: 'retrieveGlobalValueSets'
-});
-
-export const RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND: Readonly<Record<MetadataDeployKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
-    permissionSet: 'deployPermissionSet',
-    fields: 'deployFields',
-    globalValueSets: 'deployGlobalValueSets',
-    recordTypes: 'deployRecordTypes'
-});
-
-export const RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND: Readonly<Record<MetadataDeployKind, string>> = Object.freeze({
-    permissionSet: 'deployTreePermissionSet',
-    fields: 'deployTreeFields',
-    globalValueSets: 'deployTreeGlobalValueSets',
-    recordTypes: 'deployTreeRecordTypes'
-});
-
 export const RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL = 'Deploy';
 
 // THE BOX A FIELDS DEPLOY'S CONFIRMATION DRAWS (#402): UNTICKED EVERY TIME, AND ONLY WHEN THE PROJECT HOLDS SOMETHING IT WOULD ADD
@@ -2419,63 +2465,9 @@ export const RECIPE_COCKPIT_DEPLOY_ORG_PLACEHOLDER = 'Choose the sandbox or scra
 
 export const RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL = 'Nothing was deployed: an insert, a scratch org run, a permission set assignment, a validation rule retrieve or another deploy is running. Try again once it has finished.';
 
-export const RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL = 'Troubleshooting';
-
 // HOW MANY TREE SUMMARIES THE HOST KEEPS BEFORE IT STARTS AGAIN
 export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
-
-/*
-    The Troubleshooting tab's sub-tabs (#365), left to right; the first is selected until the reader
-    picks another, which the place keeps. Each has its own search box. Only the selected one is
-    shown, so the tab draws one area at a time.
-*/
-export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS = ['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets', 'history'] as const;
-export type RecipeCockpitTroubleshootingSubTab = typeof RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS[number];
-export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS: Readonly<Record<RecipeCockpitTroubleshootingSubTab, string>> = Object.freeze({
-    todos: 'TODO\'s',
-    fields: 'Fields',
-    permissions: 'Permissions',
-    validationRules: 'Validation Rules',
-    recordTypes: 'Record Types',
-    globalValueSets: 'Global Value Sets',
-    history: 'History'
-});
-export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS: Readonly<Record<RecipeCockpitTroubleshootingSubTab, string>> = Object.freeze({
-    todos: 'Search TODOs by object, field or text',
-    fields: 'Search field actions',
-    permissions: 'Search permission set actions',
-    validationRules: 'Search validation rules by object, rule, field or message',
-    recordTypes: 'Search record type actions',
-    globalValueSets: 'Search global value set actions',
-    history: 'Search history by step, org, outcome, run or file'
-});
-export const RECIPE_COCKPIT_NO_TREE_TODOS_NOTE = 'No TODO comments in this tree\'s recipe.';
 export const RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT = 'That run file no longer exists in this workspace.';
-
-/*
-    The History sub-tab (#485): one table of the tree's Troubleshooting steps, its columns, what each
-    row's outcome says, and its notes. Constants injected into the panel script, written with
-    textContent. Every column but Files sorts.
-*/
-export const RECIPE_COCKPIT_HISTORY_COLUMNS = [
-    { key: 'time', label: 'Time' },
-    { key: 'step', label: 'Step' },
-    { key: 'org', label: 'Org' },
-    { key: 'outcome', label: 'Outcome' },
-    { key: 'run', label: 'Run' },
-    { key: 'files', label: 'Files' }
-] as const;
-export const RECIPE_COCKPIT_HISTORY_SORT_COLUMNS = ['time', 'step', 'org', 'outcome', 'run'] as const;
-export type RecipeCockpitHistorySortColumn = typeof RECIPE_COCKPIT_HISTORY_SORT_COLUMNS[number];
-export const RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY: Readonly<Record<RunHistoryRowStatus, { emoji: string; label: string }>> = {
-    succeeded: { emoji: '✅', label: 'Succeeded' },
-    partial: { emoji: '⚠️', label: 'Partly succeeded' },
-    failed: { emoji: '❌', label: 'Failed' },
-    cancelled: { emoji: '🚫', label: 'Cancelled' },
-    unknown: { emoji: '❔', label: 'Outcome unknown' },
-    unreadable: { emoji: '❗', label: 'Summary unreadable' },
-    unrecorded: { emoji: '➖', label: 'Not recorded' }
-};
 /*
     A data set's insert journey (#471): ✅ for what succeeded, ❌ for what failed and ⚠️ for everything
     between or not known, each always with its label in words.
@@ -2509,57 +2501,10 @@ export const RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE = 'No inserts yet.';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = 'Inserted first time, with nothing else needed.';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = 'View file';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT = 'That file no longer exists in this workspace.';
-export const RECIPE_COCKPIT_HISTORY_LOADING_NOTE = 'Reading this tree\'s history…';
-export const RECIPE_COCKPIT_HISTORY_EMPTY_NOTE = 'No Troubleshooting step has been run for this tree yet. Each deploy, retrieve, permission set assignment and Generate permission set is listed here once it has run.';
-export const RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE = 'This step ran before Treecipe recorded how a step ended, so only its time and files are known.';
-export const RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE = 'This step\'s summary file could not be read, so how it ended is not shown.';
-
-/*
-    The TODO's sub-tab's Open and Removed lists (#391), and why a TODO's Remove TODO is disabled.
-    Constants injected into the panel script, written with textContent.
-*/
-export const RECIPE_COCKPIT_TODOS_VIEWS: readonly RecipeCockpitTodosView[] = Object.freeze(['open', 'removed'] as RecipeCockpitTodosView[]);
-export const RECIPE_COCKPIT_TODOS_VIEW_LABELS: Readonly<Record<RecipeCockpitTodosView, string>> = Object.freeze({ open: 'Open', removed: 'Removed' });
-export const RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER = 'Search removed TODOs by object, field or text';
-export const RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE = 'No TODO has been removed from this tree\'s recipe. Remove TODO on an open TODO moves it here, and Restore puts it back.';
-export const RECIPE_COCKPIT_TODO_REMOVE_LABEL = 'Remove TODO';
-export const RECIPE_COCKPIT_TODO_RESTORE_LABEL = 'Restore';
-export const RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS: Readonly<Record<RecipeCockpitTodoRemoveLock, string>> = Object.freeze({
-    'field-value': 'This TODO is the field\'s whole value: removing it would leave the field empty. Edit or untick the field in the Treecipe tab instead.',
-    'record-type-options': 'The Recipe Cockpit and Run Faker read this line to find the field\'s record type sections, so it stays.',
-    'commented-out-marker': 'This line is the Recipe Cockpit\'s marker for a commented-out field, which restoring the field needs.',
-    'scalar-content': 'This line is inside the field\'s multi-line value, where YAML reads it as part of the value rather than a comment, so it stays.',
-    'indistinct-occurrence': 'This object is written more than once without a nickname that tells this one apart, so the TODO could not be put back in the same place.'
-});
-export const RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON = 'This TODO is the lookup\'s whole value: removing it would leave the lookup empty. In the Treecipe tab, give it a record Id with its pencil or wire it to a parent instead.';
-export const RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON = 'This TODO is in another recipe file than this tree\'s, so it can be removed only from that tree\'s card.';
-export const RECIPE_COCKPIT_TODO_NO_RECIPE_REASON = 'This tree has no single recipe file to write, so its TODOs cannot be removed here.';
-
-/*
-    The Validation Rules sub-tab's list (#327): what each rule's status reads as, and the notes the
-    list draws. Constants injected into the panel script, written with textContent.
-*/
-export const RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS = Object.freeze({
-    applied: 'Applied',
-    notApplied: 'Not applied',
-    inactive: 'Inactive',
-    notInRun: 'Not in this run',
-    unreadable: 'Unreadable'
-});
-export const RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE = 'Reading this project\'s validation rules…';
-export const RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE = 'This project holds no validation rule files for this tree\'s objects. Retrieve validation rules… brings them from an org; run Generate Treecipe afterwards so they shape the recipe.';
-export const RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE = 'No validation rules.';
-export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE = 'Added or activated since Generate Treecipe ran. Run Generate Treecipe to apply it.';
 // A RULE'S FILE LINK (#560): ON A FIELD ROW IT NAMES THE RULE, SINCE A FIELD CAN HAVE SEVERAL; A LIST ROW ALREADY DOES
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = '↗ ';
-export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = '↗ xml';
-export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX = 'Open the validation rule file of';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX = 'The validation rule file was not found for';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_ADVICE = 'It may have been moved, renamed, replaced by a link, claimed by a second file or left the workspace. Re-open the Recipe Cockpit to load the project as it is now.';
-export const RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE = 'This run recorded the rule, and its file is no longer in this project.';
-export const RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE = 'Constrains no field this run read.';
-// WHAT A TODO's ENTRY SAYS FOR A FIELD TODO WHOSE TEXT THE PANEL COULD NOT FIND IN THE FIELD'S VALUE
-export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s value';
 
 export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
 
@@ -2943,7 +2888,6 @@ export const RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL = 'Nothing was inserted:
 export const RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL = 'Nothing was inserted: choose a sandbox or scratch org in the Target Org Manager first.';
 export const RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL = 'Nothing was inserted: the org selected in the Target Org Manager changed. Choose Insert… again.';
 export const RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL = 'Nothing was inserted: the org selected in the Target Org Manager has not answered that it is a sandbox or scratch org. Choose a sandbox or scratch org there.';
-export const RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON = 'A data set is being inserted.';
 
 // THE TREE INSERT'S NOTIFICATION BUTTONS (#301): BOTH OPEN THE INSERT'S RESULTS FILE
 export const RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL = 'View errors';
@@ -22875,7 +22819,10 @@ ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
     const {
         renderConfirmRequest, closeConfirmDialog,
         SVG_NAMESPACE, createElement, createButton, setShown, isMotionReduced, setShownWithMotion, drawToggle,
-        buildActionCard, buildRowTable, buildTabSearch, buildSearchIconElement, buildToggleElement, buildTreeGlyph, buildPencilGlyph
+        buildActionCard, buildRowTable, buildTabSearch, buildSearchIconElement, buildToggleElement, buildTreeGlyph, buildPencilGlyph,
+        buildTroubleshootingTab, troubleshootingSearchKey, selectTroubleshootingSubTab, requestTroubleshootingSummary, renderTroubleshootingSummary,
+        selectTodosView, drawTreePermissionSet, renderPermissionSetAssignState, buildValidationRuleSourceLink, renderTreeValidationRules,
+        readHistorySort, renderTroubleshootingHistory
     } = recipeCockpitPanelModules;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
@@ -22913,51 +22860,14 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const AUTHORIZE_ORG_TOOLTIP = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const DATASET_INSERT_RUNNING_REASON = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON)};
-    const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
-    const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
-    const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
-    const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
-    const TROUBLESHOOTING_GROUP_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI)};
-    const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
-    const RETRIEVE_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND)};
-    const RETRIEVE_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS)};
-    const RETRIEVE_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
-    const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
     const TROUBLESHOOTING_SUB_TABS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS)};
-    const TROUBLESHOOTING_SUB_TAB_LABELS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS)};
-    const TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS)};
-    const NO_TREE_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TREE_TODOS_NOTE)};
     const TODOS_VIEWS = ${JSON.stringify(RECIPE_COCKPIT_TODOS_VIEWS)};
-    const TODOS_VIEW_LABELS = ${JSON.stringify(RECIPE_COCKPIT_TODOS_VIEW_LABELS)};
-    const REMOVED_TODOS_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER)};
-    const NO_REMOVED_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE)};
-    const TODO_REMOVE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_REMOVE_LABEL)};
-    const TODO_RESTORE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_RESTORE_LABEL)};
-    const TODO_REMOVE_LOCK_REASONS = ${JSON.stringify(RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS)};
-    const TODO_REFERENCE_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON)};
-    const TODO_OTHER_RECIPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON)};
-    const TODO_NO_RECIPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_TODO_NO_RECIPE_REASON)};
     const REFERENCE_ID_REQUIRED_TODO_TEXT = ${JSON.stringify(RelationshipService.referenceIdRequiredTodo)};
-    const VALIDATION_RULE_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS)};
-    const VALIDATION_RULES_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE)};
-    const HISTORY_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_COLUMNS)};
-    const HISTORY_SORT_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_SORT_COLUMNS)};
     const DATASET_JOURNEY_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS)};
     const DATASET_JOURNEY_SORT_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS)};
-    const HISTORY_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY)};
-    const HISTORY_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_LOADING_NOTE)};
-    const HISTORY_EMPTY_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_EMPTY_NOTE)};
-    const HISTORY_UNRECORDED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE)};
-    const HISTORY_UNREADABLE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE)};
-    const NO_LOCAL_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE)};
-    const OBJECT_NO_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE)};
-    const VALIDATION_RULE_NOT_IN_RUN_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE)};
-    const VALIDATION_RULE_FILE_MISSING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE)};
-    const VALIDATION_RULE_NO_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE)};
-    const TODO_IN_FIELD_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL)};
     const QUERY_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_QUERY_TAB_LABEL)};
     const QUERY_INTRO = ${JSON.stringify(RECIPE_COCKPIT_QUERY_INTRO)};
     const QUERY_MAX_LENGTH = ${RECIPE_COCKPIT_QUERY_MAX_LENGTH};
@@ -23116,8 +23026,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
     const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
     const VALIDATION_RULE_SOURCE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX)};
-    const VALIDATION_RULE_SOURCE_LIST_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL)};
-    const VALIDATION_RULE_SOURCE_TITLE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX)};
     const NO_FIELDS_SELECTED_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE)};
     const SELECT_ALL_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL)};
     const STANDARD_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_LABEL)};
@@ -23273,38 +23181,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
 
 
-    /*
-        A TODO or validation rule group as a card (#383). Its header is ONE card button that opens
-        and closes the group -- the kind's emoji, the object and the count on one line -- and its
-        rows go in the body under it, built by the caller on first open. A group with nothing to
-        open draws the same header as text. Constant per group: no element is added per row.
-    */
-    function buildTroubleshootingGroupCard(groupKind, groupClassName, headerClassName, label, labelClassName, countElement, bodyElement, isToggle) {
-
-        const element = createElement('div', 'troubleshootingGroupCard ' + groupClassName);
-        const headerElement = isToggle ? createButton('card', 'troubleshootingGroupCardHeader ' + headerClassName) : createElement('div', 'troubleshootingGroupCardHeader');
-        const headingElement = createElement('span', 'actionCardHeading troubleshootingGroupCardHeading');
-        const emojiElement = createElement('span', 'actionCardEmoji', TROUBLESHOOTING_GROUP_EMOJI[groupKind]);
-
-        emojiElement.setAttribute('aria-hidden', 'true');
-        if (isToggle) { headerElement.setAttribute('aria-expanded', 'false'); }
-
-        headingElement.appendChild(emojiElement);
-        headingElement.appendChild(createElement('span', labelClassName + ' troubleshootingGroupCardLabel', label));
-        headingElement.appendChild(countElement);
-        headerElement.appendChild(headingElement);
-        element.appendChild(headerElement);
-        if (bodyElement) { element.appendChild(bodyElement); }
-
-        return { element: element, headerElement: headerElement };
-
-    }
-
-    function drawTroubleshootingGroupExpanded(groupState, isExpanded) {
-        groupState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-        if (isExpanded) { groupState.element.classList.add('expanded'); } else { groupState.element.classList.remove('expanded'); }
-    }
-
     function setTextShown(element, text) {
         if (element.textContent !== text) { element.textContent = text; }
         if (text) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
@@ -23351,21 +23227,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         sourceLinkElement.setAttribute('title', 'Open in the recipe file');
         sourceLinkElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'openSource', filePath: filePath, lineNumber: lineNumber });
-        });
-
-        return sourceLinkElement;
-
-    }
-
-    // A RULE'S FILE (#560): NAMES ONLY ARE POSTED, AND THE HOST OPENS THE FILE IT FINDS FOR THEM
-    function buildValidationRuleSourceLink(className, labelText, objectApiName, ruleName) {
-
-        const sourceLinkElement = createButton('link', className + ' sourceLink', labelText);
-        const description = VALIDATION_RULE_SOURCE_TITLE_PREFIX + ' ' + objectApiName + '.' + ruleName;
-        sourceLinkElement.setAttribute('title', description);
-        sourceLinkElement.setAttribute('aria-label', description);
-        sourceLinkElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'openValidationRuleSource', objectApiName: objectApiName, ruleName: ruleName });
         });
 
         return sourceLinkElement;
@@ -27861,10 +27722,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
     }
 
-    function describeRunningInsert() {
-        return insertRunningDatasetFolderName !== null ? DATASET_INSERT_RUNNING_REASON : 'A tree is being inserted.';
-    }
-
     function drawDatasetInserts() {
         treeStates.forEach(function (treeState) {
             (treeState.datasetRowStates || []).forEach(drawDatasetInsert);
@@ -29225,660 +29082,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         drawTreeInsert(treeState);
 
         return controlsElement;
-
-    }
-
-    /*
-        The Troubleshooting tab (#346), on every card with a folder: what to do when an insert
-        failed. Since #365 it is a row of sub-tabs, one area at a time: TODO's, Fields,
-        Permissions, Validation Rules, Record Types, Global Value Sets. Every sub-tab is built with
-        the tab, so every button and its run lock is where it always was, and only the selected one
-        is shown. Each has its own search box, which hides the entries that do not match. What each
-        deploy would deploy is read by the host from the project each time the tab is selected;
-        only COUNTS come back, and a deploy with nothing to deploy draws its button disabled with the
-        reason.
-    */
-    function buildTroubleshootingTab(treeState, panelElement) {
-
-        const tree = treeState.tree;
-        const stripElement = createElement('div', 'troubleshootingSubTabs');
-        stripElement.setAttribute('role', 'tablist');
-        stripElement.setAttribute('aria-label', TROUBLESHOOTING_TAB_LABEL);
-        panelElement.appendChild(stripElement);
-
-        treeState.troubleshootingStripElement = stripElement;
-        treeState.troubleshootingSubTabStates = [];
-        treeState.deployCards = Object.create(null);
-        treeState.retrieveCards = Object.create(null);
-
-        if (TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
-            treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS[0];
-        }
-
-        // A SUB-TAB'S CARDS SIT IN ONE GRID, ABOVE ANY LIST THE SUB-TAB ALSO DRAWS
-        const addActionItem = function (subTabState, actionCard) {
-            if (!subTabState.cardGridElement) {
-                subTabState.cardGridElement = createElement('div', 'troubleshootingCards');
-                subTabState.listElement.appendChild(subTabState.cardGridElement);
-            }
-            const actionElement = createElement('div', 'troubleshootingAction');
-            actionElement.appendChild(actionCard.buttonElement);
-            subTabState.cardGridElement.appendChild(actionElement);
-            subTabState.items.push({ element: actionElement });
-        };
-
-        const addDeployItem = function (subTabState, deployKind) {
-            addActionItem(subTabState, buildDeployAction(treeState, deployKind));
-        };
-
-        TROUBLESHOOTING_SUB_TABS.forEach(function (subTab) {
-
-            const subTabState = addTroubleshootingSubTab(treeState, subTab, panelElement);
-
-            if (subTab === 'todos') {
-                buildTroubleshootingTodos(treeState, subTabState);
-            } else if (subTab === 'fields') {
-                addDeployItem(subTabState, 'fields');
-                addActionItem(subTabState, buildRetrieveAction(treeState, 'fields'));
-            } else if (subTab === 'permissions') {
-                if (tree.objects.length > 0) { addActionItem(subTabState, buildAssignPermissionSetCard(treeState)); }
-                addActionItem(subTabState, buildGeneratePermissionSetCard(treeState));
-                addDeployItem(subTabState, 'permissionSet');
-            } else if (subTab === 'validationRules') {
-                addActionItem(subTabState, buildRetrieveAction(treeState, 'validationRules'));
-                buildTroubleshootingValidationRules(treeState, subTabState);
-            } else if (subTab === 'recordTypes') {
-                addDeployItem(subTabState, 'recordTypes');
-                addActionItem(subTabState, buildRetrieveAction(treeState, 'recordTypes'));
-            } else if (subTab === 'globalValueSets') {
-                addDeployItem(subTabState, 'globalValueSets');
-                addActionItem(subTabState, buildRetrieveAction(treeState, 'globalValueSets'));
-            } else if (subTab === 'history') {
-                buildTroubleshootingHistory(treeState, subTabState);
-            }
-
-        });
-
-        selectTroubleshootingSubTab(treeState, treeState.troubleshootingSubTab, false);
-        drawTreePermissionSet(treeState);
-        applyTroubleshootingFilter(treeState);
-
-    }
-
-    function troubleshootingSearchKey(subTab) {
-        return 'troubleshooting.' + subTab;
-    }
-
-    function addTroubleshootingSubTab(treeState, subTab, panelElement) {
-
-        const label = TROUBLESHOOTING_SUB_TAB_LABELS[subTab];
-        const tabElement = createButton('secondary', 'troubleshootingSubTab troubleshootingSubTab-' + subTab, label);
-        tabElement.setAttribute('data-label', label);
-        const subPanelElement = createElement('div', 'troubleshootingSubPanel troubleshootingSubPanel-' + subTab + ' hidden');
-        const searchKey = troubleshootingSearchKey(subTab);
-
-        tabElement.setAttribute('role', 'tab');
-        tabElement.setAttribute('aria-selected', 'false');
-        subPanelElement.setAttribute('role', 'tabpanel');
-        subPanelElement.setAttribute('aria-label', label);
-        tabElement.addEventListener('click', function () { selectTroubleshootingSubTab(treeState, subTab, true); });
-
-        if (typeof treeState.searchTexts[searchKey] !== 'string') {
-            treeState.searchTexts[searchKey] = '';
-            treeState.searchQueries[searchKey] = '';
-        }
-
-        const search = buildTabSearch(treeState, searchKey, TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS[subTab], function () { applyTroubleshootingFilter(treeState, subTab); });
-        const listElement = createElement('div', 'troubleshootingList');
-        // THE TODO'S SUB-TAB HOLDS TWO LISTS (#391): ITS SEARCH AND ITS LIST ARE THE OPEN ONE'S
-        const todosFrame = subTab === 'todos' ? buildTodosViewFrame(treeState, subPanelElement) : null;
-        const contentElement = todosFrame ? todosFrame.viewStates.open.panelElement : subPanelElement;
-        contentElement.appendChild(search.element);
-        contentElement.appendChild(listElement);
-
-        treeState.troubleshootingStripElement.appendChild(tabElement);
-        panelElement.appendChild(subPanelElement);
-
-        const subTabState = { subTab: subTab, tabElement: tabElement, panelElement: subPanelElement, search: search, listElement: listElement, items: [], noun: ['action', 'actions'], todosFrame: todosFrame };
-        treeState.troubleshootingSubTabStates.push(subTabState);
-
-        return subTabState;
-
-    }
-
-    function selectTroubleshootingSubTab(treeState, subTab, isAnimated) {
-
-        const subTabStates = treeState.troubleshootingSubTabStates || [];
-        if (!subTabStates.some(function (subTabState) { return subTabState.subTab === subTab; })) { return; }
-
-        const subTabNames = subTabStates.map(function (subTabState) { return subTabState.subTab; });
-        const fromIndex = subTabNames.indexOf(treeState.troubleshootingSubTab);
-        const toIndex = subTabNames.indexOf(subTab);
-        const stripElement = treeState.troubleshootingStripElement;
-
-        ['movingLeft', 'movingRight', 'noMotion'].forEach(function (className) { stripElement.classList.remove(className); });
-        if (!isAnimated) {
-            stripElement.classList.add('noMotion');
-        } else if (fromIndex !== toIndex) {
-            stripElement.classList.add(toIndex > fromIndex ? 'movingRight' : 'movingLeft');
-        }
-
-        treeState.troubleshootingSubTab = subTab;
-        if (isAnimated && subTab === 'validationRules') { requestTreeValidationRules(treeState); }
-        if (isAnimated && subTab === 'history') { requestTroubleshootingHistory(treeState); }
-
-        subTabStates.forEach(function (subTabState) {
-            const isSelected = subTabState.subTab === subTab;
-            if (isSelected) { subTabState.tabElement.classList.add('selected'); } else { subTabState.tabElement.classList.remove('selected'); }
-            subTabState.tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-            setShownWithMotion(subTabState.panelElement, isSelected, isSelected && isAnimated);
-        });
-
-        savePanelPlace();
-
-    }
-
-    /*
-        Every TODO comment of the card's recipe (#365, from #354's todos), one group per object
-        occurrence: a header with its count, and rows -- the field (or "on the object"), the text
-        and a link to the TODO's own line -- built only when the group opens, like a Treecipe
-        object's rows. A field TODO posted without its text is one its value holds, so the text is
-        read back from that value. Search matches what each entry saved at build, so it needs no
-        rows; groups open within the auto-expand budgets, so a tree of thousands of TODOs costs its
-        headers and the rows the budget allows.
-    */
-    function buildTroubleshootingTodos(treeState, subTabState) {
-
-        subTabState.noun = ['TODO', 'TODOs'];
-        subTabState.todoGroups = [];
-
-        treeState.objectStates.forEach(function (treeObjectState) {
-
-            if (treeObjectState.todoCount === 0) { return; }
-
-            const object = treeObjectState.object;
-            // AN OBJECT WRITTEN MORE THAN ONCE IS TOLD APART BY THE NICKNAME OF THE OCCURRENCE
-            const hasNickname = !!object.nickname && (!!object.iteration || Array.isArray(object.iterations));
-            const objectLabel = object.objectApiName + (hasNickname ? ' · ' + object.nickname : '');
-            const groupState = {
-                object: object,
-                treeState: treeState,
-                element: null,
-                toggleElement: null,
-                countElement: createElement('span', 'troubleshootingTodoCount muted'),
-                bodyElement: createElement('div', 'troubleshootingTodoRows hidden'),
-                entries: [],
-                matchingCount: 0,
-                isBuilt: false,
-                isExpanded: false,
-                isShown: true
-            };
-
-            const addEntry = function (fieldLabel, todo, todoText, isFieldTodo) {
-                groupState.entries.push({
-                    fieldLabel: fieldLabel,
-                    todo: todo,
-                    todoText: todoText,
-                    isFieldTodo: isFieldTodo,
-                    removeReason: findTodoRemoveReason(treeState.tree, object, todo, todoText),
-                    searchText: [object.objectApiName, object.nickname || '', fieldLabel, todoText].join('\\n').toLowerCase(),
-                    isMatch: true,
-                    element: null
-                });
-            };
-
-            treeObjectState.objectTodos.forEach(function (todo) {
-                addEntry('on the object', todo, typeof todo.text === 'string' ? todo.text : '', false);
-            });
-
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.todos.forEach(function (todo) {
-                    addEntry(fieldState.field.fieldApiName, todo, readFieldTodoText(todo, fieldState.field.recipeValue), true);
-                });
-            });
-
-            const groupCard = buildTroubleshootingGroupCard('todos', 'troubleshootingTodoGroup', 'troubleshootingTodoToggle', objectLabel, 'troubleshootingTodoObject', groupState.countElement, groupState.bodyElement, true);
-            groupState.element = groupCard.element;
-            groupState.toggleElement = groupCard.headerElement;
-            groupState.toggleElement.addEventListener('click', function () {
-                setTodoGroupExpanded(groupState, !groupState.isExpanded, true);
-            });
-
-            if (!subTabState.groupGridElement) {
-                subTabState.groupGridElement = createElement('div', 'troubleshootingGroupCards');
-                subTabState.listElement.appendChild(subTabState.groupGridElement);
-            }
-            subTabState.groupGridElement.appendChild(groupState.element);
-            subTabState.todoGroups.push(groupState);
-
-        });
-
-        const todoCount = subTabState.todoGroups.reduce(function (count, groupState) { return count + groupState.entries.length; }, 0);
-        subTabState.tabElement.textContent = todoCount > 0 ? TROUBLESHOOTING_SUB_TAB_LABELS.todos + ' (' + todoCount + ')' : TROUBLESHOOTING_SUB_TAB_LABELS.todos;
-        subTabState.tabElement.setAttribute('data-label', subTabState.tabElement.textContent);
-
-        if (todoCount === 0) {
-            subTabState.listElement.appendChild(createElement('div', 'treeEmpty muted', NO_TREE_TODOS_NOTE));
-        }
-
-        buildRemovedTodos(treeState, subTabState);
-        drawTodosViewLabels(subTabState, todoCount);
-        selectTodosView(treeState, treeState.todosView, false);
-
-    }
-
-    /*
-        The TODO's sub-tab's Open and Removed lists (#391): a strip of two buttons, each list in its
-        own panel with its own search. Which is open is the card's todosView, kept in the place.
-    */
-    function buildTodosViewFrame(treeState, subPanelElement) {
-
-        const stripElement = createElement('div', 'todosViews');
-        stripElement.setAttribute('role', 'tablist');
-        stripElement.setAttribute('aria-label', TROUBLESHOOTING_SUB_TAB_LABELS.todos);
-        subPanelElement.appendChild(stripElement);
-
-        const viewStates = Object.create(null);
-        TODOS_VIEWS.forEach(function (todosView) {
-            const tabElement = createButton('secondary', 'todosView todosView-' + todosView, TODOS_VIEW_LABELS[todosView]);
-            const panelElement = createElement('div', 'todosViewPanel todosViewPanel-' + todosView + (todosView === 'open' ? '' : ' hidden'));
-            tabElement.setAttribute('role', 'tab');
-            tabElement.setAttribute('aria-selected', todosView === 'open' ? 'true' : 'false');
-            panelElement.setAttribute('role', 'tabpanel');
-            panelElement.setAttribute('aria-label', TODOS_VIEW_LABELS[todosView]);
-            tabElement.addEventListener('click', function () { selectTodosView(treeState, todosView, true); });
-            stripElement.appendChild(tabElement);
-            subPanelElement.appendChild(panelElement);
-            viewStates[todosView] = { tabElement: tabElement, panelElement: panelElement };
-        });
-
-        if (TODOS_VIEWS.indexOf(treeState.todosView) === -1) { treeState.todosView = TODOS_VIEWS[0]; }
-
-        return { stripElement: stripElement, viewStates: viewStates };
-
-    }
-
-    function selectTodosView(treeState, todosView, isAnimated) {
-
-        const subTabState = (treeState.troubleshootingSubTabStates || []).find(function (candidate) { return candidate.subTab === 'todos'; });
-        if (!subTabState || !subTabState.todosFrame || TODOS_VIEWS.indexOf(todosView) === -1) { return; }
-
-        treeState.todosView = todosView;
-        TODOS_VIEWS.forEach(function (candidateView) {
-            const viewState = subTabState.todosFrame.viewStates[candidateView];
-            const isSelected = candidateView === todosView;
-            if (isSelected) { viewState.tabElement.classList.add('selected'); } else { viewState.tabElement.classList.remove('selected'); }
-            viewState.tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-            setShownWithMotion(viewState.panelElement, isSelected, isSelected && isAnimated);
-        });
-
-        savePanelPlace();
-
-    }
-
-    function drawTodosViewLabels(subTabState, openCount) {
-        const viewStates = subTabState.todosFrame.viewStates;
-        const removedCount = subTabState.removedEntries.length;
-        viewStates.open.tabElement.textContent = TODOS_VIEW_LABELS.open + ' (' + openCount + ')';
-        viewStates.removed.tabElement.textContent = TODOS_VIEW_LABELS.removed + ' (' + removedCount + ')';
-    }
-
-    /*
-        Why a TODO's Remove TODO is disabled, or '' when it is not: the host's lock (#391), a TODO of
-        another card's recipe file, or a card with no single recipe file. A lookup's TODO says to wire
-        the lookup. The host decides again on the click.
-    */
-    function findTodoRemoveReason(tree, object, todo, todoText) {
-
-        if (!tree.runFakerRecipeFileName) { return TODO_NO_RECIPE_REASON; }
-        if (fileNameOf(object.recipeFilePath) !== tree.runFakerRecipeFileName) { return TODO_OTHER_RECIPE_REASON; }
-        if (typeof todo.removeLock !== 'string') { return ''; }
-        if (todo.removeLock === 'field-value' && todoText.indexOf(REFERENCE_ID_REQUIRED_TODO_TEXT) === 0) { return TODO_REFERENCE_LOOKUP_REASON; }
-        return hasOwnKey(TODO_REMOVE_LOCK_REASONS, todo.removeLock) ? TODO_REMOVE_LOCK_REASONS[todo.removeLock] : TODO_REMOVE_LOCK_REASONS['field-value'];
-
-    }
-
-    function fileNameOf(filePath) {
-        const pathParts = String(filePath || '').split(/[\\\\/]/);
-        return pathParts[pathParts.length - 1];
-    }
-
-    // THE OWNER, ITS "↗ yml" LINK AND ITS BUTTON ON ONE LINE, THE TODO'S TEXT UNDER THEM (#391)
-    function buildTodoRowElement(isMatch, ownerLabel, isFieldOwner, sourceLinkElement, actionElement, todoText) {
-
-        const todoElement = createElement('div', isMatch ? 'troubleshootingTodo' : 'troubleshootingTodo hidden');
-        const headElement = createElement('div', 'troubleshootingTodoHead');
-        headElement.appendChild(createElement('span', isFieldOwner ? 'troubleshootingTodoField' : 'troubleshootingTodoField muted', ownerLabel));
-        if (sourceLinkElement) { headElement.appendChild(sourceLinkElement); }
-        headElement.appendChild(actionElement);
-        todoElement.appendChild(headElement);
-        todoElement.appendChild(createElement('span', todoText ? 'troubleshootingTodoText' : 'troubleshootingTodoText muted', todoText || TODO_IN_FIELD_VALUE_LABEL));
-        return todoElement;
-
-    }
-
-    function buildRemoveTodoButton(treeState, entry) {
-
-        const removeElement = createButton('secondary', 'troubleshootingTodoAction troubleshootingTodoRemove', TODO_REMOVE_LABEL, 'compact');
-        removeElement.setAttribute('aria-label', TODO_REMOVE_LABEL + ': ' + entry.fieldLabel + ', line ' + entry.todo.lineNumber);
-
-        if (entry.removeReason) {
-            removeElement.disabled = true;
-            removeElement.setAttribute('title', entry.removeReason);
-            return removeElement;
-        }
-
-        removeElement.setAttribute('title', 'Remove this TODO comment from the recipe file, after a confirmation. It is kept under Removed, where Restore puts it back.');
-        removeElement.addEventListener('click', function () {
-            if (isWireLookupRunning) { return; }
-            setWireLookupRunning(true);
-            vscodeApi.postMessage({ command: 'removeTodo', treeKey: treeState.tree.treeKey, lineNumber: entry.todo.lineNumber });
-        });
-        removeElement.disabled = isWireLookupRunning;
-        wireLookupButtonElements.push(removeElement);
-        return removeElement;
-
-    }
-
-    /*
-        The TODOs the reader removed from the card's recipe (#391), grouped by object occurrence like
-        the open list and built at once: the host lists only what is still out of the recipe, a short
-        list next to the open one. Each row's Restore posts the row's removalKey, and the host puts
-        back the line its removed-TODOs file holds.
-    */
-    function buildRemovedTodos(treeState, subTabState) {
-
-        const removedPanelElement = subTabState.todosFrame.viewStates.removed.panelElement;
-        const searchKey = troubleshootingSearchKey('todosRemoved');
-        if (typeof treeState.searchTexts[searchKey] !== 'string') {
-            treeState.searchTexts[searchKey] = '';
-            treeState.searchQueries[searchKey] = '';
-        }
-
-        subTabState.removedSearch = buildTabSearch(treeState, searchKey, REMOVED_TODOS_PLACEHOLDER, function () { applyTroubleshootingFilter(treeState, 'todos'); });
-        subTabState.removedListElement = createElement('div', 'troubleshootingList troubleshootingGroupCards');
-        subTabState.removedGroups = [];
-        subTabState.removedEntries = [];
-        removedPanelElement.appendChild(subTabState.removedSearch.element);
-        removedPanelElement.appendChild(subTabState.removedListElement);
-
-        const removedTodos = Array.isArray(treeState.tree.removedTodos) ? treeState.tree.removedTodos : [];
-        const groupsByLabel = Object.create(null);
-
-        removedTodos.forEach(function (removedTodo) {
-
-            const objectLabel = removedTodo.objectApiName + (removedTodo.objectNickname ? ' · ' + removedTodo.objectNickname : '');
-            let groupState = groupsByLabel[objectLabel];
-            if (!groupState) {
-                // A REMOVED GROUP IS BUILT OPEN AND STAYS OPEN, SO ITS HEADER IS TEXT ON THE SAME CARD
-                groupState = {
-                    element: null,
-                    countElement: createElement('span', 'troubleshootingTodoCount muted'),
-                    bodyElement: createElement('div', 'troubleshootingTodoRows'),
-                    entries: [],
-                    matchingCount: 0,
-                    isShown: true
-                };
-                groupState.element = buildTroubleshootingGroupCard('todos', 'troubleshootingTodoGroup expanded', '', objectLabel, 'troubleshootingTodoObject', groupState.countElement, groupState.bodyElement, false).element;
-                subTabState.removedListElement.appendChild(groupState.element);
-                groupsByLabel[objectLabel] = groupState;
-                subTabState.removedGroups.push(groupState);
-            }
-
-            const fieldLabel = removedTodo.fieldApiName || 'on the object';
-            const restoreElement = createButton('secondary', 'troubleshootingTodoAction troubleshootingTodoRestore', TODO_RESTORE_LABEL, 'compact');
-            restoreElement.setAttribute('aria-label', TODO_RESTORE_LABEL + ': ' + fieldLabel + ', ' + removedTodo.text);
-            restoreElement.setAttribute('title', 'Put this TODO comment back in the recipe file where it was, after a confirmation');
-            restoreElement.addEventListener('click', function () {
-                if (isWireLookupRunning) { return; }
-                setWireLookupRunning(true);
-                vscodeApi.postMessage({ command: 'restoreTodo', treeKey: treeState.tree.treeKey, removalKey: removedTodo.removalKey });
-            });
-            restoreElement.disabled = isWireLookupRunning;
-            wireLookupButtonElements.push(restoreElement);
-
-            const entry = {
-                searchText: [removedTodo.objectApiName, removedTodo.objectNickname || '', fieldLabel, removedTodo.text].join('\\n').toLowerCase(),
-                isMatch: true,
-                isShown: true,
-                element: buildTodoRowElement(true, fieldLabel, !!removedTodo.fieldApiName, null, restoreElement, removedTodo.text)
-            };
-            groupState.entries.push(entry);
-            groupState.bodyElement.appendChild(entry.element);
-            subTabState.removedEntries.push(entry);
-
-        });
-
-        if (removedTodos.length === 0) {
-            subTabState.removedListElement.appendChild(createElement('div', 'treeEmpty muted', NO_REMOVED_TODOS_NOTE));
-        }
-
-    }
-
-    function setTodoGroupExpanded(groupState, isExpanded, isAnimated) {
-
-        if (isExpanded && !groupState.isBuilt) {
-            groupState.entries.forEach(function (entry) {
-                const object = groupState.object;
-                const sourceLinkElement = object.recipeFilePath && entry.todo.lineNumber
-                    ? buildSourceLink('treeTodoSource', '↗ yml', object.recipeFilePath, entry.todo.lineNumber)
-                    : null;
-                const todoElement = buildTodoRowElement(entry.isMatch, entry.fieldLabel, entry.isFieldTodo, sourceLinkElement, buildRemoveTodoButton(groupState.treeState, entry), entry.todoText);
-                entry.element = todoElement;
-                groupState.bodyElement.appendChild(todoElement);
-            });
-            groupState.isBuilt = true;
-        }
-
-        groupState.isExpanded = isExpanded;
-        setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
-        drawTroubleshootingGroupExpanded(groupState, isExpanded);
-
-    }
-
-    // A ROW OR GROUP IS WRITTEN ONLY WHEN ITS VISIBILITY CHANGES, SO A KEYSTROKE OVER THOUSANDS OF TODOS TOUCHES ONLY WHAT IT CHANGED
-    function setShownIfChanged(state, element, isShown) {
-        if (state.isShown === isShown) { return; }
-        state.isShown = isShown;
-        if (isShown) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
-    }
-
-    // A FIELD TODO'S TEXT: ITS OWN, OR THE SPAN OF THE FIELD'S VALUE THE HOST SAID HOLDS IT; '' WHEN NEITHER IS USABLE
-    function readFieldTodoText(todo, recipeValue) {
-
-        if (typeof todo.text === 'string') { return todo.text; }
-
-        const value = typeof recipeValue === 'string' ? recipeValue : '';
-        const isUsableSpan = Number.isInteger(todo.valueStart) && Number.isInteger(todo.valueLength)
-            && todo.valueStart >= 0 && todo.valueLength > 0 && todo.valueStart + todo.valueLength <= value.length;
-
-        return isUsableSpan ? value.substr(todo.valueStart, todo.valueLength) : '';
-
-    }
-
-    function buildDeployAction(treeState, deployKind) {
-
-        const actionCard = buildActionCard(DEPLOY_ACTION_BY_KIND[deployKind], 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
-        const buttonElement = actionCard.buttonElement;
-        actionCard.detailElement.classList.add('troubleshootingSummary');
-        setTextShown(actionCard.detailElement, 'Reading this project…');
-
-        buttonElement.addEventListener('click', function () {
-            if (buttonElement.disabled || renderedSequence === null) { return; }
-            isMetadataDeployRunning = true;
-            metadataDeployRunningKey = treeState.tree.treeKey + '\\n' + deployKind;
-            drawTreeInserts();
-            drawDataOrgViews();
-            const deployMessage = { command: DEPLOY_COMMANDS[deployKind], treeKey: treeState.tree.treeKey };
-            if (dataOrgSelectedIndex !== null) { deployMessage.orgIndex = dataOrgSelectedIndex; }
-            vscodeApi.postMessage(deployMessage);
-        });
-
-        treeState.deployCards[deployKind] = actionCard;
-
-        return actionCard;
-
-    }
-
-    // EVERY TEXT AN ELEMENT DRAWS, ITS DESCENDANTS' INCLUDED -- WHAT IS SEARCHABLE IS WHAT IS ON SCREEN, SO NOT A TOOLTIP
-    function collectElementText(element) {
-
-        const texts = [String(element.textContent || '')];
-        Array.prototype.forEach.call(element.children || [], function (childElement) { texts.push.apply(texts, collectElementText(childElement)); });
-        return texts;
-
-    }
-
-    /*
-        Each sub-tab's own search (#365): it hides the entries that do not match and counts what is
-        left. A keystroke filters only its own sub-tab (onlySubTab); a deploy summary refreshes only
-        the action sub-tabs ('actions'); a build or restore filters them all.
-    */
-    function applyTroubleshootingFilter(treeState, onlySubTab) {
-
-        (treeState.troubleshootingSubTabStates || []).forEach(function (subTabState) {
-
-            if (onlySubTab === 'actions' ? subTabState.subTab === 'todos' : (onlySubTab && onlySubTab !== subTabState.subTab)) { return; }
-
-            const searchQuery = treeState.searchQueries[troubleshootingSearchKey(subTabState.subTab)] || '';
-            let matchingCount = 0;
-            let total = 0;
-
-            if (subTabState.todoGroups) {
-
-                subTabState.todoGroups.forEach(function (groupState) {
-                    groupState.matchingCount = 0;
-                    groupState.entries.forEach(function (entry) {
-                        entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
-                        if (entry.isMatch) { groupState.matchingCount++; }
-                        if (entry.element) { setShownIfChanged(entry, entry.element, entry.isMatch); }
-                    });
-                    total += groupState.entries.length;
-                    matchingCount += groupState.matchingCount;
-                    setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
-                    groupState.countElement.textContent = searchQuery
-                        ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'TODO', 'TODOs')
-                        : pluralize(groupState.entries.length, 'TODO', 'TODOs');
-                });
-
-                expandMatchesWithinBudget(subTabState.todoGroups,
-                    function (groupState) { return groupState.matchingCount; },
-                    function (groupState) { return groupState.entries.length; },
-                    function (groupState, isExpanded) { setTodoGroupExpanded(groupState, isExpanded, false); });
-
-                applyRemovedTodosFilter(treeState, subTabState);
-
-            } else {
-
-                subTabState.items.forEach(function (item) {
-                    // AN ACTION IS MATCHED BY WHAT IT DRAWS NOW: ITS BUTTON, ITS REASON AND WHAT IT WOULD DEPLOY
-                    const isMatch = !searchQuery || collectElementText(item.element).join('\\n').toLowerCase().indexOf(searchQuery) !== -1;
-                    if (isMatch) { matchingCount++; }
-                    if (item.isShown === undefined) { item.isShown = true; }
-                    setShownIfChanged(item, item.element, isMatch);
-                });
-                total = subTabState.items.length;
-
-                // THE VALIDATION RULES SUB-TAB COUNTS ITS RULES, NOT ITS ONE ACTION (#327); A ROW IS MATCHED BY ITS SAVED TEXT, BUILT OR NOT
-                if (subTabState.ruleGroups) {
-                    matchingCount = 0;
-                    total = 0;
-                    subTabState.ruleGroups.forEach(function (groupState) {
-                        groupState.matchingCount = 0;
-                        groupState.entries.forEach(function (entry) {
-                            entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
-                            if (entry.isMatch) { groupState.matchingCount++; }
-                            if (entry.element) { setShownIfChanged(entry, entry.element, entry.isMatch); }
-                        });
-                        total += groupState.entries.length;
-                        matchingCount += groupState.matchingCount;
-                        const isObjectNamed = groupState.objectApiName.toLowerCase().indexOf(searchQuery) !== -1;
-                        setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0 || isObjectNamed);
-                        groupState.countElement.textContent = groupState.entries.length === 0 ? ''
-                            : searchQuery ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'rule', 'rules')
-                            : pluralize(groupState.entries.length, 'rule', 'rules');
-                    });
-                    expandMatchesWithinBudget(subTabState.ruleGroups.filter(function (groupState) { return groupState.entries.length > 0; }),
-                        function (groupState) { return groupState.matchingCount; },
-                        function (groupState) { return groupState.entries.length; },
-                        function (groupState, isExpanded) { setValidationRuleGroupExpanded(treeState, groupState, isExpanded, false); });
-                }
-
-                // THE HISTORY COUNTS ITS STEPS (#485); A ROW IS MATCHED BY WHAT IT DRAWS, SAVED WHEN IT WAS BUILT
-                if (subTabState.historyRows) {
-                    matchingCount = 0;
-                    total = subTabState.historyRows.length;
-                    subTabState.historyRows.forEach(function (rowState) {
-                        const isMatch = !searchQuery || rowState.searchText.indexOf(searchQuery) !== -1;
-                        if (isMatch) { matchingCount++; }
-                        setShownIfChanged(rowState, rowState.element, isMatch);
-                    });
-                }
-
-            }
-
-            subTabState.search.matchCountElement.textContent = !searchQuery
-                ? pluralize(total, subTabState.noun[0], subTabState.noun[1])
-                : matchingCount > 0 ? matchingCount + ' of ' + pluralize(total, subTabState.noun[0], subTabState.noun[1]) : 'no matches';
-
-        });
-
-    }
-
-    // THE REMOVED LIST'S OWN SEARCH (#391): A ROW IS MATCHED BY ITS SAVED TEXT, A GROUP SHOWN WHILE ONE OF ITS ROWS MATCHES
-    function applyRemovedTodosFilter(treeState, subTabState) {
-
-        if (!subTabState.removedGroups) { return; }
-
-        const searchQuery = treeState.searchQueries[troubleshootingSearchKey('todosRemoved')] || '';
-        let matchingCount = 0;
-
-        subTabState.removedGroups.forEach(function (groupState) {
-            groupState.matchingCount = 0;
-            groupState.entries.forEach(function (entry) {
-                entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
-                if (entry.isMatch) { groupState.matchingCount++; }
-                setShownIfChanged(entry, entry.element, entry.isMatch);
-            });
-            matchingCount += groupState.matchingCount;
-            setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
-            groupState.countElement.textContent = searchQuery
-                ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'TODO', 'TODOs')
-                : pluralize(groupState.entries.length, 'TODO', 'TODOs');
-        });
-
-        const total = subTabState.removedEntries.length;
-        subTabState.removedSearch.matchCountElement.textContent = !searchQuery
-            ? pluralize(total, 'removed TODO', 'removed TODOs')
-            : matchingCount > 0 ? matchingCount + ' of ' + pluralize(total, 'removed TODO', 'removed TODOs') : 'no matches';
-
-    }
-
-    // ASKED EACH TIME THE TAB IS SELECTED; ONE SELECTED BEFORE THE MODEL WAS ACKNOWLEDGED (A RESTORE) ASKS ONCE IT IS
-    function requestTroubleshootingSummary(treeState) {
-
-        if (renderedSequence === null) {
-            treeState.isTroubleshootingSummaryWanted = true;
-            return;
-        }
-
-        treeState.isTroubleshootingSummaryWanted = false;
-        vscodeApi.postMessage({ command: 'loadTroubleshootingSummary', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
-        if (treeState.troubleshootingSubTab === 'validationRules') { requestTreeValidationRules(treeState); }
-        if (treeState.troubleshootingSubTab === 'history') { requestTroubleshootingHistory(treeState); }
-
-    }
-
-    function renderTroubleshootingSummary(summaryMessage) {
-
-        if (renderedSequence === null || summaryMessage.renderSequence !== renderedSequence) { return; }
-
-        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === summaryMessage.treeKey; });
-        if (!treeState) { return; }
-
-        treeState.troubleshootingSummary = summaryMessage;
-        drawTreePermissionSet(treeState);
-        applyTroubleshootingFilter(treeState, 'actions');
 
     }
 
@@ -32059,660 +31262,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
     }
 
-    // WHAT A SECTION SAYS IT WOULD DEPLOY, AND WHY ITS BUTTON IS DISABLED WHEN THERE IS NOTHING
-    function describeDeploySummary(summary, deployKind) {
-
-        if (!summary) { return { text: 'Reading this project…', emptyReason: 'Reading this project…' }; }
-        if (summary.failureMessage) { return { text: summary.failureMessage, emptyReason: summary.failureMessage }; }
-
-        if (deployKind === 'permissionSet') {
-            return {
-                text: pluralize(summary.permissionSetCount, 'permission set', 'permission sets') + ' in this project grant access to this tree.',
-                emptyReason: summary.permissionSetCount === 0 ? 'No permission set in this project grants access to this tree. Generate permission set… writes one.' : ''
-            };
-        }
-
-        if (deployKind === 'fields') {
-            const notes = [];
-            if (summary.standardFieldCount > 0) { notes.push(pluralize(summary.standardFieldCount, 'standard field', 'standard fields') + ' never deployed'); }
-            if (summary.unreadableFieldCount > 0) { notes.push(pluralize(summary.unreadableFieldCount, 'custom field', 'custom fields') + ' with no readable source file'); }
-            // #402: THE CUSTOM OBJECTS THE FIELDS GO ON ARE DEPLOYED WITH THEM; ONE THE PROJECT LACKS OR CANNOT READ MUST ALREADY BE IN THE ORG
-            const missingObjectCount = (summary.missingCustomObjectCount || 0) + (summary.unreadableCustomObjectCount || 0);
-            if (missingObjectCount > 0) { notes.push(pluralize(missingObjectCount, 'custom object', 'custom objects') + ' with no readable .object-meta.xml'); }
-            return {
-                text: pluralize(summary.customFieldCount, 'CustomField', 'CustomField') + (summary.customObjectCount > 0 ? ' and ' + pluralize(summary.customObjectCount, 'CustomObject', 'CustomObject') : '') + (notes.length > 0 ? '; ' + notes.join('; ') : '') + '.',
-                emptyReason: summary.customFieldCount === 0 ? 'This tree has no custom field whose source file this project holds.' : ''
-            };
-        }
-
-        if (deployKind === 'globalValueSets') {
-            return {
-                text: pluralize(summary.globalValueSetCount, 'GlobalValueSet', 'GlobalValueSet')
-                    + (summary.missingGlobalValueSetCount > 0 ? '; ' + pluralize(summary.missingGlobalValueSetCount, 'named value set', 'named value sets') + ' this project does not hold' : '') + '.',
-                emptyReason: summary.globalValueSetCount === 0 ? 'No field of this tree names a global value set this project holds.' : ''
-            };
-        }
-
-        return {
-            text: pluralize(summary.recordTypeCount, 'RecordType', 'RecordType') + '.',
-            emptyReason: summary.recordTypeCount === 0 ? 'No object of this tree has a record type in this project.' : ''
-        };
-
-    }
-
-    /*
-        "Assign permission sets to me…" (#274, #302), in the Troubleshooting tab (#346). Posts the
-        tree's KEY, and the index of the org the Treecipe tab has selected when it has one; with
-        none the host asks for an org itself. Which permission sets are offered is the host's.
-        Every assign button and insert is disabled on the click, and only the host's
-        permissionSetAssignState gives them back. How it went is a VS Code notification, never a
-        line here.
-    */
-    function buildAssignPermissionSetCard(treeState) {
-
-        const actionCard = buildActionCard('assignPermissionSets', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
-        const buttonElement = actionCard.buttonElement;
-
-        buttonElement.setAttribute('title', ASSIGN_PERMISSION_SETS_TITLE);
-        buttonElement.addEventListener('click', function () {
-            if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
-            isPermissionSetAssignRunning = true;
-            drawTreeInserts();
-            drawDataOrgViews();
-            const permissionSetMessage = { command: 'assignTreePermissionSets', treeKey: treeState.tree.treeKey };
-            if (dataOrgSelectedIndex !== null) { permissionSetMessage.orgIndex = dataOrgSelectedIndex; }
-            vscodeApi.postMessage(permissionSetMessage);
-        });
-
-        treeState.permissionSetCard = actionCard;
-
-        return actionCard;
-
-    }
-
-    /*
-        "Generate permission set…" (#306) posts the tree's KEY alone; what is written, where, and
-        the confirmation are the host's. It deploys nothing, so it needs no org and holds no
-        other button.
-    */
-    function buildGeneratePermissionSetCard(treeState) {
-
-        const actionCard = buildActionCard('generatePermissionSet', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
-        const generateButtonElement = actionCard.buttonElement;
-        generateButtonElement.addEventListener('click', function () {
-            if (generateButtonElement.disabled || renderedSequence === null) { return; }
-            vscodeApi.postMessage({ command: 'generateTreePermissionSet', treeKey: treeState.tree.treeKey });
-        });
-        treeState.generatePermissionSetCard = actionCard;
-
-        return actionCard;
-
-    }
-
-    /*
-        The Validation Rules list (#327), under "Retrieve validation rules…": per tree object, each
-        rule the project holds -- its name, active or not, its error message, the fields it
-        constrains and what generation did with it -- read by the host when the sub-tab first opens
-        (loadValidationRules), so the posted model does not carry it. Every value is written with
-        textContent, and a formula is built only when its button opens it.
-    */
-    function buildTroubleshootingValidationRules(treeState, subTabState) {
-
-        subTabState.noun = ['rule', 'rules'];
-        subTabState.ruleGroups = [];
-        treeState.validationRuleSubTabState = subTabState;
-        treeState.validationRuleListElement = createElement('div', 'validationRuleList troubleshootingGroupCards');
-        treeState.validationRuleListElement.appendChild(createElement('div', 'treeEmpty muted', VALIDATION_RULES_LOADING_NOTE));
-        subTabState.listElement.appendChild(treeState.validationRuleListElement);
-
-    }
-
-    /*
-        The History (#485): the tree's Troubleshooting steps as one table, read by the host when the
-        sub-tab first opens (loadTroubleshootingHistory) and posted again when a step ends, so the
-        posted model does not carry it. Every value is written with textContent; a file is opened by
-        its index in the rows the host posted, never by a path.
-    */
-    function buildTroubleshootingHistory(treeState, subTabState) {
-
-        subTabState.noun = ['step', 'steps'];
-        subTabState.historyRows = [];
-        treeState.historySubTabState = subTabState;
-        if (!treeState.historySort) { treeState.historySort = readHistorySort(null); }
-        treeState.historyListElement = createElement('div', 'troubleshootingHistory');
-        treeState.historyListElement.appendChild(createElement('div', 'treeEmpty muted', HISTORY_LOADING_NOTE));
-        subTabState.listElement.appendChild(treeState.historyListElement);
-
-    }
-
-    // A SAVED SORT IS KEPT ONLY IN ITS OWN SHAPE; ANYTHING ELSE IS TIME, NEWEST FIRST
-    function readHistorySort(savedSort) {
-
-        if (savedSort && typeof savedSort === 'object' && HISTORY_SORT_COLUMNS.indexOf(savedSort.column) !== -1 && typeof savedSort.isDescending === 'boolean') {
-            return { column: savedSort.column, isDescending: savedSort.isDescending };
-        }
-        return { column: 'time', isDescending: true };
-
-    }
-
-    // ASKED ONCE PER MODEL WHEN THE SUB-TAB IS SHOWN; THE HOST POSTS IT AGAIN WHEN A STEP OF THIS TREE ENDS
-    function requestTroubleshootingHistory(treeState) {
-
-        if (renderedSequence === null || treeState.isHistoryRequested || !treeState.historyListElement) { return; }
-
-        treeState.isHistoryRequested = true;
-        vscodeApi.postMessage({ command: 'loadTroubleshootingHistory', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
-
-    }
-
-    function renderTroubleshootingHistory(historyMessage) {
-
-        if (renderedSequence === null || historyMessage.renderSequence !== renderedSequence) { return; }
-
-        const treeState = findTreeState(historyMessage.treeKey);
-        if (!treeState || !treeState.historyListElement) { return; }
-
-        treeState.historyMessage = historyMessage;
-        drawTroubleshootingHistory(treeState);
-        vscodeApi.postMessage({ command: 'troubleshootingHistoryRendered', renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence });
-
-    }
-
-    function historyStatusOf(row) {
-
-        return hasOwnKey(HISTORY_STATUS_DISPLAY, row.status) ? HISTORY_STATUS_DISPLAY[row.status] : { emoji: '', label: String(row.status) };
-
-    }
-
-    // WHAT A ROW SORTS BY IN EACH COLUMN; A TIE IS BROKEN BY TIME, NEWEST FIRST
-    function historySortValue(treeState, row, column) {
-
-        if (column === 'time') { return Number(row.timeMs) || 0; }
-        if (column === 'step') { return String(row.stepLabel).toLowerCase(); }
-        if (column === 'org') { return typeof row.orgLabel === 'string' ? row.orgLabel.toLowerCase() : ''; }
-        if (column === 'outcome') { return historyStatusOf(row).label.toLowerCase(); }
-        return versionLabelOf(treeState, typeof row.runFolderName === 'string' ? row.runFolderName : null).toLowerCase();
-
-    }
-
-    function sortHistoryRowStates(treeState, rowStates) {
-
-        const sort = treeState.historySort;
-        return rowStates.slice().sort(function (first, second) {
-            const firstValue = historySortValue(treeState, first.row, sort.column);
-            const secondValue = historySortValue(treeState, second.row, sort.column);
-            const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
-            if (order !== 0) { return sort.isDescending ? -order : order; }
-            return (Number(second.row.timeMs) || 0) - (Number(first.row.timeMs) || 0);
-        });
-
-    }
-
-    function drawTroubleshootingHistory(treeState) {
-
-        const historyMessage = treeState.historyMessage;
-        const subTabState = treeState.historySubTabState;
-        const listElement = treeState.historyListElement;
-        const rows = Array.isArray(historyMessage.rows) ? historyMessage.rows : [];
-        listElement.textContent = '';
-        subTabState.historyRows = [];
-
-        if (rows.length === 0) {
-            listElement.appendChild(createElement('div', 'treeEmpty muted', HISTORY_EMPTY_NOTE));
-            applyTroubleshootingFilter(treeState, 'history');
-            return;
-        }
-
-        const rowTable = buildRowTable({
-            className: 'historyTable',
-            columnClassName: 'history',
-            columns: HISTORY_COLUMNS,
-            sortColumns: HISTORY_SORT_COLUMNS,
-            sort: treeState.historySort,
-            onSort: function (column) { sortTroubleshootingHistory(treeState, column); }
-        });
-        treeState.historySortButtons = rowTable.sortButtons;
-
-        rows.forEach(function (row) {
-            subTabState.historyRows.push(buildHistoryRow(treeState, historyMessage, row));
-        });
-
-        sortHistoryRowStates(treeState, subTabState.historyRows).forEach(function (rowState) { rowTable.bodyElement.appendChild(rowState.element); });
-
-        listElement.appendChild(rowTable.wrapElement);
-        treeState.historyBodyElement = rowTable.bodyElement;
-
-        if (historyMessage.hiddenRowCount > 0) {
-            listElement.appendChild(createElement('div', 'historyHiddenNote muted', pluralize(historyMessage.hiddenRowCount, 'older step is', 'older steps are') + ' not shown.'));
-        }
-
-        applyTroubleshootingFilter(treeState, 'history');
-
-    }
-
-    function buildHistoryRow(treeState, historyMessage, row) {
-
-        const rowElement = createElement('tr', 'historyRow historyRow-' + String(row.status));
-        const statusDisplay = historyStatusOf(row);
-        const runLabel = versionLabelOf(treeState, typeof row.runFolderName === 'string' ? row.runFolderName : null);
-        const files = Array.isArray(row.files) ? row.files : [];
-
-        const timeCell = createElement('td', 'historyTime', String(row.timeLabel));
-        if (typeof row.finishedAtLabel === 'string') { timeCell.setAttribute('title', 'Ended ' + row.finishedAtLabel); }
-
-        const orgCell = createElement('td', 'historyOrg', typeof row.orgLabel === 'string' ? row.orgLabel : '');
-        if (typeof row.orgUsername === 'string') { orgCell.setAttribute('title', row.orgUsername); }
-
-        const outcomeCell = createElement('td', 'historyOutcome');
-        const statusElement = createElement('span', 'historyStatus historyStatus-' + String(row.status));
-        const emojiElement = createElement('span', 'historyStatusEmoji', statusDisplay.emoji);
-        emojiElement.setAttribute('aria-hidden', 'true');
-        statusElement.appendChild(emojiElement);
-        statusElement.appendChild(createElement('span', 'historyStatusLabel', statusDisplay.label));
-        outcomeCell.appendChild(statusElement);
-
-        const detailParts = [];
-        if (typeof row.succeededCount === 'number') { detailParts.push(row.succeededCount + ' succeeded'); }
-        if (typeof row.failedCount === 'number') { detailParts.push(row.failedCount + ' failed'); }
-        if (typeof row.detail === 'string') { detailParts.push(row.detail); }
-        if (row.status === 'unrecorded') { detailParts.push(HISTORY_UNRECORDED_NOTE); }
-        if (row.status === 'unreadable') { detailParts.push(HISTORY_UNREADABLE_NOTE); }
-        const detailText = detailParts.join(' · ');
-        if (detailText) { outcomeCell.appendChild(createElement('span', 'historyDetail muted', detailText)); }
-
-        const filesCell = createElement('td', 'historyFiles');
-        files.forEach(function (file) {
-            const fileButton = createButton('link', 'historyFile', String(file.fileName));
-            fileButton.addEventListener('click', function () {
-                vscodeApi.postMessage({ command: 'openTroubleshootingHistoryFile', renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence, fileIndex: file.fileIndex });
-            });
-            filesCell.appendChild(fileButton);
-        });
-
-        rowElement.appendChild(timeCell);
-        rowElement.appendChild(createElement('td', 'historyStep', String(row.stepLabel)));
-        rowElement.appendChild(orgCell);
-        rowElement.appendChild(outcomeCell);
-        rowElement.appendChild(createElement('td', 'historyRun', runLabel));
-        rowElement.appendChild(filesCell);
-
-        const searchTexts = [String(row.timeLabel), String(row.stepLabel), statusDisplay.label, runLabel, detailText]
-            .concat(typeof row.orgLabel === 'string' ? [row.orgLabel] : [])
-            .concat(typeof row.orgUsername === 'string' ? [row.orgUsername] : [])
-            .concat(files.map(function (file) { return String(file.fileName); }));
-
-        return { row: row, element: rowElement, isShown: true, searchText: searchTexts.join('\\n').toLowerCase() };
-
-    }
-
-    // A HEADER CLICK SORTS BY ITS COLUMN; THE SAME COLUMN AGAIN TURNS THE ORDER. TIME STARTS NEWEST FIRST, THE REST A TO Z
-    function sortTroubleshootingHistory(treeState, column) {
-
-        treeState.historySort = treeState.historySort.column === column
-            ? { column: column, isDescending: !treeState.historySort.isDescending }
-            : { column: column, isDescending: column === 'time' };
-        drawTroubleshootingHistory(treeState);
-        // THE HEADERS ARE DRAWN AGAIN, SO FOCUS MOVES TO THE NEW BUTTON OF THE COLUMN CLICKED
-        const sortButton = treeState.historySortButtons && treeState.historySortButtons[column];
-        if (sortButton && typeof sortButton.focus === 'function') { sortButton.focus(); }
-        savePanelPlace();
-
-    }
-
-    // ASKED ONCE PER MODEL WHEN THE SUB-TAB IS SHOWN; ONE SHOWN BEFORE THE ACK ASKS WITH THE TAB'S COUNTS ONCE IT IS
-    function requestTreeValidationRules(treeState) {
-
-        if (renderedSequence === null || treeState.isValidationRulesRequested || !treeState.validationRuleListElement) { return; }
-
-        treeState.isValidationRulesRequested = true;
-        vscodeApi.postMessage({ command: 'loadValidationRules', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
-
-    }
-
-    // WHAT A RULE IS FOUND BY: ITS OBJECT AND WHAT ITS ROW DRAWS, ITS FORMULA ONLY WHILE OPEN -- NEVER A TOOLTIP
-    function buildValidationRuleSearchText(objectApiName, entry) {
-
-        const texts = [objectApiName, entry.ruleName, entry.statusLabel, entry.activeLabel, entry.messageText, entry.fieldsText]
-            .concat(entry.reasonTexts);
-        if (entry.isFormulaExpanded) { texts.push(entry.rule.formula); }
-        return texts.join('\\n').toLowerCase();
-
-    }
-
-    /*
-        One group per object, its rows built when it opens, and groups opened within the
-        auto-expand budgets, like the TODO's sub-tab: a tree with thousands of rules costs its
-        headers and the rows the budget allows. Each rule's search text is taken once from the
-        posted values, so a keystroke reads no DOM.
-    */
-    function renderTreeValidationRules(rulesMessage) {
-
-        if (renderedSequence === null || rulesMessage.renderSequence !== renderedSequence) { return; }
-
-        const treeState = findTreeState(rulesMessage.treeKey);
-        if (!treeState || !treeState.validationRuleListElement) { return; }
-
-        const listElement = treeState.validationRuleListElement;
-        const subTabState = treeState.validationRuleSubTabState;
-        listElement.textContent = '';
-        subTabState.ruleGroups = [];
-
-        if (rulesMessage.failureMessage) {
-            // ASKED AGAIN THE NEXT TIME THE SUB-TAB IS OPENED: THE READER IS LIKELY FIXING IT
-            treeState.isValidationRulesRequested = false;
-            listElement.appendChild(createElement('div', 'treeEmpty muted', String(rulesMessage.failureMessage)));
-            applyTroubleshootingFilter(treeState, 'validationRules');
-            return;
-        }
-
-        const objects = Array.isArray(rulesMessage.objects) ? rulesMessage.objects : [];
-        const openableRuleKeys = Object.create(null);
-        (Array.isArray(rulesMessage.openableRules) ? rulesMessage.openableRules : []).forEach(function (openableRule) {
-            openableRuleKeys[String(openableRule.objectApiName) + '\\n' + String(openableRule.ruleName)] = true;
-        });
-        const hasLocalRules = objects.some(function (object) {
-            return (Array.isArray(object.rules) && object.rules.some(function (rule) { return !rule.isFileMissing; })) || object.unreadRuleCount > 0;
-        });
-
-        if (!hasLocalRules) {
-            listElement.appendChild(createElement('div', 'validationRuleNoLocalRules muted', NO_LOCAL_VALIDATION_RULES_NOTE));
-        }
-
-        objects.forEach(function (object) {
-
-            const rules = Array.isArray(object.rules) ? object.rules : [];
-            const objectApiName = String(object.objectApiName);
-            const groupState = {
-                objectApiName: objectApiName,
-                element: null,
-                toggleElement: null,
-                countElement: createElement('span', 'validationRuleCount muted'),
-                bodyElement: createElement('div', 'validationRuleRows hidden'),
-                entries: rules.map(function (rule) {
-                    const entry = buildValidationRuleEntryState(objectApiName, rule);
-                    entry.isSourceOpenable = !rule.isFileMissing && hasOwnKey(openableRuleKeys, objectApiName + '\\n' + entry.ruleName);
-                    return entry;
-                }),
-                matchingCount: 0,
-                isBuilt: false,
-                isExpanded: false,
-                isShown: true
-            };
-
-            const groupCard = buildTroubleshootingGroupCard('validationRules', 'validationRuleObject', 'validationRuleToggle', objectApiName, 'validationRuleObjectName', groupState.countElement, null, groupState.entries.length > 0);
-            groupState.element = groupCard.element;
-            const statusDetail = describeValidationRuleStatuses(groupState.entries);
-            if (statusDetail) { groupCard.headerElement.appendChild(createElement('span', 'validationRuleDetail muted', statusDetail)); }
-            if (groupState.entries.length > 0) {
-                groupState.toggleElement = groupCard.headerElement;
-                groupState.toggleElement.addEventListener('click', function () {
-                    setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
-                });
-            }
-
-            if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
-                groupState.element.appendChild(createElement('div', 'validationRuleEmpty muted', OBJECT_NO_VALIDATION_RULES_NOTE));
-            }
-
-            groupState.element.appendChild(groupState.bodyElement);
-
-            if (object.unreadRuleCount > 0) {
-                groupState.element.appendChild(createElement('div', 'validationRuleUnread muted', pluralize(object.unreadRuleCount, 'more rule file was', 'more rule files were') + ' not read.'));
-            }
-
-            listElement.appendChild(groupState.element);
-            subTabState.ruleGroups.push(groupState);
-
-        });
-
-        applyTroubleshootingFilter(treeState, 'validationRules');
-
-        // ITS LINKS ARE HONOURED ONCE THE LIST IS ON SCREEN (#560)
-        if (Object.keys(openableRuleKeys).length > 0) {
-            vscodeApi.postMessage({ command: 'validationRulesRendered', treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence, listSequence: rulesMessage.listSequence });
-        }
-
-    }
-
-    // WHAT ONE RULE'S ROW WILL DRAW, TAKEN FROM THE POSTED VALUES BEFORE ANY ROW IS BUILT
-    function buildValidationRuleEntryState(objectApiName, rule) {
-
-        const fieldApiNames = Array.isArray(rule.fieldApiNames) ? rule.fieldApiNames : [];
-        const reasonTexts = (Array.isArray(rule.reasons) ? rule.reasons : []).map(function (reason) { return 'Why not applied: ' + String(reason); });
-        if (rule.status === 'notInRun') { reasonTexts.push(VALIDATION_RULE_NOT_IN_RUN_NOTE); }
-        if (rule.isFileMissing) { reasonTexts.push(VALIDATION_RULE_FILE_MISSING_NOTE); }
-
-        const entry = {
-            rule: rule,
-            ruleName: String(rule.ruleName),
-            statusLabel: hasOwnKey(VALIDATION_RULE_STATUS_LABELS, rule.status) ? VALIDATION_RULE_STATUS_LABELS[rule.status] : String(rule.status),
-            activeLabel: rule.isActive === true ? 'active' : rule.isActive === false ? 'inactive' : '',
-            messageText: typeof rule.errorMessage === 'string' && rule.errorMessage !== '' ? 'Error message: ' + rule.errorMessage : '',
-            fieldsText: fieldApiNames.length > 0 ? 'Constrains: ' + fieldApiNames.map(String).join(', ') : VALIDATION_RULE_NO_FIELDS_NOTE,
-            reasonTexts: reasonTexts,
-            hasFormula: typeof rule.formula === 'string' && rule.formula !== '',
-            isFormulaExpanded: false,
-            formulaElement: null,
-            searchText: '',
-            isMatch: true,
-            isShown: true,
-            element: null
-        };
-        entry.searchText = buildValidationRuleSearchText(objectApiName, entry);
-
-        return entry;
-
-    }
-
-    function setValidationRuleGroupExpanded(treeState, groupState, isExpanded, isAnimated) {
-
-        if (!groupState.toggleElement) { return; }
-
-        if (isExpanded && !groupState.isBuilt) {
-            groupState.entries.forEach(function (entry) {
-                entry.element = buildValidationRuleRow(treeState, groupState, entry);
-                if (!entry.isMatch) { entry.element.classList.add('hidden'); }
-                entry.isShown = entry.isMatch;
-                groupState.bodyElement.appendChild(entry.element);
-            });
-            groupState.isBuilt = true;
-        }
-
-        groupState.isExpanded = isExpanded;
-        setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
-        drawTroubleshootingGroupExpanded(groupState, isExpanded);
-
-    }
-
-    // A RULE GROUP'S ONE DETAIL LINE (#383): HOW MANY RULES ARE IN EACH STATUS, IN THE STATUS LABELS' ORDER, A STATUS NONE HAS LEFT OUT
-    function describeValidationRuleStatuses(entries) {
-
-        const countsByLabel = Object.create(null);
-        const labels = [];
-        Object.keys(VALIDATION_RULE_STATUS_LABELS).forEach(function (status) { labels.push(VALIDATION_RULE_STATUS_LABELS[status]); });
-        entries.forEach(function (entry) {
-            if (!hasOwnKey(countsByLabel, entry.statusLabel)) {
-                countsByLabel[entry.statusLabel] = 0;
-                if (labels.indexOf(entry.statusLabel) === -1) { labels.push(entry.statusLabel); }
-            }
-            countsByLabel[entry.statusLabel]++;
-        });
-
-        return labels
-            .filter(function (label) { return hasOwnKey(countsByLabel, label); })
-            .map(function (label) { return countsByLabel[label] + ' ' + label.toLowerCase(); })
-            .join(' · ');
-
-    }
-
-    function buildValidationRuleRow(treeState, groupState, entry) {
-
-        const rule = entry.rule;
-        const ruleElement = createElement('div', 'validationRule validationRule-' + String(rule.status));
-        const headerElement = createElement('div', 'validationRuleHeader');
-
-        headerElement.appendChild(createElement('span', 'validationRuleName', entry.ruleName));
-        headerElement.appendChild(createElement('span', 'validationRuleStatus', entry.statusLabel));
-        if (entry.activeLabel) { headerElement.appendChild(createElement('span', 'validationRuleActive muted', entry.activeLabel)); }
-        if (entry.isSourceOpenable) { headerElement.appendChild(buildValidationRuleSourceLink('validationRuleSource', VALIDATION_RULE_SOURCE_LIST_LINK_LABEL, groupState.objectApiName, entry.ruleName)); }
-        ruleElement.appendChild(headerElement);
-
-        if (entry.messageText) { ruleElement.appendChild(createElement('div', 'validationRuleMessage', entry.messageText)); }
-        ruleElement.appendChild(createElement('div', 'validationRuleFields muted', entry.fieldsText));
-        entry.reasonTexts.forEach(function (reasonText) { ruleElement.appendChild(createElement('div', 'validationRuleReason muted', reasonText)); });
-
-        if (entry.hasFormula) {
-
-            const toggleElement = createButton('secondary', 'validationRuleFormulaToggle', 'Show formula', 'compact');
-            toggleElement.setAttribute('aria-expanded', 'false');
-            toggleElement.addEventListener('click', function () {
-                if (!entry.formulaElement) {
-                    entry.formulaElement = createElement('div', 'validationRuleFormula hidden', rule.formula);
-                    ruleElement.appendChild(entry.formulaElement);
-                }
-                entry.isFormulaExpanded = !entry.isFormulaExpanded;
-                entry.searchText = buildValidationRuleSearchText(groupState.objectApiName, entry);
-                toggleElement.textContent = entry.isFormulaExpanded ? 'Hide formula' : 'Show formula';
-                toggleElement.setAttribute('aria-expanded', entry.isFormulaExpanded ? 'true' : 'false');
-                setShownWithMotion(entry.formulaElement, entry.isFormulaExpanded, true);
-                // A SEARCH TYPED BEFORE THE FORMULA OPENED OR CLOSED NOW MATCHES WHAT IS ON SCREEN
-                applyTroubleshootingFilter(treeState, 'validationRules');
-            });
-            ruleElement.appendChild(toggleElement);
-
-        }
-
-        return ruleElement;
-
-    }
-
-    /*
-        The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY alone, never an org: the
-        host asks for the org in the command palette every time, and decides what is retrieved. One
-        retrieve per window, so every card's retrieve and deploy is disabled on the click until the
-        host's metadataRetrieveState.
-    */
-    function buildRetrieveAction(treeState, retrieveKind) {
-
-        const className = retrieveKind === 'validationRules' ? 'treeRetrieveValidationRules' : 'troubleshootingRetrieve troubleshootingRetrieve-' + retrieveKind;
-        const actionCard = buildActionCard(RETRIEVE_ACTION_BY_KIND[retrieveKind], className, RETRIEVE_ACTION_LABELS[retrieveKind]);
-        const retrieveButtonElement = actionCard.buttonElement;
-        retrieveButtonElement.addEventListener('click', function () {
-            if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
-            isMetadataRetrieveRunning = true;
-            metadataRetrieveRunningKey = treeState.tree.treeKey + '\\n' + retrieveKind;
-            drawTreeInserts();
-            drawDataOrgViews();
-            vscodeApi.postMessage({ command: RETRIEVE_COMMANDS[retrieveKind], treeKey: treeState.tree.treeKey });
-        });
-        treeState.retrieveCards[retrieveKind] = actionCard;
-
-        return actionCard;
-
-    }
-
-    // WHAT A RETRIEVE CARD SAYS BELOW ITS WHY LINE, AND WHY IT CANNOT RUN WHEN THERE IS NOTHING TO ASK FOR (#382)
-    function describeRetrieveSummary(treeState, retrieveKind) {
-
-        const summary = treeState.troubleshootingSummary;
-
-        if (retrieveKind === 'validationRules') { return { text: '', emptyReason: '' }; }
-
-        if (retrieveKind === 'recordTypes') {
-            return {
-                text: pluralize(treeState.tree.objects.length, 'object', 'objects') + ', each asked for every record type the org holds.',
-                emptyReason: treeState.tree.objects.length === 0 ? 'This tree has no object.' : ''
-            };
-        }
-
-        if (!summary) { return { text: 'Reading this project…', emptyReason: 'Reading this project…' }; }
-        if (summary.failureMessage) {
-            const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, 'Nothing can be retrieved: ');
-            return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
-        }
-
-        if (retrieveKind === 'fields') {
-            const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
-            return {
-                text: pluralize(fieldCount, 'custom field', 'custom fields') + '; ' + summary.customFieldCount + ' with a source file here.',
-                emptyReason: fieldCount === 0 ? 'This tree has no custom field to retrieve.' : ''
-            };
-        }
-
-        const valueSetCount = summary.globalValueSetCount + summary.missingGlobalValueSetCount;
-        return {
-            text: pluralize(valueSetCount, 'named value set', 'named value sets') + '; ' + summary.globalValueSetCount + ' held here.',
-            emptyReason: valueSetCount === 0 ? 'No field of this tree names a global value set.' : ''
-        };
-
-    }
-
-    function drawTreePermissionSet(treeState) {
-
-        const permissionSetCard = treeState.permissionSetCard;
-        if (permissionSetCard) {
-            const assignReason = isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-                : isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : insertRunningTreeKey !== null ? describeRunningInsert()
-                : isScratchOrgRunning ? 'A scratch org is being set up.'
-                : '';
-            drawActionCardState(permissionSetCard, assignReason, ASSIGN_PERMISSION_SETS_TITLE);
-        }
-
-        const generateCard = treeState.generatePermissionSetCard;
-        if (generateCard) {
-            const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
-                : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-                : isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : '';
-            drawActionCardState(generateCard, generateReason, 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
-        }
-
-        const retrieveCards = treeState.retrieveCards || {};
-        Object.keys(retrieveCards).forEach(function (retrieveKind) {
-
-            const retrieveCard = retrieveCards[retrieveKind];
-            const described = describeRetrieveSummary(treeState, retrieveKind);
-            const busyReason = isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
-                : insertRunningTreeKey !== null ? describeRunningInsert()
-                : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-                : isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : '';
-            const title = metadataRetrieveRunningKey === treeState.tree.treeKey + '\\n' + retrieveKind ? 'Retrieving…' : RETRIEVE_ACTION_LABELS[retrieveKind];
-
-            setTextShown(retrieveCard.detailElement, described.text);
-            if (retrieveCard.titleElement.textContent !== title) { retrieveCard.titleElement.textContent = title; }
-            drawActionCardState(retrieveCard, described.emptyReason || busyReason, retrieveKind === 'validationRules'
-                ? 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.'
-                : 'Retrieve these components of this tree from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; run Generate Treecipe afterwards.');
-
-        });
-
-        const deployCards = treeState.deployCards || {};
-        Object.keys(deployCards).forEach(function (deployKind) {
-
-            const deployCard = deployCards[deployKind];
-            const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
-            const busyReason = isMetadataDeployRunning ? 'Metadata is being deployed.'
-                : insertRunningTreeKey !== null ? describeRunningInsert()
-                : isScratchOrgRunning ? 'A scratch org is being set up.'
-                : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-                : isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
-                : '';
-            const deployReason = described.emptyReason || busyReason;
-            const title = metadataDeployRunningKey === treeState.tree.treeKey + '\\n' + deployKind ? 'Deploying…' : DEPLOY_ACTION_LABELS[deployKind];
-
-            setTextShown(deployCard.detailElement, described.text);
-            if (deployCard.titleElement.textContent !== title) { deployCard.titleElement.textContent = title; }
-            drawActionCardState(deployCard, deployReason, 'Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.');
-
-        });
-
-        // A RUN CHANGES WHAT AN ACTION DRAWS ("Deploying…"), SO AN OPEN SEARCH MATCHES WHAT IS ON SCREEN NOW
-        if (treeState.troubleshootingSubTabStates) { applyTroubleshootingFilter(treeState, 'actions'); }
-
-    }
-
     function isTreeRunning(treeKey) {
         return insertRunningTreeKey === treeKey;
     }
@@ -33068,15 +31617,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         drawTreeInserts();
         drawDataOrgViews();
         drawRecordTypeChoices();
-
-    }
-
-    function renderPermissionSetAssignState(hostMessage) {
-
-        isPermissionSetAssignRunning = !!hostMessage.isRunning;
-
-        drawDataOrgViews();
-        drawTreeInserts();
 
     }
 
