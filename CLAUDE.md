@@ -175,11 +175,13 @@ src/
     │   │   ├── adapter/                      # The Treecipe Adapter tab: steps, field editor, load and update, retrieve, add child (#641)
     │   │   ├── datasets/                     # Previously Used Data Sets: the tab, a row and its insert journey (#642)
     │   │   ├── query/                        # The Query tab (#640)
+    │   │   ├── treecipe/dataOrg/             # Target Org Manager's picker and connection check, a tree's insert button and its reasons (#654)
     │   │   └── troubleshooting/              # The Troubleshooting tab, its TODO's, Validation Rules and History sub-tabs (#639)
     │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, inlined by the shell; never edited, npm run bundle-panel rewrites it
     │   ├── RecipeCockpitPanelConstants.ts    # Glyph paths and action card words the panel modules draw with (#638); imports nothing, re-exported by the service
     │   ├── RecipeCockpitAdapterConstants.ts  # The Treecipe Adapter tab's words (#641); imports nothing, re-exported by the service
     │   ├── RecipeCockpitDatasetsTabConstants.ts # Previously Used Data Sets' labels, notes and the insert status union (#642); types only from host-free files, re-exported by the service
+    │   ├── RecipeCockpitDataOrgConstants.ts  # Target Org Manager's and the tree insert's words (#654); types only from host-free files, re-exported by the service
     │   ├── RecipeCockpitQueryTabConstants.ts # The Query tab's intro (#640); imports nothing, re-exported by the service
     │   ├── RecipeCockpitTroubleshootingConstants.ts # The Troubleshooting tab's labels, notes and kinds (#639); types only from files that import nothing, re-exported by the service
     │   ├── RecipeCockpitOrgAuthorize.ts      # "Authorize org" (#630): its prompts, confirmation and the one notification a login ends in; no vscode

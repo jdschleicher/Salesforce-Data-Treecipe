@@ -78,6 +78,20 @@ import {
 import type { RecipeCockpitDatasetInsertStatus } from './RecipeCockpitDatasetsTabConstants';
 import { RECIPE_COCKPIT_QUERY_INTRO } from './RecipeCockpitQueryTabConstants';
 import {
+    RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
+    RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
+    RECIPE_COCKPIT_INSERT_ACTION_LABEL,
+    RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX,
+    RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS,
+    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
+    RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON,
+    RECIPE_COCKPIT_OPEN_ORG_LABEL,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
+    RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_REFRESH_ORGS_LABEL
+} from './RecipeCockpitDataOrgConstants';
+import {
     RECIPE_COCKPIT_UPDATER_INTRO,
     RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING,
@@ -291,6 +305,21 @@ export type RecipeCockpitDatasetInsertStatusMatchesAttempts = DatasetInsertStatu
 
 // THE QUERY TAB'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULE IMPORTS (#640); THE HOST'S NAME STAYS
 export { RECIPE_COCKPIT_QUERY_INTRO };
+export {
+    RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
+    RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
+    RECIPE_COCKPIT_INSERT_ACTION_LABEL,
+    RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX,
+    RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS,
+    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
+    RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON,
+    RECIPE_COCKPIT_OPEN_ORG_LABEL,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
+    RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_REFRESH_ORGS_LABEL
+};
+export { RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP };
 
 // THE ADAPTER'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULES IMPORT (#641); THE HOST'S NAMES STAY
 export {
@@ -611,8 +640,6 @@ export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS = 4;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES = 3;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS = 2;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
-
-export const RECIPE_COCKPIT_REFRESH_ORGS_LABEL = 'Refresh orgs';
 
 // WHY A FIELD'S CHECKBOX IS DISABLED (#220); EACH IS THE HOST'S ANSWER, WHICH THE PANEL DRAWS
 export const RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = 'parent excluded';
@@ -1879,19 +1906,10 @@ export const RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesfor
 
 export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", and try again.';
 
-// WHAT DATA-BY-ORG SHOWS BESIDE THE DROPDOWN, AND ITS SPINNER, WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
-export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connections…';
-
-// THE DROPDOWN'S ONE OPTION WHILE THE CHECK RUNS AND NO ORG IS REMEMBERED OR SET AS THE CLI'S DEFAULT
-export const RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = 'Loading orgs…';
-
 export const RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX = ' (default)';
 
 // ONE TURN OF THE ORG CHECK'S SPINNER (#305): A LOOP RATHER THAN A TRANSITION, SO IT IS NOT HELD TO THE 120-180 MS OF MOTION (#227)
 export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = COCKPIT_SPINNER_ROTATION_MILLISECONDS;
-
-// THE DROPDOWN'S ONE OPTION WHEN THE CHECK ANSWERED WITH NO ORG TO OFFER: IT STAYS DRAWN, AND ⟳ BESIDE IT
-export const RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = 'No org listed';
 
 /*
     The org the dropdown shows while the connections are checked (#305): the org chosen
@@ -2514,8 +2532,6 @@ export interface IRecipeCockpitDataOrgListingRefusedMessage {
 
 export const RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX = ', so the orgs were not checked again. Use ⟳ once it ends.';
 
-export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
-
 // THE ADAPT RUN'S TWO BUTTONS ON THE UPDATE'S NOTIFICATION (#448)
 export const RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL = 'Open data set';
 export const RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL = 'Open adapted recipe';
@@ -2901,30 +2917,6 @@ export interface IRecipeCockpitDatasetAddedMessage {
 }
 
 export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
-
-// THE ONE BUTTON ALWAYS GENERATES AND INSERTS (#375); WHAT STOPS AN INSERT DISABLES IT, AND GENERATING ONLY IS Run Faker by Recipe'S
-export const RECIPE_COCKPIT_INSERT_ACTION_LABEL = 'Generate fake data and insert';
-// ➕ IS DRAWN BEFORE IT (#384), SO THE LABEL NO LONGER STARTS WITH +
-export const RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL = 'New scratch org';
-
-// THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): A CLICK ASKS FOR THE ORG IN THE COMMAND PALETTE
-export const RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = 'No org is chosen yet.';
-
-export const RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = 'You will be asked which org to insert into.';
-
-export const RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = 'Can\'t insert: ';
-
-/*
-    Where a disabled insert's reason links to (#539): the Troubleshooting sub-tab whose card fixes
-    it. An unticked required field links to its own row instead, labelled with this prefix and the
-    field. Any other reason, and a reason code not listed here, draws no link.
-*/
-export const RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS: Readonly<Record<Exclude<RecipeCockpitCreateReasonCode, 'requiredFieldUnticked'>, { subTab: RecipeCockpitTroubleshootingSubTab; label: string }>> = Object.freeze({
-    objectNotInOrg: { subTab: 'fields', label: 'Troubleshooting › Fields' },
-    objectNotCreateable: { subTab: 'permissions', label: 'Troubleshooting › Permissions' }
-});
-
-export const RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = 'Treecipe › ';
 
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
 
@@ -22876,7 +22868,9 @@ ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
         acknowledgeRecordLinks, buildUpdaterTab, requestUpdaterSnapshots, renderUpdaterSnapshots, renderUpdaterValues, clearUpdaterValues, drawUpdaterLoadButtons,
         renderUpdaterRecords, clearUpdaterRecords, renderAdapterMetadataChanges, clearAdapterChildren, clearAdapterChildPreviews, renderAdapterChildBlock, renderAdapterChildPreview,
         buildDatasetsTab, drawDatasetInserts, renderDatasetRecordCounts, renderDatasetJourney, setDatasetJourneyExpanded,
-        requestDatasetJourney, applyDatasetsFilter, renderDatasetAdded, renderDatasetPreferences, renderDatasetLastInsert
+        requestDatasetJourney, applyDatasetsFilter, renderDatasetAdded, renderDatasetPreferences, renderDatasetLastInsert,
+        buildDataOrgView, drawDataOrgViews, buildTreeInsertElement, drawTreeInsert, drawTreeInserts, setInsertRunning,
+        renderScratchOrgState, renderDataOrgReadiness, requestDataOrgs, renderDataOrgList, renderDataOrgListingRefused, renderDataOrgProvisional, renderDataOrgSelection
     } = recipeCockpitPanelModules;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
@@ -22892,11 +22886,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
-    const NO_DATA_ORG_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON)};
-    const CHOOSE_INSERT_ORG_NOTE = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE)};
-    const CANNOT_INSERT_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CANNOT_INSERT_PREFIX)};
-    const INSERT_REASON_TROUBLESHOOTING_LINKS = ${JSON.stringify(RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS)};
-    const INSERT_REASON_TREECIPE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
@@ -22907,13 +22896,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const CREATE_PARENT_REFUSAL_TEXTS = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS)};
     const ORG_RECORD_BADGE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX)};
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
-    const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
-    const NEW_SCRATCH_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL)};
-    const AUTHORIZE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL)};
-    const AUTHORIZE_ORG_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL)};
-    const AUTHORIZE_ORG_TOOLTIP = ${JSON.stringify(RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP)};
-    const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
-    const DATASET_INSERT_RUNNING_REASON = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
@@ -22925,10 +22907,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const UPDATER_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_TAB_LABEL)};
     const UPDATER_WHERE_MAX_LENGTH = ${RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH};
     const UPDATER_NO_EXPRESSION_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON)};
-    const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
-    const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
-    const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
-    const DATA_ORG_NONE_LISTED_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
     const PANEL_PLACE_TABS = ${JSON.stringify(RECIPE_COCKPIT_TREE_TABS)};
@@ -23021,8 +22999,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const HIDE_UNSELECTED_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL)};
     const NO_UNSELECTED_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
-    const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
-    const OPEN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OPEN_ORG_LABEL)};
     const FIXED_VALUE_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH)};
     const FIXED_VALUE_NUMBER_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES)};
     const GEOLOCATION_COMPONENT_RANGES = ${JSON.stringify(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES)};
@@ -24566,178 +24542,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         if (treeState.structureSearch) { treeState.structureSearch.inputElement.value = ''; }
         applyStructureFilter(treeState);
 
-    }
-
-    /*
-        One view of the panel-wide org picker, at the top of a card's Treecipe tab (#255). The
-        dropdown is a native select of the LABELS the host posted, and the panel posts back only the
-        chosen option's index -- the host holds the usernames.
-    */
-    // hasOrgAddingButtons: false LEAVES + New scratch org AND Authorize org OUT OF THE VIEW (#617); THEY ARE STILL BUILT, SO ONE DRAW SERVES EVERY VIEW
-    function buildDataOrgView(hasOrgAddingButtons) {
-
-        const viewElement = createElement('div', 'dataOrgView');
-        const pickerElement = createElement('span', 'dataOrgControls');
-
-        const dataOrgView = {
-            element: viewElement,
-            loadElement: createButton('primary', 'dataOrgLoad', 'Choose org…'),
-            selectElement: createElement('select', 'dataOrgSelect hidden'),
-            spinnerElement: createElement('span', 'dataOrgSpinner hidden'),
-            typeElement: createElement('span', 'dataOrgType hidden'),
-            openOrgElement: createButton('secondary', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
-            refreshElement: createButton('secondary', 'dataOrgRefresh hidden'),
-            newScratchElement: createButton('primary', 'dataOrgNewScratch', NEW_SCRATCH_ORG_LABEL),
-            authorizeElement: createButton('primary', 'dataOrgAuthorize', AUTHORIZE_ORG_LABEL),
-            hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
-            statusElement: createElement('div', 'dataOrgStatus muted hidden'),
-            drawnLabels: null
-        };
-
-        dataOrgView.loadElement.setAttribute('title', 'List the connected sandbox and scratch orgs the generated data can go to');
-        dataOrgView.loadElement.addEventListener('click', function () { requestDataOrgs(); });
-
-        dataOrgView.selectElement.setAttribute('aria-label', 'Salesforce org the generated data goes to');
-        dataOrgView.selectElement.addEventListener('change', function () {
-            const selectedValue = String(dataOrgView.selectElement.value || '');
-            // ONLY AN INDEX THE HOST LISTED: THE CHECK'S OWN OPTION, AND EVERY PLACEHOLDER, CARRY NONE
-            if (isDataOrgChecking || !/^[0-9]+$/.test(selectedValue)) { return; }
-            vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: Number(selectedValue) });
-        });
-
-        dataOrgView.spinnerElement.setAttribute('aria-hidden', 'true');
-
-        // THE ⟳ GLYPH DRAWS SMALLER THAN THE TEXT AROUND IT, SO IT IS SIZED ON ITS OWN AND THE BUTTON SAYS WHAT IT DOES
-        const refreshIconElement = createElement('span', 'dataOrgRefreshIcon', '⟳');
-        refreshIconElement.setAttribute('aria-hidden', 'true');
-        dataOrgView.refreshElement.appendChild(refreshIconElement);
-        dataOrgView.refreshElement.appendChild(createElement('span', 'dataOrgRefreshLabel', REFRESH_ORGS_LABEL));
-        dataOrgView.refreshElement.setAttribute('title', 'Check the org connections again');
-        // THE ACCESSIBLE NAME STARTS WITH THE VISIBLE LABEL, SO "CLICK REFRESH ORGS" BY VOICE FINDS IT (WCAG 2.5.3)
-        dataOrgView.refreshElement.setAttribute('aria-label', REFRESH_ORGS_LABEL + ': check the org connections again');
-        dataOrgView.refreshElement.addEventListener('click', function () {
-            showDataOrgConnectionCheck();
-            dataOrgUnansweredListingCount++;
-            vscodeApi.postMessage({ command: 'refreshDataOrgs' });
-        });
-
-        // THE SELECTION'S INDEX ONLY: THE HOST OPENS THE ORG IT HAS SELECTED, AND NOTHING COMES BACK BUT "DONE"
-        dataOrgView.openOrgElement.setAttribute('title', 'Log in to the selected org in your browser');
-        dataOrgView.openOrgElement.addEventListener('click', function () {
-            if (isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || dataOrgSelectedIndex === null) { return; }
-            isOrgOpenRunning = true;
-            drawDataOrgViews();
-            vscodeApi.postMessage({ command: 'openDataOrg', orgIndex: dataOrgSelectedIndex });
-        });
-
-        // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE AND THE ALIAS ARE ALL THE HOST'S, AND NOTHING IS DEPLOYED (#358)
-        dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub and select it. Nothing is deployed to it.');
-        dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
-            isDataOrgPickerInUse = true;
-            isScratchOrgRunning = true;
-            drawDataOrgViews();
-            drawTreeInserts();
-            vscodeApi.postMessage({ command: 'createScratchOrg' });
-        });
-
-        // THE MESSAGE CARRIES NOTHING (#630): THE LOGIN ADDRESS AND THE ALIAS ARE ASKED BY THE HOST
-        dataOrgView.authorizeElement.setAttribute('title', AUTHORIZE_ORG_TOOLTIP);
-        dataOrgView.authorizeElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
-            isDataOrgPickerInUse = true;
-            isScratchOrgRunning = true;
-            isOrgAuthorizeRunning = true;
-            drawDataOrgViews();
-            drawTreeInserts();
-            vscodeApi.postMessage({ command: 'authorizeOrg' });
-        });
-
-        pickerElement.appendChild(dataOrgView.loadElement);
-        pickerElement.appendChild(dataOrgView.selectElement);
-        pickerElement.appendChild(dataOrgView.spinnerElement);
-        pickerElement.appendChild(dataOrgView.typeElement);
-        pickerElement.appendChild(dataOrgView.openOrgElement);
-        pickerElement.appendChild(dataOrgView.refreshElement);
-        if (hasOrgAddingButtons !== false) {
-            pickerElement.appendChild(dataOrgView.newScratchElement);
-            pickerElement.appendChild(dataOrgView.authorizeElement);
-        }
-        viewElement.appendChild(pickerElement);
-        viewElement.appendChild(dataOrgView.hiddenNoteElement);
-        viewElement.appendChild(dataOrgView.statusElement);
-
-        dataOrgViews.push(dataOrgView);
-        drawDataOrgView(dataOrgView);
-
-        return dataOrgView;
-
-    }
-
-    /*
-        The picker state drawn into one view. While a scratch org run is in flight the picker is
-        held: the button, the dropdown, ⟳ and "Choose org…" are disabled, whatever a listing posted
-        meanwhile draws -- the run ends by selecting the org it made. Every text is the host's,
-        through textContent.
-    */
-    function drawDataOrgView(dataOrgView) {
-
-        const optionLabels = isDataOrgChecking ? dataOrgCheckingOptionLabels : dataOrgLabels;
-
-        if (dataOrgView.drawnLabels !== optionLabels) {
-            dataOrgView.selectElement.textContent = '';
-            if (isDataOrgChecking || (dataOrgLabels && dataOrgLabels.length === 0)) {
-                const onlyOptionElement = createElement('option', '', isDataOrgChecking ? optionLabels[0] : DATA_ORG_NONE_LISTED_PLACEHOLDER);
-                onlyOptionElement.value = '';
-                dataOrgView.selectElement.appendChild(onlyOptionElement);
-            } else if (dataOrgLabels && dataOrgLabels.length > 0) {
-                const placeholderElement = createElement('option', '', 'Choose org…');
-                placeholderElement.value = '';
-                dataOrgView.selectElement.appendChild(placeholderElement);
-                dataOrgLabels.forEach(function (orgLabel, orgIndex) {
-                    const optionElement = createElement('option', '', orgLabel);
-                    optionElement.value = String(orgIndex);
-                    dataOrgView.selectElement.appendChild(optionElement);
-                });
-            }
-            dataOrgView.drawnLabels = optionLabels;
-        }
-
-        dataOrgView.selectElement.value = isDataOrgChecking || dataOrgSelectedIndex === null ? '' : String(dataOrgSelectedIndex);
-        setShown(dataOrgView.loadElement, isDataOrgLoadShown);
-        setShown(dataOrgView.selectElement, isDataOrgSelectShown || isDataOrgChecking);
-        setShown(dataOrgView.spinnerElement, isDataOrgChecking);
-        setShown(dataOrgView.refreshElement, isDataOrgRefreshShown);
-        dataOrgView.typeElement.textContent = dataOrgTypeLabel || '';
-        setShown(dataOrgView.typeElement, dataOrgTypeLabel !== null);
-
-        dataOrgView.hiddenNoteElement.textContent = dataOrgHiddenNoteText;
-        setShown(dataOrgView.hiddenNoteElement, !!dataOrgHiddenNoteText);
-
-        dataOrgView.statusElement.textContent = dataOrgStatusText;
-        setShown(dataOrgView.statusElement, !!dataOrgStatusText);
-        if (isDataOrgStatusFailure) { dataOrgView.statusElement.classList.add('failed'); } else { dataOrgView.statusElement.classList.remove('failed'); }
-
-        // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
-        // SO DOES A METADATA DEPLOY (#346), TO THE ORG SELECTED; A RETRIEVE DOES NOT, SINCE THE RUN DEPLOYS NOTHING (#358)
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
-        dataOrgView.newScratchElement.textContent = isScratchOrgRunning && !isOrgAuthorizeRunning ? 'Setting up scratch org…' : NEW_SCRATCH_ORG_LABEL;
-        dataOrgView.authorizeElement.disabled = dataOrgView.newScratchElement.disabled;
-        dataOrgView.authorizeElement.textContent = isOrgAuthorizeRunning ? AUTHORIZE_ORG_RUNNING_LABEL : AUTHORIZE_ORG_LABEL;
-        // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
-        // AND A METADATA DEPLOY (#346): IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
-        dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-        dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-
-        setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
-        dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-        dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? 'Opening…' : OPEN_ORG_LABEL;
-
-    }
-
-    function drawDataOrgViews() {
-        dataOrgViews.forEach(drawDataOrgView);
     }
 
     /*
@@ -28300,57 +28104,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
     }
 
-    function buildTreeInsertElement(treeState) {
-
-        const controlsElement = createElement('div', 'treeInsertControls');
-        const insert = {
-            buttonElement: createButton('primary', 'treeInsert', INSERT_ACTION_LABEL),
-            reasonElement: createElement('span', 'treeInsertReason muted'),
-            reasonLinkElement: createButton('link', 'treeInsertReasonLink hidden', ''),
-            reasonLink: null
-        };
-
-        /*
-            The ONE button always generates AND inserts (#375): with no org chosen the host asks for
-            one first; any other reason the insert cannot run disables it. It never generates only.
-        */
-        insert.buttonElement.addEventListener('click', function () {
-            const treeKey = treeState.tree.treeKey;
-            if (isTreeRunning(treeKey) || renderedSequence === null) { return; }
-            const insertReason = findTreeInsertReason(treeState);
-            if (insertReason !== '' && insertReason !== NO_DATA_ORG_INSERT_REASON) { return; }
-            setInsertRunning(treeKey);
-            // THE RECORD TYPES TICKED UNDER Manage record types RIDE WITH THE CLICK (#623), AND "Remember this selection" WITH THEM
-            const insertMessage = { command: 'insertTree', treeKey: treeKey };
-            const recordTypeSelection = buildRecordTypeSelection();
-            // WITH "Remember this selection" TICKED THE TICKS ARE SENT EVEN WHEN NONE DIFFERS, SO A SAVED CHOICE IS FORGOTTEN
-            if (Object.keys(recordTypeSelection).length > 0 || (isRecordTypeSelectionRemembered && recordTypeObjects.length > 0)) {
-                insertMessage.recordTypeSelection = recordTypeSelection;
-                if (isRecordTypeSelectionRemembered) { insertMessage.isRemembered = true; }
-            }
-            vscodeApi.postMessage(insertMessage);
-        });
-
-        insert.reasonLinkElement.addEventListener('click', function () {
-            if (insert.reasonLink) { followInsertReasonLink(treeState, insert.reasonLink); }
-        });
-
-        controlsElement.appendChild(insert.buttonElement);
-        if (treeState.resetSelectionElement) { controlsElement.appendChild(treeState.resetSelectionElement); }
-        controlsElement.appendChild(insert.reasonElement);
-        controlsElement.appendChild(insert.reasonLinkElement);
-
-        treeState.insert = insert;
-        drawTreeInsert(treeState);
-
-        return controlsElement;
-
-    }
-
-    function isTreeRunning(treeKey) {
-        return insertRunningTreeKey === treeKey;
-    }
-
     function renderTrees(recipe) {
 
         // KEYED BY NAMES FROM THE WRAPPER ON DISK -- "__proto__" MUST BE A KEY, NOT A NEW PROTOTYPE
@@ -28535,420 +28288,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
     function buildTreeObjectKey(treeKey, objectApiName) {
         return treeKey + '\\n' + objectApiName;
-    }
-
-    /*
-        The objects a tree's insert sends: once each, not excluded -- the host checks the same list
-        before it inserts anything.
-    */
-    function listTreeInsertObjectApiNames(treeState) {
-
-        const exclusionsByObjectApiName = indexObjectExclusions(treeState.tree);
-
-        return treeState.objectStates
-            .filter(function (treeObjectState) { return !treeObjectState.isIteration && !hasOwnKey(exclusionsByObjectApiName, treeObjectState.object.objectApiName); })
-            .map(function (treeObjectState) { return treeObjectState.object.objectApiName; });
-
-    }
-
-    /*
-        Why a tree's insert is not offered, or '' when it is (#255). The host decides each object's
-        readiness and says why not; the button only draws that answer, and the host checks every
-        one of them again on the click.
-    */
-    function findTreeInsertReason(treeState) {
-        return findTreeInsertBlock(treeState).reason;
-    }
-
-    // THE REASON, AND THE OBJECT READINESS IT CAME FROM WHEN ONE DID (#539): ONLY THAT READINESS CAN LINK
-    function findTreeInsertBlock(treeState) {
-
-        const blockedBy = function (reason) { return { reason: reason, readiness: null }; };
-
-        if (isDataOrgChecking) { return blockedBy(DATA_ORG_CONNECTION_CHECK_INSERT_REASON); }
-        if (insertRunningDatasetFolderName !== null) { return blockedBy(DATASET_INSERT_RUNNING_REASON); }
-        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return blockedBy('Another tree is being inserted.'); }
-        if (isScratchOrgRunning) { return blockedBy('A scratch org is being set up.'); }
-        if (isPermissionSetAssignRunning) { return blockedBy('Permission sets are being assigned.'); }
-        if (isMetadataDeployRunning) { return blockedBy('Metadata is being deployed.'); }
-
-        const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
-        if (insertObjectApiNames.length === 0) { return blockedBy('Every object of this tree is excluded.'); }
-
-        // THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): THE CLICK ASKS FOR THE ORG
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return blockedBy(NO_DATA_ORG_INSERT_REASON); }
-        if (dataOrgSelectionFailureMessage) { return blockedBy(dataOrgSelectionFailureMessage); }
-
-        for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
-            const objectApiName = insertObjectApiNames[objectIndex];
-            const treeObjectKey = buildTreeObjectKey(treeState.tree.treeKey, objectApiName);
-            const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey]
-                : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName]
-                : null;
-            if (!readiness) { return blockedBy('checking whether this tree can be inserted…'); }
-            if (readiness.disabledReason) { return { reason: readiness.disabledReason, readiness: readiness }; }
-        }
-
-        return blockedBy('');
-
-    }
-
-    /*
-        Where a disabled insert's reason links to (#539), or null: an object the org lacks to the
-        Fields sub-tab (Deploy fields & dependencies… deploys the object too, #402), one it will not create to
-        Permissions, an unticked required field to its own row. Read from the posted readiness's
-        code, never its sentence; an unknown code, or a target this card does not draw, links nowhere.
-    */
-    function findInsertReasonLink(treeState, readiness) {
-
-        if (!readiness || typeof readiness.disabledReasonCode !== 'string') { return null; }
-
-        if (hasOwnKey(INSERT_REASON_TROUBLESHOOTING_LINKS, readiness.disabledReasonCode)) {
-            if (!treeState.tree.folderName) { return null; }
-            const troubleshootingLink = INSERT_REASON_TROUBLESHOOTING_LINKS[readiness.disabledReasonCode];
-            return { kind: 'troubleshooting', subTab: troubleshootingLink.subTab, label: troubleshootingLink.label };
-        }
-
-        if (readiness.disabledReasonCode !== 'requiredFieldUnticked' || typeof readiness.disabledReasonFieldApiName !== 'string') { return null; }
-
-        const objectApiName = readiness.objectApiName;
-        // THE ORG'S FIELD NAME, AND SALESFORCE READS NAMES CASE-INSENSITIVELY
-        const lowerFieldApiName = readiness.disabledReasonFieldApiName.toLowerCase();
-        const findField = function (treeObjectState) {
-            return treeObjectState.object.fields.find(function (candidateField) { return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName; });
-        };
-
-        // EVERY OCCURRENCE KEEPS ITS OWN UNTICKS (#467): THE ROW OPENED IS ONE THAT UNTICKS IT, ELSE THE FIRST
-        const occurrenceStates = treeState.objectStates.filter(function (candidateState) { return candidateState.object.objectApiName === objectApiName && !!findField(candidateState); });
-        const untickingState = occurrenceStates.find(function (candidateState) {
-            const objectFieldSelection = findObjectFieldSelection(candidateState.tree, objectApiName, occurrenceNicknameOf(candidateState.object));
-            return !!objectFieldSelection && isTreeFieldUnticked(objectFieldSelection, findField(candidateState).fieldApiName);
-        });
-        const treeObjectState = untickingState || occurrenceStates.find(function (candidateState) { return !candidateState.isIteration; }) || occurrenceStates[0];
-        if (!treeObjectState) { return null; }
-
-        const fieldApiName = findField(treeObjectState).fieldApiName;
-        return { kind: 'field', objectState: treeObjectState, fieldApiName: fieldApiName, label: INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + '.' + fieldApiName };
-
-    }
-
-    function followInsertReasonLink(treeState, reasonLink) {
-
-        if (reasonLink.kind === 'troubleshooting') {
-
-            applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: reasonLink.subTab });
-            savePanelPlace();
-
-            const actionCard = reasonLink.subTab === 'fields' ? (treeState.deployCards || {}).fields : treeState.permissionSetCard;
-            if (!actionCard) { return; }
-            if (typeof actionCard.buttonElement.scrollIntoView === 'function') { actionCard.buttonElement.scrollIntoView({ block: 'nearest' }); }
-
-            // A DISABLED BUTTON TAKES NO FOCUS IN A BROWSER, SO A DISABLED CARD (A ZERO COUNT) LEAVES IT ON ITS SUB-TAB, NEXT TO THE CARD AND ITS REASON
-            const subTabState = (treeState.troubleshootingSubTabStates || []).find(function (candidateState) { return candidateState.subTab === reasonLink.subTab; });
-            const focusElement = actionCard.buttonElement.disabled && subTabState ? subTabState.tabElement : actionCard.buttonElement;
-            focusElement.focus();
-            return;
-
-        }
-
-        const treeObjectState = reasonLink.objectState;
-        const fieldState = treeObjectState.fieldStates.find(function (candidateState) { return candidateState.field.fieldApiName === reasonLink.fieldApiName; }) || null;
-
-        revealTreeObjectRow(treeState, treeObjectState, fieldState, null);
-
-        const focusElement = fieldState && (fieldState.includeElement || fieldState.rowElement);
-        if (focusElement && typeof focusElement.focus === 'function') { focusElement.focus(); }
-
-    }
-
-    function drawTreeInsert(treeState) {
-
-        const insert = treeState.insert;
-        if (!insert) { return; }
-
-        const tree = treeState.tree;
-        const insertBlock = findTreeInsertBlock(treeState);
-        const insertReason = insertBlock.reason;
-        const isOrgToChoose = insertReason === NO_DATA_ORG_INSERT_REASON;
-        const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
-        const actionLabel = INSERT_ACTION_LABEL + (insertReason === '' && orgLabel ? ' into ' + orgLabel : '');
-
-        insert.buttonElement.disabled = isTreeRunning(tree.treeKey) || (insertReason !== '' && !isOrgToChoose);
-
-        insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? INSERT_RUNNING_LABEL : actionLabel;
-        insert.buttonElement.setAttribute('aria-label', actionLabel + ' for ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
-        insert.buttonElement.setAttribute('title', isOrgToChoose
-            ? 'Choose the org to insert into, then generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' and insert it, parents first'
-            : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ', then insert it into the chosen org, parents first');
-        insert.reasonElement.textContent = insertReason === '' ? '' : isOrgToChoose ? CHOOSE_INSERT_ORG_NOTE : CANNOT_INSERT_PREFIX + insertReason;
-
-        insert.reasonLink = findInsertReasonLink(treeState, insertBlock.readiness);
-        setTextShown(insert.reasonLinkElement, insert.reasonLink ? insert.reasonLink.label : '');
-
-    }
-
-    function drawTreeInserts() {
-        treeStates.forEach(drawTreeInsert);
-        drawDatasetInserts();
-        treeStates.forEach(drawTreePermissionSet);
-        drawTreeQueryButtons();
-    }
-
-    // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER IS DISABLED; ITS insertState GIVES THEM BACK
-    function setInsertRunning(runningTreeKey, runningDatasetFolderName) {
-
-        insertRunningTreeKey = runningTreeKey;
-        insertRunningDatasetFolderName = runningTreeKey !== null && typeof runningDatasetFolderName === 'string' ? runningDatasetFolderName : null;
-        drawTreeInserts();
-        drawDataOrgViews();
-        drawRecordTypeChoices();
-
-    }
-
-    function renderScratchOrgState(hostMessage) {
-
-        isScratchOrgRunning = !!hostMessage.isRunning;
-        isOrgAuthorizeRunning = isScratchOrgRunning && hostMessage.isAuthorizing === true;
-
-        drawDataOrgViews();
-        drawTreeInserts();
-
-    }
-
-    function renderDataOrgReadiness(dataOrgReadiness) {
-
-        if (renderedSequence === null || dataOrgReadiness.renderSequence !== renderedSequence || dataOrgReadiness.requestSequence !== dataOrgRequestSequence) { return; }
-
-        dataOrgReadiness.objects.forEach(function (readiness) { dataOrgReadinessByObject[readiness.objectApiName] = readiness; });
-        (dataOrgReadiness.createTargets || []).forEach(function (readiness) { dataOrgReadinessByTreeObjectKey[buildTreeObjectKey(readiness.treeKey, readiness.objectApiName)] = readiness; });
-
-        // THE CHECK IS OVER; A FAILURE THE SELECTION REPORTED STAYS ON SCREEN
-        if (!isDataOrgStatusFailure) { setDataOrgStatus('', false); }
-
-        drawTreeInserts();
-
-    }
-
-    function setDataOrgStatus(statusText, isFailure) {
-
-        dataOrgStatusText = statusText;
-        isDataOrgStatusFailure = !!isFailure;
-        drawDataOrgViews();
-
-    }
-
-    // THE FIRST USE OF THE PICKER, OR THE FIRST OPEN OF ANY CARD'S TREECIPE TAB -- NEVER THE PANEL'S OWN OPEN
-    function requestDataOrgs() {
-
-        // A SCRATCH ORG RUN ENDS BY LISTING THE ORGS ITSELF
-        if (renderedSequence === null || dataOrgRequestedSequence === renderedSequence || isScratchOrgRunning) { return; }
-
-        // SAVED ONLY WHEN IT CHANGES: A NEW MODEL OF A PICKER ALREADY IN USE ASKS BEFORE ITS PLACE IS RESTORED, AND A SAVE THEN WOULD KEEP A HALF-RESTORED PLACE
-        if (!isDataOrgPickerInUse) {
-            isDataOrgPickerInUse = true;
-            savePanelPlace();
-        }
-        holdDataOrgPickerBeforeCheck();
-        dataOrgRequestedSequence = renderedSequence;
-        isDataOrgLoadShown = false;
-        isDataOrgSelectShown = false;
-        startDataOrgCheck();
-        setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
-        drawTreeInserts();
-        dataOrgUnansweredListingCount++;
-        vscodeApi.postMessage({ command: 'loadDataOrgs' });
-
-    }
-
-    function renderDataOrgList(dataOrgList) {
-
-        if (renderedSequence === null || dataOrgList.renderSequence !== renderedSequence) { return; }
-
-        dataOrgPickerBeforeCheck = null;
-        dataOrgUnansweredListingCount = 0;
-        isDataOrgLoadShown = false;
-        isDataOrgChecking = false;
-        // A LIST THE HOST POSTED AFTER ASKING FOR THE ORG (#375) MAKES THE PICKER IN USE, SO A LATER MODEL LISTS AGAIN
-        isDataOrgPickerInUse = true;
-        clearDataOrgSelection();
-        // ⟳ IS HOW A READER WHO JUST RE-AUTHORIZED AN ORG SEES IT LISTED, SO IT STAYS EVEN WITH NOTHING LISTED
-        isDataOrgRefreshShown = true;
-
-        // PRODUCTION AND ORGS THE CLI DOES NOT REPORT CONNECTED ARE NEVER LISTED, AND THE READER IS TOLD WHY ONE THEY AUTHORIZED IS MISSING
-        dataOrgHiddenNoteText = [dataOrgList.forgottenOrgNotice || '', dataOrgList.hiddenOrgNote || ''].filter(Boolean).join(' ');
-        dataOrgLabels = Array.isArray(dataOrgList.orgLabels) ? dataOrgList.orgLabels.slice() : [];
-
-        // THE DROPDOWN STAYS DRAWN WITH NOTHING TO CHOOSE, SO THE PICKER DOES NOT VANISH WHEN THE CHECK FOUND NO ORG (#305)
-        isDataOrgSelectShown = true;
-
-        if (dataOrgLabels.length === 0) {
-            setDataOrgStatus(dataOrgList.noOrgsMessage, true);
-            return;
-        }
-
-        dataOrgSelectedIndex = dataOrgList.selectedOrgIndex === null ? null : dataOrgList.selectedOrgIndex;
-        isDataOrgSelectShown = true;
-        setDataOrgStatus(dataOrgList.selectedOrgIndex === null ? 'Choose an org to insert into.' : '', false);
-        drawTreeInserts();
-
-    }
-
-    // NO ORG IS SELECTED WHILE THE ORGS ARE BEING LISTED AGAIN, SO NOTHING FROM THE LAST ONE STAYS ON SCREEN
-    function clearDataOrgSelection() {
-
-        /*
-            With no selection, the insert is disabled: a re-listing that forgot the org posts no
-            selection after it. The sequence it cleared is kept, so an answer still on its way for
-            that selection is not drawn back in.
-        */
-        if (dataOrgRequestSequence !== null) {
-            dataOrgClearedRequestSequence = Math.max(dataOrgClearedRequestSequence === null ? 0 : dataOrgClearedRequestSequence, dataOrgRequestSequence);
-        }
-        dataOrgRequestSequence = null;
-        dataOrgSelectedIndex = null;
-        dataOrgSelectionFailureMessage = '';
-        dataOrgReadinessByObject = Object.create(null);
-        dataOrgReadinessByTreeObjectKey = Object.create(null);
-        dataOrgTypeLabel = null;
-        drawDataOrgViews();
-        drawTreeInserts();
-
-    }
-
-    /*
-        The dropdown STAYS until the CLI answers (#305), holding only the check's own option, so
-        nothing can be selected from a list being replaced. ⟳ stays usable: the host joins a check
-        already in flight rather than starting a second.
-    */
-    function showDataOrgConnectionCheck() {
-
-        holdDataOrgPickerBeforeCheck();
-        isDataOrgSelectShown = false;
-        dataOrgHiddenNoteText = '';
-        startDataOrgCheck();
-        clearDataOrgSelection();
-        setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
-
-    }
-
-    // A CHECK ALREADY SHOWING KEEPS THE PICKER FROM BEFORE IT, NOT ITS OWN SPINNER
-    function holdDataOrgPickerBeforeCheck() {
-
-        if (isDataOrgChecking && dataOrgPickerBeforeCheck) { return; }
-
-        dataOrgPickerBeforeCheck = {
-            labels: dataOrgLabels,
-            isLoadShown: isDataOrgLoadShown,
-            isSelectShown: isDataOrgSelectShown,
-            isRefreshShown: isDataOrgRefreshShown,
-            hiddenNoteText: dataOrgHiddenNoteText,
-            requestedSequence: dataOrgRequestedSequence,
-            requestSequence: dataOrgRequestSequence,
-            clearedRequestSequence: dataOrgClearedRequestSequence,
-            selectedIndex: dataOrgSelectedIndex,
-            selectionFailureMessage: dataOrgSelectionFailureMessage,
-            readinessByObject: dataOrgReadinessByObject,
-            readinessByTreeObjectKey: dataOrgReadinessByTreeObjectKey,
-            typeLabel: dataOrgTypeLabel
-        };
-
-    }
-
-    /*
-        The host refused the listing because a run holds the selection (#537): nothing was cleared
-        there, so the picker goes back to what it was and says which run holds it, rather than
-        spinning until VS Code restarts. Only once every listing asked for is answered: an earlier
-        ⟳ the host accepted has already dropped its list and selection, and its own answer is on
-        its way, so the check stays on screen until it comes.
-    */
-    function renderDataOrgListingRefused(refusal) {
-
-        if (renderedSequence === null || refusal.renderSequence !== renderedSequence) { return; }
-        if (typeof refusal.message !== 'string' || !refusal.message) { return; }
-
-        dataOrgUnansweredListingCount = Math.max(0, dataOrgUnansweredListingCount - 1);
-        if (dataOrgUnansweredListingCount > 0) { return; }
-
-        const pickerBeforeCheck = dataOrgPickerBeforeCheck;
-        dataOrgPickerBeforeCheck = null;
-
-        if (pickerBeforeCheck) {
-            isDataOrgChecking = false;
-            dataOrgCheckingOptionLabels = [];
-            dataOrgLabels = pickerBeforeCheck.labels;
-            isDataOrgLoadShown = pickerBeforeCheck.isLoadShown;
-            isDataOrgSelectShown = pickerBeforeCheck.isSelectShown;
-            isDataOrgRefreshShown = pickerBeforeCheck.isRefreshShown;
-            dataOrgHiddenNoteText = pickerBeforeCheck.hiddenNoteText;
-            dataOrgRequestedSequence = pickerBeforeCheck.requestedSequence;
-            dataOrgRequestSequence = pickerBeforeCheck.requestSequence;
-            dataOrgClearedRequestSequence = pickerBeforeCheck.clearedRequestSequence;
-            dataOrgSelectedIndex = pickerBeforeCheck.selectedIndex;
-            dataOrgSelectionFailureMessage = pickerBeforeCheck.selectionFailureMessage;
-            dataOrgReadinessByObject = pickerBeforeCheck.readinessByObject;
-            dataOrgReadinessByTreeObjectKey = pickerBeforeCheck.readinessByTreeObjectKey;
-            dataOrgTypeLabel = pickerBeforeCheck.typeLabel;
-        }
-
-        // A SELECTION THAT FAILED STILL SAYS WHY, BEFORE WHAT HELD THE LISTING
-        if (dataOrgSelectionFailureMessage) {
-            setDataOrgStatus(dataOrgSelectionFailureMessage + ' ' + refusal.message, true);
-        } else {
-            setDataOrgStatus(refusal.message, false);
-        }
-        drawTreeInserts();
-
-    }
-
-    function startDataOrgCheck() {
-
-        isDataOrgChecking = true;
-        isDataOrgRefreshShown = true;
-        dataOrgCheckingOptionLabels = [DATA_ORG_LOADING_PLACEHOLDER];
-
-    }
-
-    // THE ORG CHOSEN LAST, ELSE THE CLI'S DEFAULT, SHOWN WHILE THE CHECK RUNS -- A LABEL ONLY, NEVER A SELECTION
-    function renderDataOrgProvisional(dataOrgProvisional) {
-
-        if (renderedSequence === null || dataOrgProvisional.renderSequence !== renderedSequence || !isDataOrgChecking) { return; }
-        if (typeof dataOrgProvisional.orgLabel !== 'string' || !dataOrgProvisional.orgLabel) { return; }
-        if (dataOrgProvisionalRequestSequence !== null && dataOrgProvisional.requestSequence < dataOrgProvisionalRequestSequence) { return; }
-
-        dataOrgProvisionalRequestSequence = dataOrgProvisional.requestSequence;
-        dataOrgCheckingOptionLabels = [dataOrgProvisional.orgLabel];
-        drawDataOrgViews();
-
-    }
-
-    function renderDataOrgSelection(dataOrgSelection) {
-
-        if (renderedSequence === null || dataOrgSelection.renderSequence !== renderedSequence) { return; }
-        if (dataOrgRequestSequence !== null && dataOrgSelection.requestSequence < dataOrgRequestSequence) { return; }
-        if (dataOrgClearedRequestSequence !== null && dataOrgSelection.requestSequence <= dataOrgClearedRequestSequence) { return; }
-
-        // A NEW SELECTION, OR A REFRESH OF THIS ONE, STARTS FROM NO READINESS
-        if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
-            dataOrgRequestSequence = dataOrgSelection.requestSequence;
-            dataOrgReadinessByObject = Object.create(null);
-            dataOrgReadinessByTreeObjectKey = Object.create(null);
-            dataOrgSelectionFailureMessage = '';
-            setDataOrgStatus('Checking ' + dataOrgSelection.orgLabel + '…', false);
-        }
-
-        // A FAILED CONNECTION, OR AN ORG THAT IS NOT A SANDBOX, IS THE WHOLE ANSWER ABOUT THIS SELECTION
-        if (dataOrgSelection.failureMessage) {
-            dataOrgSelectionFailureMessage = dataOrgSelection.failureMessage;
-            setDataOrgStatus(dataOrgSelection.failureMessage, true);
-        }
-
-        dataOrgSelectedIndex = dataOrgSelection.orgIndex;
-        dataOrgTypeLabel = dataOrgSelection.orgTypeLabel || 'checking…';
-        isDataOrgRefreshShown = true;
-
-        drawDataOrgViews();
-        drawTreeInserts();
-
     }
 
     /*

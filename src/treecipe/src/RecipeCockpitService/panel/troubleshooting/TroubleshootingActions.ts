@@ -12,6 +12,8 @@ import {
     RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND
 } from '../../RecipeCockpitTroubleshootingConstants';
 import { IActionCardView, buildActionCard } from '../RecipeCockpitPanelBuilders';
+import { drawDataOrgViews } from '../treecipe/dataOrg/DataOrgView';
+import { drawTreeInserts, listTreeInsertObjectApiNames } from '../treecipe/dataOrg/TreeInsert';
 import { applyTroubleshootingFilter, describeRunningInsert } from './TroubleshootingTab';
 import { ITroubleshootingSummaryMessage, ITroubleshootingTreeState } from './TroubleshootingTypes';
 
@@ -31,12 +33,9 @@ declare let metadataDeployRunningKey: string | null;
 declare let isMetadataRetrieveRunning: boolean;
 declare let metadataRetrieveRunningKey: string | null;
 declare let isPermissionSetAssignRunning: boolean;
-declare function drawTreeInserts(): void;
-declare function drawDataOrgViews(): void;
 declare function drawActionCardState(actionCard: IActionCardView, reason: string, title: string): void;
 declare function setTextShown(element: HTMLElement, text: string): void;
 declare function pluralize(count: number, singular: string, plural: string): string;
-declare function listTreeInsertObjectApiNames(treeState: ITroubleshootingTreeState): string[];
 
 // WHAT AN ACTION CARD SAYS BELOW ITS WHY LINE, AND WHY IT CANNOT RUN ('' WHEN IT CAN)
 interface IActionSummary {

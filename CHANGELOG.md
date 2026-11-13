@@ -1,5 +1,24 @@
 # Change Log
 
+## [3.202.5] - Target Org Manager and the tree insert are checked TypeScript modules (#654, slice 3e-3 of #565)
+
+Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open in browser and tree insert suite passes with no expectation changed, and so do the Generate and insert, Authorize org and first-journey suites and the rendered baselines.
+
+- **What moved out of the template-literal script.** 25 functions are now in `RecipeCockpitService/panel/treecipe/dataOrg/`, type checked by `npm run compile`. This is the code that decides when an org write may be asked for:
+  - `DataOrgView.ts`: one view of the org picker and its buttons.
+  - `DataOrgListing.ts`: the org list, the connection check, the provisional label, the selection and its readiness, and a listing the host refuses (#537).
+  - `TreeInsert.ts`: a tree's insert button, the reasons it can't run, in order, and where each reason links (#539).
+  - The script lost 653 lines, from 7,180 to 6,527.
+- **13 entry points join the bridge**, because the script's message handler and the Treecipe tab still call them.
+- **The run locks stay the script's own variables.** That covers the insert, scratch org, Authorize org, Open in browser and the picker's state. A new model empties them and a reopened panel's replay sets them, so the modules declare them with `declare let`.
+- **`TroubleshootingActions.ts` imports `drawTreeInserts`, `drawDataOrgViews` and `listTreeInsertObjectApiNames`** instead of declaring them.
+- **15 constants** moved into `RecipeCockpitDataOrgConstants.ts`, which `RecipeCockpitService.ts` re-exports. `RecipeCockpitOrgAuthorize.ts` imports the three Authorize org words from it and re-exports them. None of the 18 constants these functions read is injected into the string any more.
+- **Unchanged.** The host's sandbox check before any org write, and every allow-list refusal.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` now:
+  - names the 25 functions among those that must not be defined again in the string;
+  - checks the new modules' declared names;
+  - checks that the service and `RecipeCockpitOrgAuthorize.ts` re-export the new constants as the same values.
+
 ## [3.202.4] - The Recipe Cockpit's Previously Used Data Sets tab is checked TypeScript modules (#642, slice 3d of #565)
 
 Nothing a user sees changes: every Recipe Cockpit suite, Data Sets journey and rendered baseline passes with no expectation changed.

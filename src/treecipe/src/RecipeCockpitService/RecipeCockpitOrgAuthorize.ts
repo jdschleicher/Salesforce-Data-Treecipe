@@ -1,15 +1,15 @@
 import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { OrgLoginOutcome, WorkspaceTargetOrgWrite } from '../SalesforceOrgService/SalesforceOrgLogin';
+import { RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP } from './RecipeCockpitDataOrgConstants';
 
 /*
     What "Authorize org" (#630) asks and says: the button's labels, the prompts, the confirmation
     and the one notification a login ends in. No vscode, so every sentence is tested as text; the
     cockpit escapes a notification before it is shown.
 */
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL = 'Authorize org';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL = 'Authorizing org…';
-export const RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = 'Log in to an existing sandbox in your browser so Target Org Manager can list it.';
+// THE BUTTON'S WORDS ARE THE PANEL'S TOO (#654), SO THEY LIVE IN THE HOST-FREE CONSTANTS FILE THE BUNDLE CAN IMPORT
+export { RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP };
 // TWO WAYS TO LOG IN, AS "+ New scratch org" OFFERS TWO WAYS TO CREATE: THE CLI'S FIRST, SINCE ONLY ITS LOGIN IS SURE TO BE READABLE BY sf
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL = 'Authorize with Salesforce CLI';
 export const RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL = 'Authorize with @salesforce/core';
