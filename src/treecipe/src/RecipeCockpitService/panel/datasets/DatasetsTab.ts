@@ -16,7 +16,7 @@ declare const treeStates: IDatasetsTreeState[];
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
 
-// WHAT THE HOST POSTS (datasetAdded, datasetPreferences, datasetLastInsert), READ AS UNTRUSTED
+// WHAT THE HOST POSTS (datasetAdded, datasetPreferences, datasetLastInsert): ITS SEQUENCES AND NAMES ARE CHECKED HERE, AND A DATA SET OR LAST INSERT IS A MODEL ROW, DRAWN AS THE MODEL'S ARE
 interface IDatasetAddedMessage {
     renderSequence: unknown;
     updateSequence?: unknown;
