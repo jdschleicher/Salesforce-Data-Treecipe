@@ -177,6 +177,7 @@ src/
     │   │   ├── query/                        # The Query tab (#640)
     │   │   ├── treecipe/dataOrg/             # Target Org Manager's picker and connection check, a tree's insert button and its reasons (#654)
     │   │   ├── treecipe/fieldEditor/         # The Treecipe tab's field editor, picklist tiles and lookup wiring (#653)
+    │   │   ├── treecipe/recordTypes/         # The Treecipe tab's Record types section, "Record type fields only" and "TODOs only" (#652)
     │   │   └── troubleshooting/              # The Troubleshooting tab, its TODO's, Validation Rules and History sub-tabs (#639)
     │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, inlined by the shell; never edited, npm run bundle-panel rewrites it
     │   ├── RecipeCockpitPanelConstants.ts    # Glyph paths and action card words the panel modules draw with (#638); imports nothing, re-exported by the service
@@ -184,6 +185,7 @@ src/
     │   ├── RecipeCockpitDatasetsTabConstants.ts # Previously Used Data Sets' labels, notes and the insert status union (#642); types only from host-free files, re-exported by the service
     │   ├── RecipeCockpitDataOrgConstants.ts  # Target Org Manager's and the tree insert's words (#654); types only from host-free files, re-exported by the service
     │   ├── RecipeCockpitQueryTabConstants.ts # The Query tab's intro (#640); imports nothing, re-exported by the service
+    │   ├── RecipeCockpitRecordTypesConstants.ts # The Record types section's and the Treecipe tab toggles' words (#652); imports nothing, re-exported by the service
     │   ├── RecipeCockpitTroubleshootingConstants.ts # The Troubleshooting tab's labels, notes and kinds (#639); types only from files that import nothing, re-exported by the service
     │   ├── RecipeCockpitTreecipeFieldEditorConstants.ts # The field editor, picklist tiles and lookup wiring's words (#653); imports nothing, re-exported by the service
     │   ├── RecipeCockpitOrgAuthorize.ts      # "Authorize org" (#630): its prompts, confirmation and the one notification a login ends in; no vscode

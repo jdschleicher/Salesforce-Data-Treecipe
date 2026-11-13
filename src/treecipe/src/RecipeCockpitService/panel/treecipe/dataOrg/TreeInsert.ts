@@ -13,6 +13,7 @@ import { drawDatasetInserts } from '../../datasets/DatasetRow';
 import { drawTreeQueryButtons } from '../../query/QueryTab';
 import { drawTreePermissionSet } from '../../troubleshooting/TroubleshootingActions';
 import { ITroubleshootingTreeState } from '../../troubleshooting/TroubleshootingTypes';
+import { buildRecordTypeSelection, drawRecordTypeChoices } from '../recordTypes/RecordTypesSection';
 import { drawDataOrgViews } from './DataOrgView';
 import { IDataOrgReadiness, IDataOrgTreeState, IInsertTree, IInsertTreeObjectState, InsertReasonLink, ITreeInsertBlock, ITreeInsertView } from './DataOrgTypes';
 
@@ -47,8 +48,6 @@ declare function indexObjectExclusions(tree: IInsertTree): Record<string, unknow
 declare function findObjectFieldSelection(tree: IInsertTree | undefined, objectApiName: string, nickname: string): object | null;
 declare function occurrenceNicknameOf(object: { nickname?: string }): string;
 declare function isTreeFieldUnticked(objectFieldSelection: object | null, fieldApiName: string): boolean;
-declare function buildRecordTypeSelection(): Record<string, string[]>;
-declare function drawRecordTypeChoices(): void;
 declare function applyTreeFocus(focusTree: { treeKey: string; tab: string; troubleshootingSubTab: string }): void;
 declare function revealTreeObjectRow(treeState: IDataOrgTreeState, treeObjectState: IInsertTreeObjectState, fieldState: unknown, focusElement: null): void;
 

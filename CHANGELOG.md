@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.202.6] - Target Org Manager and the tree insert are checked TypeScript modules (#654, slice 3e-3 of #565)
+## [3.202.7] - Target Org Manager and the tree insert are checked TypeScript modules (#654, slice 3e-3 of #565)
 
 Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open in browser and tree insert suite passes with no expectation changed, and so do the Generate and insert, Authorize org and first-journey suites and the rendered baselines.
 
@@ -8,7 +8,7 @@ Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open 
   - `DataOrgView.ts`: one view of the org picker and its buttons.
   - `DataOrgListing.ts`: the org list, the connection check, the provisional label, the selection and its readiness, and a listing the host refuses (#537).
   - `TreeInsert.ts`: a tree's insert button, the reasons it can't run, in order, and where each reason links (#539).
-  - The script lost 653 lines, from 6,425 to 5,772.
+  - The script lost 653 lines, from 5,821 to 5,168.
 - **13 entry points join the bridge**, because the script's message handler and the Treecipe tab still call them.
 - **The run locks stay the script's own variables.** That covers the insert, scratch org, Authorize org, Open in browser and the picker's state. A new model empties them and a reopened panel's replay sets them, so the modules declare them with `declare let`.
 - **`TroubleshootingActions.ts` imports `drawTreeInserts`, `drawDataOrgViews` and `listTreeInsertObjectApiNames`** instead of declaring them.
@@ -18,6 +18,20 @@ Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open 
   - names the 25 functions among those that must not be defined again in the string;
   - checks the new modules' declared names;
   - checks that the service and `RecipeCockpitOrgAuthorize.ts` re-export the new constants as the same values.
+
+## [3.202.6] - The Recipe Cockpit's Record types section and the Treecipe tab's toggles are checked TypeScript modules (#652, slice 3e-1 of #565)
+
+Nothing a user sees changes: every Record types and TODO suite, Treecipe tab and Generate and insert journey, and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.** 27 functions are now in `RecipeCockpitService/panel/treecipe/recordTypes/`, type checked by `npm run compile`:
+  - `RecordTypesSection.ts`: the Record types section, its rows, summary, search filter and choices, and the selection "Generate fake data and insert" sends.
+  - `RecordTypeFieldsToggle.ts`: "Record type fields only" and the index of fields each record type restricts.
+  - `TodosToggles.ts`: the card's and each object's "TODOs only", and a field's or an object's TODO list.
+  - The script lost 604 lines, from 6,425 (after #653) to 5,821.
+- **18 entry points join the bridge**, because code still in the string calls them. The choice, its row states and "Remember this selection" stay the script's, since it resets them for every model; the modules `declare` them.
+- **The 13 words these functions draw** moved into `RecipeCockpitRecordTypesConstants.ts`, which imports nothing. `RecipeCockpitService.ts` re-exports every name and no longer passes them to the string.
+- **Unchanged:** the host half (`RecipeCockpitRecordTypeRecipe.ts`, `RecordTypeSelectionService`) and any record type behaviour.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` names these functions among those that must not be defined again in the string, checks the new `declare`d names, and checks the re-exported constants. `RecipeCockpitRecordTypeFields.test.ts` reads the toggle's button and note from its module instead of the shell.
 
 ## [3.202.5] - The Recipe Cockpit's field editor, picklist tiles and lookup wiring are checked TypeScript modules (#653, slice 3e-2 of #565)
 
