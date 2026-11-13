@@ -43,7 +43,8 @@ describe('the rendered baselines catch a changed label and a changed order (#580
 
     test('renaming the Treecipe Adapter\'s Next button fails exactly the baselines that show it', async () => {
 
-        editShell('const UPDATER_NEXT_LABEL = "Next";', 'const UPDATER_NEXT_LABEL = "Continue";');
+        // THE ADAPTER'S WORDS ARE IMPORTED BY ITS BUNDLED PANEL MODULES (#641): THE EDIT IS MADE TO esbuild'S OUTPUT OF THEM
+        editShell('var RECIPE_COCKPIT_UPDATER_NEXT_LABEL = "Next";', 'var RECIPE_COCKPIT_UPDATER_NEXT_LABEL = "Continue";');
 
         const expected = screensWhoseBaseline(baselineText => baselineText.includes('button "Next"'));
         expect(expected).not.toBeEmpty();

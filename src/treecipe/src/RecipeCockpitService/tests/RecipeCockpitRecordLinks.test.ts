@@ -640,8 +640,10 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
             it('draws no link in a new child object\'s preview, whose records have no Id yet', () => {
 
                 const source = fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitService.ts'), 'utf-8');
-                const childPreviewFunction = source.slice(source.indexOf('function drawAdapterChildPreview('));
-                const childPreviewBody = childPreviewFunction.slice(0, childPreviewFunction.indexOf('\n    }\n'));
+                // THE ADAPTER'S PANEL CODE IS A CHECKED MODULE (#641)
+                const childModuleSource = fs.readFileSync(path.join(__dirname, '..', 'panel', 'adapter', 'AdapterChild.ts'), 'utf-8');
+                const childPreviewFunction = childModuleSource.slice(childModuleSource.indexOf('function drawAdapterChildPreview('));
+                const childPreviewBody = childPreviewFunction.slice(0, childPreviewFunction.indexOf('\n}\n'));
 
                 expect(childPreviewBody).toContain('buildRecordTable(columns, rows)');
                 expect(childPreviewBody).not.toContain('recordLink');
