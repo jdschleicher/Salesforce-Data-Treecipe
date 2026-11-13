@@ -78,6 +78,25 @@ import {
 import type { RecipeCockpitDatasetInsertStatus } from './RecipeCockpitDatasetsTabConstants';
 import { RECIPE_COCKPIT_QUERY_INTRO } from './RecipeCockpitQueryTabConstants';
 import {
+    RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
+    RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX,
+    RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX,
+    RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS,
+    RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
+    RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES,
+    RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES,
+    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
+    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER,
+    RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON,
+    RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
+    RECIPE_COCKPIT_PICKLIST_RESET_LABEL,
+    RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX,
+    RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX,
+    RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL,
+    RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL
+} from './RecipeCockpitTreecipeFieldEditorConstants';
+import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTreecipeFieldEditorConstants';
+import {
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
@@ -302,6 +321,30 @@ export type { RecipeCockpitDatasetInsertStatus };
 // THE PANEL'S INSERT STATUS UNION IS SPELLED OUT (#642); A STATUS ADDED TO DatasetInsertAttemptService WITHOUT IT FAILS HERE
 type DatasetInsertStatusesMatch<Expected extends InsertAttemptStatus & RecipeCockpitDatasetInsertStatus> = Expected;
 export type RecipeCockpitDatasetInsertStatusMatchesAttempts = DatasetInsertStatusesMatch<InsertAttemptStatus | RecipeCockpitDatasetInsertStatus>;
+
+// THE TREECIPE TAB'S FIELD EDITOR, PICKLIST TILES AND LOOKUP WIRING DRAW WITH A FILE THEIR PANEL MODULES IMPORT (#653); THE HOST READS THE SAME NAMES
+export {
+    RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
+    RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX,
+    RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX,
+    RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS,
+    RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
+    RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES,
+    RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES,
+    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
+    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER,
+    RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON,
+    RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
+    RECIPE_COCKPIT_PICKLIST_RESET_LABEL,
+    RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX,
+    RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX,
+    RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL,
+    RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL
+};
+
+// THE PANEL'S CREATE-PARENT REFUSAL UNION IS SPELLED OUT (#653); A WRITER CODE ADDED OR RENAMED WITHOUT IT FAILS HERE
+type CreateParentRefusalReasonsMatch<Expected extends CreateParentRefusalReason & RecipeCockpitCreateParentRefusalReason> = Expected;
+export type RecipeCockpitCreateParentRefusalReasonMatchesWriter = CreateParentRefusalReasonsMatch<CreateParentRefusalReason | RecipeCockpitCreateParentRefusalReason>;
 
 // THE QUERY TAB'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULE IMPORTS (#640); THE HOST'S NAME STAYS
 export { RECIPE_COCKPIT_QUERY_INTRO };
@@ -672,8 +715,6 @@ export const RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = 'unticked';
 export const RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = 'the record type is chosen by name';
 export const RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = 'depends on ';
 export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
-export const RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ['Number', 'Currency', 'Percent'];
-export const RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
 // A VALUE THAT STARTS WITH THIS IS SAVED AS AN EDITED FAKER EXPRESSION (#356), ANYTHING ELSE AS A LITERAL
 export const RECIPE_COCKPIT_EXPRESSION_OPENER = '${{';
 // WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
@@ -681,8 +722,6 @@ export const RECIPE_COCKPIT_EXPRESSION_OPENER = '${{';
 export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recipe file was not changed.';
 // A LOOKUP'S PENCIL (#627) TAKES ONE RECORD'S Id: THE TREE INSERT KEEPS AN Id AND REPLACES ANY OTHER VALUE A LOOKUP HOLDS
 export const RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX = 'is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id.';
-export const RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER = '15- or 18-character Salesforce Id';
-export const RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = 'Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it, unless the lookup can point at more than one object. Save writes it into the recipe file; Clear puts back the lines the field had.';
 export const RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL = 'Enter a record Id';
 export const RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL = 'Use this record';
 export const RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = 'org record · ';
@@ -691,11 +730,6 @@ export const RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL = 'Write to recipe';
 export const RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL = 'Put back';
 export const RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES = 12;
 export const RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH = 800;
-// A CUSTOM GEOLOCATION FIELD'S COMPONENTS: THE WRAPPER TYPES THEM Text, BUT THE INSERT TAKES ONLY A NUMBER IN RANGE (#342)
-export const RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES: Readonly<Record<string, { suffix: string; limit: number }>> = {
-    Latitude: { suffix: '__Latitude__s', limit: 90 },
-    Longitude: { suffix: '__Longitude__s', limit: 180 }
-};
 export const RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL = 'Reset';
 // WHAT A RUN SWITCH ASKS WHEN A TREE ON SCREEN HAS A STORED SELECTION (#399)
 export const RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL = 'Reset selections';
@@ -746,10 +780,7 @@ export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Click to show record type impacted fields only';
 export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
 export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: the ticked values are what the field already generates.';
-export const RECIPE_COCKPIT_PICKLIST_RESET_LABEL = 'Reset to generated';
 export const RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL = 'Nothing to reset: the field has no edit, so it already generates what Generate Treecipe wrote.';
-export const RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = 'Tick at least one value to save.';
-export const RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = 'This field has an edit that is not a choice of its values. Saving a choice replaces it.';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 // THE TREECIPE TAB'S "TODOs only" CHECK (#354), AND WHY IT IS DISABLED ON A CARD WHOSE RECIPE HAS NO TODO COMMENT
 export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'Click to show fields with open TODOs';
@@ -763,8 +794,6 @@ export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySe
 // A TREE CARD'S GENERATE BUTTON HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
 export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
 
-// A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
-export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+ Add friend';
 // THE DEEPEST friends: LEVEL A NESTED ROW IS INDENTED FOR (#467); A DEEPER ONE IS DRAWN AT THIS INDENT, SO A CARD NEVER RUNS OFF A NARROW PANEL
 export const RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH = 8;
 export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
@@ -778,19 +807,6 @@ export const RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM = 0.25;
 export const RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM = 0.25;
 export const RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT = `calc(${Math.round(( RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM - RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM - RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM ) * 100) / 100}rem - 1px)`;
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
-export const RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = 'Wire to…';
-// AN EMPTY LOOKUP'S TWO DECISIONS (#421), EACH NAMING THE PARENT BETWEEN ITS PREFIX AND SUFFIX
-export const RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX = 'Create ';
-export const RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX = ' in recipe';
-export const RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX = 'Use existing ';
-export const RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX = ' from org…';
-// WHY "Create <Parent> in recipe" IS DISABLED, BY THE WRITER'S CODE; {parent} AND {object} ARE FILLED IN BY THE PANEL
-export const RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS: Readonly<Record<CreateParentRefusalReason, string>> = {
-    'no-parent-template': 'There is no minimum required fields template for {parent}, so it cannot be added to the recipe.',
-    'parent-object-already-exists': 'The recipe already has a "- object: {parent}" block; point this lookup at it with Wire to… or by hand.',
-    'parent-not-inserted-first': '{parent} is not at a lower relationship level than {object}, so the insert would not send it first.'
-};
-export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = 'Wire TODO lookups';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL = 'Wire';
 // HOW MANY LOOKUPS THE WIRE-ALL CONFIRMATION NAMES BEFORE IT COUNTS THE REST
 export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN = 12;
@@ -22869,6 +22885,9 @@ ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
         renderUpdaterRecords, clearUpdaterRecords, renderAdapterMetadataChanges, clearAdapterChildren, clearAdapterChildPreviews, renderAdapterChildBlock, renderAdapterChildPreview,
         buildDatasetsTab, drawDatasetInserts, renderDatasetRecordCounts, renderDatasetJourney, setDatasetJourneyExpanded,
         requestDatasetJourney, applyDatasetsFilter, renderDatasetAdded, renderDatasetPreferences, renderDatasetLastInsert,
+        toggleFieldEditor, closeFieldEditor, renderFieldEditResult, buildTreeFieldState, requestPicklistValues, renderPicklistValues, drawPicklistValueEditor,
+        appendAddFriendControls, setAddFriendRunning, findLookupWiring, buildWireLookupElement, findEmptyLookup, buildLookupDecisionElement,
+        drawFieldRowLookupDecision, buildWireAllLookupsElement, setWireLookupRunning,
         buildDataOrgView, drawDataOrgViews, buildTreeInsertElement, drawTreeInsert, drawTreeInserts, setInsertRunning,
         renderScratchOrgState, renderDataOrgReadiness, requestDataOrgs, renderDataOrgList, renderDataOrgListingRefused, renderDataOrgProvisional, renderDataOrgSelection
     } = recipeCockpitPanelModules;
@@ -22886,16 +22905,8 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
-    const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
-    const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
-    const CREATE_PARENT_ACTION_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX)};
-    const CREATE_PARENT_ACTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX)};
-    const USE_ORG_RECORD_ACTION_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX)};
-    const USE_ORG_RECORD_ACTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX)};
-    const CREATE_PARENT_REFUSAL_TEXTS = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS)};
     const ORG_RECORD_BADGE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX)};
-    const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
@@ -22946,8 +22957,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
     const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
-    const PICKLIST_CHOICE_EMPTY_REASON = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON)};
-    const PICKLIST_OTHER_EDIT_NOTE = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE)};
     const PICKLIST_RESET_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_RESET_LABEL)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
@@ -22984,8 +22993,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const FIXED_VALUE_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON)};
     const FIXED_VALUE_DEPENDENT_REASON_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX)};
     const FIXED_VALUE_LOOKUP_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES)};
-    const LOOKUP_ID_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER)};
-    const LOOKUP_ID_EDIT_HINT = ${JSON.stringify(RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT)};
     const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
     const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
     const VALIDATION_RULE_SOURCE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX)};
@@ -22999,9 +23006,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const HIDE_UNSELECTED_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL)};
     const NO_UNSELECTED_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
-    const FIXED_VALUE_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH)};
-    const FIXED_VALUE_NUMBER_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES)};
-    const GEOLOCATION_COMPONENT_RANGES = ${JSON.stringify(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES)};
 
     let treeStates = [];
     // THE ONE REFERENCES LIST OPEN (#380, #491): { menuOwner, menuElement, itemElements, entries, openerOf }
@@ -23018,10 +23022,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     // THE SAME FOR "Wire to…" AND "Wire TODO lookups" (#151)
     let isWireLookupRunning = false;
     let wireLookupButtonElements = [];
-    // EACH CARD'S lookupWirings BY OBJECT, OCCURRENCE AND FIELD, BUILT ONCE PER CARD RATHER THAN SCANNED PER ROW
-    let lookupWiringIndexByTree = new WeakMap();
-    let addableParentIndexByTree = new WeakMap();
-    let emptyLookupIndexByTree = new WeakMap();
     // EVERY EMPTY LOOKUP'S TWO BUTTONS (#421): THE ONE-WRITE LOCK GIVES THEM BACK, BUT NEVER PAST THE REASON EACH IS DISABLED FOR
     let lookupDecisions = [];
     // WHETHER THE READER HAS USED THE ORG PICKER; IT OUTLIVES A MODEL, SO A RELOAD CHECKS THE SAME ORG AGAIN
@@ -25612,465 +25612,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     }
 
     /*
-        A field's inline editor (#337, one box since #356) under the row, with Save, Clear and
-        Cancel. Enter saves and Escape cancels. Save posts the NAMES the edit button always posted
-        plus what was typed; the host checks it against the field again and answers with
-        fieldEditResult -- a refusal is written under the box with textContent and the editor stays
-        open, a save closes it once the card has been redrawn. Clicking the button again closes it.
-    */
-    function toggleFieldEditor(treeObjectState, fieldState, edit) {
-
-        const isSameEditOpen = fieldState.editorEdit === edit;
-        closeFieldEditor(fieldState);
-        if (!isSameEditOpen) { openFieldEditor(treeObjectState, fieldState, edit); }
-        drawFieldRowFixedValue(treeObjectState, fieldState);
-
-    }
-
-    function closeFieldEditor(fieldState) {
-
-        if (!fieldState.editorElement || !fieldState.editorEdit) { return; }
-
-        const openerElement = fieldState.fixedValueButtonElement;
-        fieldState.editorElement.textContent = '';
-        fieldState.editorElement.classList.add('hidden');
-        fieldState.editorEdit = '';
-        fieldState.editorRefusalElement = null;
-        if (openerElement) {
-            openerElement.setAttribute('aria-expanded', 'false');
-            if (!openerElement.disabled && typeof openerElement.focus === 'function') { openerElement.focus(); }
-        }
-
-    }
-
-    function describeFixedValueForm(field) {
-
-        if (field.fieldType === 'Checkbox') { return 'Type true or false.'; }
-        if (field.fieldType === 'Date') { return 'Type a date as YYYY-MM-DD, such as 2026-01-31.'; }
-        if (field.fieldType === 'DateTime') { return 'Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.'; }
-        if (FIXED_VALUE_NUMBER_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return 'Type a plain number, such as 42, -7 or 3.25.'; }
-        const geolocationComponent = field.fieldType === 'Text'
-            ? Object.keys(GEOLOCATION_COMPONENT_RANGES).find(function (componentKey) { return field.fieldApiName.endsWith(GEOLOCATION_COMPONENT_RANGES[componentKey].suffix); })
-            : undefined;
-        if (geolocationComponent !== undefined) {
-            const limit = GEOLOCATION_COMPONENT_RANGES[geolocationComponent].limit;
-            return 'Type a ' + geolocationComponent.toLowerCase() + ' from -' + limit + ' to ' + limit + '.';
-        }
-        if (field.fieldType === 'MultiselectPicklist') { return 'Type values this picklist declares, separated by ;.'; }
-        if (field.isPicklist) { return 'Type a value this picklist declares.'; }
-        return 'Type the text every record gets.';
-
-    }
-
-    function buildFieldEditorInput(maxLength, value, ariaLabel, placeholder) {
-
-        const inputElement = createElement('input', 'fieldEditorInput');
-        inputElement.setAttribute('type', 'text');
-        inputElement.setAttribute('maxlength', String(maxLength));
-        inputElement.setAttribute('aria-label', ariaLabel);
-        if (placeholder) { inputElement.setAttribute('placeholder', placeholder); }
-        inputElement.value = value;
-
-        return inputElement;
-
-    }
-
-    function openFieldEditor(treeObjectState, fieldState, edit) {
-
-        if (!fieldState.rowElement) { return; }
-
-        const field = fieldState.field;
-        const tree = treeObjectState.tree;
-        const object = treeObjectState.object;
-        const fieldLabel = object.objectApiName + '.' + field.fieldApiName;
-
-        if (!fieldState.editorElement) {
-            fieldState.editorElement = createElement('div', 'fieldEditor hidden');
-            fieldState.editorElement.setAttribute('role', 'group');
-            // THE EDITOR EDITS THE FAKER VALUE, SO IT OPENS UNDER IT, ABOVE A PICKLIST'S EDIT VALUES (#398)
-            fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
-        }
-
-        const editorElement = fieldState.editorElement;
-        const inputsElement = createElement('div', 'fieldEditorInputs');
-        const inputElements = [];
-        let collectTyped = null;
-
-        // A LOOKUP (#627) TAKES ONE RECORD'S Id, SO IT STARTS FROM THE Id IT HOLDS, NEVER FROM ITS TODO OR NICKNAME
-        const isLookup = isLookupField(tree, object.objectApiName, field);
-        editorElement.setAttribute('aria-label', 'Edit ' + fieldLabel);
-        const valueElement = isLookup
-            ? buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object)) || '', 'Record Id for ' + fieldLabel, LOOKUP_ID_PLACEHOLDER)
-            : buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), 'Value or faker expression for ' + fieldLabel, '');
-        inputElements.push(valueElement);
-        inputsElement.appendChild(valueElement);
-        collectTyped = function (isClearing) {
-            const typedValue = String(valueElement.value);
-            return { value: isClearing ? '' : isLookup || isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue };
-        };
-
-        // THE HINT SAYS WHICH OF THE TWO SAVE WRITES, AS THE READER TYPES
-        const describeEdit = function () {
-            if (isLookup) { return LOOKUP_ID_EDIT_HINT; }
-            return ( isExpressionValue(String(valueElement.value).trim())
-                ? 'Saved as a faker expression: one \${{ ... }} on one line. Change its arguments, or call another faker method.'
-                : 'Saved as a fixed value. ' + describeFixedValueForm(field) + ' Start with \${{ to save a faker expression instead.' )
-                + ' Save writes it into the recipe file; Clear puts back the lines the field had.';
-        };
-        const hintText = describeEdit();
-        const hintElement = createElement('div', 'fieldEditorHint muted', hintText);
-        valueElement.addEventListener('input', function () { hintElement.textContent = describeEdit(); });
-        const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
-        refusalElement.setAttribute('role', 'alert');
-
-        const post = function (isClearing) {
-            const message = {
-                command: 'setFieldFixedValue',
-                treeKey: tree.treeKey,
-                objectApiName: object.objectApiName,
-                fieldApiName: field.fieldApiName
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            const typed = collectTyped(isClearing);
-            Object.keys(typed).forEach(function (typedKey) { message[typedKey] = typed[typedKey]; });
-            refusalElement.textContent = '';
-            refusalElement.classList.add('hidden');
-            vscodeApi.postMessage(message);
-        };
-
-        const actionsElement = createElement('div', 'fieldEditorActions');
-        const saveElement = createButton('primary', 'fieldEditorSave', 'Save', 'compact');
-        const clearElement = createButton('secondary', 'fieldEditorClear', 'Clear', 'compact');
-        const cancelElement = createButton('secondary', 'fieldEditorCancel', 'Cancel', 'compact');
-        saveElement.addEventListener('click', function (event) { event.stopPropagation(); post(false); });
-        clearElement.addEventListener('click', function (event) { event.stopPropagation(); post(true); });
-        cancelElement.addEventListener('click', function (event) { event.stopPropagation(); toggleFieldEditor(treeObjectState, fieldState, edit); });
-        actionsElement.appendChild(saveElement);
-        actionsElement.appendChild(clearElement);
-        actionsElement.appendChild(cancelElement);
-
-        inputElements.forEach(function (inputElement) {
-            inputElement.addEventListener('keydown', function (event) {
-                // AN IME COMPOSING CJK TEXT CONFIRMS A CANDIDATE WITH ENTER, WHICH IS NOT A SAVE
-                if (event.isComposing) { return; }
-                if (event.key === 'Enter') { event.stopPropagation(); post(false); }
-                if (event.key === 'Escape') { event.stopPropagation(); toggleFieldEditor(treeObjectState, fieldState, edit); }
-            });
-        });
-
-        editorElement.textContent = '';
-        editorElement.appendChild(inputsElement);
-        editorElement.appendChild(hintElement);
-        editorElement.appendChild(refusalElement);
-        editorElement.appendChild(actionsElement);
-        editorElement.classList.remove('hidden');
-        fieldState.editorEdit = edit;
-        fieldState.editorRefusalElement = refusalElement;
-
-        if (typeof inputElements[0].focus === 'function') { inputElements[0].focus(); }
-
-    }
-
-    // HOW AN INLINE EDIT ENDED (#337), FOR THE MODEL ON SCREEN: A REFUSAL UNDER THE BOXES, OR THE EDITOR CLOSED
-    function renderFieldEditResult(fieldEditResultMessage) {
-
-        if (renderedSequence === null || fieldEditResultMessage.renderSequence !== renderedSequence) { return; }
-        if (fieldEditResultMessage.edit === 'picklistValues') { renderPicklistChoiceResult(fieldEditResultMessage); return; }
-
-        const treeState = findTreeState(fieldEditResultMessage.treeKey);
-        if (!treeState) { return; }
-
-        treeState.objectStates.forEach(function (treeObjectState) {
-            if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) { return; }
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || fieldState.editorEdit !== fieldEditResultMessage.edit) { return; }
-                if (typeof fieldEditResultMessage.refusal === 'string' && fieldState.editorRefusalElement) {
-                    fieldState.editorRefusalElement.textContent = fieldEditResultMessage.refusal;
-                    fieldState.editorRefusalElement.classList.remove('hidden');
-                    return;
-                }
-                toggleFieldEditor(treeObjectState, fieldState, fieldState.editorEdit);
-            });
-        });
-
-    }
-
-    function buildTreeFieldState(field) {
-
-        return {
-            field: field,
-            typeSearchText: String(field.fieldTypeWithSize || field.fieldType || '').toLowerCase(),
-            isMatch: true,
-            rowElement: null,
-            isPicklistExpanded: false,
-            includeElement: null,
-            noteElement: null,
-            isIncluded: true,
-            fixedValueButtonElement: null,
-            fixedValueBadgeElement: null,
-            fixedValueElement: null,
-            expressionElement: null,
-            picklistSectionElement: null,
-            validationRuleElement: null,
-            isValidationRuleApplied: true,
-            recordTypeDeveloperNames: null,
-            todos: Array.isArray(field.todos) ? field.todos : [],
-            editorElement: null,
-            editorEdit: '',
-            editorRefusalElement: null,
-            setPicklistExpanded: null,
-            picklistRefusalElement: null,
-            endPicklistSave: null
-        };
-
-    }
-
-    function appendPicklistValueList(containerElement, picklistValues) {
-
-        if (picklistValues.length === 0) {
-            containerElement.appendChild(createElement('div', 'picklistEmpty muted', 'no values'));
-            return;
-        }
-
-        picklistValues.forEach(function (picklistValue) {
-            containerElement.appendChild(createElement('div', 'picklistValue', picklistValue));
-        });
-
-    }
-
-    function buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname) {
-        return objectApiName + '\\n' + fieldApiName + '\\n' + treeKey + '\\n' + (nickname || '');
-    }
-
-    /*
-        Asked for on every open, since an edit since the last one changes which tiles start ticked,
-        and says so until the host answers. The answer is handed to the callback of the editor that
-        asked, which draws it only if that editor is still open.
-    */
-    function requestPicklistValues(treeKey, objectApiName, nickname, fieldApiName, onValues) {
-
-        const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname);
-
-        // A HAND-EDITED WRAPPER CAN REPEAT A FIELD, AND EVERY ROW THAT ASKED IS ANSWERED, NOT ONLY THE LAST
-        if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
-            pendingPicklistValueElements[picklistKey] = [];
-        }
-        pendingPicklistValueElements[picklistKey].push(onValues);
-        const message = { command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName, treeKey: treeKey };
-        if (nickname) { message.nickname = nickname; }
-        vscodeApi.postMessage(message);
-
-    }
-
-    // DRAWN ONLY INTO A ROW OF THE MODEL ON SCREEN THAT ASKED FOR IT
-    function renderPicklistValues(picklistValuesMessage) {
-
-        if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== 'string') { return; }
-
-        const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey, picklistValuesMessage.nickname);
-
-        if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) { return; }
-
-        const onValuesCallbacks = pendingPicklistValueElements[picklistKey];
-        delete pendingPicklistValueElements[picklistKey];
-
-        onValuesCallbacks.forEach(function (onValues) { onValues(picklistValuesMessage); });
-
-    }
-
-    /*
-        Why a picklist's value tiles cannot be saved here (#465), or '' when they can: the edit
-        button's own rule, since a choice is written exactly as an edited expression is.
-    */
-    function findPicklistChoiceLockReason(treeObjectState, fieldState) {
-
-        if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) { return 'Values can be chosen only on a card with its own recipe file.'; }
-        const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
-        return lockReason ? 'Cannot be edited: ' + lockReason : '';
-
-    }
-
-    /*
-        A picklist's value tiles (#465), under its faker value: one tile per value, ticked for what
-        the field generates now. Save posts the NAMES the edit button posts plus the values ticked;
-        the host builds the expression with the recipe's own backend and writes it as an edit, and a
-        refusal comes back under the tiles. Cancel, the close button and Escape post nothing. Record
-        types keep their own values, listed under the tiles as they are.
-    */
-    function drawPicklistValueEditor(treeObjectState, fieldState, editorElement, picklistValuesMessage, closeEditor) {
-
-        const field = fieldState.field;
-        const object = treeObjectState.object;
-        const lockReason = findPicklistChoiceLockReason(treeObjectState, fieldState);
-        const picklistValues = Array.isArray(picklistValuesMessage.picklistValues) ? picklistValuesMessage.picklistValues : [];
-        const startValues = Array.isArray(picklistValuesMessage.chosenPicklistValues) ? picklistValuesMessage.chosenPicklistValues : picklistValues;
-        const tileStates = [];
-
-        editorElement.textContent = '';
-
-        if (picklistValues.length === 0) {
-            editorElement.appendChild(createElement('div', 'picklistEmpty muted', 'no values'));
-        }
-
-        if (picklistValuesMessage.isOtherEdit && !lockReason) {
-            editorElement.appendChild(createElement('div', 'picklistEditorNote muted', PICKLIST_OTHER_EDIT_NOTE));
-        }
-
-        const reasonElement = createElement('div', 'picklistEditorReason muted hidden');
-        const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
-        refusalElement.setAttribute('role', 'alert');
-        const saveElement = createButton('primary', 'picklistEditorSave', 'Save', 'compact');
-        const cancelElement = createButton('secondary', 'picklistEditorCancel', 'Cancel', 'compact');
-        // THE TILES' OWN WAY BACK (#479), DRAWN ONLY WHILE THE FIELD HAS AN EDIT TO CLEAR
-        const resetElement = picklistValuesMessage.isEdited ? createButton('secondary', 'picklistEditorReset', PICKLIST_RESET_LABEL, 'compact') : null;
-
-        let isSaving = false;
-        const drawChoice = function () {
-            const chosenCount = tileStates.filter(function (tileState) { return tileState.isChosen; }).length;
-            // ANOTHER KIND OF EDIT IS NOT WHAT THE TILES START FROM, SO ANY CHOICE OF THEM CHANGES THE FIELD
-            const isChanged = !!picklistValuesMessage.isOtherEdit || tileStates.some(function (tileState) { return tileState.isChosen !== tileState.isStartChosen; });
-            const reason = lockReason || ( picklistValues.length > 0 && chosenCount === 0 ? PICKLIST_CHOICE_EMPTY_REASON : '' );
-            saveElement.disabled = isSaving || !!reason || picklistValues.length === 0 || !isChanged;
-            if (resetElement) { resetElement.disabled = isSaving || !!lockReason; }
-            reasonElement.textContent = reason;
-            if (reason) { reasonElement.classList.remove('hidden'); } else { reasonElement.classList.add('hidden'); }
-        };
-
-        if (picklistValues.length > 0) {
-
-            const tilesElement = createElement('div', 'picklistTiles');
-            tilesElement.setAttribute('role', 'group');
-            tilesElement.setAttribute('aria-label', 'Values of ' + object.objectApiName + '.' + field.fieldApiName);
-
-            picklistValues.forEach(function (picklistValue) {
-
-                const isStartChosen = startValues.indexOf(picklistValue) !== -1;
-                const tileState = { value: picklistValue, isChosen: isStartChosen, isStartChosen: isStartChosen, tileElement: null, checkElement: null };
-                const tileElement = createElement('div', 'picklistTile');
-                const checkElement = createButton('check', 'picklistTileCheck');
-                const valueElement = createElement('span', 'picklistValue', picklistValue);
-
-                checkElement.setAttribute('role', 'checkbox');
-                checkElement.setAttribute('aria-label', picklistValue);
-                checkElement.disabled = !!lockReason;
-                tileElement.appendChild(checkElement);
-                tileElement.appendChild(valueElement);
-                tileState.tileElement = tileElement;
-                tileState.checkElement = checkElement;
-
-                // THE WHOLE TILE TOGGLES; A CLICK ON THE BOX BUBBLES HERE, SO THE BOX HAS NO LISTENER OF ITS OWN
-                tileElement.addEventListener('click', function () {
-                    if (lockReason) { return; }
-                    tileState.isChosen = !tileState.isChosen;
-                    drawTile(tileState);
-                    drawChoice();
-                });
-
-                drawTile(tileState);
-                tileStates.push(tileState);
-                tilesElement.appendChild(tileElement);
-
-            });
-
-            editorElement.appendChild(tilesElement);
-
-        }
-
-        const recordTypeSections = Array.isArray(picklistValuesMessage.recordTypePicklistValues) ? picklistValuesMessage.recordTypePicklistValues : [];
-        recordTypeSections.forEach(function (recordTypeSection) {
-            editorElement.appendChild(createElement('div', 'recordTypeHeading', 'Record type: ' + recordTypeSection.recordTypeDeveloperName));
-            appendPicklistValueList(editorElement, recordTypeSection.picklistValues);
-        });
-
-        saveElement.addEventListener('click', function (event) {
-            event.stopPropagation();
-            if (saveElement.disabled) { return; }
-            const message = {
-                command: 'setPicklistValueChoice',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                fieldApiName: field.fieldApiName,
-                picklistValues: tileStates.filter(function (tileState) { return tileState.isChosen; }).map(function (tileState) { return tileState.value; })
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            refusalElement.textContent = '';
-            refusalElement.classList.add('hidden');
-            // ONE SAVE AT A TIME: SAVE COMES BACK WITH A REFUSAL, AND A WRITE RELOADS THE CARD
-            isSaving = true;
-            drawChoice();
-            // A SAVE RELOADS THE CARD, WHICH SHOULD FIND THE EDITOR CLOSED; A REFUSAL OPENS IT IN THE PLACE AGAIN
-            fieldState.isPicklistExpanded = false;
-            savePanelPlace();
-            vscodeApi.postMessage(message);
-        });
-        if (resetElement) {
-            resetElement.setAttribute('title', 'Put back the lines ' + field.fieldApiName + ' had before it was edited, after a confirmation');
-            resetElement.addEventListener('click', function (event) {
-                event.stopPropagation();
-                if (resetElement.disabled) { return; }
-                const message = {
-                    command: 'resetPicklistValueChoice',
-                    treeKey: treeObjectState.tree.treeKey,
-                    objectApiName: object.objectApiName,
-                    fieldApiName: field.fieldApiName
-                };
-                if (object.nickname) { message.nickname = object.nickname; }
-                refusalElement.textContent = '';
-                refusalElement.classList.add('hidden');
-                isSaving = true;
-                drawChoice();
-                fieldState.isPicklistExpanded = false;
-                savePanelPlace();
-                vscodeApi.postMessage(message);
-            });
-        }
-        cancelElement.addEventListener('click', function (event) { event.stopPropagation(); closeEditor(); });
-
-        const actionsElement = createElement('div', 'fieldEditorActions');
-        actionsElement.appendChild(saveElement);
-        if (resetElement) { actionsElement.appendChild(resetElement); }
-        actionsElement.appendChild(cancelElement);
-        editorElement.appendChild(reasonElement);
-        editorElement.appendChild(refusalElement);
-        editorElement.appendChild(actionsElement);
-        fieldState.picklistRefusalElement = refusalElement;
-        fieldState.endPicklistSave = function () { isSaving = false; drawChoice(); };
-
-        drawChoice();
-
-    }
-
-    function drawTile(tileState) {
-        tileState.checkElement.setAttribute('aria-checked', tileState.isChosen ? 'true' : 'false');
-        tileState.checkElement.textContent = tileState.isChosen ? '✓' : '';
-        if (tileState.isChosen) { tileState.tileElement.classList.add('chosen'); } else { tileState.tileElement.classList.remove('chosen'); }
-    }
-
-    // A REFUSAL OF A CHOICE (#465) IS WRITTEN UNDER THE TILES, WHICH STAY OPEN; ANY OTHER ANSWER CLOSES THEM
-    function renderPicklistChoiceResult(fieldEditResultMessage) {
-
-        const treeState = findTreeState(fieldEditResultMessage.treeKey);
-        if (!treeState) { return; }
-
-        treeState.objectStates.forEach(function (treeObjectState) {
-            if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) { return; }
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || !fieldState.setPicklistExpanded || !fieldState.picklistRefusalElement) { return; }
-                if (typeof fieldEditResultMessage.refusal === 'string') {
-                    fieldState.picklistRefusalElement.textContent = fieldEditResultMessage.refusal;
-                    fieldState.picklistRefusalElement.classList.remove('hidden');
-                    if (fieldState.endPicklistSave) { fieldState.endPicklistSave(); }
-                    fieldState.isPicklistExpanded = true;
-                    savePanelPlace();
-                    return;
-                }
-                fieldState.setPicklistExpanded(false);
-            });
-        });
-
-    }
-
-    /*
         A field's checkbox (#220): a real button with role="checkbox", keyboard operable. A click posts
         NAMES only; the host decides whether the field may be unticked and posts the card back.
     */
@@ -26270,286 +25811,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         if (setPicklistExpanded && fieldState.isPicklistExpanded) { setPicklistExpanded(true); }
 
         return fieldRowElement;
-
-    }
-
-    /*
-        A self-lookup iteration's "+" (#197): the button, and the list of friends it opens on a line
-        of its own at the end of the header, so an object is still its header and its rows. Each choice posts NAMES only -- the card, the
-        object, the iteration's nickname and the friend -- and the host matches the four against what
-        it rendered. One click disables every "+" until the host answers, so only one friend is ever
-        being added.
-    */
-    function appendAddFriendControls(treeKey, object, objectHeaderElement) {
-
-        const friendObjectApiNames = object.iteration.insertableFriendObjectApiNames || [];
-        if (friendObjectApiNames.length === 0) { return; }
-
-        const addFriendElement = createButton('secondary', 'treeAddFriend', ADD_FRIEND_ACTION_LABEL);
-        const addFriendsElement = createElement('div', 'treeAddFriends hidden');
-
-        addFriendElement.setAttribute('title', 'Add one of the friends of ' + object.objectApiName + ' under ' + object.nickname);
-        addFriendElement.setAttribute('aria-label', 'Add friend under ' + object.nickname);
-        addFriendElement.setAttribute('aria-expanded', 'false');
-        addFriendElement.addEventListener('click', function () {
-            const isOpening = addFriendsElement.classList.contains('hidden');
-            if (isOpening) { addFriendsElement.classList.remove('hidden'); } else { addFriendsElement.classList.add('hidden'); }
-            addFriendElement.setAttribute('aria-expanded', isOpening ? 'true' : 'false');
-        });
-
-        addFriendsElement.appendChild(createElement('span', 'muted', 'Add under ' + object.nickname + ':'));
-
-        friendObjectApiNames.forEach(function (friendObjectApiName) {
-            const choiceElement = createButton('secondary', 'treeAddFriendChoice', '+ ' + friendObjectApiName);
-            choiceElement.setAttribute('aria-label', 'Add ' + friendObjectApiName + ' under ' + object.nickname);
-            choiceElement.addEventListener('click', function () {
-                if (isAddFriendRunning) { return; }
-                setAddFriendRunning(true);
-                vscodeApi.postMessage({
-                    command: 'addIterationFriend',
-                    treeKey: treeKey,
-                    objectApiName: object.objectApiName,
-                    objectNickname: object.nickname,
-                    friendObjectApiName: friendObjectApiName
-                });
-            });
-            choiceElement.disabled = isAddFriendRunning;
-            addFriendButtonElements.push(choiceElement);
-            addFriendsElement.appendChild(choiceElement);
-        });
-
-        addFriendButtonElements.push(addFriendElement);
-        objectHeaderElement.appendChild(addFriendElement);
-        objectHeaderElement.appendChild(addFriendsElement);
-        // ONLY THIS ROW'S BUTTONS -- SETTING EVERY ONE DRAWN SO FAR, PER ROW, IS QUADRATIC IN THE ROWS
-        addFriendElement.disabled = isAddFriendRunning;
-
-    }
-
-    function setAddFriendRunning(isRunning) {
-
-        isAddFriendRunning = isRunning;
-        addFriendButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
-
-    }
-
-    function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
-        return objectApiName + '\\n' + (objectNickname || '') + '\\n' + fieldApiName;
-    }
-
-    // THE WIRING A ROW DRAWS "Wire to…" FOR: THE CARD'S OWN, FOR THIS OCCURRENCE OF THE OBJECT -- null FOR EVERY OTHER ROW
-    function findLookupWiring(tree, object, fieldApiName) {
-
-        if (!tree.lookupWirings || tree.lookupWirings.length === 0) { return null; }
-
-        let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
-        if (!lookupWiringIndex) {
-            lookupWiringIndex = Object.create(null);
-            tree.lookupWirings.forEach(function (wiring) {
-                lookupWiringIndex[lookupWiringKeyOf(wiring.objectApiName, wiring.objectNickname, wiring.fieldApiName)] = wiring;
-            });
-            lookupWiringIndexByTree.set(tree, lookupWiringIndex);
-        }
-
-        const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-        return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
-
-    }
-
-    /*
-        "Wire to…" (#151) on a lookup the recipe still writes as a TODO, posting NAMES only -- the card,
-        the object, the occurrence's nickname and the field. The nickname it is wired to is chosen on
-        the host. One click disables every wire button until the host's wireLookupState gives them back.
-    */
-    function buildWireLookupElement(tree, wiring) {
-
-        const wireElement = createButton('secondary', 'treeWireLookup', WIRE_LOOKUP_ACTION_LABEL);
-        const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? ' (' + wiring.objectNickname + ')' : '') + '.' + wiring.fieldApiName;
-
-        wireElement.setAttribute('title', wiring.candidateNicknames.length === 1
-            ? 'Point this lookup at ' + wiring.candidateNicknames[0] + ' in the recipe file, after a confirmation'
-            : 'Choose which of ' + wiring.candidateNicknames.join(', ') + ' this lookup points at in the recipe file');
-        wireElement.setAttribute('aria-label', 'Wire ' + fieldLabel);
-        wireElement.addEventListener('click', function () {
-            if (isWireLookupRunning) { return; }
-            setWireLookupRunning(true);
-            const wireMessage = { command: 'wireLookup', treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
-            if (wiring.objectNickname) { wireMessage.objectNickname = wiring.objectNickname; }
-            vscodeApi.postMessage(wireMessage);
-        });
-        wireElement.disabled = isWireLookupRunning;
-        wireLookupButtonElements.push(wireElement);
-
-        return wireElement;
-
-    }
-
-    // THE ADDITION A ROW DRAWS "Add <Parent> to recipe" FOR (#294) -- null FOR EVERY OTHER ROW
-    function findAddableParent(tree, object, fieldApiName) {
-
-        if (!tree.addableParents || tree.addableParents.length === 0) { return null; }
-
-        let addableParentIndex = addableParentIndexByTree.get(tree);
-        if (!addableParentIndex) {
-            addableParentIndex = Object.create(null);
-            tree.addableParents.forEach(function (addition) {
-                addableParentIndex[lookupWiringKeyOf(addition.objectApiName, addition.objectNickname, addition.fieldApiName)] = addition;
-            });
-            addableParentIndexByTree.set(tree, addableParentIndex);
-        }
-
-        const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-        return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
-
-    }
-
-    // THE EMPTY LOOKUP A ROW DRAWS ITS TWO DECISIONS FOR (#421) -- null FOR EVERY OTHER ROW
-    function findEmptyLookup(tree, object, fieldApiName) {
-
-        if (!tree.emptyLookups || tree.emptyLookups.length === 0) { return null; }
-
-        let emptyLookupIndex = emptyLookupIndexByTree.get(tree);
-        if (!emptyLookupIndex) {
-            emptyLookupIndex = Object.create(null);
-            tree.emptyLookups.forEach(function (emptyLookup) {
-                emptyLookupIndex[lookupWiringKeyOf(emptyLookup.objectApiName, emptyLookup.objectNickname, emptyLookup.fieldApiName)] = emptyLookup;
-            });
-            emptyLookupIndexByTree.set(tree, emptyLookupIndex);
-        }
-
-        const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-        return Object.prototype.hasOwnProperty.call(emptyLookupIndex, key) ? emptyLookupIndex[key] : null;
-
-    }
-
-    /*
-        An empty lookup's two decisions (#421), side by side: "Create <Parent> in recipe" -- #294's
-        addition, posting the same NAMES "Wire to…" does -- and "Use existing <Parent> from org…",
-        which posts the same NAMES; the org, the record and the Id are all chosen on the host. Both
-        write the recipe file, so both are held by the one-write lock and given back by its
-        wireLookupState. Create is drawn disabled, never hidden, when the host would refuse it.
-    */
-    function buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup) {
-
-        const tree = treeObjectState.tree;
-        const addition = findAddableParent(tree, treeObjectState.object, emptyLookup.fieldApiName);
-        const fieldLabel = emptyLookup.objectApiName + (emptyLookup.objectNickname ? ' (' + emptyLookup.objectNickname + ')' : '') + '.' + emptyLookup.fieldApiName;
-        const decisionElement = createElement('span', 'treeLookupDecision');
-        const createParentElement = createButton('secondary', 'treeAddParentObject', CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + CREATE_PARENT_ACTION_SUFFIX);
-        const useOrgRecordElement = createButton('secondary', 'treeUseOrgRecord', USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + USE_ORG_RECORD_ACTION_SUFFIX);
-        const postDecision = function (command) {
-            if (isWireLookupRunning) { return; }
-            setWireLookupRunning(true);
-            const decisionMessage = { command: command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
-            if (emptyLookup.objectNickname) { decisionMessage.objectNickname = emptyLookup.objectNickname; }
-            vscodeApi.postMessage(decisionMessage);
-        };
-
-        createParentElement.setAttribute('aria-label', 'Create ' + emptyLookup.parentObjectApiName + ' in the recipe for ' + fieldLabel);
-        createParentElement.addEventListener('click', function () {
-            if (createParentElement.disabled || !addition) { return; }
-            postDecision('addParentObject');
-        });
-        useOrgRecordElement.setAttribute('aria-label', 'Use an existing ' + emptyLookup.parentObjectApiName + ' record from an org for ' + fieldLabel);
-        useOrgRecordElement.addEventListener('click', function () {
-            if (useOrgRecordElement.disabled) { return; }
-            postDecision('useOrgRecordForLookup');
-        });
-
-        decisionElement.appendChild(createParentElement);
-        decisionElement.appendChild(useOrgRecordElement);
-
-        const decision = {
-            element: decisionElement,
-            createParentElement: createParentElement,
-            useOrgRecordElement: useOrgRecordElement,
-            emptyLookup: emptyLookup,
-            createReason: addition ? '' : describeCreateParentRefusal(emptyLookup),
-            useReason: emptyLookup.orgRecordRefusal || ''
-        };
-        fieldState.lookupDecision = decision;
-        lookupDecisions.push(decision);
-        drawLookupDecisionButtons(decision);
-
-        return decisionElement;
-
-    }
-
-    /*
-        An empty lookup's decisions as the card's selection now stands: a lookup to an excluded object
-        (#219) draws neither, and one whose own object is excluded or whose field is unticked cannot be
-        set to an org record, since generation leaves it out.
-    */
-    function drawFieldRowLookupDecision(treeObjectState, fieldState) {
-
-        const decision = fieldState.lookupDecision;
-        if (!decision) { return; }
-
-        const tree = treeObjectState.tree;
-        const objectApiName = treeObjectState.object.objectApiName;
-        const fieldApiName = fieldState.field.fieldApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
-        const isParentExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
-
-        if (isParentExcluded) { decision.element.classList.add('hidden'); } else { decision.element.classList.remove('hidden'); }
-
-        decision.selectionReason = findObjectExclusion(tree, objectApiName) ? FIXED_VALUE_OBJECT_EXCLUDED_REASON
-            : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? FIXED_VALUE_UNTICKED_REASON
-            : '';
-        drawLookupDecisionButtons(decision);
-
-    }
-
-    // THE HOST POSTS A CODE PER ROW; THE SENTENCE IS WORDED HERE, ONE CONSTANT FOR EVERY ROW
-    function describeCreateParentRefusal(emptyLookup) {
-        const template = hasOwnKey(CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason)
-            ? CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason]
-            : 'the recipe cannot add {parent}';
-        return template.split('{parent}').join(emptyLookup.parentObjectApiName).split('{object}').join(emptyLookup.objectApiName);
-    }
-
-    function drawLookupDecisionButtons(decision) {
-
-        const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
-        const useReason = decision.useReason || decision.selectionReason || '';
-
-        decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
-        decision.createParentElement.setAttribute('title', decision.createReason
-            ? 'Cannot be created: ' + decision.createReason
-            : 'Add a ' + parentObjectApiName + ' block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation');
-        decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
-        decision.useOrgRecordElement.setAttribute('title', useReason
-            ? 'Cannot use an org record: ' + useReason
-            : 'Choose an org, then search ' + parentObjectApiName + ' or enter a record Id; the Id is written into the recipe file after a confirmation');
-
-    }
-
-    // "Wire TODO lookups" ON A CARD WITH AT LEAST ONE LOOKUP THAT HAS EXACTLY ONE RECORD TO CHOOSE FROM; null OTHERWISE
-    function buildWireAllLookupsElement(tree) {
-
-        const singleCandidateCount = (tree.lookupWirings || []).filter(function (wiring) { return wiring.candidateNicknames.length === 1; }).length;
-        if (singleCandidateCount === 0) { return null; }
-
-        const wireAllElement = createButton('secondary', 'treeWireAllLookups', WIRE_ALL_LOOKUPS_ACTION_LABEL + ' (' + singleCandidateCount + ')');
-        wireAllElement.setAttribute('title', 'Point every TODO lookup of this tree that has exactly one record to choose from at that record\\'s nickname, in the recipe file, after a confirmation that lists them');
-        wireAllElement.addEventListener('click', function () {
-            if (isWireLookupRunning) { return; }
-            setWireLookupRunning(true);
-            vscodeApi.postMessage({ command: 'wireAllLookups', treeKey: tree.treeKey });
-        });
-        wireAllElement.disabled = isWireLookupRunning;
-        wireLookupButtonElements.push(wireAllElement);
-
-        return wireAllElement;
-
-    }
-
-    function setWireLookupRunning(isRunning) {
-
-        isWireLookupRunning = isRunning;
-        wireLookupButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
-        lookupDecisions.forEach(drawLookupDecisionButtons);
 
     }
 

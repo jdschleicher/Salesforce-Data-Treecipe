@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.202.5] - Target Org Manager and the tree insert are checked TypeScript modules (#654, slice 3e-3 of #565)
+## [3.202.6] - Target Org Manager and the tree insert are checked TypeScript modules (#654, slice 3e-3 of #565)
 
 Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open in browser and tree insert suite passes with no expectation changed, and so do the Generate and insert, Authorize org and first-journey suites and the rendered baselines.
 
@@ -8,7 +8,7 @@ Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open 
   - `DataOrgView.ts`: one view of the org picker and its buttons.
   - `DataOrgListing.ts`: the org list, the connection check, the provisional label, the selection and its readiness, and a listing the host refuses (#537).
   - `TreeInsert.ts`: a tree's insert button, the reasons it can't run, in order, and where each reason links (#539).
-  - The script lost 653 lines, from 7,180 to 6,527.
+  - The script lost 653 lines, from 6,425 to 5,772.
 - **13 entry points join the bridge**, because the script's message handler and the Treecipe tab still call them.
 - **The run locks stay the script's own variables.** That covers the insert, scratch org, Authorize org, Open in browser and the picker's state. A new model empties them and a reopened panel's replay sets them, so the modules declare them with `declare let`.
 - **`TroubleshootingActions.ts` imports `drawTreeInserts`, `drawDataOrgViews` and `listTreeInsertObjectApiNames`** instead of declaring them.
@@ -18,6 +18,21 @@ Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open 
   - names the 25 functions among those that must not be defined again in the string;
   - checks the new modules' declared names;
   - checks that the service and `RecipeCockpitOrgAuthorize.ts` re-export the new constants as the same values.
+## [3.202.5] - The Recipe Cockpit's field editor, picklist tiles and lookup wiring are checked TypeScript modules (#653, slice 3e-2 of #565)
+
+Nothing a user sees changes: every fixed value, picklist choice, Wire to…, Add friend and Add parent suite, the Treecipe tab and generate-and-insert journeys, and every rendered baseline pass with no expectation changed.
+
+- **What moved out of the template-literal script.** 28 functions of the Treecipe tab are now in `RecipeCockpitService/panel/treecipe/fieldEditor/`, type checked by `npm run compile`:
+  - `FieldEditor.ts`: a field's inline editor, its form hint and input, how an edit ended, and a field row's state.
+  - `PicklistTiles.ts`: a picklist's value tiles, asking for their values, and how a choice ended.
+  - `LookupWiring.ts`: Wire to…, Wire TODO lookups, an empty lookup's Create and Use existing decisions, and a self-lookup iteration's Add friend.
+  - `FieldEditorTypes.ts`: their shapes.
+  - The script lost 755 lines, from 7,180 to 6,425.
+- **What these modules post is one typed union** (`FieldEditorPanelMessage`, one shape per command), so a misspelt field fails compile. What the host posts back (`fieldEditResult`, `picklistValues`) is read as untrusted, every field `unknown`; a picklist value is still written with `textContent`.
+- **16 entry points join the bridge**, because the field row builder and message handlers still in the string call them. The Treecipe Adapter's editor now imports `buildFieldEditorInput` and `describeFixedValueForm` instead of declaring them, and the TODO's sub-tab imports `setWireLookupRunning`.
+- **16 constants** moved into `RecipeCockpitTreecipeFieldEditorConstants.ts`, and `RecipeCockpitService.ts` re-exports every name, which the host's own checks still read. `Reset to generated` is still also passed to the string, whose tiles header names it. The create-parent refusal codes are spelled out there, and compile fails if they differ from the writer's.
+- **Unchanged and still in the string:** the field row, its fixed value and the selection cascade (3e-4), and the run locks and button lists, which the script empties for every new model. The per-card lookup indexes, which only these functions read, are now the module's own.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` names the 28 functions among those that must not be defined again in the string, checks the new `declare`d names, and checks that the service re-exports the new constants as the same value.
 
 ## [3.202.4] - The Recipe Cockpit's Previously Used Data Sets tab is checked TypeScript modules (#642, slice 3d of #565)
 

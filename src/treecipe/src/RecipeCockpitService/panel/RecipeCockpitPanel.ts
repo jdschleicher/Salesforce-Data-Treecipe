@@ -29,6 +29,19 @@ export { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBloc
 export { applyDatasetsFilter, buildDatasetsTab, renderDatasetAdded, renderDatasetLastInsert, renderDatasetPreferences } from './datasets/DatasetsTab';
 export { drawDatasetInserts, renderDatasetRecordCounts } from './datasets/DatasetRow';
 export { renderDatasetJourney, requestDatasetJourney, setDatasetJourneyExpanded } from './datasets/DatasetJourney';
+export { buildTreeFieldState, closeFieldEditor, renderFieldEditResult, toggleFieldEditor } from './treecipe/fieldEditor/FieldEditor';
+export { drawPicklistValueEditor, renderPicklistValues, requestPicklistValues } from './treecipe/fieldEditor/PicklistTiles';
+export {
+    appendAddFriendControls,
+    buildLookupDecisionElement,
+    buildWireAllLookupsElement,
+    buildWireLookupElement,
+    drawFieldRowLookupDecision,
+    findEmptyLookup,
+    findLookupWiring,
+    setAddFriendRunning,
+    setWireLookupRunning
+} from './treecipe/fieldEditor/LookupWiring';
 export { buildDataOrgView, drawDataOrgViews } from './treecipe/dataOrg/DataOrgView';
 export { buildTreeInsertElement, drawTreeInsert, drawTreeInserts, setInsertRunning } from './treecipe/dataOrg/TreeInsert';
 export { renderDataOrgList, renderDataOrgListingRefused, renderDataOrgProvisional, renderDataOrgReadiness, renderDataOrgSelection, renderScratchOrgState, requestDataOrgs } from './treecipe/dataOrg/DataOrgListing';
