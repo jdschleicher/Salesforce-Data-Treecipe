@@ -53,6 +53,29 @@ import type {
 } from './RecipeCockpitPanelConstants';
 import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitKit/CockpitMotion';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from './RecipeCockpitPanelBundle.generated';
+import {
+    RECIPE_COCKPIT_DATASET_ADAPTED_LABEL,
+    RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
+    RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL,
+    RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY,
+    RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS,
+    RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS,
+    RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY,
+    RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL,
+    RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL,
+    RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
+    RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX,
+    RECIPE_COCKPIT_FAVORITES_ONLY_LABEL,
+    RECIPE_COCKPIT_FAVORITE_TREE_LABEL,
+    RECIPE_COCKPIT_INSERT_RUNNING_LABEL,
+    RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
+} from './RecipeCockpitDatasetsTabConstants';
+import type { RecipeCockpitDatasetInsertStatus } from './RecipeCockpitDatasetsTabConstants';
 import { RECIPE_COCKPIT_QUERY_INTRO } from './RecipeCockpitQueryTabConstants';
 import {
     RECIPE_COCKPIT_UPDATER_INTRO,
@@ -236,6 +259,35 @@ export type {
     RecipeCockpitTodoRemoveLock,
     RecipeCockpitTroubleshootingSubTab
 };
+
+// THE DATA SETS TAB'S CONSTANTS LIVE IN A FILE ITS PANEL MODULES IMPORT (#642); THE HOST'S NAMES STAY
+export {
+    RECIPE_COCKPIT_DATASET_ADAPTED_LABEL,
+    RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
+    RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL,
+    RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY,
+    RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS,
+    RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE,
+    RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS,
+    RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY,
+    RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL,
+    RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL,
+    RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
+    RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX,
+    RECIPE_COCKPIT_FAVORITES_ONLY_LABEL,
+    RECIPE_COCKPIT_FAVORITE_TREE_LABEL,
+    RECIPE_COCKPIT_INSERT_RUNNING_LABEL,
+    RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
+};
+export type { RecipeCockpitDatasetInsertStatus };
+
+// THE PANEL'S INSERT STATUS UNION IS SPELLED OUT (#642); A STATUS ADDED TO DatasetInsertAttemptService WITHOUT IT FAILS HERE
+type DatasetInsertStatusesMatch<Expected extends InsertAttemptStatus & RecipeCockpitDatasetInsertStatus> = Expected;
+export type RecipeCockpitDatasetInsertStatusMatchesAttempts = DatasetInsertStatusesMatch<InsertAttemptStatus | RecipeCockpitDatasetInsertStatus>;
 
 // THE QUERY TAB'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULE IMPORTS (#640); THE HOST'S NAME STAYS
 export { RECIPE_COCKPIT_QUERY_INTRO };
@@ -624,7 +676,6 @@ export const RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL = 'Apply same selections';
 export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
 export const RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION = 1;
-export const RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
 // WHAT THE INLINE NAME EDITOR (#551) SAYS UNDER ITS BOX WHEN workspaceState WOULD NOT TAKE THE NAME; THE WARNING SAYS WHY
 export const RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL = 'The name could not be saved, so it was not changed.';
 
@@ -664,9 +715,6 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applie
 export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = COCKPIT_MOTION_REVEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = COCKPIT_MOTION_CONCEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
-export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
-export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
-export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Click to show record type impacted fields only';
 export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
@@ -1834,9 +1882,6 @@ export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org
 // WHAT DATA-BY-ORG SHOWS BESIDE THE DROPDOWN, AND ITS SPINNER, WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
 export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connections…';
 
-// WHAT EVERY TREE'S "Can't insert:" SAYS WHILE THAT CHECK RUNS: THE ORG IN THE DROPDOWN IS NOT CONFIRMED YET (#305)
-export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON = 'checking the org connection…';
-
 // THE DROPDOWN'S ONE OPTION WHILE THE CHECK RUNS AND NO ORG IS REMEMBERED OR SET AS THE CLI'S DEFAULT
 export const RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = 'Loading orgs…';
 
@@ -2473,25 +2518,7 @@ export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
 
 // THE ADAPT RUN'S TWO BUTTONS ON THE UPDATE'S NOTIFICATION (#448)
 export const RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL = 'Open data set';
-export const RECIPE_COCKPIT_DATASET_ADAPTED_LABEL = 'adapted';
-// WHAT A DATA SET ROW'S RECORD TYPES CHIP STARTS WITH (#621)
-export const RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX = 'Record types: ';
 export const RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL = 'Open adapted recipe';
-
-/*
-    How a data set row draws its newest insert (#469): an emoji the label always repeats in words, so
-    the state is never the symbol or its colour alone. Keyed by DatasetInsertAttemptService's status.
-*/
-export const RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY: Readonly<Record<InsertAttemptStatus, { emoji: string; label: string }>> = {
-    succeeded: { emoji: '✅', label: 'Inserted' },
-    partial: { emoji: '⚠️', label: 'Partly inserted' },
-    failed: { emoji: '❌', label: 'Insert failed' },
-    cancelled: { emoji: '🚫', label: 'Insert cancelled' },
-    unknown: { emoji: '❔', label: 'Insert outcome unknown' }
-};
-export const RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL = 'View results';
-export const RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE = 'No outcome was saved for this insert: it ran before Treecipe recorded how an insert ended, or it stopped before it could.';
-export const RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE = 'The insert stopped on an error before it ended, so records it saved may still be in the org.';
 
 /*
     The version and the CHANGELOG link at the top right (#333). The URL is the HOST's: the shell's
@@ -2584,38 +2611,7 @@ export const RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL = 'Nothing was deployed: an inse
 // HOW MANY TREE SUMMARIES THE HOST KEEPS BEFORE IT STARTS AGAIN
 export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
 export const RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT = 'That run file no longer exists in this workspace.';
-/*
-    A data set's insert journey (#471): ✅ for what succeeded, ❌ for what failed and ⚠️ for everything
-    between or not known, each always with its label in words.
-*/
-export const RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY: Readonly<Record<RunHistoryRowStatus, { emoji: string; label: string }>> = {
-    succeeded: { emoji: '✅', label: 'Succeeded' },
-    partial: { emoji: '⚠️', label: 'Partly succeeded' },
-    failed: { emoji: '❌', label: 'Failed' },
-    cancelled: { emoji: '⚠️', label: 'Cancelled' },
-    unknown: { emoji: '⚠️', label: 'Outcome unknown' },
-    unreadable: { emoji: '⚠️', label: 'Unreadable' },
-    unrecorded: { emoji: '⚠️', label: 'Not recorded' }
-};
-/*
-    The journey's table (#558), drawn by the History table's builder. The host posts entries oldest
-    first and no time value, so Time sorts by that place; every column but Files sorts.
-*/
-export const RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS = [
-    { key: 'time', label: 'Time' },
-    { key: 'step', label: 'Step' },
-    { key: 'org', label: 'Org' },
-    { key: 'status', label: 'Status' },
-    { key: 'detail', label: 'Detail' },
-    { key: 'files', label: 'Files' }
-] as const;
-export const RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS = ['time', 'step', 'org', 'status'] as const;
 export const RECIPE_COCKPIT_DATASET_JOURNEY_INSERT_LABEL = 'Insert';
-export const RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL = 'Insert journey';
-export const RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE = 'Reading this data set\'s inserts…';
-export const RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE = 'No inserts yet.';
-export const RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = 'Inserted first time, with nothing else needed.';
-export const RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = 'View file';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT = 'That file no longer exists in this workspace.';
 // A RULE'S FILE LINK (#560): ON A FIELD ROW IT NAMES THE RULE, SINCE A FIELD CAN HAVE SEVERAL; A LIST ROW ALREADY DOES
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = '↗ ';
@@ -2931,8 +2927,6 @@ export const RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS: Readonly<Record
 export const RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = 'Treecipe › ';
 
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
-
-export const RECIPE_COCKPIT_INSERT_RUNNING_LABEL = 'Inserting…';
 
 // A DATA SET ROW'S Insert… (#541): THE TARGET ORG MANAGER'S SELECTION, CONFIRMED IN THE PANEL
 export const RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL = 'Insert';
@@ -22880,7 +22874,9 @@ ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
         readHistorySort, renderTroubleshootingHistory,
         buildQueryTab, requestTreeQueries, renderTreeQueries, drawTreeQueryButtons, renderTreeQueryResult,
         acknowledgeRecordLinks, buildUpdaterTab, requestUpdaterSnapshots, renderUpdaterSnapshots, renderUpdaterValues, clearUpdaterValues, drawUpdaterLoadButtons,
-        renderUpdaterRecords, clearUpdaterRecords, renderAdapterMetadataChanges, clearAdapterChildren, clearAdapterChildPreviews, renderAdapterChildBlock, renderAdapterChildPreview
+        renderUpdaterRecords, clearUpdaterRecords, renderAdapterMetadataChanges, clearAdapterChildren, clearAdapterChildPreviews, renderAdapterChildBlock, renderAdapterChildPreview,
+        buildDatasetsTab, drawDatasetInserts, renderDatasetRecordCounts, renderDatasetJourney, setDatasetJourneyExpanded,
+        requestDatasetJourney, applyDatasetsFilter, renderDatasetAdded, renderDatasetPreferences, renderDatasetLastInsert
     } = recipeCockpitPanelModules;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
@@ -22924,8 +22920,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const TROUBLESHOOTING_SUB_TABS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS)};
     const TODOS_VIEWS = ${JSON.stringify(RECIPE_COCKPIT_TODOS_VIEWS)};
     const REFERENCE_ID_REQUIRED_TODO_TEXT = ${JSON.stringify(RelationshipService.referenceIdRequiredTodo)};
-    const DATASET_JOURNEY_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS)};
-    const DATASET_JOURNEY_SORT_COLUMNS = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS)};
     const QUERY_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_QUERY_TAB_LABEL)};
     const QUERY_MAX_LENGTH = ${RECIPE_COCKPIT_QUERY_MAX_LENGTH};
     const UPDATER_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_TAB_LABEL)};
@@ -22968,22 +22962,9 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
     const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
-    const DATASET_ADAPTED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_ADAPTED_LABEL)};
-    const DATASET_RECORD_TYPES_LABEL_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX)};
-    const DATASET_INSERT_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY)};
-    const DATASET_INSERT_RESULTS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL)};
-    const DATASET_JOURNEY_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY)};
-    const DATASET_JOURNEY_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL)};
-    const DATASET_JOURNEY_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE)};
-    const DATASET_JOURNEY_NO_INSERTS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE)};
-    const DATASET_JOURNEY_FIRST_TIME_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE)};
-    const DATASET_JOURNEY_VIEW_FILE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL)};
-    const DATASET_INSERT_UNRECORDED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE)};
-    const DATASET_INSERT_INTERRUPTED_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const TREE_NAME_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)};
-    const DATASET_NAME_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
     const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
@@ -27298,525 +27279,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
     }
 
-    function formatRecordCounts(recordCounts) {
-
-        if (recordCounts.length === 0) { return 'no records'; }
-
-        return recordCounts.map(function (recordCount) {
-            return recordCount.objectApiName + ': ' + pluralize(recordCount.recordCount, 'record', 'records');
-        }).join(' · ');
-
-    }
-
-    function drawDatasetRecordCounts(countsElement, recordCountsMessage) {
-
-        const countsText = recordCountsMessage.recordCounts.length > 0 || !recordCountsMessage.failureMessage
-            ? formatRecordCounts(recordCountsMessage.recordCounts)
-            : '';
-
-        countsElement.textContent = [countsText, recordCountsMessage.failureMessage].filter(function (countsPart) { return !!countsPart; }).join(' · ');
-
-    }
-
-    // A DATA SET FROM BEFORE datasetSource.json HAS ITS COUNTS READ WHEN IT IS EXPANDED, ONCE PER MODEL
-    function requestDatasetRecordCounts(datasetFolderName, countsElement) {
-
-        if (Object.prototype.hasOwnProperty.call(answeredDatasetCounts, datasetFolderName)) {
-            drawDatasetRecordCounts(countsElement, answeredDatasetCounts[datasetFolderName]);
-            return;
-        }
-
-        countsElement.textContent = 'Loading record counts…';
-
-        if (Object.prototype.hasOwnProperty.call(pendingDatasetCountElements, datasetFolderName)) {
-            pendingDatasetCountElements[datasetFolderName].push(countsElement);
-            return;
-        }
-
-        pendingDatasetCountElements[datasetFolderName] = [countsElement];
-        vscodeApi.postMessage({ command: 'loadDatasetRecordCounts', datasetFolderName: datasetFolderName });
-
-    }
-
-    function renderDatasetRecordCounts(recordCountsMessage) {
-
-        if (recordCountsMessage.renderSequence !== renderedSequence) { return; }
-
-        const datasetFolderName = recordCountsMessage.datasetFolderName;
-        answeredDatasetCounts[datasetFolderName] = recordCountsMessage;
-
-        if (!Object.prototype.hasOwnProperty.call(pendingDatasetCountElements, datasetFolderName)) { return; }
-
-        const countsElements = pendingDatasetCountElements[datasetFolderName];
-        delete pendingDatasetCountElements[datasetFolderName];
-
-        countsElements.forEach(function (countsElement) { drawDatasetRecordCounts(countsElement, recordCountsMessage); });
-
-    }
-
-    function buildHistoryAction(className, labelText, titleText, hostMessage) {
-
-        const actionElement = createButton('secondary', 'historyAction ' + className, labelText);
-        actionElement.setAttribute('title', titleText);
-        actionElement.addEventListener('click', function () { vscodeApi.postMessage(hostMessage); });
-        return actionElement;
-
-    }
-
-    // "Record types: Account · Business, Partner; Contact · Customer" (#621)
-    function formatDatasetRecordTypes(recordTypes) {
-
-        return DATASET_RECORD_TYPES_LABEL_PREFIX + recordTypes.map(function (recordType) {
-            return recordType.objectApiName + ' · ' + recordType.developerNames.join(', ');
-        }).join('; ');
-
-    }
-
-    /*
-        ONE DATA SET: ITS OWN NAME AND STAR, WHEN, WHICH VERSION, ITS RECORD COUNTS, AND OPEN /
-        INSERT BY FOLDER NAME. ☆ POSTS THE FOLDER NAME ONLY; ✎ OPENS THE ROW'S INLINE NAME BOX (#551).
-    */
-    function buildDatasetRowState(treeState, dataset) {
-
-        const datasetElement = createElement('div', 'treeDataset');
-        const datasetHeaderElement = createElement('div', 'treeDatasetHeader sdtRowHeader');
-        // #558: WHAT A READER DECIDES ON (NAME, STATUS, ACTIONS) IS LINE ONE; WHEN AND HOW IT WAS MADE IS LINE TWO, LED BY THE ▸
-        const primaryLineElement = createElement('div', 'sdtRowHeaderPrimary');
-        const detailLineElement = createElement('div', 'sdtRowHeaderDetail');
-        const countsElement = createElement('div', 'treeDatasetCounts muted');
-        const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: 'datasets' };
-        const rowState = { element: datasetElement, dataset: dataset, searchText: '', nameElement: null, favoriteElement: null, renameElement: null };
-
-        rowState.favoriteElement = createButton('secondary', 'historyAction treeDatasetFavorite');
-        rowState.favoriteElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'toggleFavoriteDataset', datasetFolderName: dataset.datasetFolderName });
-        });
-        primaryLineElement.appendChild(rowState.favoriteElement);
-
-        rowState.renameElement = createButton('secondary', 'historyAction treeDatasetRename');
-        rowState.renameElement.appendChild(buildPencilGlyph('default'));
-        primaryLineElement.appendChild(rowState.renameElement);
-
-        rowState.nameElement = createElement('span', 'treeDatasetName');
-        primaryLineElement.appendChild(rowState.nameElement);
-
-        // THE RECORD TYPES ITS RECORDS CARRY (#621), BESIDE THE NAME A READER PICKS A DATA SET BY; ITS OWN CLASS, SO NO .recordTypeChip SELECTOR FINDS IT
-        if (dataset.recordTypes) {
-            const recordTypesText = formatDatasetRecordTypes(dataset.recordTypes);
-            const recordTypesChipElement = createElement('span', 'treeDatasetRecordTypes', recordTypesText);
-            recordTypesChipElement.setAttribute('title', 'Generated with ' + recordTypesText);
-            primaryLineElement.appendChild(recordTypesChipElement);
-        }
-
-        rowState.nameEditor = buildNameEditor({
-            nameTarget: 'dataset',
-            nameKey: dataset.datasetFolderName,
-            maxLength: DATASET_NAME_MAX_LENGTH,
-            openerElement: rowState.renameElement,
-            displayElement: rowState.nameElement,
-            placeholderText: dataset.datasetFolderName,
-            readCustomName: function () { return rowState.dataset.customName || ''; },
-            readDisplayName: function () { return rowState.dataset.customName || rowState.dataset.datasetFolderName; },
-            onClose: function () { drawDatasetName(rowState); }
-        });
-
-        // SLOTS DRAW NO BOX OF THEIR OWN, SO A ROW NEVER INSERTED LOOKS AS IT ALWAYS DID; A LATER INSERT REFILLS THEM IN PLACE
-        rowState.lastInsertSlotElement = createElement('span', 'treeDatasetInsertSlot');
-        primaryLineElement.appendChild(rowState.lastInsertSlotElement);
-
-        primaryLineElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
-            Object.assign({ command: 'openDataset' }, actionMessage)));
-        rowState.lastInsertResultsSlotElement = createElement('span', 'treeDatasetInsertSlot');
-        primaryLineElement.appendChild(rowState.lastInsertResultsSlotElement);
-        // THE TARGET ORG MANAGER'S SELECTION IS POSTED BY INDEX AT THE CLICK (#541); WITH NONE THE HOST ASKS FOR THE ORG
-        rowState.insertElement = createButton('secondary', 'historyAction treeDatasetInsert', 'Insert…');
-        rowState.insertElement.addEventListener('click', function () {
-            const insertMessage = Object.assign({ command: 'insertDataset' }, actionMessage);
-            if (dataOrgSelectedIndex !== null) { insertMessage.orgIndex = dataOrgSelectedIndex; }
-            vscodeApi.postMessage(insertMessage);
-        });
-        primaryLineElement.appendChild(rowState.insertElement);
-
-        rowState.journeyToggleElement = buildDatasetJourneyToggle(treeState, rowState);
-        detailLineElement.appendChild(rowState.journeyToggleElement);
-
-        detailLineElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
-        detailLineElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
-
-        // A DATA SET THE TREECIPE ADAPTER WROTE (#448), SAID IN TEXT SO THE LABEL IS NEVER COLOUR ALONE
-        if (dataset.isAdapted === true) {
-            detailLineElement.appendChild(createElement('span', 'treeDatasetAdapted muted', DATASET_ADAPTED_LABEL));
-        }
-
-        detailLineElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
-
-        detailLineElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
-
-        datasetHeaderElement.appendChild(primaryLineElement);
-        datasetHeaderElement.appendChild(detailLineElement);
-        datasetElement.appendChild(datasetHeaderElement);
-        datasetElement.appendChild(countsElement);
-        datasetElement.appendChild(rowState.journeyElement);
-
-        // A LEGACY DATA SET'S COUNTS ARE READ FROM ITS COLLECTIONS API FILES, WHICH HOLD EVERY RECORD, SO ONLY WHEN THE ROW'S OWN BUTTON ASKS
-        if (dataset.recordCounts) {
-            countsElement.textContent = formatRecordCounts(dataset.recordCounts);
-        } else {
-            const loadCountsElement = createButton('secondary', 'historyAction treeDatasetCountsLoad', 'Show record counts');
-            loadCountsElement.setAttribute('title', 'Count the records in the Collections API files of this data set');
-            loadCountsElement.addEventListener('click', function () { requestDatasetRecordCounts(dataset.datasetFolderName, countsElement); });
-            countsElement.appendChild(loadCountsElement);
-        }
-
-        drawDatasetLastInsert(rowState);
-        drawDatasetName(rowState);
-        drawDatasetInsert(rowState);
-
-        if (treeState.expandedJourneyDatasetFolderNames[dataset.datasetFolderName] === true) {
-            setDatasetJourneyExpanded(treeState, rowState, true, false);
-        }
-
-        return rowState;
-
-    }
-
-    /*
-        A data set's insert journey (#471): a ▸ on every row. A row never inserted opens to "No
-        inserts yet" without asking the host; any other asks for its timeline the first time it opens
-        for a model (loadDatasetJourney), which is never posted with the model. Every value is written
-        with textContent, and a file opens by its index in the entries the host posted.
-    */
-    let datasetJourneyCount = 0;
-
-    function buildDatasetJourneyToggle(treeState, rowState) {
-
-        const toggleElement = buildToggleElement('treeDatasetJourneyToggle');
-        const journeyId = 'treeDatasetJourney' + (++datasetJourneyCount);
-        rowState.journeyElement = createElement('div', 'treeDatasetJourney hidden');
-        rowState.journeyElement.setAttribute('id', journeyId);
-        toggleElement.setAttribute('aria-controls', journeyId);
-        toggleElement.setAttribute('aria-label', DATASET_JOURNEY_TOGGLE_LABEL + ': ' + rowState.dataset.datasetFolderName);
-        toggleElement.setAttribute('title', 'Show every insert of this data set and the Troubleshooting steps between them');
-        drawToggle(toggleElement, false, false);
-        toggleElement.addEventListener('click', function () {
-            setDatasetJourneyExpanded(treeState, rowState, rowState.isJourneyExpanded !== true, true);
-            savePanelPlace();
-        });
-
-        return toggleElement;
-
-    }
-
-    function setDatasetJourneyExpanded(treeState, rowState, isExpanded, isAnimated) {
-
-        const datasetFolderName = rowState.dataset.datasetFolderName;
-        rowState.isJourneyExpanded = isExpanded;
-        if (isExpanded) { treeState.expandedJourneyDatasetFolderNames[datasetFolderName] = true; } else { delete treeState.expandedJourneyDatasetFolderNames[datasetFolderName]; }
-        drawToggle(rowState.journeyToggleElement, isExpanded, isAnimated);
-        setShownWithMotion(rowState.journeyElement, isExpanded, isAnimated);
-
-        if (!isExpanded) { return; }
-
-        if (!rowState.dataset.lastInsert) {
-            rowState.journeyElement.textContent = '';
-            rowState.journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_NO_INSERTS_NOTE));
-            return;
-        }
-
-        // AN ANSWER THAT ARRIVED WHILE THE ROW WAS CLOSED IS DRAWN NOW, NOT ASKED FOR AGAIN
-        if (rowState.journeyMessage) {
-            drawDatasetJourney(rowState);
-            return;
-        }
-
-        requestDatasetJourney(rowState);
-
-    }
-
-    // ASKED ONCE PER MODEL PER ROW; ONE OPENED BEFORE THE MODEL WAS ACKNOWLEDGED (A RESTORE) ASKS ONCE IT IS
-    function requestDatasetJourney(rowState) {
-
-        if (rowState.isJourneyRequested) { return; }
-
-        if (!rowState.journeyMessage) {
-            rowState.journeyElement.textContent = '';
-            rowState.journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_LOADING_NOTE));
-        }
-
-        if (renderedSequence === null) {
-            rowState.isJourneyWanted = true;
-            return;
-        }
-
-        rowState.isJourneyWanted = false;
-        rowState.isJourneyRequested = true;
-        vscodeApi.postMessage({ command: 'loadDatasetJourney', datasetFolderName: rowState.dataset.datasetFolderName, renderSequence: renderedSequence });
-
-    }
-
-    function renderDatasetJourney(journeyMessage) {
-
-        if (renderedSequence === null || journeyMessage.renderSequence !== renderedSequence || typeof journeyMessage.datasetFolderName !== 'string') { return; }
-
-        let isDrawn = false;
-        treeStates.forEach(function (treeState) {
-            (treeState.datasetRowStates || [])
-                .filter(function (rowState) { return rowState.dataset.datasetFolderName === journeyMessage.datasetFolderName; })
-                .forEach(function (rowState) {
-                    rowState.journeyMessage = journeyMessage;
-                    if (rowState.isJourneyExpanded && rowState.dataset.lastInsert) {
-                        drawDatasetJourney(rowState);
-                    }
-                    isDrawn = true;
-                });
-        });
-
-        if (isDrawn) {
-            vscodeApi.postMessage({ command: 'datasetJourneyRendered', renderSequence: renderedSequence, datasetFolderName: journeyMessage.datasetFolderName, journeySequence: journeyMessage.journeySequence });
-        }
-
-    }
-
-    function drawDatasetJourney(rowState) {
-
-        const journeyMessage = rowState.journeyMessage;
-        const journeyElement = rowState.journeyElement;
-        const entries = Array.isArray(journeyMessage.entries) ? journeyMessage.entries : [];
-        journeyElement.textContent = '';
-
-        if (entries.length === 0) {
-            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_NO_INSERTS_NOTE));
-            return;
-        }
-
-        if (!rowState.journeySort) { rowState.journeySort = { column: 'time', isDescending: true }; }
-        const rowTable = buildRowTable({
-            className: 'treeDatasetJourneyTable',
-            columnClassName: 'treeDatasetJourney',
-            columns: DATASET_JOURNEY_COLUMNS,
-            sortColumns: DATASET_JOURNEY_SORT_COLUMNS,
-            sort: rowState.journeySort,
-            onSort: function (column) { sortDatasetJourney(rowState, column); }
-        });
-        rowState.journeySortButtons = rowTable.sortButtons;
-        sortDatasetJourneyEntries(rowState.journeySort, entries).forEach(function (placedEntry) {
-            rowTable.bodyElement.appendChild(buildDatasetJourneyEntry(rowState, journeyMessage, placedEntry.entry));
-        });
-        journeyElement.appendChild(rowTable.wrapElement);
-
-        // THE TABLE OPENS NEWEST FIRST, SO THE OLDEST ENTRIES THE CAP DROPPED ARE SAID UNDER IT, AS HISTORY DOES
-        if (journeyMessage.hiddenEntryCount > 0) {
-            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
-                pluralize(journeyMessage.hiddenEntryCount, 'earlier entry is', 'earlier entries are') + ' not shown.'));
-        }
-
-        if (entries.length === 1 && entries[0].kind === 'insert' && entries[0].status === 'succeeded' && !(journeyMessage.hiddenEntryCount > 0)) {
-            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted', DATASET_JOURNEY_FIRST_TIME_NOTE));
-        }
-        if (journeyMessage.otherOrgStepCount > 0) {
-            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
-                pluralize(journeyMessage.otherOrgStepCount, 'Troubleshooting step', 'Troubleshooting steps') + ' of this tree in this time ran against another org, so ' + (journeyMessage.otherOrgStepCount === 1 ? 'it is' : 'they are') + ' not shown.'));
-        }
-        if (journeyMessage.untrackedStepCount > 0) {
-            journeyElement.appendChild(createElement('div', 'treeDatasetJourneyNote muted',
-                pluralize(journeyMessage.untrackedStepCount, 'step', 'steps') + ' in treecipe/OrgOperations, which records no tree, ran in this time and ' + (journeyMessage.untrackedStepCount === 1 ? 'is' : 'are') + ' not placed on this timeline.'));
-        }
-
-    }
-
-    function datasetJourneyStatusOf(entry) {
-
-        return hasOwnKey(DATASET_JOURNEY_STATUS_DISPLAY, entry.status) ? DATASET_JOURNEY_STATUS_DISPLAY[entry.status] : { emoji: '', label: String(entry.status) };
-
-    }
-
-    // ENTRIES COME OLDEST FIRST WITH NO TIME VALUE, SO TIME SORTS BY THAT PLACE, WHICH ALSO BREAKS EVERY TIE, NEWEST FIRST
-    function sortDatasetJourneyEntries(sort, entries) {
-
-        const sortValueOf = function (placedEntry) {
-            if (sort.column === 'time') { return placedEntry.place; }
-            if (sort.column === 'step') { return String(placedEntry.entry.kindLabel).toLowerCase(); }
-            if (sort.column === 'org') { return typeof placedEntry.entry.orgLabel === 'string' ? placedEntry.entry.orgLabel.toLowerCase() : ''; }
-            return datasetJourneyStatusOf(placedEntry.entry).label.toLowerCase();
-        };
-
-        return entries
-            .map(function (entry, place) { return { entry: entry, place: place }; })
-            .sort(function (first, second) {
-                const firstValue = sortValueOf(first);
-                const secondValue = sortValueOf(second);
-                const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
-                if (order !== 0) { return sort.isDescending ? -order : order; }
-                return second.place - first.place;
-            });
-
-    }
-
-    // A HEADER CLICK SORTS BY ITS COLUMN; THE SAME COLUMN AGAIN TURNS THE ORDER. TIME STARTS NEWEST FIRST, THE REST A TO Z
-    function sortDatasetJourney(rowState, column) {
-
-        rowState.journeySort = rowState.journeySort.column === column
-            ? { column: column, isDescending: !rowState.journeySort.isDescending }
-            : { column: column, isDescending: column === 'time' };
-        drawDatasetJourney(rowState);
-        // THE HEADERS ARE DRAWN AGAIN, SO FOCUS MOVES TO THE NEW BUTTON OF THE COLUMN CLICKED
-        const sortButton = rowState.journeySortButtons && rowState.journeySortButtons[column];
-        if (sortButton && typeof sortButton.focus === 'function') { sortButton.focus(); }
-
-    }
-
-    function buildDatasetJourneyEntry(rowState, journeyMessage, entry) {
-
-        const entryElement = createElement('tr', 'treeDatasetJourneyEntry treeDatasetJourneyEntry-' + String(entry.status));
-        const statusDisplay = datasetJourneyStatusOf(entry);
-
-        entryElement.appendChild(createElement('td', 'treeDatasetJourneyTime', String(entry.timeLabel)));
-        entryElement.appendChild(createElement('td', 'treeDatasetJourneyKind', String(entry.kindLabel)));
-        entryElement.appendChild(createElement('td', 'treeDatasetJourneyOrg', typeof entry.orgLabel === 'string' ? entry.orgLabel : ''));
-
-        const statusCell = createElement('td', 'treeDatasetJourneyStatusCell');
-        const statusElement = createElement('span', 'treeDatasetJourneyStatus treeDatasetJourneyStatus-' + entry.status);
-        const emojiElement = createElement('span', 'treeDatasetJourneyStatusEmoji', statusDisplay.emoji);
-        emojiElement.setAttribute('aria-hidden', 'true');
-        statusElement.appendChild(emojiElement);
-        statusElement.appendChild(createElement('span', 'treeDatasetJourneyStatusLabel', statusDisplay.label));
-        statusCell.appendChild(statusElement);
-        entryElement.appendChild(statusCell);
-
-        const detailCell = createElement('td', 'treeDatasetJourneyDetail');
-        if (typeof entry.summaryText === 'string' && entry.summaryText) {
-            detailCell.appendChild(createElement('div', 'treeDatasetJourneySummary muted', entry.summaryText));
-        }
-        if (typeof entry.errorExcerpt === 'string' && entry.errorExcerpt) {
-            detailCell.appendChild(createElement('div', 'treeDatasetJourneyError', entry.errorExcerpt));
-        }
-        entryElement.appendChild(detailCell);
-
-        const filesCell = createElement('td', 'treeDatasetJourneyFiles');
-        (Array.isArray(entry.files) ? entry.files : []).forEach(function (file) {
-            const fileElement = createElement('div', 'treeDatasetJourneyFile');
-            fileElement.appendChild(createElement('span', 'treeDatasetJourneyPath', String(file.relativePath)));
-            const viewElement = createButton('secondary', 'historyAction treeDatasetJourneyView', DATASET_JOURNEY_VIEW_FILE_LABEL);
-            viewElement.setAttribute('title', 'Open ' + String(file.relativePath));
-            viewElement.addEventListener('click', function () {
-                vscodeApi.postMessage({ command: 'openDatasetJourneyFile', renderSequence: renderedSequence, datasetFolderName: rowState.dataset.datasetFolderName, journeySequence: journeyMessage.journeySequence, fileIndex: file.fileIndex });
-            });
-            fileElement.appendChild(viewElement);
-            filesCell.appendChild(fileElement);
-        });
-        entryElement.appendChild(filesCell);
-
-        return entryElement;
-
-    }
-
-    // ONE INSERT AT A TIME, AND NONE WHILE A RUN HOLDS THE ORG SELECTION; THE TOOLTIP NAMES THE TARGET ORG MANAGER'S ORG (#541)
-    function drawDatasetInsert(rowState) {
-
-        const insertElement = rowState.insertElement;
-        if (!insertElement) { return; }
-
-        const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
-        // WHILE THE ORGS ARE CHECKED THE SELECTION IS CLEARED, SO A CLICK WOULD ASK FOR AN ORG BESIDE THE LISTING IN FLIGHT
-        insertElement.disabled = insertRunningTreeKey !== null || isDataOrgChecking || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-        insertElement.textContent = insertRunningDatasetFolderName === rowState.dataset.datasetFolderName ? INSERT_RUNNING_LABEL : 'Insert…';
-        insertElement.setAttribute('title', isDataOrgChecking ? DATA_ORG_CONNECTION_CHECK_INSERT_REASON
-            : orgLabel ? 'Insert this data set into ' + orgLabel + ', the org selected in the Target Org Manager'
-            : 'Choose the org to insert this data set into');
-
-    }
-
-    function drawDatasetInserts() {
-        treeStates.forEach(function (treeState) {
-            (treeState.datasetRowStates || []).forEach(drawDatasetInsert);
-        });
-    }
-
-    // THE ROW'S NAME AND STAR, DRAWN AT FIRST AND AGAIN WHEN THE HOST SAYS EITHER CHANGED; THE SEARCH MATCHES THE NAME TOO
-    function drawDatasetName(rowState) {
-
-        const dataset = rowState.dataset;
-        const displayName = dataset.customName || dataset.datasetFolderName;
-
-        rowState.nameElement.textContent = dataset.customName || '';
-        // AN OPEN RENAME BOX STANDS IN THE NAME'S PLACE UNTIL IT CLOSES, WHICH DRAWS THE NAME AGAIN
-        const isNameEditorOpen = !!(rowState.nameEditor && rowState.nameEditor.isOpen);
-        if (dataset.customName && !isNameEditorOpen) { rowState.nameElement.classList.remove('hidden'); } else { rowState.nameElement.classList.add('hidden'); }
-
-        rowState.favoriteElement.textContent = dataset.isFavorite ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL;
-        rowState.favoriteElement.setAttribute('aria-pressed', dataset.isFavorite ? 'true' : 'false');
-        rowState.favoriteElement.setAttribute('aria-label', dataset.isFavorite ? 'Remove ' + displayName + ' from favorites' : 'Mark ' + displayName + ' as a favorite');
-        rowState.favoriteElement.setAttribute('title', dataset.isFavorite ? 'Remove from favorites' : 'Mark as a favorite');
-
-        rowState.renameElement.setAttribute('aria-label', 'Rename ' + displayName);
-        rowState.renameElement.setAttribute('title', 'Rename this data set');
-
-        rowState.searchText = (dataset.datasetFolderName + '\\n' + (dataset.customName || '') + '\\n' + (rowState.lastInsertSearchText || '')).toLowerCase();
-
-    }
-
-    /*
-        A data set's newest insert (#469): a chip whose emoji the label repeats in words, a tooltip
-        with when, where and how many, and "View results" when the host found its results file.
-        Absent for a data set never inserted, which draws as it always did.
-    */
-    function drawDatasetLastInsert(rowState) {
-
-        rowState.lastInsertSlotElement.textContent = '';
-        rowState.lastInsertResultsSlotElement.textContent = '';
-        rowState.lastInsertSearchText = '';
-
-        const lastInsertElements = buildDatasetLastInsertElements(rowState.dataset);
-        if (!lastInsertElements) { return; }
-
-        rowState.lastInsertSlotElement.appendChild(lastInsertElements.statusElement);
-        if (lastInsertElements.resultsElement) {
-            rowState.lastInsertResultsSlotElement.appendChild(lastInsertElements.resultsElement);
-        }
-        rowState.lastInsertSearchText = lastInsertElements.searchText;
-
-    }
-
-    function buildDatasetLastInsertElements(dataset) {
-
-        const lastInsert = dataset.lastInsert;
-        if (!lastInsert || !hasOwnKey(DATASET_INSERT_STATUS_DISPLAY, lastInsert.status)) {
-            return null;
-        }
-
-        const statusDisplay = DATASET_INSERT_STATUS_DISPLAY[lastInsert.status];
-        const statusElement = createElement('span', 'treeDatasetInsertStatus treeDatasetInsertStatus-' + lastInsert.status);
-        const emojiElement = createElement('span', 'treeDatasetInsertStatusEmoji', statusDisplay.emoji);
-        emojiElement.setAttribute('aria-hidden', 'true');
-        statusElement.appendChild(emojiElement);
-        statusElement.appendChild(createElement('span', 'treeDatasetInsertStatusLabel', statusDisplay.label));
-
-        const detailParts = ['Last insert: ' + lastInsert.attemptedAtLabel + (typeof lastInsert.orgLabel === 'string' ? ' into ' + lastInsert.orgLabel : '')];
-        const notes = [];
-        if (lastInsert.isInterrupted === true) { notes.push(DATASET_INSERT_INTERRUPTED_NOTE); }
-        if (lastInsert.isOutcomeUnrecorded === true) { notes.push(DATASET_INSERT_UNRECORDED_NOTE); }
-        if (typeof lastInsert.savedRecordCount === 'number') {
-            detailParts.push(lastInsert.savedRecordCount + (lastInsert.savedRecordCount === 1 ? ' record saved' : ' records saved'));
-        }
-        if (typeof lastInsert.failedRecordCount === 'number') {
-            detailParts.push(lastInsert.failedRecordCount + (lastInsert.failedRecordCount === 1 ? ' record failed' : ' records failed'));
-        }
-        const detailText = detailParts.join(' · ') + notes.map(function (note) { return '. ' + note; }).join('');
-        statusElement.setAttribute('title', detailText);
-        // A SPAN'S aria-label IS READ ONLY WITH A ROLE: THE CHIP IS ONE IMAGE OF ITS STATE, NAMED IN WORDS
-        statusElement.setAttribute('role', 'img');
-        statusElement.setAttribute('aria-label', statusDisplay.label + '. ' + detailText);
-
-        let resultsElement = null;
-        if (lastInsert.hasResultsFile === true) {
-            resultsElement = buildHistoryAction('treeDatasetInsertResults', DATASET_INSERT_RESULTS_LABEL, 'Open the results file of the last insert of this data set',
-                { command: 'viewDatasetInsertResults', datasetFolderName: dataset.datasetFolderName });
-        }
-
-        return { statusElement: statusElement, resultsElement: resultsElement, searchText: statusDisplay.label };
-
-    }
-
     /*
         "Record type fields only" (#320): the Treecipe tab's own check, per card and panel-only, kept
         in the reader's place. A card whose objects have no record types to choose from draws it
@@ -27974,45 +27436,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         const isChecked = isRecordTypeFieldsOnlyIn(treeState);
         toggleElement.textContent = isChecked ? '✓' : '';
         toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
-
-    }
-
-    // THE DATA SETS TAB'S OWN FAVORITES ONLY: PANEL-ONLY, KEPT IN THE READER'S PLACE PER CARD
-    function buildDatasetFavoritesToggle(treeState) {
-
-        const toggleElement = createButton('secondary', 'historyAction treeDatasetFavoritesToggle');
-        toggleElement.setAttribute('title', 'Show only the data sets marked as favorites');
-        toggleElement.addEventListener('click', function () {
-            treeState.isDatasetFavoritesOnly = !treeState.isDatasetFavoritesOnly;
-            applyDatasetsFilter(treeState);
-            savePanelPlace();
-        });
-
-        return toggleElement;
-
-    }
-
-    function buildDatasetsTab(treeState, panelElement) {
-
-        const datasets = treeState.tree.history.datasets;
-
-        if (datasets.length === 0) {
-            panelElement.appendChild(createElement('div', 'treeEmpty muted', 'No data sets were made from this tree.'));
-            return;
-        }
-
-        treeState.datasetsSearch = buildTabSearch(treeState, 'datasets', 'Search data sets', applyDatasetsFilter);
-        treeState.datasetFavoritesToggleElement = buildDatasetFavoritesToggle(treeState);
-        treeState.datasetsSearch.element.appendChild(treeState.datasetFavoritesToggleElement);
-        panelElement.appendChild(treeState.datasetsSearch.element);
-
-        treeState.datasetRowStates = datasets.map(function (dataset) {
-            const rowState = buildDatasetRowState(treeState, dataset);
-            panelElement.appendChild(rowState.element);
-            return rowState;
-        });
-
-        applyDatasetsFilter(treeState);
 
     }
 
@@ -28342,171 +27765,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
             rememberElement.setAttribute('aria-checked', isRecordTypeSelectionRemembered ? 'true' : 'false');
             rememberElement.disabled = insertRunningTreeKey !== null;
         });
-
-    }
-
-    /*
-        The data sets tab lists rows, not objects, so a search hides the rows it does not match --
-        and says how many it left, so an empty tab never reads as a tree with no history.
-    */
-    function applyRowSearch(rowStates, searchQuery, search, singular, plural, isFavoritesOnly) {
-
-        let matchingRowCount = 0;
-        const isFiltered = !!searchQuery || !!isFavoritesOnly;
-
-        rowStates.forEach(function (rowState) {
-            const isMatch = (!searchQuery || rowState.searchText.indexOf(searchQuery) !== -1)
-                && (!isFavoritesOnly || rowState.dataset.isFavorite === true);
-            if (isMatch) { matchingRowCount++; rowState.element.classList.remove('hidden'); } else { rowState.element.classList.add('hidden'); }
-        });
-
-        search.matchCountElement.textContent = !isFiltered
-            ? pluralize(rowStates.length, singular, plural)
-            : matchingRowCount > 0 ? matchingRowCount + ' of ' + pluralize(rowStates.length, singular, plural) : 'no matches';
-
-    }
-
-    /*
-        One data set an action just wrote (#226), added to the card IN PLACE rather than by redrawing
-        the panel: to the model the card draws from, so a tab built later lists it, and to its data
-        sets tab when that is already built, at the top, as a reload orders it. Only this card's
-        data set rows are touched; every other node on the page is the one that was there before.
-    */
-    function addDatasetToTree(treeState, dataset) {
-
-        const treeHistory = treeState.tree.history;
-
-        if (!treeHistory || treeHistory.datasets.some(function (listedDataset) { return listedDataset.datasetFolderName === dataset.datasetFolderName; })) { return; }
-
-        treeHistory.datasets.unshift(dataset);
-
-        const datasetsTabState = (treeState.tabStates || []).find(function (tabState) { return tabState.tabName === 'datasets'; });
-
-        if (datasetsTabState && datasetsTabState.isBuilt) {
-            if (treeState.datasetRowStates && treeState.datasetRowStates.length > 0) {
-                const datasetRowState = buildDatasetRowState(treeState, dataset);
-                datasetsTabState.panelElement.insertBefore(datasetRowState.element, treeState.datasetRowStates[0].element);
-                treeState.datasetRowStates.unshift(datasetRowState);
-                applyDatasetsFilter(treeState);
-            } else {
-                // A TAB BUILT EMPTY HAS NO SEARCH BOX YET: BUILT AGAIN, IT GETS ONE
-                datasetsTabState.panelElement.textContent = '';
-                buildDatasetsTab(treeState, datasetsTabState.panelElement);
-            }
-        }
-
-    }
-
-    /*
-        datasetAdded (#226): drawn only over the model it was added to, then acknowledged with its
-        own updateSequence -- the host offers the new row's Open and Insert… only after that.
-    */
-    function renderDatasetAdded(datasetAddedMessage) {
-
-        if (renderedSequence === null || datasetAddedMessage.renderSequence !== renderedSequence || !Array.isArray(datasetAddedMessage.treeKeys)) { return; }
-
-        datasetAddedMessage.treeKeys.forEach(function (treeKey) {
-            treeStates
-                .filter(function (treeState) { return treeState.tree.treeKey === treeKey; })
-                .forEach(function (treeState) { addDatasetToTree(treeState, datasetAddedMessage.dataset); });
-        });
-
-        vscodeApi.postMessage({ command: 'partialRendered', renderSequence: renderedSequence, updateSequence: datasetAddedMessage.updateSequence });
-
-    }
-
-    function applyDatasetsFilter(treeState) {
-
-        applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, 'data set', 'data sets', treeState.isDatasetFavoritesOnly);
-
-        if (treeState.datasetFavoritesToggleElement) {
-            treeState.datasetFavoritesToggleElement.textContent = (treeState.isDatasetFavoritesOnly ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL) + ' ' + FAVORITES_ONLY_LABEL;
-            treeState.datasetFavoritesToggleElement.setAttribute('aria-pressed', treeState.isDatasetFavoritesOnly ? 'true' : 'false');
-        }
-
-    }
-
-    /*
-        A data set's name or star changed: every card that lists it -- the model each draws
-        from, so a tab built later draws it too, and the row itself where that tab is built. Only
-        for the model on screen: a newer one was built from the preferences this update reports.
-    */
-    function renderDatasetPreferences(datasetPreferencesMessage) {
-
-        if (renderedSequence === null || datasetPreferencesMessage.renderSequence !== renderedSequence
-                || typeof datasetPreferencesMessage.datasetFolderName !== 'string') { return; }
-
-        const datasetFolderName = datasetPreferencesMessage.datasetFolderName;
-        const customName = typeof datasetPreferencesMessage.customName === 'string' ? datasetPreferencesMessage.customName : undefined;
-        const isFavorite = datasetPreferencesMessage.isFavorite === true;
-
-        treeStates.forEach(function (treeState) {
-
-            const treeHistory = treeState.tree.history;
-            if (!treeHistory) { return; }
-
-            treeHistory.datasets
-                .filter(function (dataset) { return dataset.datasetFolderName === datasetFolderName; })
-                .forEach(function (dataset) { dataset.customName = customName; dataset.isFavorite = isFavorite; });
-
-            const changedRowStates = (treeState.datasetRowStates || []).filter(function (rowState) { return rowState.dataset.datasetFolderName === datasetFolderName; });
-
-            if (changedRowStates.length === 0) { return; }
-
-            changedRowStates.forEach(function (rowState) {
-                rowState.dataset.customName = customName;
-                rowState.dataset.isFavorite = isFavorite;
-                drawDatasetName(rowState);
-            });
-            applyDatasetsFilter(treeState);
-
-        });
-
-    }
-
-    /*
-        A data set's newest insert after its row's Insert… ran (#469): every card's copy of the data set,
-        and every drawn row of it, redrawn in place, then acknowledged with its updateSequence -- the
-        host offers the new View results only after that.
-    */
-    function renderDatasetLastInsert(lastInsertMessage) {
-
-        if (renderedSequence === null || lastInsertMessage.renderSequence !== renderedSequence
-                || typeof lastInsertMessage.datasetFolderName !== 'string') { return; }
-
-        const datasetFolderName = lastInsertMessage.datasetFolderName;
-        const lastInsert = lastInsertMessage.lastInsert;
-        const applyLastInsert = function (dataset) {
-            if (lastInsert) { dataset.lastInsert = lastInsert; } else { delete dataset.lastInsert; }
-        };
-
-        treeStates.forEach(function (treeState) {
-
-            const treeHistory = treeState.tree.history;
-            if (!treeHistory) { return; }
-
-            treeHistory.datasets
-                .filter(function (dataset) { return dataset.datasetFolderName === datasetFolderName; })
-                .forEach(applyLastInsert);
-
-            const changedRowStates = (treeState.datasetRowStates || []).filter(function (rowState) { return rowState.dataset.datasetFolderName === datasetFolderName; });
-
-            if (changedRowStates.length === 0) { return; }
-
-            changedRowStates.forEach(function (rowState) {
-                applyLastInsert(rowState.dataset);
-                drawDatasetLastInsert(rowState);
-                drawDatasetName(rowState);
-                // A NEW INSERT ADDS TO THE JOURNEY (#471): AN OPEN ONE IS READ AGAIN, A CLOSED ONE WHEN IT NEXT OPENS
-                rowState.isJourneyRequested = false;
-                rowState.journeyMessage = null;
-                if (rowState.isJourneyExpanded) { setDatasetJourneyExpanded(treeState, rowState, true, false); }
-            });
-            applyDatasetsFilter(treeState);
-
-        });
-
-        vscodeApi.postMessage({ command: 'partialRendered', renderSequence: renderedSequence, updateSequence: lastInsertMessage.updateSequence });
 
     }
 

@@ -24,7 +24,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   __export(RecipeCockpitPanel_exports, {
     SVG_NAMESPACE: () => SVG_NAMESPACE,
     acknowledgeRecordLinks: () => acknowledgeRecordLinks,
+    applyDatasetsFilter: () => applyDatasetsFilter,
     buildActionCard: () => buildActionCard,
+    buildDatasetsTab: () => buildDatasetsTab,
     buildPencilGlyph: () => buildPencilGlyph,
     buildQueryTab: () => buildQueryTab,
     buildRowTable: () => buildRowTable,
@@ -42,6 +44,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     closeConfirmDialog: () => closeConfirmDialog,
     createButton: () => createButton,
     createElement: () => createElement,
+    drawDatasetInserts: () => drawDatasetInserts,
     drawToggle: () => drawToggle,
     drawTreePermissionSet: () => drawTreePermissionSet,
     drawTreeQueryButtons: () => drawTreeQueryButtons,
@@ -52,6 +55,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     renderAdapterChildPreview: () => renderAdapterChildPreview,
     renderAdapterMetadataChanges: () => renderAdapterMetadataChanges,
     renderConfirmRequest: () => renderConfirmRequest,
+    renderDatasetAdded: () => renderDatasetAdded,
+    renderDatasetJourney: () => renderDatasetJourney,
+    renderDatasetLastInsert: () => renderDatasetLastInsert,
+    renderDatasetPreferences: () => renderDatasetPreferences,
+    renderDatasetRecordCounts: () => renderDatasetRecordCounts,
     renderPermissionSetAssignState: () => renderPermissionSetAssignState,
     renderTreeQueries: () => renderTreeQueries,
     renderTreeQueryResult: () => renderTreeQueryResult,
@@ -61,11 +69,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     renderUpdaterRecords: () => renderUpdaterRecords,
     renderUpdaterSnapshots: () => renderUpdaterSnapshots,
     renderUpdaterValues: () => renderUpdaterValues,
+    requestDatasetJourney: () => requestDatasetJourney,
     requestTreeQueries: () => requestTreeQueries,
     requestTroubleshootingSummary: () => requestTroubleshootingSummary,
     requestUpdaterSnapshots: () => requestUpdaterSnapshots,
     selectTodosView: () => selectTodosView,
     selectTroubleshootingSubTab: () => selectTroubleshootingSubTab,
+    setDatasetJourneyExpanded: () => setDatasetJourneyExpanded,
     setShown: () => setShown,
     setShownWithMotion: () => setShownWithMotion,
     troubleshootingSearchKey: () => troubleshootingSearchKey
@@ -4090,6 +4100,657 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
         setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, false);
       }
     );
+  }
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitDatasetsTabConstants.ts
+  var RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
+  var RECIPE_COCKPIT_FAVORITE_TREE_LABEL = "★";
+  var RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = "☆";
+  var RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = "Favorites only";
+  var RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON = "checking the org connection…";
+  var RECIPE_COCKPIT_DATASET_ADAPTED_LABEL = "adapted";
+  var RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX = "Record types: ";
+  var RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY = {
+    succeeded: { emoji: "✅", label: "Inserted" },
+    partial: { emoji: "⚠️", label: "Partly inserted" },
+    failed: { emoji: "❌", label: "Insert failed" },
+    cancelled: { emoji: "🚫", label: "Insert cancelled" },
+    unknown: { emoji: "❔", label: "Insert outcome unknown" }
+  };
+  var RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL = "View results";
+  var RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE = "No outcome was saved for this insert: it ran before Treecipe recorded how an insert ended, or it stopped before it could.";
+  var RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE = "The insert stopped on an error before it ended, so records it saved may still be in the org.";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY = {
+    succeeded: { emoji: "✅", label: "Succeeded" },
+    partial: { emoji: "⚠️", label: "Partly succeeded" },
+    failed: { emoji: "❌", label: "Failed" },
+    cancelled: { emoji: "⚠️", label: "Cancelled" },
+    unknown: { emoji: "⚠️", label: "Outcome unknown" },
+    unreadable: { emoji: "⚠️", label: "Unreadable" },
+    unrecorded: { emoji: "⚠️", label: "Not recorded" }
+  };
+  var RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS = [
+    { key: "time", label: "Time" },
+    { key: "step", label: "Step" },
+    { key: "org", label: "Org" },
+    { key: "status", label: "Status" },
+    { key: "detail", label: "Detail" },
+    { key: "files", label: "Files" }
+  ];
+  var RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS = ["time", "step", "org", "status"];
+  var RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL = "Insert journey";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE = "Reading this data set's inserts…";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE = "No inserts yet.";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = "Inserted first time, with nothing else needed.";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = "View file";
+  var RECIPE_COCKPIT_INSERT_RUNNING_LABEL = "Inserting…";
+
+  // src/treecipe/src/RecipeCockpitService/panel/datasets/DatasetJourney.ts
+  var datasetJourneyCount = 0;
+  function buildDatasetJourneyToggle(treeState, rowState) {
+    const toggleElement = buildToggleElement("treeDatasetJourneyToggle");
+    const journeyId = "treeDatasetJourney" + ++datasetJourneyCount;
+    rowState.journeyElement = createElement("div", "treeDatasetJourney hidden");
+    rowState.journeyElement.setAttribute("id", journeyId);
+    toggleElement.setAttribute("aria-controls", journeyId);
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL + ": " + rowState.dataset.datasetFolderName);
+    toggleElement.setAttribute("title", "Show every insert of this data set and the Troubleshooting steps between them");
+    drawToggle(toggleElement, false, false);
+    toggleElement.addEventListener("click", function() {
+      setDatasetJourneyExpanded(treeState, rowState, rowState.isJourneyExpanded !== true, true);
+      savePanelPlace();
+    });
+    return toggleElement;
+  }
+  function setDatasetJourneyExpanded(treeState, rowState, isExpanded, isAnimated) {
+    const datasetFolderName = rowState.dataset.datasetFolderName;
+    rowState.isJourneyExpanded = isExpanded;
+    if (isExpanded) {
+      treeState.expandedJourneyDatasetFolderNames[datasetFolderName] = true;
+    } else {
+      delete treeState.expandedJourneyDatasetFolderNames[datasetFolderName];
+    }
+    drawToggle(rowState.journeyToggleElement, isExpanded, isAnimated);
+    setShownWithMotion(rowState.journeyElement, isExpanded, isAnimated);
+    if (!isExpanded) {
+      return;
+    }
+    if (!rowState.dataset.lastInsert) {
+      rowState.journeyElement.textContent = "";
+      rowState.journeyElement.appendChild(createElement("div", "treeDatasetJourneyNote muted", RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE));
+      return;
+    }
+    if (rowState.journeyMessage) {
+      drawDatasetJourney(rowState);
+      return;
+    }
+    requestDatasetJourney(rowState);
+  }
+  function requestDatasetJourney(rowState) {
+    if (rowState.isJourneyRequested) {
+      return;
+    }
+    if (!rowState.journeyMessage) {
+      rowState.journeyElement.textContent = "";
+      rowState.journeyElement.appendChild(createElement("div", "treeDatasetJourneyNote muted", RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE));
+    }
+    if (renderedSequence === null) {
+      rowState.isJourneyWanted = true;
+      return;
+    }
+    rowState.isJourneyWanted = false;
+    rowState.isJourneyRequested = true;
+    vscodeApi.postMessage({ command: "loadDatasetJourney", datasetFolderName: rowState.dataset.datasetFolderName, renderSequence: renderedSequence });
+  }
+  function renderDatasetJourney(journeyMessage) {
+    if (renderedSequence === null || journeyMessage.renderSequence !== renderedSequence || typeof journeyMessage.datasetFolderName !== "string") {
+      return;
+    }
+    let isDrawn = false;
+    treeStates.forEach(function(treeState) {
+      (treeState.datasetRowStates || []).filter(function(rowState) {
+        return rowState.dataset.datasetFolderName === journeyMessage.datasetFolderName;
+      }).forEach(function(rowState) {
+        rowState.journeyMessage = journeyMessage;
+        if (rowState.isJourneyExpanded && rowState.dataset.lastInsert) {
+          drawDatasetJourney(rowState);
+        }
+        isDrawn = true;
+      });
+    });
+    if (isDrawn) {
+      vscodeApi.postMessage({ command: "datasetJourneyRendered", renderSequence: renderedSequence, datasetFolderName: journeyMessage.datasetFolderName, journeySequence: journeyMessage.journeySequence });
+    }
+  }
+  function drawDatasetJourney(rowState) {
+    const journeyMessage = rowState.journeyMessage;
+    const journeyElement = rowState.journeyElement;
+    const entries = Array.isArray(journeyMessage.entries) ? journeyMessage.entries : [];
+    journeyElement.textContent = "";
+    if (entries.length === 0) {
+      journeyElement.appendChild(createElement("div", "treeDatasetJourneyNote muted", RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE));
+      return;
+    }
+    if (!rowState.journeySort) {
+      rowState.journeySort = { column: "time", isDescending: true };
+    }
+    const journeySort = rowState.journeySort;
+    const rowTable = buildRowTable({
+      className: "treeDatasetJourneyTable",
+      columnClassName: "treeDatasetJourney",
+      columns: RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS,
+      sortColumns: RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS,
+      sort: journeySort,
+      onSort: function(column) {
+        sortDatasetJourney(rowState, column);
+      }
+    });
+    rowState.journeySortButtons = rowTable.sortButtons;
+    sortDatasetJourneyEntries(journeySort, entries).forEach(function(placedEntry) {
+      rowTable.bodyElement.appendChild(buildDatasetJourneyEntry(rowState, journeyMessage, placedEntry.entry));
+    });
+    journeyElement.appendChild(rowTable.wrapElement);
+    const hiddenEntryCount = journeyMessage.hiddenEntryCount;
+    const otherOrgStepCount = journeyMessage.otherOrgStepCount;
+    const untrackedStepCount = journeyMessage.untrackedStepCount;
+    if (hiddenEntryCount > 0) {
+      journeyElement.appendChild(createElement(
+        "div",
+        "treeDatasetJourneyNote muted",
+        pluralize(hiddenEntryCount, "earlier entry is", "earlier entries are") + " not shown."
+      ));
+    }
+    if (entries.length === 1 && entries[0].kind === "insert" && entries[0].status === "succeeded" && !(hiddenEntryCount > 0)) {
+      journeyElement.appendChild(createElement("div", "treeDatasetJourneyNote muted", RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE));
+    }
+    if (otherOrgStepCount > 0) {
+      journeyElement.appendChild(createElement(
+        "div",
+        "treeDatasetJourneyNote muted",
+        pluralize(otherOrgStepCount, "Troubleshooting step", "Troubleshooting steps") + " of this tree in this time ran against another org, so " + (otherOrgStepCount === 1 ? "it is" : "they are") + " not shown."
+      ));
+    }
+    if (untrackedStepCount > 0) {
+      journeyElement.appendChild(createElement(
+        "div",
+        "treeDatasetJourneyNote muted",
+        pluralize(untrackedStepCount, "step", "steps") + " in treecipe/OrgOperations, which records no tree, ran in this time and " + (untrackedStepCount === 1 ? "is" : "are") + " not placed on this timeline."
+      ));
+    }
+  }
+  function datasetJourneyStatusOf(entry) {
+    return hasOwnKey(RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY, entry.status) ? RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY[entry.status] : { emoji: "", label: String(entry.status) };
+  }
+  function sortDatasetJourneyEntries(sort, entries) {
+    const sortValueOf = function(placedEntry) {
+      if (sort.column === "time") {
+        return placedEntry.place;
+      }
+      if (sort.column === "step") {
+        return String(placedEntry.entry.kindLabel).toLowerCase();
+      }
+      if (sort.column === "org") {
+        return typeof placedEntry.entry.orgLabel === "string" ? placedEntry.entry.orgLabel.toLowerCase() : "";
+      }
+      return datasetJourneyStatusOf(placedEntry.entry).label.toLowerCase();
+    };
+    return entries.map(function(entry, place) {
+      return { entry, place };
+    }).sort(function(first, second) {
+      const firstValue = sortValueOf(first);
+      const secondValue = sortValueOf(second);
+      const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
+      if (order !== 0) {
+        return sort.isDescending ? -order : order;
+      }
+      return second.place - first.place;
+    });
+  }
+  function sortDatasetJourney(rowState, column) {
+    const currentSort = rowState.journeySort;
+    rowState.journeySort = currentSort.column === column ? { column, isDescending: !currentSort.isDescending } : { column, isDescending: column === "time" };
+    drawDatasetJourney(rowState);
+    const sortButton = rowState.journeySortButtons && rowState.journeySortButtons[column];
+    if (sortButton && typeof sortButton.focus === "function") {
+      sortButton.focus();
+    }
+  }
+  function buildDatasetJourneyEntry(rowState, journeyMessage, entry) {
+    const entryElement = createElement("tr", "treeDatasetJourneyEntry treeDatasetJourneyEntry-" + String(entry.status));
+    const statusDisplay = datasetJourneyStatusOf(entry);
+    entryElement.appendChild(createElement("td", "treeDatasetJourneyTime", String(entry.timeLabel)));
+    entryElement.appendChild(createElement("td", "treeDatasetJourneyKind", String(entry.kindLabel)));
+    entryElement.appendChild(createElement("td", "treeDatasetJourneyOrg", typeof entry.orgLabel === "string" ? entry.orgLabel : ""));
+    const statusCell = createElement("td", "treeDatasetJourneyStatusCell");
+    const statusElement = createElement("span", "treeDatasetJourneyStatus treeDatasetJourneyStatus-" + entry.status);
+    const emojiElement = createElement("span", "treeDatasetJourneyStatusEmoji", statusDisplay.emoji);
+    emojiElement.setAttribute("aria-hidden", "true");
+    statusElement.appendChild(emojiElement);
+    statusElement.appendChild(createElement("span", "treeDatasetJourneyStatusLabel", statusDisplay.label));
+    statusCell.appendChild(statusElement);
+    entryElement.appendChild(statusCell);
+    const detailCell = createElement("td", "treeDatasetJourneyDetail");
+    if (typeof entry.summaryText === "string" && entry.summaryText) {
+      detailCell.appendChild(createElement("div", "treeDatasetJourneySummary muted", entry.summaryText));
+    }
+    if (typeof entry.errorExcerpt === "string" && entry.errorExcerpt) {
+      detailCell.appendChild(createElement("div", "treeDatasetJourneyError", entry.errorExcerpt));
+    }
+    entryElement.appendChild(detailCell);
+    const filesCell = createElement("td", "treeDatasetJourneyFiles");
+    const files = Array.isArray(entry.files) ? entry.files : [];
+    files.forEach(function(file) {
+      const fileElement = createElement("div", "treeDatasetJourneyFile");
+      fileElement.appendChild(createElement("span", "treeDatasetJourneyPath", String(file.relativePath)));
+      const viewElement = createButton("secondary", "historyAction treeDatasetJourneyView", RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL);
+      viewElement.setAttribute("title", "Open " + String(file.relativePath));
+      viewElement.addEventListener("click", function() {
+        vscodeApi.postMessage({ command: "openDatasetJourneyFile", renderSequence: renderedSequence, datasetFolderName: rowState.dataset.datasetFolderName, journeySequence: journeyMessage.journeySequence, fileIndex: file.fileIndex });
+      });
+      fileElement.appendChild(viewElement);
+      filesCell.appendChild(fileElement);
+    });
+    entryElement.appendChild(filesCell);
+    return entryElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/datasets/DatasetRow.ts
+  function formatRecordCounts(recordCounts) {
+    if (recordCounts.length === 0) {
+      return "no records";
+    }
+    return recordCounts.map(function(recordCount) {
+      return recordCount.objectApiName + ": " + pluralize(recordCount.recordCount, "record", "records");
+    }).join(" · ");
+  }
+  function drawDatasetRecordCounts(countsElement, recordCountsMessage) {
+    const countsText = recordCountsMessage.recordCounts.length > 0 || !recordCountsMessage.failureMessage ? formatRecordCounts(recordCountsMessage.recordCounts) : "";
+    countsElement.textContent = [countsText, recordCountsMessage.failureMessage].filter(function(countsPart) {
+      return !!countsPart;
+    }).join(" · ");
+  }
+  function requestDatasetRecordCounts(datasetFolderName, countsElement) {
+    if (Object.prototype.hasOwnProperty.call(answeredDatasetCounts, datasetFolderName)) {
+      drawDatasetRecordCounts(countsElement, answeredDatasetCounts[datasetFolderName]);
+      return;
+    }
+    countsElement.textContent = "Loading record counts…";
+    if (Object.prototype.hasOwnProperty.call(pendingDatasetCountElements, datasetFolderName)) {
+      pendingDatasetCountElements[datasetFolderName].push(countsElement);
+      return;
+    }
+    pendingDatasetCountElements[datasetFolderName] = [countsElement];
+    vscodeApi.postMessage({ command: "loadDatasetRecordCounts", datasetFolderName });
+  }
+  function renderDatasetRecordCounts(recordCountsMessage) {
+    if (recordCountsMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const datasetFolderName = recordCountsMessage.datasetFolderName;
+    answeredDatasetCounts[datasetFolderName] = recordCountsMessage;
+    if (!Object.prototype.hasOwnProperty.call(pendingDatasetCountElements, datasetFolderName)) {
+      return;
+    }
+    const countsElements = pendingDatasetCountElements[datasetFolderName];
+    delete pendingDatasetCountElements[datasetFolderName];
+    countsElements.forEach(function(countsElement) {
+      drawDatasetRecordCounts(countsElement, recordCountsMessage);
+    });
+  }
+  function buildHistoryAction(className, labelText, titleText, hostMessage) {
+    const actionElement = createButton("secondary", "historyAction " + className, labelText);
+    actionElement.setAttribute("title", titleText);
+    actionElement.addEventListener("click", function() {
+      vscodeApi.postMessage(hostMessage);
+    });
+    return actionElement;
+  }
+  function formatDatasetRecordTypes(recordTypes) {
+    return RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX + recordTypes.map(function(recordType) {
+      return recordType.objectApiName + " · " + recordType.developerNames.join(", ");
+    }).join("; ");
+  }
+  function buildDatasetRowState(treeState, dataset) {
+    const datasetElement = createElement("div", "treeDataset");
+    const datasetHeaderElement = createElement("div", "treeDatasetHeader sdtRowHeader");
+    const primaryLineElement = createElement("div", "sdtRowHeaderPrimary");
+    const detailLineElement = createElement("div", "sdtRowHeaderDetail");
+    const countsElement = createElement("div", "treeDatasetCounts muted");
+    const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: "datasets" };
+    const rowState = { element: datasetElement, dataset, searchText: "", nameElement: null, favoriteElement: null, renameElement: null };
+    rowState.favoriteElement = createButton("secondary", "historyAction treeDatasetFavorite");
+    rowState.favoriteElement.addEventListener("click", function() {
+      vscodeApi.postMessage({ command: "toggleFavoriteDataset", datasetFolderName: dataset.datasetFolderName });
+    });
+    primaryLineElement.appendChild(rowState.favoriteElement);
+    rowState.renameElement = createButton("secondary", "historyAction treeDatasetRename");
+    rowState.renameElement.appendChild(buildPencilGlyph("default"));
+    primaryLineElement.appendChild(rowState.renameElement);
+    rowState.nameElement = createElement("span", "treeDatasetName");
+    primaryLineElement.appendChild(rowState.nameElement);
+    if (dataset.recordTypes) {
+      const recordTypesText = formatDatasetRecordTypes(dataset.recordTypes);
+      const recordTypesChipElement = createElement("span", "treeDatasetRecordTypes", recordTypesText);
+      recordTypesChipElement.setAttribute("title", "Generated with " + recordTypesText);
+      primaryLineElement.appendChild(recordTypesChipElement);
+    }
+    rowState.nameEditor = buildNameEditor({
+      nameTarget: "dataset",
+      nameKey: dataset.datasetFolderName,
+      maxLength: RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
+      openerElement: rowState.renameElement,
+      displayElement: rowState.nameElement,
+      placeholderText: dataset.datasetFolderName,
+      readCustomName: function() {
+        return rowState.dataset.customName || "";
+      },
+      readDisplayName: function() {
+        return rowState.dataset.customName || rowState.dataset.datasetFolderName;
+      },
+      onClose: function() {
+        drawDatasetName(rowState);
+      }
+    });
+    rowState.lastInsertSlotElement = createElement("span", "treeDatasetInsertSlot");
+    primaryLineElement.appendChild(rowState.lastInsertSlotElement);
+    primaryLineElement.appendChild(buildHistoryAction(
+      "treeDatasetOpen",
+      "Open",
+      "Reveal the folder of this data set in the Explorer",
+      Object.assign({ command: "openDataset" }, actionMessage)
+    ));
+    rowState.lastInsertResultsSlotElement = createElement("span", "treeDatasetInsertSlot");
+    primaryLineElement.appendChild(rowState.lastInsertResultsSlotElement);
+    rowState.insertElement = createButton("secondary", "historyAction treeDatasetInsert", "Insert…");
+    rowState.insertElement.addEventListener("click", function() {
+      const insertMessage = Object.assign({ command: "insertDataset" }, actionMessage);
+      if (dataOrgSelectedIndex !== null) {
+        insertMessage.orgIndex = dataOrgSelectedIndex;
+      }
+      vscodeApi.postMessage(insertMessage);
+    });
+    primaryLineElement.appendChild(rowState.insertElement);
+    rowState.journeyToggleElement = buildDatasetJourneyToggle(treeState, rowState);
+    detailLineElement.appendChild(rowState.journeyToggleElement);
+    detailLineElement.appendChild(createElement("span", "treeDatasetDate", dataset.generatedAtLabel));
+    detailLineElement.appendChild(createElement("span", "treeDatasetBackend muted", dataset.fakerService));
+    if (dataset.isAdapted === true) {
+      detailLineElement.appendChild(createElement("span", "treeDatasetAdapted muted", RECIPE_COCKPIT_DATASET_ADAPTED_LABEL));
+    }
+    detailLineElement.appendChild(createElement("span", dataset.runFolderName === null ? "treeDatasetVersion unknownVersion" : "treeDatasetVersion", versionLabelOf(treeState, dataset.runFolderName)));
+    detailLineElement.appendChild(createElement("span", "treeDatasetFolder muted", dataset.datasetFolderName));
+    datasetHeaderElement.appendChild(primaryLineElement);
+    datasetHeaderElement.appendChild(detailLineElement);
+    datasetElement.appendChild(datasetHeaderElement);
+    datasetElement.appendChild(countsElement);
+    datasetElement.appendChild(rowState.journeyElement);
+    if (dataset.recordCounts) {
+      countsElement.textContent = formatRecordCounts(dataset.recordCounts);
+    } else {
+      const loadCountsElement = createButton("secondary", "historyAction treeDatasetCountsLoad", "Show record counts");
+      loadCountsElement.setAttribute("title", "Count the records in the Collections API files of this data set");
+      loadCountsElement.addEventListener("click", function() {
+        requestDatasetRecordCounts(dataset.datasetFolderName, countsElement);
+      });
+      countsElement.appendChild(loadCountsElement);
+    }
+    drawDatasetLastInsert(rowState);
+    drawDatasetName(rowState);
+    drawDatasetInsert(rowState);
+    if (treeState.expandedJourneyDatasetFolderNames[dataset.datasetFolderName] === true) {
+      setDatasetJourneyExpanded(treeState, rowState, true, false);
+    }
+    return rowState;
+  }
+  function drawDatasetInsert(rowState) {
+    const insertElement = rowState.insertElement;
+    if (!insertElement) {
+      return;
+    }
+    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : "";
+    insertElement.disabled = insertRunningTreeKey !== null || isDataOrgChecking || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+    insertElement.textContent = insertRunningDatasetFolderName === rowState.dataset.datasetFolderName ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : "Insert…";
+    insertElement.setAttribute("title", isDataOrgChecking ? RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON : orgLabel ? "Insert this data set into " + orgLabel + ", the org selected in the Target Org Manager" : "Choose the org to insert this data set into");
+  }
+  function drawDatasetInserts() {
+    treeStates.forEach(function(treeState) {
+      (treeState.datasetRowStates || []).forEach(drawDatasetInsert);
+    });
+  }
+  function drawDatasetName(rowState) {
+    const dataset = rowState.dataset;
+    const displayName = dataset.customName || dataset.datasetFolderName;
+    rowState.nameElement.textContent = dataset.customName || "";
+    const isNameEditorOpen = !!(rowState.nameEditor && rowState.nameEditor.isOpen);
+    if (dataset.customName && !isNameEditorOpen) {
+      rowState.nameElement.classList.remove("hidden");
+    } else {
+      rowState.nameElement.classList.add("hidden");
+    }
+    rowState.favoriteElement.textContent = dataset.isFavorite ? RECIPE_COCKPIT_FAVORITE_TREE_LABEL : RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL;
+    rowState.favoriteElement.setAttribute("aria-pressed", dataset.isFavorite ? "true" : "false");
+    rowState.favoriteElement.setAttribute("aria-label", dataset.isFavorite ? "Remove " + displayName + " from favorites" : "Mark " + displayName + " as a favorite");
+    rowState.favoriteElement.setAttribute("title", dataset.isFavorite ? "Remove from favorites" : "Mark as a favorite");
+    rowState.renameElement.setAttribute("aria-label", "Rename " + displayName);
+    rowState.renameElement.setAttribute("title", "Rename this data set");
+    rowState.searchText = (dataset.datasetFolderName + "\\n" + (dataset.customName || "") + "\\n" + (rowState.lastInsertSearchText || "")).toLowerCase();
+  }
+  function drawDatasetLastInsert(rowState) {
+    rowState.lastInsertSlotElement.textContent = "";
+    rowState.lastInsertResultsSlotElement.textContent = "";
+    rowState.lastInsertSearchText = "";
+    const lastInsertElements = buildDatasetLastInsertElements(rowState.dataset);
+    if (!lastInsertElements) {
+      return;
+    }
+    rowState.lastInsertSlotElement.appendChild(lastInsertElements.statusElement);
+    if (lastInsertElements.resultsElement) {
+      rowState.lastInsertResultsSlotElement.appendChild(lastInsertElements.resultsElement);
+    }
+    rowState.lastInsertSearchText = lastInsertElements.searchText;
+  }
+  function buildDatasetLastInsertElements(dataset) {
+    const lastInsert = dataset.lastInsert;
+    if (!lastInsert || !hasOwnKey(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY, lastInsert.status)) {
+      return null;
+    }
+    const statusDisplay = RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY[lastInsert.status];
+    const statusElement = createElement("span", "treeDatasetInsertStatus treeDatasetInsertStatus-" + lastInsert.status);
+    const emojiElement = createElement("span", "treeDatasetInsertStatusEmoji", statusDisplay.emoji);
+    emojiElement.setAttribute("aria-hidden", "true");
+    statusElement.appendChild(emojiElement);
+    statusElement.appendChild(createElement("span", "treeDatasetInsertStatusLabel", statusDisplay.label));
+    const detailParts = ["Last insert: " + lastInsert.attemptedAtLabel + (typeof lastInsert.orgLabel === "string" ? " into " + lastInsert.orgLabel : "")];
+    const notes = [];
+    if (lastInsert.isInterrupted === true) {
+      notes.push(RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE);
+    }
+    if (lastInsert.isOutcomeUnrecorded === true) {
+      notes.push(RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE);
+    }
+    if (typeof lastInsert.savedRecordCount === "number") {
+      detailParts.push(lastInsert.savedRecordCount + (lastInsert.savedRecordCount === 1 ? " record saved" : " records saved"));
+    }
+    if (typeof lastInsert.failedRecordCount === "number") {
+      detailParts.push(lastInsert.failedRecordCount + (lastInsert.failedRecordCount === 1 ? " record failed" : " records failed"));
+    }
+    const detailText = detailParts.join(" · ") + notes.map(function(note) {
+      return ". " + note;
+    }).join("");
+    statusElement.setAttribute("title", detailText);
+    statusElement.setAttribute("role", "img");
+    statusElement.setAttribute("aria-label", statusDisplay.label + ". " + detailText);
+    let resultsElement = null;
+    if (lastInsert.hasResultsFile === true) {
+      resultsElement = buildHistoryAction(
+        "treeDatasetInsertResults",
+        RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL,
+        "Open the results file of the last insert of this data set",
+        { command: "viewDatasetInsertResults", datasetFolderName: dataset.datasetFolderName }
+      );
+    }
+    return { statusElement, resultsElement, searchText: statusDisplay.label };
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/datasets/DatasetsTab.ts
+  function buildDatasetFavoritesToggle(treeState) {
+    const toggleElement = createButton("secondary", "historyAction treeDatasetFavoritesToggle");
+    toggleElement.setAttribute("title", "Show only the data sets marked as favorites");
+    toggleElement.addEventListener("click", function() {
+      treeState.isDatasetFavoritesOnly = !treeState.isDatasetFavoritesOnly;
+      applyDatasetsFilter(treeState);
+      savePanelPlace();
+    });
+    return toggleElement;
+  }
+  function buildDatasetsTab(treeState, panelElement) {
+    const datasets = treeState.tree.history.datasets;
+    if (datasets.length === 0) {
+      panelElement.appendChild(createElement("div", "treeEmpty muted", "No data sets were made from this tree."));
+      return;
+    }
+    const datasetsSearch = buildTabSearch(treeState, "datasets", "Search data sets", applyDatasetsFilter);
+    treeState.datasetsSearch = datasetsSearch;
+    const datasetFavoritesToggleElement = buildDatasetFavoritesToggle(treeState);
+    treeState.datasetFavoritesToggleElement = datasetFavoritesToggleElement;
+    datasetsSearch.element.appendChild(datasetFavoritesToggleElement);
+    panelElement.appendChild(datasetsSearch.element);
+    treeState.datasetRowStates = datasets.map(function(dataset) {
+      const rowState = buildDatasetRowState(treeState, dataset);
+      panelElement.appendChild(rowState.element);
+      return rowState;
+    });
+    applyDatasetsFilter(treeState);
+  }
+  function applyRowSearch(rowStates, searchQuery, search, singular, plural, isFavoritesOnly) {
+    let matchingRowCount = 0;
+    const isFiltered = !!searchQuery || !!isFavoritesOnly;
+    rowStates.forEach(function(rowState) {
+      const isMatch = (!searchQuery || rowState.searchText.indexOf(searchQuery) !== -1) && (!isFavoritesOnly || rowState.dataset.isFavorite === true);
+      if (isMatch) {
+        matchingRowCount++;
+        rowState.element.classList.remove("hidden");
+      } else {
+        rowState.element.classList.add("hidden");
+      }
+    });
+    search.matchCountElement.textContent = !isFiltered ? pluralize(rowStates.length, singular, plural) : matchingRowCount > 0 ? matchingRowCount + " of " + pluralize(rowStates.length, singular, plural) : "no matches";
+  }
+  function addDatasetToTree(treeState, dataset) {
+    const treeHistory = treeState.tree.history;
+    if (!treeHistory || treeHistory.datasets.some(function(listedDataset) {
+      return listedDataset.datasetFolderName === dataset.datasetFolderName;
+    })) {
+      return;
+    }
+    treeHistory.datasets.unshift(dataset);
+    const datasetsTabState = (treeState.tabStates || []).find(function(tabState) {
+      return tabState.tabName === "datasets";
+    });
+    if (datasetsTabState && datasetsTabState.isBuilt) {
+      if (treeState.datasetRowStates && treeState.datasetRowStates.length > 0) {
+        const datasetRowState = buildDatasetRowState(treeState, dataset);
+        datasetsTabState.panelElement.insertBefore(datasetRowState.element, treeState.datasetRowStates[0].element);
+        treeState.datasetRowStates.unshift(datasetRowState);
+        applyDatasetsFilter(treeState);
+      } else {
+        datasetsTabState.panelElement.textContent = "";
+        buildDatasetsTab(treeState, datasetsTabState.panelElement);
+      }
+    }
+  }
+  function renderDatasetAdded(datasetAddedMessage) {
+    if (renderedSequence === null || datasetAddedMessage.renderSequence !== renderedSequence || !Array.isArray(datasetAddedMessage.treeKeys)) {
+      return;
+    }
+    datasetAddedMessage.treeKeys.forEach(function(treeKey) {
+      treeStates.filter(function(treeState) {
+        return treeState.tree.treeKey === treeKey;
+      }).forEach(function(treeState) {
+        addDatasetToTree(treeState, datasetAddedMessage.dataset);
+      });
+    });
+    vscodeApi.postMessage({ command: "partialRendered", renderSequence: renderedSequence, updateSequence: datasetAddedMessage.updateSequence });
+  }
+  function applyDatasetsFilter(treeState) {
+    applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, "data set", "data sets", treeState.isDatasetFavoritesOnly);
+    if (treeState.datasetFavoritesToggleElement) {
+      treeState.datasetFavoritesToggleElement.textContent = (treeState.isDatasetFavoritesOnly ? RECIPE_COCKPIT_FAVORITE_TREE_LABEL : RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL) + " " + RECIPE_COCKPIT_FAVORITES_ONLY_LABEL;
+      treeState.datasetFavoritesToggleElement.setAttribute("aria-pressed", treeState.isDatasetFavoritesOnly ? "true" : "false");
+    }
+  }
+  function renderDatasetPreferences(datasetPreferencesMessage) {
+    if (renderedSequence === null || datasetPreferencesMessage.renderSequence !== renderedSequence || typeof datasetPreferencesMessage.datasetFolderName !== "string") {
+      return;
+    }
+    const datasetFolderName = datasetPreferencesMessage.datasetFolderName;
+    const customName = typeof datasetPreferencesMessage.customName === "string" ? datasetPreferencesMessage.customName : void 0;
+    const isFavorite = datasetPreferencesMessage.isFavorite === true;
+    treeStates.forEach(function(treeState) {
+      const treeHistory = treeState.tree.history;
+      if (!treeHistory) {
+        return;
+      }
+      treeHistory.datasets.filter(function(dataset) {
+        return dataset.datasetFolderName === datasetFolderName;
+      }).forEach(function(dataset) {
+        dataset.customName = customName;
+        dataset.isFavorite = isFavorite;
+      });
+      const changedRowStates = (treeState.datasetRowStates || []).filter(function(rowState) {
+        return rowState.dataset.datasetFolderName === datasetFolderName;
+      });
+      if (changedRowStates.length === 0) {
+        return;
+      }
+      changedRowStates.forEach(function(rowState) {
+        rowState.dataset.customName = customName;
+        rowState.dataset.isFavorite = isFavorite;
+        drawDatasetName(rowState);
+      });
+      applyDatasetsFilter(treeState);
+    });
+  }
+  function renderDatasetLastInsert(lastInsertMessage) {
+    if (renderedSequence === null || lastInsertMessage.renderSequence !== renderedSequence || typeof lastInsertMessage.datasetFolderName !== "string") {
+      return;
+    }
+    const datasetFolderName = lastInsertMessage.datasetFolderName;
+    const lastInsert = lastInsertMessage.lastInsert;
+    const applyLastInsert = function(dataset) {
+      if (lastInsert) {
+        dataset.lastInsert = lastInsert;
+      } else {
+        delete dataset.lastInsert;
+      }
+    };
+    treeStates.forEach(function(treeState) {
+      const treeHistory = treeState.tree.history;
+      if (!treeHistory) {
+        return;
+      }
+      treeHistory.datasets.filter(function(dataset) {
+        return dataset.datasetFolderName === datasetFolderName;
+      }).forEach(applyLastInsert);
+      const changedRowStates = (treeState.datasetRowStates || []).filter(function(rowState) {
+        return rowState.dataset.datasetFolderName === datasetFolderName;
+      });
+      if (changedRowStates.length === 0) {
+        return;
+      }
+      changedRowStates.forEach(function(rowState) {
+        applyLastInsert(rowState.dataset);
+        drawDatasetLastInsert(rowState);
+        drawDatasetName(rowState);
+        rowState.isJourneyRequested = false;
+        rowState.journeyMessage = null;
+        if (rowState.isJourneyExpanded) {
+          setDatasetJourneyExpanded(treeState, rowState, true, false);
+        }
+      });
+      applyDatasetsFilter(treeState);
+    });
+    vscodeApi.postMessage({ command: "partialRendered", renderSequence: renderedSequence, updateSequence: lastInsertMessage.updateSequence });
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();

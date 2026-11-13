@@ -26,3 +26,6 @@ export { buildUpdaterTab } from './adapter/AdapterTab';
 export { clearUpdaterRecords, clearUpdaterValues, drawUpdaterLoadButtons, renderUpdaterRecords, renderUpdaterSnapshots, renderUpdaterValues, requestUpdaterSnapshots } from './adapter/AdapterLoadAndUpdate';
 export { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
 export { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';
+export { applyDatasetsFilter, buildDatasetsTab, renderDatasetAdded, renderDatasetLastInsert, renderDatasetPreferences } from './datasets/DatasetsTab';
+export { drawDatasetInserts, renderDatasetRecordCounts } from './datasets/DatasetRow';
+export { renderDatasetJourney, requestDatasetJourney, setDatasetJourneyExpanded } from './datasets/DatasetJourney';
