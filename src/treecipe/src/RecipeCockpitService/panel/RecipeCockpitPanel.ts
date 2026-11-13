@@ -29,3 +29,14 @@ export { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBloc
 export { applyDatasetsFilter, buildDatasetsTab, renderDatasetAdded, renderDatasetLastInsert, renderDatasetPreferences } from './datasets/DatasetsTab';
 export { drawDatasetInserts, renderDatasetRecordCounts } from './datasets/DatasetRow';
 export { renderDatasetJourney, requestDatasetJourney, setDatasetJourneyExpanded } from './datasets/DatasetJourney';
+export { appendRecordTypeFieldsToggle, drawRecordTypeFieldsToggle, indexRecordTypeFields, isRecordTypeFieldsOnlyIn } from './treecipe/recordTypes/RecordTypeFieldsToggle';
+export { appendTodosToggle, buildObjectTodosToggle, buildTodoListElement, drawObjectTodosToggle, drawTodosToggle, isObjectTodosOnlyIn, isTodosOnlyIn } from './treecipe/recordTypes/TodosToggles';
+export {
+    appendUnavailableRecordTypesButton,
+    applyRecordTypesFilter,
+    buildRecordTypeSelection,
+    buildRecordTypesSection,
+    drawRecordTypeChoices,
+    listRecordTypeObjects,
+    setRecordTypesExpanded
+} from './treecipe/recordTypes/RecordTypesSection';

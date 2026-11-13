@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.202.5] - The Recipe Cockpit's Record types section and the Treecipe tab's toggles are checked TypeScript modules (#652, slice 3e-1 of #565)
+
+Nothing a user sees changes: every Record types and TODO suite, Treecipe tab and Generate and insert journey, and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.** 27 functions are now in `RecipeCockpitService/panel/treecipe/recordTypes/`, type checked by `npm run compile`:
+  - `RecordTypesSection.ts`: the Record types section, its rows, summary, search filter and choices, and the selection "Generate fake data and insert" sends.
+  - `RecordTypeFieldsToggle.ts`: "Record type fields only" and the index of fields each record type restricts.
+  - `TodosToggles.ts`: the card's and each object's "TODOs only", and a field's or an object's TODO list.
+  - The script lost 604 lines, from 7,180 to 6,576.
+- **18 entry points join the bridge**, because code still in the string calls them. The choice, its row states and "Remember this selection" stay the script's, since it resets them for every model; the modules `declare` them.
+- **The 13 words these functions draw** moved into `RecipeCockpitRecordTypesConstants.ts`, which imports nothing. `RecipeCockpitService.ts` re-exports every name and no longer passes them to the string.
+- **Unchanged:** the host half (`RecipeCockpitRecordTypeRecipe.ts`, `RecordTypeSelectionService`) and any record type behaviour.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` names these functions among those that must not be defined again in the string, checks the new `declare`d names, and checks the re-exported constants. `RecipeCockpitRecordTypeFields.test.ts` reads the toggle's button and note from its module instead of the shell.
+
 ## [3.202.4] - The Recipe Cockpit's Previously Used Data Sets tab is checked TypeScript modules (#642, slice 3d of #565)
 
 Nothing a user sees changes: every Recipe Cockpit suite, Data Sets journey and rendered baseline passes with no expectation changed.
