@@ -1,4 +1,5 @@
 import { createButton, createElement, setShownWithMotion } from '../../../CockpitKit/panel/CockpitPanelElements';
+import { setWireLookupRunning } from '../treecipe/fieldEditor/LookupWiring';
 import {
     RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE,
     RECIPE_COCKPIT_NO_TREE_TODOS_NOTE,
@@ -45,7 +46,6 @@ declare const wireLookupButtonElements: HTMLButtonElement[];
 declare const REFERENCE_ID_REQUIRED_TODO_TEXT: string;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
-declare function setWireLookupRunning(isRunning: boolean): void;
 declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
 

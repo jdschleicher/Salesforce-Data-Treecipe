@@ -1,22 +1,20 @@
 import { createButton, createElement, setShown } from '../../../CockpitKit/panel/CockpitPanelElements';
 import { RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT } from '../../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from '../../RecipeCockpitTreecipeFieldEditorConstants';
 import { buildPencilGlyph } from '../RecipeCockpitPanelBuilders';
+import { buildFieldEditorInput, describeFixedValueForm } from '../treecipe/fieldEditor/FieldEditor';
 import type { IAdapterField, IAdapterObjectName, IAdapterTreeKey, IUpdaterFieldObjectState, IUpdaterFieldRowState, IUpdaterFieldTreeState } from './AdapterTypes';
 
 /*
     The Treecipe Adapter's field editor (#417, #641). These names are the panel script's own, read
     when a function runs. The editor shares no editor code with the Treecipe tab's (openFieldEditor):
-    it calls that tab's input, form hint and expression helpers, which the Treecipe tab's slice (#643)
-    moves into a module this one then imports.
+    it imports that tab's input and form hint (#653), and calls its expression helpers, still the script's.
 */
 declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function findFixedValue(tree: IAdapterTreeKey, objectApiName: string, fieldApiName: string, nickname: string): string | null;
 declare function occurrenceNicknameOf(object: IAdapterObjectName): string;
 declare function isExpressionValue(value: unknown): boolean;
 declare function unquoteExpressionLine(valueLine: string): string;
-declare function buildFieldEditorInput(maxLength: number, value: string, ariaLabel: string, placeholder: string): HTMLInputElement;
-declare function describeFixedValueForm(field: IAdapterField): string;
-declare const FIXED_VALUE_MAX_LENGTH: number;
 declare const FIXED_VALUE_BADGE_LABEL: string;
 declare const EDITED_EXPRESSION_BADGE_LABEL: string;
 
@@ -85,7 +83,7 @@ function openUpdaterFieldEditor(treeState: IUpdaterFieldTreeState, updaterObject
 
     const editorElement = fieldState.editorElement;
     const inputsElement = createElement('div', 'fieldEditorInputs');
-    const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, updaterObjectState, fieldState), 'New value or faker expression for ' + fieldLabel, '');
+    const valueElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, updaterObjectState, fieldState), 'New value or faker expression for ' + fieldLabel, '');
 
     editorElement.setAttribute('aria-label', 'New value for ' + fieldLabel);
     inputsElement.appendChild(valueElement);
