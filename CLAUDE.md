@@ -175,6 +175,7 @@ src/
     │   │   ├── adapter/                      # The Treecipe Adapter tab: steps, field editor, load and update, retrieve, add child (#641)
     │   │   ├── datasets/                     # Previously Used Data Sets: the tab, a row and its insert journey (#642)
     │   │   ├── query/                        # The Query tab (#640)
+    │   │   ├── treecipe/fieldEditor/         # The Treecipe tab's field editor, picklist tiles and lookup wiring (#653)
     │   │   ├── treecipe/recordTypes/         # The Treecipe tab's Record types section, "Record type fields only" and "TODOs only" (#652)
     │   │   └── troubleshooting/              # The Troubleshooting tab, its TODO's, Validation Rules and History sub-tabs (#639)
     │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, inlined by the shell; never edited, npm run bundle-panel rewrites it
@@ -184,6 +185,7 @@ src/
     │   ├── RecipeCockpitQueryTabConstants.ts # The Query tab's intro (#640); imports nothing, re-exported by the service
     │   ├── RecipeCockpitRecordTypesConstants.ts # The Record types section's and the Treecipe tab toggles' words (#652); imports nothing, re-exported by the service
     │   ├── RecipeCockpitTroubleshootingConstants.ts # The Troubleshooting tab's labels, notes and kinds (#639); types only from files that import nothing, re-exported by the service
+    │   ├── RecipeCockpitTreecipeFieldEditorConstants.ts # The field editor, picklist tiles and lookup wiring's words (#653); imports nothing, re-exported by the service
     │   ├── RecipeCockpitOrgAuthorize.ts      # "Authorize org" (#630): its prompts, confirmation and the one notification a login ends in; no vscode
     │   ├── RecipeCockpitPermissionSetAssign.ts # "Assign permission sets to me…" (#274): discover, plan and insert assignments; no vscode
     │   ├── RecipeCockpitPermissionSetGenerate.ts # "Generate permission set…" (#306): one tree's create/read permission set; no vscode
