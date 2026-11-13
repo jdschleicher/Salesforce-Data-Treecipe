@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
@@ -337,9 +338,10 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             expect(chipRule).toContain('color: var(--sdt-chip-text);');
             expect(chipRule).toContain('background-color: var(--sdt-chip-bg);');
             expect(chipRule).toContain('border: 1px dashed var(--sdt-chip-text);');
-            // THE CHECK IS A treeFieldInclude BOX (#343), AND THE NOTE IS muted: BOTH ALREADY IN THE CONTRAST TEST'S PAIRS
-            expect(shellHtml).toContain("createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle')");
-            expect(shellHtml).toContain("createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE)");
+            // THE CHECK IS A treeFieldInclude BOX (#343), AND THE NOTE IS muted: BOTH ALREADY IN THE CONTRAST TEST'S PAIRS; THE PANEL MODULE DRAWS THEM (#652)
+            const toggleModuleSource = fs.readFileSync(path.join(__dirname, '../panel/treecipe/recordTypes/RecordTypeFieldsToggle.ts'), 'utf8');
+            expect(toggleModuleSource).toContain("createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle')");
+            expect(toggleModuleSource).toContain("createElement('span', 'treeRecordTypeFieldsNote muted', RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)");
 
         });
 

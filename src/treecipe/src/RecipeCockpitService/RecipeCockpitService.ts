@@ -76,6 +76,22 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
 } from './RecipeCockpitDatasetsTabConstants';
 import type { RecipeCockpitDatasetInsertStatus } from './RecipeCockpitDatasetsTabConstants';
+import {
+    RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL,
+    RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE,
+    RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE,
+    RECIPE_COCKPIT_NO_TODOS_NOTE,
+    RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL,
+    RECIPE_COCKPIT_RECORD_TYPES_INTRO,
+    RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE,
+    RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY,
+    RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL,
+    RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL,
+    RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE,
+    RECIPE_COCKPIT_TODOS_ONLY_LABEL,
+    RECIPE_COCKPIT_TODO_IN_VALUE_LABEL
+} from './RecipeCockpitRecordTypesConstants';
+import type { RecipeCockpitRecordTypeImpactKind } from './RecipeCockpitRecordTypesConstants';
 import { RECIPE_COCKPIT_QUERY_INTRO } from './RecipeCockpitQueryTabConstants';
 import {
     RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
@@ -331,6 +347,24 @@ export {
 // THE PANEL'S CREATE-PARENT REFUSAL UNION IS SPELLED OUT (#653); A WRITER CODE ADDED OR RENAMED WITHOUT IT FAILS HERE
 type CreateParentRefusalReasonsMatch<Expected extends CreateParentRefusalReason & RecipeCockpitCreateParentRefusalReason> = Expected;
 export type RecipeCockpitCreateParentRefusalReasonMatchesWriter = CreateParentRefusalReasonsMatch<CreateParentRefusalReason | RecipeCockpitCreateParentRefusalReason>;
+
+// THE RECORD TYPES SECTION'S AND THE TREECIPE TAB TOGGLES' WORDS LIVE IN A FILE THEIR PANEL MODULES IMPORT (#652); THE HOST'S NAMES STAY
+export {
+    RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL,
+    RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE,
+    RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE,
+    RECIPE_COCKPIT_NO_TODOS_NOTE,
+    RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL,
+    RECIPE_COCKPIT_RECORD_TYPES_INTRO,
+    RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE,
+    RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY,
+    RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL,
+    RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL,
+    RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE,
+    RECIPE_COCKPIT_TODOS_ONLY_LABEL,
+    RECIPE_COCKPIT_TODO_IN_VALUE_LABEL
+};
+export type { RecipeCockpitRecordTypeImpactKind };
 
 // THE QUERY TAB'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULE IMPORTS (#640); THE HOST'S NAME STAYS
 export { RECIPE_COCKPIT_QUERY_INTRO };
@@ -668,9 +702,6 @@ export const RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = 'All fields';
 export const RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = 'Standard fields';
 export const RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX = '__c';
 export const RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = 'standard';
-// THE OBJECT'S OWN "TODOs only" FILTER (#477), BESIDE ITS "All fields" BOX
-export const RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL = 'TODOs only';
-export const RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE = 'This object has no TODO comment in the recipe.';
 // THE OBJECT'S OWN "Hide unselected" FILTER (#483), BESIDE ITS "All fields" BOX
 export const RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = 'Hide unselected';
 export const RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = 'Every field of this object is ticked, so there is nothing to hide.';
@@ -749,17 +780,9 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applie
 export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = COCKPIT_MOTION_REVEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = COCKPIT_MOTION_CONCEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
-// THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
-export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Click to show record type impacted fields only';
 export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
 export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: the ticked values are what the field already generates.';
 export const RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL = 'Nothing to reset: the field has no edit, so it already generates what Generate Treecipe wrote.';
-export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
-// THE TREECIPE TAB'S "TODOs only" CHECK (#354), AND WHY IT IS DISABLED ON A CARD WHOSE RECIPE HAS NO TODO COMMENT
-export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'Click to show fields with open TODOs';
-// WHAT A FIELD'S TODO ROW SAYS WHEN THE TODO IS IN THE VALUE THE ROW ALREADY DRAWS (#354)
-export const RECIPE_COCKPIT_TODO_IN_VALUE_LABEL = 'TODO in the value above';
-export const RECIPE_COCKPIT_NO_TODOS_NOTE = 'No object of this tree has a TODO comment in the recipe.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
@@ -802,13 +825,8 @@ export const RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL = 'Remove TODO';
 export const RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL = 'Restore TODO';
 export const RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX = 'The TODO was not removed';
 export const RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX = 'The TODO was not put back';
-export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selection';
 export const RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE = 'Record types, one block each';
-export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the ticked record types in treecipe/treecipe.config.json when the data is generated, so Generate Treecipe reuses them. With every object at its default record type, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
-export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
-// THE BUTTON IN THE TREECIPE TAB'S FILTER TILE THAT OPENS THE RECORD TYPES SECTION (#490)
-export const RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL = 'Manage record types';
 export const RECIPE_COCKPIT_TREECIPE_FILTER_TILE_LABEL = 'Treecipe filters and record types';
 // THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
 export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Manager';
@@ -835,10 +853,6 @@ export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
 // THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
 export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING;
-// WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
-export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
-// WHAT THE SECTION SAYS ABOVE ITS ROWS: THE TICKS ARE USED BY THE NEXT GENERATE, AND NO RUN IS WRITTEN (#623)
-export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Tick the record types "Generate fake data and insert" generates for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. The run on screen is not rewritten.';
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
@@ -1179,7 +1193,6 @@ export interface IRecipeCockpitObjectViewModel {
     todos?: IRecipeCockpitTodoViewModel[];
 }
 
-export type RecipeCockpitRecordTypeImpactKind = 'picklist' | 'multiselect' | 'dependent';
 
 // A FIELD A RECORD TYPE RESTRICTS: COUNTS ONLY, SO THE MODEL DOES NOT GROW BY EVERY RECORD TYPE'S VALUES
 export interface IRecipeCockpitRecordTypeImpactViewModel {
@@ -22895,7 +22908,11 @@ ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
         requestDatasetJourney, applyDatasetsFilter, renderDatasetAdded, renderDatasetPreferences, renderDatasetLastInsert,
         toggleFieldEditor, closeFieldEditor, renderFieldEditResult, buildTreeFieldState, requestPicklistValues, renderPicklistValues, drawPicklistValueEditor,
         appendAddFriendControls, setAddFriendRunning, findLookupWiring, buildWireLookupElement, findEmptyLookup, buildLookupDecisionElement,
-        drawFieldRowLookupDecision, buildWireAllLookupsElement, setWireLookupRunning
+        drawFieldRowLookupDecision, buildWireAllLookupsElement, setWireLookupRunning,
+        isRecordTypeFieldsOnlyIn, appendRecordTypeFieldsToggle, drawRecordTypeFieldsToggle, indexRecordTypeFields,
+        isTodosOnlyIn, appendTodosToggle, drawTodosToggle, buildTodoListElement, isObjectTodosOnlyIn, buildObjectTodosToggle, drawObjectTodosToggle,
+        listRecordTypeObjects, buildRecordTypesSection, appendUnavailableRecordTypesButton, setRecordTypesExpanded, applyRecordTypesFilter,
+        buildRecordTypeSelection, drawRecordTypeChoices
     } = recipeCockpitPanelModules;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
@@ -22948,8 +22965,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB};
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
     const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
-    const RECORD_TYPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE)};
-    const MANAGE_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL)};
     const TREECIPE_FILTER_TILE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREECIPE_FILTER_TILE_LABEL)};
     const ORG_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_ORG_SECTION_TITLE)};
     const TREECIPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SECTION_TITLE)};
@@ -22969,21 +22984,12 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const TREE_PICKER_OBJECTS_SHOW_LESS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
-    const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
-    const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
-    const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
-    const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const TREE_NAME_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
-    const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
     const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
     const PICKLIST_RESET_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_RESET_LABEL)};
-    const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
-    const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
-    const TODO_IN_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_VALUE_LABEL)};
-    const NO_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TODOS_NOTE)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
     const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
@@ -23023,8 +23029,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const STANDARD_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_LABEL)};
     const CUSTOM_FIELD_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX)};
     const STANDARD_FIELDS_SCOPE = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE)};
-    const OBJECT_TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL)};
-    const NO_OBJECT_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE)};
     const HIDE_UNSELECTED_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL)};
     const NO_UNSELECTED_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
@@ -24764,53 +24768,8 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         return searchTextOf(fieldState.field).indexOf(searchQuery) !== -1 || fieldState.typeSearchText.indexOf(searchQuery) !== -1;
     }
 
-    /*
-        The fields each object's record types restrict (#320): object api name -> field api name ->
-        the developer names restricting it, in the order the Record types section lists them. Drawn
-        from objects[].recordTypes[].impacts the model already carries, so the host sends nothing new.
-        Keyed by names from files, so no prototype; an impact naming a field the object does not
-        list, one that is not an object, and anything named __proto__ add nothing.
-    */
+    // THE FIELDS EACH OBJECT'S RECORD TYPES RESTRICT (#320), INDEXED BY indexRecordTypeFields FOR EVERY MODEL
     let recordTypeFieldsByObjectApiName = Object.create(null);
-
-    function isRecordLike(candidate) {
-        return !!candidate && typeof candidate === 'object' && !Array.isArray(candidate);
-    }
-
-    function indexRecordTypeFields(objects) {
-
-        const recordTypeFieldsIndex = Object.create(null);
-
-        objects.forEach(function (object) {
-
-            if (!isRecordLike(object) || typeof object.objectApiName !== 'string' || object.objectApiName === '__proto__') { return; }
-            if (!Array.isArray(object.recordTypes) || object.recordTypes.length < 2) { return; }
-
-            const listedFieldApiNames = Object.create(null);
-            (Array.isArray(object.fields) ? object.fields : []).forEach(function (field) {
-                if (isRecordLike(field) && typeof field.fieldApiName === 'string') { listedFieldApiNames[field.fieldApiName] = true; }
-            });
-
-            const developerNamesByFieldApiName = Object.create(null);
-
-            object.recordTypes.forEach(function (recordType) {
-                if (!isRecordLike(recordType) || typeof recordType.developerName !== 'string' || !Array.isArray(recordType.impacts)) { return; }
-                recordType.impacts.forEach(function (impact) {
-                    if (!isRecordLike(impact)) { return; }
-                    const fieldApiName = impact.fieldApiName;
-                    if (typeof fieldApiName !== 'string' || fieldApiName === '__proto__' || listedFieldApiNames[fieldApiName] !== true) { return; }
-                    const developerNames = developerNamesByFieldApiName[fieldApiName] || (developerNamesByFieldApiName[fieldApiName] = []);
-                    if (developerNames.indexOf(recordType.developerName) === -1) { developerNames.push(recordType.developerName); }
-                });
-            });
-
-            recordTypeFieldsIndex[object.objectApiName] = developerNamesByFieldApiName;
-
-        });
-
-        return recordTypeFieldsIndex;
-
-    }
 
     // ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
     let pendingPicklistValueElements = Object.create(null);
@@ -25574,67 +25533,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         toggleElement.setAttribute('aria-label', labelText + ' of ' + objectApiName + ': ' + title);
 
         return checkedState;
-
-    }
-
-    /*
-        The object's own "TODOs only" (#477): narrows THIS object's rows to the fields whose recipe lines
-        carry a TODO, with the search and the card-wide check (#354). Panel-only: it posts nothing.
-    */
-    function isObjectTodosOnlyIn(treeObjectState) {
-        return treeObjectState.isTodosOnly === true && treeObjectState.todoCount > 0;
-    }
-
-    function buildObjectTodosToggle(treeObjectState) {
-
-        const objectApiName = treeObjectState.object.objectApiName;
-        const checkElement = createElement('span', 'treeFieldSelectAllCheck treeObjectTodosCheck');
-        const toggleElement = createButton('check', 'treeObjectTodosToggle');
-        const labelText = treeObjectState.todoCount > 0 ? OBJECT_TODOS_ONLY_LABEL + ' (' + treeObjectState.todoCount + ')' : OBJECT_TODOS_ONLY_LABEL;
-        const labelElement = createElement('span', 'treeObjectTodosLabel', labelText);
-        toggleElement.setAttribute('role', 'checkbox');
-        toggleElement.setAttribute('aria-label', OBJECT_TODOS_ONLY_LABEL + ' (' + objectApiName + ')');
-
-        if (treeObjectState.todoCount > 0) {
-            const title = 'Show only the fields of ' + objectApiName + ' with a TODO comment in the recipe (' + pluralize(treeObjectState.todoCount, 'TODO', 'TODOs') + ')';
-            const toggleTodosOnly = function () {
-                if (toggleElement.disabled) { return; }
-                treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
-                if (treeObjectState.treeState.structureSearch) {
-                    filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
-                    drawStructureMatchCount(treeObjectState.treeState);
-                }
-                drawObjectTodosToggle(treeObjectState);
-                savePanelPlace();
-            };
-            toggleElement.setAttribute('title', title);
-            labelElement.setAttribute('title', title);
-            toggleElement.addEventListener('click', toggleTodosOnly);
-            labelElement.addEventListener('click', toggleTodosOnly);
-        } else {
-            toggleElement.disabled = true;
-            toggleElement.setAttribute('title', NO_OBJECT_TODOS_NOTE);
-            labelElement.setAttribute('title', NO_OBJECT_TODOS_NOTE);
-            checkElement.classList.add('disabled');
-        }
-
-        treeObjectState.todosToggleElement = toggleElement;
-        checkElement.appendChild(toggleElement);
-        checkElement.appendChild(labelElement);
-        drawObjectTodosToggle(treeObjectState);
-
-        return checkElement;
-
-    }
-
-    function drawObjectTodosToggle(treeObjectState) {
-
-        const toggleElement = treeObjectState.todosToggleElement;
-        if (!toggleElement) { return; }
-
-        const isChecked = isObjectTodosOnlyIn(treeObjectState);
-        toggleElement.textContent = isChecked ? '✓' : '';
-        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
 
     }
 
@@ -26537,495 +26435,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
         if (!version) { return 'version unknown'; }
 
         return version.isCurrent ? 'current version' : 'version of ' + version.generatedAtLabel;
-
-    }
-
-    /*
-        "Record type fields only" (#320): the Treecipe tab's own check, per card and panel-only, kept
-        in the reader's place. A card whose objects have no record types to choose from draws it
-        disabled with a note saying why, so turning it on can never empty the tab silently.
-    */
-    // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, SO THE ANSWER IS KEPT ON THE CARD
-    function hasRecordTypeObjects(treeState) {
-        if (typeof treeState.hasRecordTypeObjects !== 'boolean') {
-            treeState.hasRecordTypeObjects = treeState.objectStates.some(function (treeObjectState) { return treeObjectState.hasRecordTypes; });
-        }
-        return treeState.hasRecordTypeObjects;
-    }
-
-    function isRecordTypeFieldsOnlyIn(treeState) {
-        return treeState.isRecordTypeFieldsOnly === true && hasRecordTypeObjects(treeState);
-    }
-
-    function appendRecordTypeFieldsToggle(treeState, tileElement) {
-
-        const rowElement = createElement('div', 'treecipeFilterRow');
-        tileElement.appendChild(rowElement);
-        // THE SAME BOX EVERY OTHER CHECKBOX DRAWS (#343), WITH ITS LABEL BESIDE IT AS "Remember this selection" HAS
-        const checkElement = createElement('span', 'treeRecordTypeFieldsCheck');
-        const toggleElement = createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle');
-        const labelElement = createElement('span', 'treeRecordTypeFieldsLabel', RECORD_TYPE_FIELDS_ONLY_LABEL);
-        toggleElement.setAttribute('role', 'checkbox');
-        toggleElement.setAttribute('aria-label', RECORD_TYPE_FIELDS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-
-        if (hasRecordTypeObjects(treeState)) {
-            const title = 'Show only the picklist fields a record type restricts';
-            const toggleRecordTypeFieldsOnly = function () {
-                if (toggleElement.disabled) { return; }
-                treeState.isRecordTypeFieldsOnly = !treeState.isRecordTypeFieldsOnly;
-                applyStructureFilter(treeState);
-                savePanelPlace();
-            };
-            toggleElement.setAttribute('title', title);
-            labelElement.setAttribute('title', title);
-            toggleElement.addEventListener('click', toggleRecordTypeFieldsOnly);
-            labelElement.addEventListener('click', toggleRecordTypeFieldsOnly);
-        } else {
-            toggleElement.disabled = true;
-            toggleElement.setAttribute('title', NO_RECORD_TYPE_FIELDS_NOTE);
-            checkElement.classList.add('disabled');
-        }
-
-        treeState.recordTypeFieldsToggleElement = toggleElement;
-        checkElement.appendChild(toggleElement);
-        checkElement.appendChild(labelElement);
-        rowElement.appendChild(checkElement);
-
-        if (!hasRecordTypeObjects(treeState)) {
-            rowElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
-        }
-
-        drawRecordTypeFieldsToggle(treeState);
-
-    }
-
-    /*
-        "TODOs only" (#354): the Treecipe tab's own check, per card and panel-only, kept in the
-        reader's place. It narrows the rows to the fields whose recipe lines carry a TODO comment,
-        with the search, and never hides an object. A card with no TODO draws it disabled.
-    */
-    function todoCountOf(treeState) {
-        if (typeof treeState.todoCount !== 'number') {
-            treeState.todoCount = treeState.objectStates.reduce(function (todoCount, treeObjectState) { return todoCount + treeObjectState.todoCount; }, 0);
-        }
-        return treeState.todoCount;
-    }
-
-    function isTodosOnlyIn(treeState) {
-        return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
-    }
-
-    function appendTodosToggle(treeState, tileElement) {
-
-        const rowElement = createElement('div', 'treecipeFilterRow');
-        tileElement.appendChild(rowElement);
-        const todoCount = todoCountOf(treeState);
-        const checkElement = createElement('span', 'treeTodosCheck');
-        const toggleElement = createButton('check', 'treeFieldInclude treeTodosToggle');
-        const labelElement = createElement('span', 'treeTodosLabel', todoCount > 0 ? TODOS_ONLY_LABEL + ' (' + todoCount + ')' : TODOS_ONLY_LABEL);
-        toggleElement.setAttribute('role', 'checkbox');
-        toggleElement.setAttribute('aria-label', TODOS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-
-        if (todoCount > 0) {
-            const title = 'Show only the fields and objects with a TODO comment in the recipe (' + pluralize(todoCount, 'TODO', 'TODOs') + ')';
-            const toggleTodosOnly = function () {
-                if (toggleElement.disabled) { return; }
-                treeState.isTodosOnly = !treeState.isTodosOnly;
-                applyStructureFilter(treeState);
-                savePanelPlace();
-            };
-            toggleElement.setAttribute('title', title);
-            labelElement.setAttribute('title', title);
-            toggleElement.addEventListener('click', toggleTodosOnly);
-            labelElement.addEventListener('click', toggleTodosOnly);
-        } else {
-            toggleElement.disabled = true;
-            toggleElement.setAttribute('title', NO_TODOS_NOTE);
-            checkElement.classList.add('disabled');
-        }
-
-        treeState.todosToggleElement = toggleElement;
-        checkElement.appendChild(toggleElement);
-        checkElement.appendChild(labelElement);
-        rowElement.appendChild(checkElement);
-
-        if (todoCount === 0) {
-            rowElement.appendChild(createElement('span', 'treeTodosNote muted', NO_TODOS_NOTE));
-        }
-
-        drawTodosToggle(treeState);
-
-    }
-
-    function drawTodosToggle(treeState) {
-
-        const toggleElement = treeState.todosToggleElement;
-        if (!toggleElement) { return; }
-
-        const isChecked = isTodosOnlyIn(treeState);
-        toggleElement.textContent = isChecked ? '✓' : '';
-        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
-
-    }
-
-    // A FIELD'S OR AN OBJECT'S TODO COMMENTS (#354): THE TEXT, AS TEXT, AND A LINK TO ITS LINE
-    function buildTodoListElement(recipeFilePath, todos) {
-
-        const listElement = createElement('div', 'treeTodos');
-
-        todos.forEach(function (todo) {
-            const todoElement = createElement('div', 'treeTodo');
-            // A TODO WITH NO TEXT IS ONE THE FIELD'S DRAWN VALUE ALREADY SHOWS: THE ROW POINTS AT IT RATHER THAN POSTING IT TWICE
-            todoElement.appendChild(typeof todo.text === 'string'
-                ? createElement('span', 'treeTodoText', todo.text)
-                : createElement('span', 'treeTodoText muted', TODO_IN_VALUE_LABEL + ' (line ' + todo.lineNumber + ')'));
-            if (recipeFilePath && todo.lineNumber) {
-                todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', recipeFilePath, todo.lineNumber));
-            }
-            listElement.appendChild(todoElement);
-        });
-
-        return listElement;
-
-    }
-
-    function drawRecordTypeFieldsToggle(treeState) {
-
-        const toggleElement = treeState.recordTypeFieldsToggleElement;
-        if (!toggleElement) { return; }
-
-        const isChecked = isRecordTypeFieldsOnlyIn(treeState);
-        toggleElement.textContent = isChecked ? '✓' : '';
-        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
-
-    }
-
-    // EVERY OBJECT THE CARD DRAWS THAT HAS RECORD TYPES TO CHOOSE FROM, ONCE, IN THE CARD'S ORDER
-    // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, AND THE SEARCH AND EVERY TICK ASK FOR THIS LIST (#321), SO IT IS BUILT ONCE PER CARD
-    function listRecordTypeObjects(treeState) {
-
-        if (treeState.listedRecordTypeObjects) { return treeState.listedRecordTypeObjects; }
-
-        const listedObjectApiNames = Object.create(null);
-
-        treeState.listedRecordTypeObjects = treeState.objectStates
-            .filter(function (treeObjectState) { return !treeObjectState.isIteration && Array.isArray(treeObjectState.object.recordTypes); })
-            .map(function (treeObjectState) { return treeObjectState.object; })
-            .filter(function (object) {
-                if (listedObjectApiNames[object.objectApiName] === true) { return false; }
-                listedObjectApiNames[object.objectApiName] = true;
-                return true;
-            });
-
-        return treeState.listedRecordTypeObjects;
-
-    }
-
-    function describeRecordTypeImpacts(recordType) {
-
-        if (recordType.impacts.length === 0) { return 'Restricts no picklist values'; }
-
-        const kindLabels = { picklist: 'Picklist', multiselect: 'Multi-select', dependent: 'Dependent picklist' };
-        return recordType.impacts.map(function (impact) {
-            return kindLabels[impact.kind] + ' ' + impact.fieldApiName + ': ' + pluralize(impact.valueCount, 'value', 'values');
-        }).join(' · ');
-
-    }
-
-    /*
-        The Record types section of the Treecipe tab (#321, the #195 tab before it), opened by the
-        "Manage record types" button in the filter tile under the search (#490, replacing the header
-        line and its ▸). The button carries aria-expanded and names the body it opens and the summary
-        beside it, which says how many objects the section lists and whether the choice still matches
-        the run. The body sits under the tile, collapsed until the reader opens it, and its rows are
-        built on first expand.
-    */
-    // EACH SECTION'S BUTTON NAMES ITS BODY AND ITS SUMMARY BY ID, SO A SCREEN READER ANNOUNCES "changed" ON THE BUTTON (#321)
-    let recordTypesSectionCount = 0;
-
-    function buildRecordTypesSection(treeState, tileElement) {
-
-        const rowElement = createElement('div', 'treecipeFilterRow recordTypesManageRow');
-        const toggleElement = createButton('secondary', 'recordTypesSectionToggle recordTypesManageButton', MANAGE_RECORD_TYPES_LABEL);
-        const bodyElement = createElement('div', 'recordTypesSectionBody hidden');
-        const summaryElement = createElement('span', 'recordTypesSectionSummary muted');
-
-        recordTypesSectionCount++;
-        bodyElement.setAttribute('id', 'recordTypesSectionBody' + recordTypesSectionCount);
-        bodyElement.setAttribute('role', 'region');
-        bodyElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
-        summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        toggleElement.setAttribute('aria-label', MANAGE_RECORD_TYPES_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-        toggleElement.setAttribute('aria-controls', 'recordTypesSectionBody' + recordTypesSectionCount);
-        toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        toggleElement.setAttribute('aria-expanded', 'false');
-        toggleElement.addEventListener('click', function () {
-            setRecordTypesExpanded(treeState, !treeState.isRecordTypesExpanded, true);
-            savePanelPlace();
-        });
-
-        rowElement.appendChild(toggleElement);
-        rowElement.appendChild(summaryElement);
-        tileElement.appendChild(rowElement);
-
-        treeState.recordTypesSection = { toggleElement: toggleElement, bodyElement: bodyElement, summaryElement: summaryElement, isBuilt: false };
-        drawRecordTypesSummary(treeState);
-
-        return bodyElement;
-
-    }
-
-    /*
-        A card with no object offering two or more record types still draws the button (#338, #490),
-        disabled, so the reader learns the section exists and why this tree has nothing in it. There is
-        no body and no listener, and treeState.recordTypesSection stays unset, so a click, a search, a
-        restored place and a focus all stop at the guards every other path already has.
-    */
-    function appendUnavailableRecordTypesButton(treeState, tileElement) {
-
-        const rowElement = createElement('div', 'treecipeFilterRow recordTypesManageRow disabled');
-        const toggleElement = createButton('secondary', 'recordTypesSectionToggle recordTypesManageButton', MANAGE_RECORD_TYPES_LABEL);
-        const summaryElement = createElement('span', 'recordTypesSectionSummary muted', RECORD_TYPES_UNAVAILABLE_SUMMARY);
-
-        recordTypesSectionCount++;
-        summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        toggleElement.disabled = true;
-        toggleElement.setAttribute('aria-label', MANAGE_RECORD_TYPES_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-        toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
-        toggleElement.setAttribute('title', RECORD_TYPES_UNAVAILABLE_SUMMARY);
-
-        rowElement.appendChild(toggleElement);
-        rowElement.appendChild(summaryElement);
-        tileElement.appendChild(rowElement);
-
-    }
-
-    function setRecordTypesExpanded(treeState, isExpanded, isAnimated) {
-
-        const section = treeState.recordTypesSection;
-        if (!section) { return; }
-
-        if (isExpanded && !section.isBuilt) {
-            section.isBuilt = true;
-            buildRecordTypesRows(treeState, section.bodyElement);
-        }
-
-        setShownWithMotion(section.bodyElement, isExpanded, isAnimated);
-        section.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-        treeState.isRecordTypesExpanded = isExpanded;
-
-    }
-
-    // WHAT THE TREECIPE SEARCH MATCHES IN A ROW: THE OBJECT, ITS RECORD TYPES AND THE FIELDS THEY RESTRICT; BUILT ONCE PER OBJECT, NOT PER KEYSTROKE
-    const recordTypeSearchTextByObject = new WeakMap();
-
-    function recordTypeObjectSearchText(object) {
-
-        const knownSearchText = recordTypeSearchTextByObject.get(object);
-        if (knownSearchText !== undefined) { return knownSearchText; }
-
-        const searchTextParts = [object.objectApiName];
-        object.recordTypes.forEach(function (recordType) {
-            searchTextParts.push(recordType.developerName);
-            recordType.impacts.forEach(function (impact) { searchTextParts.push(impact.fieldApiName); });
-        });
-        const searchText = searchTextParts.join('\\n').toLowerCase();
-        recordTypeSearchTextByObject.set(object, searchText);
-        return searchText;
-
-    }
-
-    function drawRecordTypesSummary(treeState) {
-
-        const section = treeState.recordTypesSection;
-        if (!section) { return; }
-
-        const objects = listRecordTypeObjects(treeState);
-        const searchQuery = treeState.searchQueries.treecipe;
-        const matchingCount = objects.filter(function (object) { return !searchQuery || recordTypeObjectSearchText(object).indexOf(searchQuery) !== -1; }).length;
-        const isChanged = objects.some(function (object) { return !isSameChoice(recordTypeChoices[object.objectApiName] || [], object.generatedRecordTypeDeveloperNames || []); });
-        const isApplied = objects.some(function (object) { return object.isRecordTypeSelectionApplied === true; });
-        const countText = !searchQuery
-            ? pluralize(objects.length, 'object', 'objects')
-            : matchingCount > 0 ? matchingCount + ' of ' + pluralize(objects.length, 'object', 'objects') : 'no matching objects';
-
-        section.summaryElement.textContent = countText + ' · ' + (isChanged ? 'changed' : isApplied ? 'generated from a choice' : 'generated by default');
-
-    }
-
-    /*
-        The section's rows: every object of the card with two or more record types, each record
-        type a checkbox with what it restricts, and "Remember this selection". The choice they draw
-        is panel-wide, so a tick here is drawn on every card listing the object.
-    */
-    function buildRecordTypesRows(treeState, panelElement) {
-
-        panelElement.appendChild(createElement('div', 'recordTypesIntro muted', RECORD_TYPES_INTRO));
-
-        treeState.recordTypeObjectStates = listRecordTypeObjects(treeState).map(function (object) {
-
-            const objectElement = createElement('div', 'recordTypeObject');
-            const headingElement = createElement('div', 'recordTypeObjectHeading');
-            const statusElement = createElement('span', 'recordTypeObjectStatus muted');
-
-            headingElement.appendChild(createElement('span', 'recordTypeObjectName', object.objectApiName));
-            headingElement.appendChild(statusElement);
-            objectElement.appendChild(headingElement);
-
-            object.recordTypes.forEach(function (recordType) {
-
-                const rowElement = createElement('div', 'recordTypeRow');
-                const checkboxElement = createButton('check', 'treeFieldInclude recordTypeInclude');
-                const labelElement = createElement('span', 'recordTypeName', recordType.developerName);
-
-                checkboxElement.setAttribute('role', 'checkbox');
-                checkboxElement.setAttribute('aria-label', recordType.developerName + ' (' + object.objectApiName + ')');
-                checkboxElement.addEventListener('click', function () {
-                    if (checkboxElement.disabled) { return; }
-                    toggleRecordTypeChoice(object.objectApiName, recordType.developerName);
-                });
-
-                rowElement.appendChild(checkboxElement);
-                rowElement.appendChild(labelElement);
-                if (!recordType.isActive) { rowElement.appendChild(createElement('span', 'recordTypeInactive muted', 'inactive')); }
-                rowElement.appendChild(createElement('div', 'recordTypeImpact muted', describeRecordTypeImpacts(recordType)));
-                objectElement.appendChild(rowElement);
-
-                recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement: checkboxElement });
-
-            });
-
-            panelElement.appendChild(objectElement);
-
-            return { object: object, element: objectElement, statusElement: statusElement, searchText: recordTypeObjectSearchText(object) };
-
-        });
-
-        const rememberRowElement = createElement('div', 'recordTypesRememberRow');
-        const rememberElement = createButton('check', 'treeFieldInclude recordTypesRemember');
-        const rememberLabelElement = createElement('span', 'recordTypesRememberLabel', REMEMBER_RECORD_TYPES_LABEL);
-
-        rememberElement.setAttribute('role', 'checkbox');
-        rememberElement.setAttribute('aria-label', REMEMBER_RECORD_TYPES_LABEL);
-        rememberElement.setAttribute('title', REMEMBER_RECORD_TYPES_TITLE);
-        rememberLabelElement.setAttribute('title', REMEMBER_RECORD_TYPES_TITLE);
-        rememberElement.addEventListener('click', function () {
-            if (rememberElement.disabled) { return; }
-            toggleRecordTypeSelectionRemembered();
-        });
-        rememberLabelElement.addEventListener('click', function () {
-            if (rememberElement.disabled) { return; }
-            toggleRecordTypeSelectionRemembered();
-        });
-
-        rememberRowElement.appendChild(rememberElement);
-        rememberRowElement.appendChild(rememberLabelElement);
-        panelElement.appendChild(rememberRowElement);
-        recordTypeRememberElements.push(rememberElement);
-
-        drawRecordTypeChoices();
-        applyRecordTypesFilter(treeState);
-
-    }
-
-    // THE TREECIPE TAB'S ONE SEARCH ALSO NARROWS THE SECTION'S ROWS; THE COUNT IS IN ITS HEADER
-    function applyRecordTypesFilter(treeState) {
-
-        const searchQuery = treeState.searchQueries.treecipe;
-
-        (treeState.recordTypeObjectStates || []).forEach(function (objectState) {
-            setShown(objectState.element, !searchQuery || objectState.searchText.indexOf(searchQuery) !== -1);
-        });
-        drawRecordTypesSummary(treeState);
-
-    }
-
-    // A CHOICE KEEPS AT LEAST ONE RECORD TYPE: "NONE" IS NOT A RECORD TYPE
-    function toggleRecordTypeChoice(objectApiName, developerName) {
-
-        const choice = recordTypeChoices[objectApiName] || [];
-        const choiceIndex = choice.indexOf(developerName);
-
-        if (choiceIndex === -1) {
-            choice.push(developerName);
-        } else if (choice.length > 1) {
-            choice.splice(choiceIndex, 1);
-        }
-
-        recordTypeChoices[objectApiName] = choice;
-        drawRecordTypeChoices();
-
-    }
-
-    function toggleRecordTypeSelectionRemembered() {
-
-        isRecordTypeSelectionRemembered = !isRecordTypeSelectionRemembered;
-        drawRecordTypeChoices();
-
-    }
-
-    function isSameChoice(firstNames, secondNames) {
-
-        return firstNames.length === secondNames.length && firstNames.every(function (name, nameIndex) { return name === secondNames[nameIndex]; });
-
-    }
-
-    /*
-        What "Generate fake data and insert" sends (#623), names only: every object the reader
-        changed, and every object the run on screen was already generated from a choice for. An
-        object left at its default is left out, so a card left as generated posts and inserts
-        exactly as it did before.
-    */
-    function buildRecordTypeSelection() {
-
-        const recordTypeSelection = Object.create(null);
-
-        recordTypeObjects.forEach(function (object) {
-            const choice = recordTypeChoices[object.objectApiName] || [];
-            const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
-            if (choice.length > 0 && (isChanged || object.isRecordTypeSelectionApplied === true)) {
-                recordTypeSelection[object.objectApiName] = choice.slice();
-            }
-        });
-
-        return recordTypeSelection;
-
-    }
-
-    function drawRecordTypeChoices() {
-
-        recordTypeRowStates.forEach(function (rowState) {
-            const choice = recordTypeChoices[rowState.objectApiName] || [];
-            const isTicked = choice.indexOf(rowState.developerName) !== -1;
-            const isLastTicked = isTicked && choice.length === 1;
-            rowState.checkboxElement.textContent = isTicked ? '✓' : '';
-            rowState.checkboxElement.setAttribute('aria-checked', isTicked ? 'true' : 'false');
-            rowState.checkboxElement.disabled = insertRunningTreeKey !== null || isLastTicked;
-            if (isLastTicked) {
-                rowState.checkboxElement.setAttribute('title', 'Each object keeps at least one record type');
-            } else {
-                rowState.checkboxElement.removeAttribute('title');
-            }
-        });
-
-        treeStates.forEach(function (treeState) {
-            (treeState.recordTypeObjectStates || []).forEach(function (objectState) {
-                const object = objectState.object;
-                const choice = recordTypeChoices[object.objectApiName] || [];
-                const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
-                objectState.statusElement.textContent = isChanged
-                    ? 'changed: the next generate writes ' + choice.join(', ')
-                    : (object.isRecordTypeSelectionApplied === true ? 'generated: ' : 'generated by default: ') + choice.join(', ');
-            });
-        });
-
-        treeStates.forEach(drawRecordTypesSummary);
-
-        recordTypeRememberElements.forEach(function (rememberElement) {
-            rememberElement.textContent = isRecordTypeSelectionRemembered ? '✓' : '';
-            rememberElement.setAttribute('aria-checked', isRecordTypeSelectionRemembered ? 'true' : 'false');
-            rememberElement.disabled = insertRunningTreeKey !== null;
-        });
 
     }
 

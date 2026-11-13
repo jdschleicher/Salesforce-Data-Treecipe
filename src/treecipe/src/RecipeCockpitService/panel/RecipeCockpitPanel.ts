@@ -42,3 +42,14 @@ export {
     setAddFriendRunning,
     setWireLookupRunning
 } from './treecipe/fieldEditor/LookupWiring';
+export { appendRecordTypeFieldsToggle, drawRecordTypeFieldsToggle, indexRecordTypeFields, isRecordTypeFieldsOnlyIn } from './treecipe/recordTypes/RecordTypeFieldsToggle';
+export { appendTodosToggle, buildObjectTodosToggle, buildTodoListElement, drawObjectTodosToggle, drawTodosToggle, isObjectTodosOnlyIn, isTodosOnlyIn } from './treecipe/recordTypes/TodosToggles';
+export {
+    appendUnavailableRecordTypesButton,
+    applyRecordTypesFilter,
+    buildRecordTypeSelection,
+    buildRecordTypesSection,
+    drawRecordTypeChoices,
+    listRecordTypeObjects,
+    setRecordTypesExpanded
+} from './treecipe/recordTypes/RecordTypesSection';

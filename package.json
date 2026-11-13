@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.png",
-  "version": "3.202.5",
+  "version": "3.202.6",
   "engines": {
     "vscode": "^1.94.0"
   },
