@@ -24,31 +24,41 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   __export(RecipeCockpitPanel_exports, {
     SVG_NAMESPACE: () => SVG_NAMESPACE,
     acknowledgeRecordLinks: () => acknowledgeRecordLinks,
+    appendAddFriendControls: () => appendAddFriendControls,
     applyDatasetsFilter: () => applyDatasetsFilter,
     buildActionCard: () => buildActionCard,
     buildDatasetsTab: () => buildDatasetsTab,
+    buildLookupDecisionElement: () => buildLookupDecisionElement,
     buildPencilGlyph: () => buildPencilGlyph,
     buildQueryTab: () => buildQueryTab,
     buildRowTable: () => buildRowTable,
     buildSearchIconElement: () => buildSearchIconElement,
     buildTabSearch: () => buildTabSearch,
     buildToggleElement: () => buildToggleElement,
+    buildTreeFieldState: () => buildTreeFieldState,
     buildTreeGlyph: () => buildTreeGlyph,
     buildTroubleshootingTab: () => buildTroubleshootingTab,
     buildUpdaterTab: () => buildUpdaterTab,
     buildValidationRuleSourceLink: () => buildValidationRuleSourceLink,
+    buildWireAllLookupsElement: () => buildWireAllLookupsElement,
+    buildWireLookupElement: () => buildWireLookupElement,
     clearAdapterChildPreviews: () => clearAdapterChildPreviews,
     clearAdapterChildren: () => clearAdapterChildren,
     clearUpdaterRecords: () => clearUpdaterRecords,
     clearUpdaterValues: () => clearUpdaterValues,
     closeConfirmDialog: () => closeConfirmDialog,
+    closeFieldEditor: () => closeFieldEditor,
     createButton: () => createButton,
     createElement: () => createElement,
     drawDatasetInserts: () => drawDatasetInserts,
+    drawFieldRowLookupDecision: () => drawFieldRowLookupDecision,
+    drawPicklistValueEditor: () => drawPicklistValueEditor,
     drawToggle: () => drawToggle,
     drawTreePermissionSet: () => drawTreePermissionSet,
     drawTreeQueryButtons: () => drawTreeQueryButtons,
     drawUpdaterLoadButtons: () => drawUpdaterLoadButtons,
+    findEmptyLookup: () => findEmptyLookup,
+    findLookupWiring: () => findLookupWiring,
     isMotionReduced: () => isMotionReduced,
     readHistorySort: () => readHistorySort,
     renderAdapterChildBlock: () => renderAdapterChildBlock,
@@ -60,7 +70,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     renderDatasetLastInsert: () => renderDatasetLastInsert,
     renderDatasetPreferences: () => renderDatasetPreferences,
     renderDatasetRecordCounts: () => renderDatasetRecordCounts,
+    renderFieldEditResult: () => renderFieldEditResult,
     renderPermissionSetAssignState: () => renderPermissionSetAssignState,
+    renderPicklistValues: () => renderPicklistValues,
     renderTreeQueries: () => renderTreeQueries,
     renderTreeQueryResult: () => renderTreeQueryResult,
     renderTreeValidationRules: () => renderTreeValidationRules,
@@ -70,14 +82,18 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     renderUpdaterSnapshots: () => renderUpdaterSnapshots,
     renderUpdaterValues: () => renderUpdaterValues,
     requestDatasetJourney: () => requestDatasetJourney,
+    requestPicklistValues: () => requestPicklistValues,
     requestTreeQueries: () => requestTreeQueries,
     requestTroubleshootingSummary: () => requestTroubleshootingSummary,
     requestUpdaterSnapshots: () => requestUpdaterSnapshots,
     selectTodosView: () => selectTodosView,
     selectTroubleshootingSubTab: () => selectTroubleshootingSubTab,
+    setAddFriendRunning: () => setAddFriendRunning,
     setDatasetJourneyExpanded: () => setDatasetJourneyExpanded,
     setShown: () => setShown,
     setShownWithMotion: () => setShownWithMotion,
+    setWireLookupRunning: () => setWireLookupRunning,
+    toggleFieldEditor: () => toggleFieldEditor,
     troubleshootingSearchKey: () => troubleshootingSearchKey
   });
 
@@ -1204,6 +1220,263 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
       sortButton.focus();
     }
     savePanelPlace();
+  }
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitTreecipeFieldEditorConstants.ts
+  var RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ["Number", "Currency", "Percent"];
+  var RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
+  var RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER = "15- or 18-character Salesforce Id";
+  var RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = "Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it, unless the lookup can point at more than one object. Save writes it into the recipe file; Clear puts back the lines the field had.";
+  var RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES = {
+    Latitude: { suffix: "__Latitude__s", limit: 90 },
+    Longitude: { suffix: "__Longitude__s", limit: 180 }
+  };
+  var RECIPE_COCKPIT_PICKLIST_RESET_LABEL = "Reset to generated";
+  var RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = "Tick at least one value to save.";
+  var RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = "This field has an edit that is not a choice of its values. Saving a choice replaces it.";
+  var RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = "+ Add friend";
+  var RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = "Wire to…";
+  var RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX = "Create ";
+  var RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX = " in recipe";
+  var RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX = "Use existing ";
+  var RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX = " from org…";
+  var RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS = {
+    "no-parent-template": "There is no minimum required fields template for {parent}, so it cannot be added to the recipe.",
+    "parent-object-already-exists": 'The recipe already has a "- object: {parent}" block; point this lookup at it with Wire to… or by hand.',
+    "parent-not-inserted-first": "{parent} is not at a lower relationship level than {object}, so the insert would not send it first."
+  };
+  var RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = "Wire TODO lookups";
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/LookupWiring.ts
+  var lookupWiringIndexByTree = /* @__PURE__ */ new WeakMap();
+  var addableParentIndexByTree = /* @__PURE__ */ new WeakMap();
+  var emptyLookupIndexByTree = /* @__PURE__ */ new WeakMap();
+  function appendAddFriendControls(treeKey, object, objectHeaderElement) {
+    const friendObjectApiNames = object.iteration && object.iteration.insertableFriendObjectApiNames || [];
+    if (friendObjectApiNames.length === 0) {
+      return;
+    }
+    const addFriendElement = createButton("secondary", "treeAddFriend", RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL);
+    const addFriendsElement = createElement("div", "treeAddFriends hidden");
+    addFriendElement.setAttribute("title", "Add one of the friends of " + object.objectApiName + " under " + object.nickname);
+    addFriendElement.setAttribute("aria-label", "Add friend under " + object.nickname);
+    addFriendElement.setAttribute("aria-expanded", "false");
+    addFriendElement.addEventListener("click", function() {
+      const isOpening = addFriendsElement.classList.contains("hidden");
+      if (isOpening) {
+        addFriendsElement.classList.remove("hidden");
+      } else {
+        addFriendsElement.classList.add("hidden");
+      }
+      addFriendElement.setAttribute("aria-expanded", isOpening ? "true" : "false");
+    });
+    addFriendsElement.appendChild(createElement("span", "muted", "Add under " + object.nickname + ":"));
+    friendObjectApiNames.forEach(function(friendObjectApiName) {
+      const choiceElement = createButton("secondary", "treeAddFriendChoice", "+ " + friendObjectApiName);
+      choiceElement.setAttribute("aria-label", "Add " + friendObjectApiName + " under " + object.nickname);
+      choiceElement.addEventListener("click", function() {
+        if (isAddFriendRunning) {
+          return;
+        }
+        setAddFriendRunning(true);
+        vscodeApi.postMessage({
+          command: "addIterationFriend",
+          treeKey,
+          objectApiName: object.objectApiName,
+          objectNickname: object.nickname,
+          friendObjectApiName
+        });
+      });
+      choiceElement.disabled = isAddFriendRunning;
+      addFriendButtonElements.push(choiceElement);
+      addFriendsElement.appendChild(choiceElement);
+    });
+    addFriendButtonElements.push(addFriendElement);
+    objectHeaderElement.appendChild(addFriendElement);
+    objectHeaderElement.appendChild(addFriendsElement);
+    addFriendElement.disabled = isAddFriendRunning;
+  }
+  function setAddFriendRunning(isRunning) {
+    isAddFriendRunning = isRunning;
+    addFriendButtonElements.forEach(function(buttonElement) {
+      buttonElement.disabled = isRunning;
+    });
+  }
+  function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
+    return objectApiName + "\\n" + (objectNickname || "") + "\\n" + fieldApiName;
+  }
+  function findLookupWiring(tree, object, fieldApiName) {
+    if (!tree.lookupWirings || tree.lookupWirings.length === 0) {
+      return null;
+    }
+    let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
+    if (!lookupWiringIndex) {
+      lookupWiringIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = lookupWiringIndex;
+      tree.lookupWirings.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      lookupWiringIndexByTree.set(tree, lookupWiringIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
+  }
+  function buildWireLookupElement(tree, wiring) {
+    const wireElement = createButton("secondary", "treeWireLookup", RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL);
+    const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? " (" + wiring.objectNickname + ")" : "") + "." + wiring.fieldApiName;
+    wireElement.setAttribute("title", wiring.candidateNicknames.length === 1 ? "Point this lookup at " + wiring.candidateNicknames[0] + " in the recipe file, after a confirmation" : "Choose which of " + wiring.candidateNicknames.join(", ") + " this lookup points at in the recipe file");
+    wireElement.setAttribute("aria-label", "Wire " + fieldLabel);
+    wireElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      const wireMessage = { command: "wireLookup", treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
+      if (wiring.objectNickname) {
+        wireMessage.objectNickname = wiring.objectNickname;
+      }
+      vscodeApi.postMessage(wireMessage);
+    });
+    wireElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(wireElement);
+    return wireElement;
+  }
+  function findAddableParent(tree, object, fieldApiName) {
+    if (!tree.addableParents || tree.addableParents.length === 0) {
+      return null;
+    }
+    let addableParentIndex = addableParentIndexByTree.get(tree);
+    if (!addableParentIndex) {
+      addableParentIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = addableParentIndex;
+      tree.addableParents.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      addableParentIndexByTree.set(tree, addableParentIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
+  }
+  function findEmptyLookup(tree, object, fieldApiName) {
+    if (!tree.emptyLookups || tree.emptyLookups.length === 0) {
+      return null;
+    }
+    let emptyLookupIndex = emptyLookupIndexByTree.get(tree);
+    if (!emptyLookupIndex) {
+      emptyLookupIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = emptyLookupIndex;
+      tree.emptyLookups.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      emptyLookupIndexByTree.set(tree, emptyLookupIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(emptyLookupIndex, key) ? emptyLookupIndex[key] : null;
+  }
+  function buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup) {
+    const tree = treeObjectState.tree;
+    const addition = findAddableParent(tree, treeObjectState.object, emptyLookup.fieldApiName);
+    const fieldLabel = emptyLookup.objectApiName + (emptyLookup.objectNickname ? " (" + emptyLookup.objectNickname + ")" : "") + "." + emptyLookup.fieldApiName;
+    const decisionElement = createElement("span", "treeLookupDecision");
+    const createParentElement = createButton("secondary", "treeAddParentObject", RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX);
+    const useOrgRecordElement = createButton("secondary", "treeUseOrgRecord", RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX);
+    const postDecision = function(command) {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      const decisionMessage = { command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
+      if (emptyLookup.objectNickname) {
+        decisionMessage.objectNickname = emptyLookup.objectNickname;
+      }
+      vscodeApi.postMessage(decisionMessage);
+    };
+    createParentElement.setAttribute("aria-label", "Create " + emptyLookup.parentObjectApiName + " in the recipe for " + fieldLabel);
+    createParentElement.addEventListener("click", function() {
+      if (createParentElement.disabled || !addition) {
+        return;
+      }
+      postDecision("addParentObject");
+    });
+    useOrgRecordElement.setAttribute("aria-label", "Use an existing " + emptyLookup.parentObjectApiName + " record from an org for " + fieldLabel);
+    useOrgRecordElement.addEventListener("click", function() {
+      if (useOrgRecordElement.disabled) {
+        return;
+      }
+      postDecision("useOrgRecordForLookup");
+    });
+    decisionElement.appendChild(createParentElement);
+    decisionElement.appendChild(useOrgRecordElement);
+    const decision = {
+      element: decisionElement,
+      createParentElement,
+      useOrgRecordElement,
+      emptyLookup,
+      createReason: addition ? "" : describeCreateParentRefusal(emptyLookup),
+      useReason: emptyLookup.orgRecordRefusal || ""
+    };
+    fieldState.lookupDecision = decision;
+    lookupDecisions.push(decision);
+    drawLookupDecisionButtons(decision);
+    return decisionElement;
+  }
+  function drawFieldRowLookupDecision(treeObjectState, fieldState) {
+    const decision = fieldState.lookupDecision;
+    if (!decision) {
+      return;
+    }
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const fieldApiName = fieldState.field.fieldApiName;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
+    const isParentExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
+    if (isParentExcluded) {
+      decision.element.classList.add("hidden");
+    } else {
+      decision.element.classList.remove("hidden");
+    }
+    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? FIXED_VALUE_OBJECT_EXCLUDED_REASON : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? FIXED_VALUE_UNTICKED_REASON : "";
+    drawLookupDecisionButtons(decision);
+  }
+  function describeCreateParentRefusal(emptyLookup) {
+    const template = emptyLookup.createRefusalReason !== void 0 && hasOwnKey(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason) ? RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason] : "the recipe cannot add {parent}";
+    return template.split("{parent}").join(emptyLookup.parentObjectApiName).split("{object}").join(emptyLookup.objectApiName);
+  }
+  function drawLookupDecisionButtons(decision) {
+    const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
+    const useReason = decision.useReason || decision.selectionReason || "";
+    decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
+    decision.createParentElement.setAttribute("title", decision.createReason ? "Cannot be created: " + decision.createReason : "Add a " + parentObjectApiName + " block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation");
+    decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
+    decision.useOrgRecordElement.setAttribute("title", useReason ? "Cannot use an org record: " + useReason : "Choose an org, then search " + parentObjectApiName + " or enter a record Id; the Id is written into the recipe file after a confirmation");
+  }
+  function buildWireAllLookupsElement(tree) {
+    const singleCandidateCount = (tree.lookupWirings || []).filter(function(wiring) {
+      return wiring.candidateNicknames.length === 1;
+    }).length;
+    if (singleCandidateCount === 0) {
+      return null;
+    }
+    const wireAllElement = createButton("secondary", "treeWireAllLookups", RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL + " (" + singleCandidateCount + ")");
+    wireAllElement.setAttribute("title", "Point every TODO lookup of this tree that has exactly one record to choose from at that record's nickname, in the recipe file, after a confirmation that lists them");
+    wireAllElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      vscodeApi.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
+    });
+    wireAllElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(wireAllElement);
+    return wireAllElement;
+  }
+  function setWireLookupRunning(isRunning) {
+    isWireLookupRunning = isRunning;
+    wireLookupButtonElements.forEach(function(buttonElement) {
+      buttonElement.disabled = isRunning;
+    });
+    lookupDecisions.forEach(drawLookupDecisionButtons);
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingTodos.ts
@@ -3381,6 +3654,451 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     setShown(hintsElement, true);
   }
 
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/PicklistTiles.ts
+  function appendPicklistValueList(containerElement, picklistValues) {
+    if (!Array.isArray(picklistValues) || picklistValues.length === 0) {
+      containerElement.appendChild(createElement("div", "picklistEmpty muted", "no values"));
+      return;
+    }
+    picklistValues.forEach(function(picklistValue) {
+      containerElement.appendChild(createElement("div", "picklistValue", String(picklistValue)));
+    });
+  }
+  function buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname) {
+    return String(objectApiName) + "\\n" + String(fieldApiName) + "\\n" + String(treeKey) + "\\n" + String(nickname || "");
+  }
+  function requestPicklistValues(treeKey, objectApiName, nickname, fieldApiName, onValues) {
+    const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname);
+    if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
+      pendingPicklistValueElements[picklistKey] = [];
+    }
+    pendingPicklistValueElements[picklistKey].push(onValues);
+    const message = { command: "loadPicklistValues", objectApiName, fieldApiName, treeKey };
+    if (nickname) {
+      message.nickname = nickname;
+    }
+    vscodeApi.postMessage(message);
+  }
+  function renderPicklistValues(picklistValuesMessage) {
+    if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== "string") {
+      return;
+    }
+    const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey, picklistValuesMessage.nickname);
+    if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
+      return;
+    }
+    const onValuesCallbacks = pendingPicklistValueElements[picklistKey];
+    delete pendingPicklistValueElements[picklistKey];
+    onValuesCallbacks.forEach(function(onValues) {
+      onValues(picklistValuesMessage);
+    });
+  }
+  function findPicklistChoiceLockReason(treeObjectState, fieldState) {
+    if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) {
+      return "Values can be chosen only on a card with its own recipe file.";
+    }
+    const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
+    return lockReason ? "Cannot be edited: " + lockReason : "";
+  }
+  function drawPicklistValueEditor(treeObjectState, fieldState, editorElement, picklistValuesMessage, closeEditor) {
+    const field = fieldState.field;
+    const object = treeObjectState.object;
+    const lockReason = findPicklistChoiceLockReason(treeObjectState, fieldState);
+    const picklistValues = Array.isArray(picklistValuesMessage.picklistValues) ? picklistValuesMessage.picklistValues : [];
+    const startValues = Array.isArray(picklistValuesMessage.chosenPicklistValues) ? picklistValuesMessage.chosenPicklistValues : picklistValues;
+    const tileStates = [];
+    editorElement.textContent = "";
+    if (picklistValues.length === 0) {
+      editorElement.appendChild(createElement("div", "picklistEmpty muted", "no values"));
+    }
+    if (picklistValuesMessage.isOtherEdit && !lockReason) {
+      editorElement.appendChild(createElement("div", "picklistEditorNote muted", RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE));
+    }
+    const reasonElement = createElement("div", "picklistEditorReason muted hidden");
+    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
+    refusalElement.setAttribute("role", "alert");
+    const saveElement = createButton("primary", "picklistEditorSave", "Save", "compact");
+    const cancelElement = createButton("secondary", "picklistEditorCancel", "Cancel", "compact");
+    const resetElement = picklistValuesMessage.isEdited ? createButton("secondary", "picklistEditorReset", RECIPE_COCKPIT_PICKLIST_RESET_LABEL, "compact") : null;
+    let isSaving = false;
+    const drawChoice = function() {
+      const chosenCount = tileStates.filter(function(tileState) {
+        return tileState.isChosen;
+      }).length;
+      const isChanged = !!picklistValuesMessage.isOtherEdit || tileStates.some(function(tileState) {
+        return tileState.isChosen !== tileState.isStartChosen;
+      });
+      const reason = lockReason || (picklistValues.length > 0 && chosenCount === 0 ? RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON : "");
+      saveElement.disabled = isSaving || !!reason || picklistValues.length === 0 || !isChanged;
+      if (resetElement) {
+        resetElement.disabled = isSaving || !!lockReason;
+      }
+      reasonElement.textContent = reason;
+      if (reason) {
+        reasonElement.classList.remove("hidden");
+      } else {
+        reasonElement.classList.add("hidden");
+      }
+    };
+    if (picklistValues.length > 0) {
+      const tilesElement = createElement("div", "picklistTiles");
+      tilesElement.setAttribute("role", "group");
+      tilesElement.setAttribute("aria-label", "Values of " + object.objectApiName + "." + field.fieldApiName);
+      picklistValues.forEach(function(picklistValue) {
+        const isStartChosen = startValues.indexOf(picklistValue) !== -1;
+        const tileElement = createElement("div", "picklistTile");
+        const checkElement = createButton("check", "picklistTileCheck");
+        const valueElement = createElement("span", "picklistValue", String(picklistValue));
+        const tileState = { value: picklistValue, isChosen: isStartChosen, isStartChosen, tileElement, checkElement };
+        checkElement.setAttribute("role", "checkbox");
+        checkElement.setAttribute("aria-label", String(picklistValue));
+        checkElement.disabled = !!lockReason;
+        tileElement.appendChild(checkElement);
+        tileElement.appendChild(valueElement);
+        tileElement.addEventListener("click", function() {
+          if (lockReason) {
+            return;
+          }
+          tileState.isChosen = !tileState.isChosen;
+          drawTile(tileState);
+          drawChoice();
+        });
+        drawTile(tileState);
+        tileStates.push(tileState);
+        tilesElement.appendChild(tileElement);
+      });
+      editorElement.appendChild(tilesElement);
+    }
+    const recordTypeSections = Array.isArray(picklistValuesMessage.recordTypePicklistValues) ? picklistValuesMessage.recordTypePicklistValues : [];
+    recordTypeSections.forEach(function(recordTypeSection) {
+      const { recordTypeDeveloperName, picklistValues: recordTypePicklistValues } = recordTypeSection;
+      editorElement.appendChild(createElement("div", "recordTypeHeading", "Record type: " + String(recordTypeDeveloperName)));
+      appendPicklistValueList(editorElement, recordTypePicklistValues);
+    });
+    saveElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      if (saveElement.disabled) {
+        return;
+      }
+      const message = {
+        command: "setPicklistValueChoice",
+        treeKey: treeObjectState.tree.treeKey,
+        objectApiName: object.objectApiName,
+        fieldApiName: field.fieldApiName,
+        picklistValues: tileStates.filter(function(tileState) {
+          return tileState.isChosen;
+        }).map(function(tileState) {
+          return tileState.value;
+        })
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      refusalElement.textContent = "";
+      refusalElement.classList.add("hidden");
+      isSaving = true;
+      drawChoice();
+      fieldState.isPicklistExpanded = false;
+      savePanelPlace();
+      vscodeApi.postMessage(message);
+    });
+    if (resetElement) {
+      resetElement.setAttribute("title", "Put back the lines " + field.fieldApiName + " had before it was edited, after a confirmation");
+      resetElement.addEventListener("click", function(event) {
+        event.stopPropagation();
+        if (resetElement.disabled) {
+          return;
+        }
+        const message = {
+          command: "resetPicklistValueChoice",
+          treeKey: treeObjectState.tree.treeKey,
+          objectApiName: object.objectApiName,
+          fieldApiName: field.fieldApiName
+        };
+        if (object.nickname) {
+          message.nickname = object.nickname;
+        }
+        refusalElement.textContent = "";
+        refusalElement.classList.add("hidden");
+        isSaving = true;
+        drawChoice();
+        fieldState.isPicklistExpanded = false;
+        savePanelPlace();
+        vscodeApi.postMessage(message);
+      });
+    }
+    cancelElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      closeEditor();
+    });
+    const actionsElement = createElement("div", "fieldEditorActions");
+    actionsElement.appendChild(saveElement);
+    if (resetElement) {
+      actionsElement.appendChild(resetElement);
+    }
+    actionsElement.appendChild(cancelElement);
+    editorElement.appendChild(reasonElement);
+    editorElement.appendChild(refusalElement);
+    editorElement.appendChild(actionsElement);
+    fieldState.picklistRefusalElement = refusalElement;
+    fieldState.endPicklistSave = function() {
+      isSaving = false;
+      drawChoice();
+    };
+    drawChoice();
+  }
+  function drawTile(tileState) {
+    tileState.checkElement.setAttribute("aria-checked", tileState.isChosen ? "true" : "false");
+    tileState.checkElement.textContent = tileState.isChosen ? "✓" : "";
+    if (tileState.isChosen) {
+      tileState.tileElement.classList.add("chosen");
+    } else {
+      tileState.tileElement.classList.remove("chosen");
+    }
+  }
+  function renderPicklistChoiceResult(fieldEditResultMessage) {
+    const treeState = findTreeState(fieldEditResultMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) {
+        return;
+      }
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || !fieldState.setPicklistExpanded || !fieldState.picklistRefusalElement) {
+          return;
+        }
+        if (typeof fieldEditResultMessage.refusal === "string") {
+          fieldState.picklistRefusalElement.textContent = fieldEditResultMessage.refusal;
+          fieldState.picklistRefusalElement.classList.remove("hidden");
+          if (fieldState.endPicklistSave) {
+            fieldState.endPicklistSave();
+          }
+          fieldState.isPicklistExpanded = true;
+          savePanelPlace();
+          return;
+        }
+        fieldState.setPicklistExpanded(false);
+      });
+    });
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/FieldEditor.ts
+  function toggleFieldEditor(treeObjectState, fieldState, edit) {
+    const isSameEditOpen = fieldState.editorEdit === edit;
+    closeFieldEditor(fieldState);
+    if (!isSameEditOpen) {
+      openFieldEditor(treeObjectState, fieldState, edit);
+    }
+    drawFieldRowFixedValue(treeObjectState, fieldState);
+  }
+  function closeFieldEditor(fieldState) {
+    if (!fieldState.editorElement || !fieldState.editorEdit) {
+      return;
+    }
+    const openerElement = fieldState.fixedValueButtonElement;
+    fieldState.editorElement.textContent = "";
+    fieldState.editorElement.classList.add("hidden");
+    fieldState.editorEdit = "";
+    fieldState.editorRefusalElement = null;
+    if (openerElement) {
+      openerElement.setAttribute("aria-expanded", "false");
+      if (!openerElement.disabled && typeof openerElement.focus === "function") {
+        openerElement.focus();
+      }
+    }
+  }
+  function describeFixedValueForm(field) {
+    if (field.fieldType === "Checkbox") {
+      return "Type true or false.";
+    }
+    if (field.fieldType === "Date") {
+      return "Type a date as YYYY-MM-DD, such as 2026-01-31.";
+    }
+    if (field.fieldType === "DateTime") {
+      return "Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.";
+    }
+    if (RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
+      return "Type a plain number, such as 42, -7 or 3.25.";
+    }
+    const geolocationComponent = field.fieldType === "Text" ? Object.keys(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES).find(function(componentKey) {
+      return field.fieldApiName.endsWith(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[componentKey].suffix);
+    }) : void 0;
+    if (geolocationComponent !== void 0) {
+      const limit = RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[geolocationComponent].limit;
+      return "Type a " + geolocationComponent.toLowerCase() + " from -" + limit + " to " + limit + ".";
+    }
+    if (field.fieldType === "MultiselectPicklist") {
+      return "Type values this picklist declares, separated by ;.";
+    }
+    if (field.isPicklist) {
+      return "Type a value this picklist declares.";
+    }
+    return "Type the text every record gets.";
+  }
+  function buildFieldEditorInput(maxLength, value, ariaLabel, placeholder) {
+    const inputElement = createElement("input", "fieldEditorInput");
+    inputElement.setAttribute("type", "text");
+    inputElement.setAttribute("maxlength", String(maxLength));
+    inputElement.setAttribute("aria-label", ariaLabel);
+    if (placeholder) {
+      inputElement.setAttribute("placeholder", placeholder);
+    }
+    inputElement.value = value;
+    return inputElement;
+  }
+  function openFieldEditor(treeObjectState, fieldState, edit) {
+    if (!fieldState.rowElement) {
+      return;
+    }
+    const field = fieldState.field;
+    const tree = treeObjectState.tree;
+    const object = treeObjectState.object;
+    const fieldLabel = object.objectApiName + "." + field.fieldApiName;
+    if (!fieldState.editorElement) {
+      fieldState.editorElement = createElement("div", "fieldEditor hidden");
+      fieldState.editorElement.setAttribute("role", "group");
+      fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
+    }
+    const editorElement = fieldState.editorElement;
+    const inputsElement = createElement("div", "fieldEditorInputs");
+    const isLookup = isLookupField(tree, object.objectApiName, field);
+    editorElement.setAttribute("aria-label", "Edit " + fieldLabel);
+    const valueElement = isLookup ? buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object)) || "", "Record Id for " + fieldLabel, RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER) : buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), "Value or faker expression for " + fieldLabel, "");
+    inputsElement.appendChild(valueElement);
+    const collectTypedValue = function(isClearing) {
+      const typedValue = String(valueElement.value);
+      return isClearing ? "" : isLookup || isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue;
+    };
+    const describeEdit = function() {
+      if (isLookup) {
+        return RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT;
+      }
+      return (isExpressionValue(String(valueElement.value).trim()) ? "Saved as a faker expression: one \${{ ... }} on one line. Change its arguments, or call another faker method." : "Saved as a fixed value. " + describeFixedValueForm(field) + " Start with \${{ to save a faker expression instead.") + " Save writes it into the recipe file; Clear puts back the lines the field had.";
+    };
+    const hintElement = createElement("div", "fieldEditorHint muted", describeEdit());
+    valueElement.addEventListener("input", function() {
+      hintElement.textContent = describeEdit();
+    });
+    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
+    refusalElement.setAttribute("role", "alert");
+    const post = function(isClearing) {
+      const message = {
+        command: "setFieldFixedValue",
+        treeKey: tree.treeKey,
+        objectApiName: object.objectApiName,
+        fieldApiName: field.fieldApiName,
+        value: collectTypedValue(isClearing)
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      refusalElement.textContent = "";
+      refusalElement.classList.add("hidden");
+      vscodeApi.postMessage(message);
+    };
+    const actionsElement = createElement("div", "fieldEditorActions");
+    const saveElement = createButton("primary", "fieldEditorSave", "Save", "compact");
+    const clearElement = createButton("secondary", "fieldEditorClear", "Clear", "compact");
+    const cancelElement = createButton("secondary", "fieldEditorCancel", "Cancel", "compact");
+    saveElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      post(false);
+    });
+    clearElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      post(true);
+    });
+    cancelElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      toggleFieldEditor(treeObjectState, fieldState, edit);
+    });
+    actionsElement.appendChild(saveElement);
+    actionsElement.appendChild(clearElement);
+    actionsElement.appendChild(cancelElement);
+    valueElement.addEventListener("keydown", function(event) {
+      if (event.isComposing) {
+        return;
+      }
+      if (event.key === "Enter") {
+        event.stopPropagation();
+        post(false);
+      }
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        toggleFieldEditor(treeObjectState, fieldState, edit);
+      }
+    });
+    editorElement.textContent = "";
+    editorElement.appendChild(inputsElement);
+    editorElement.appendChild(hintElement);
+    editorElement.appendChild(refusalElement);
+    editorElement.appendChild(actionsElement);
+    editorElement.classList.remove("hidden");
+    fieldState.editorEdit = edit;
+    fieldState.editorRefusalElement = refusalElement;
+    if (typeof valueElement.focus === "function") {
+      valueElement.focus();
+    }
+  }
+  function renderFieldEditResult(fieldEditResultMessage) {
+    if (renderedSequence === null || fieldEditResultMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    if (fieldEditResultMessage.edit === "picklistValues") {
+      renderPicklistChoiceResult(fieldEditResultMessage);
+      return;
+    }
+    const treeState = findTreeState(fieldEditResultMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) {
+        return;
+      }
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || fieldState.editorEdit !== fieldEditResultMessage.edit) {
+          return;
+        }
+        if (typeof fieldEditResultMessage.refusal === "string" && fieldState.editorRefusalElement) {
+          fieldState.editorRefusalElement.textContent = fieldEditResultMessage.refusal;
+          fieldState.editorRefusalElement.classList.remove("hidden");
+          return;
+        }
+        toggleFieldEditor(treeObjectState, fieldState, fieldState.editorEdit);
+      });
+    });
+  }
+  function buildTreeFieldState(field) {
+    return {
+      field,
+      typeSearchText: String(field.fieldTypeWithSize || field.fieldType || "").toLowerCase(),
+      isMatch: true,
+      rowElement: null,
+      isPicklistExpanded: false,
+      includeElement: null,
+      noteElement: null,
+      isIncluded: true,
+      fixedValueButtonElement: null,
+      fixedValueBadgeElement: null,
+      fixedValueElement: null,
+      expressionElement: null,
+      picklistSectionElement: null,
+      validationRuleElement: null,
+      isValidationRuleApplied: true,
+      recordTypeDeveloperNames: null,
+      todos: Array.isArray(field.todos) ? field.todos : [],
+      editorElement: null,
+      editorEdit: "",
+      editorRefusalElement: null,
+      setPicklistExpanded: null,
+      picklistRefusalElement: null,
+      endPicklistSave: null
+    };
+  }
+
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterFieldEditor.ts
   function buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState) {
     const buttonElement = createButton("icon", "updaterFieldEdit");
@@ -3432,7 +4150,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     }
     const editorElement = fieldState.editorElement;
     const inputsElement = createElement("div", "fieldEditorInputs");
-    const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, updaterObjectState, fieldState), "New value or faker expression for " + fieldLabel, "");
+    const valueElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, updaterObjectState, fieldState), "New value or faker expression for " + fieldLabel, "");
     editorElement.setAttribute("aria-label", "New value for " + fieldLabel);
     inputsElement.appendChild(valueElement);
     const describeEdit = function() {
