@@ -13,6 +13,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 import * as RecipeCockpitServiceModule from '../RecipeCockpitService';
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import * as RecipeCockpitQueryTabConstants from '../RecipeCockpitQueryTabConstants';
 import * as RecipeCockpitTroubleshootingConstants from '../RecipeCockpitTroubleshootingConstants';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
 
@@ -91,15 +92,15 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             Array.from(fs.readFileSync(panelModulePath, 'utf8').matchAll(/^declare (?:const|let|function) ([A-Za-z_$][\w$]*)/gm), match => ({ panelModule: path.basename(panelModulePath), ambientName: match[1] })));
 
         expect(panelModulePaths.map(panelModulePath => path.basename(panelModulePath))).toEqual(expect.arrayContaining(['TroubleshootingTab.ts', 'TroubleshootingHistory.ts']));
-        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning']));
+        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning', 'isTreeQueryRunning', 'QUERY_MAX_LENGTH', 'buildRecordTable']));
         ambientNames.forEach(ambient =>
             expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
                 .toEqual({ ...ambient, isDeclared: true }));
 
     });
 
-    // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639)
-    it('defines no function of the bundle again in the script around it, the Troubleshooting tab\'s included (#639)', () => {
+    // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639, #640)
+    it('defines no function of the bundle again in the script around it, the Troubleshooting and Query tabs\' included (#639, #640)', () => {
 
         const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
         const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
@@ -107,20 +108,22 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
         const bundleFunctionNames = definedFunctionNamesOf(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT);
         const scriptFunctionNames = new Set(definedFunctionNamesOf(scriptOutsideBundle));
 
-        expect(bundleFunctionNames).toEqual(expect.arrayContaining(['buildTroubleshootingTab', 'buildRemovedTodos', 'buildDeployAction', 'buildValidationRuleRow', 'sortTroubleshootingHistory']));
+        expect(bundleFunctionNames).toEqual(expect.arrayContaining(['buildTroubleshootingTab', 'buildRemovedTodos', 'buildDeployAction', 'buildValidationRuleRow', 'sortTroubleshootingHistory',
+            'buildQueryTab', 'buildTreeQuery', 'describeQueryRefusal', 'renderTreeQueryResult', 'applyQueryFilter']));
         expect(bundleFunctionNames.filter(functionName => scriptFunctionNames.has(functionName))).toEqual([]);
 
     });
 
-    // CALLERS AND TESTS STILL IMPORT THE TROUBLESHOOTING TAB'S CONSTANTS FROM THE SERVICE (#639)
-    it('re-exports from the service every constant the panel modules import for the Troubleshooting tab, as the same value (#639)', () => {
+    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640)
+    it('re-exports from the service every constant the panel modules import for the Troubleshooting and Query tabs, as the same value (#639, #640)', () => {
 
-        const constantNames = Object.keys(RecipeCockpitTroubleshootingConstants);
+        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants };
+        const constantNames = Object.keys(tabConstants);
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
 
-        expect(constantNames).toEqual(expect.arrayContaining(['RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS', 'RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY', 'RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE']));
+        expect(constantNames).toEqual(expect.arrayContaining(['RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS', 'RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY', 'RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE', 'RECIPE_COCKPIT_QUERY_INTRO']));
         constantNames.forEach(constantName =>
-            expect({ constantName, isSameValue: serviceExports[constantName] === (RecipeCockpitTroubleshootingConstants as Record<string, unknown>)[constantName] })
+            expect({ constantName, isSameValue: serviceExports[constantName] === tabConstants[constantName] })
                 .toEqual({ constantName, isSameValue: true }));
 
     });

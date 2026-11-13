@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.202.2] - The Recipe Cockpit's Query tab is a checked TypeScript module (#640, slice 3b of #565)
+
+Nothing a user sees changes: every Recipe Cockpit suite, Query journey and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.** The Query tab's 8 functions are now `RecipeCockpitService/panel/query/QueryTab.ts`, type checked by `npm run compile`. The script lost 290 lines, from 10,144 to 9,854.
+- **The tab's messages are typed.** What the panel posts (`loadTreeQueries`, `saveTreeQueryEdit`, `runTreeQuery`, `exportTreeQueryResult`) is one typed union, so a misspelt field fails the build. What the host posts is read as untrusted, as before.
+- **5 entry points join the bridge** (`buildQueryTab`, `requestTreeQueries`, `renderTreeQueries`, `drawTreeQueryButtons`, `renderTreeQueryResult`), because code still in the string calls them.
+- **`RECIPE_COCKPIT_QUERY_INTRO`** moved into `RecipeCockpitQueryTabConstants.ts`, which imports nothing, and `RecipeCockpitService.ts` re-exports it.
+- **Unchanged and still in the string:** the query length limit, which `RecipeCockpitQuery.ts` keeps beside its check, and `buildRecordTable`, which the Treecipe Adapter shares and which moves with #641. `RecipeCockpitQuery.ts` is not changed.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` names the Query functions among those that must not be defined again in the string, checks the module's `declare`d names, and checks that the service re-exports the intro as the same value. Every Query suite and journey passes unchanged.
+
 ## [3.202.1] - The Recipe Cockpit's Troubleshooting tab and its History are checked TypeScript modules (#639, slice 3 of #565)
 
 Nothing a user sees changes: every Recipe Cockpit journey and rendered baseline passes with no expectation changed.

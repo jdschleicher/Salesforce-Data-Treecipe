@@ -172,9 +172,11 @@ src/
     ├── RecipeCockpitService/
     │   ├── RecipeCockpitService.ts           # Owns the Recipe Cockpit webview panel: shell, model, message router and executor
     │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files
+    │   │   ├── query/                        # The Query tab (#640)
     │   │   └── troubleshooting/              # The Troubleshooting tab, its TODO's, Validation Rules and History sub-tabs (#639)
     │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, inlined by the shell; never edited, npm run bundle-panel rewrites it
     │   ├── RecipeCockpitPanelConstants.ts    # Glyph paths and action card words the panel modules draw with (#638); imports nothing, re-exported by the service
+    │   ├── RecipeCockpitQueryTabConstants.ts # The Query tab's intro (#640); imports nothing, re-exported by the service
     │   ├── RecipeCockpitTroubleshootingConstants.ts # The Troubleshooting tab's labels, notes and kinds (#639); types only from files that import nothing, re-exported by the service
     │   ├── RecipeCockpitOrgAuthorize.ts      # "Authorize org" (#630): its prompts, confirmation and the one notification a login ends in; no vscode
     │   ├── RecipeCockpitPermissionSetAssign.ts # "Assign permission sets to me…" (#274): discover, plan and insert assignments; no vscode
