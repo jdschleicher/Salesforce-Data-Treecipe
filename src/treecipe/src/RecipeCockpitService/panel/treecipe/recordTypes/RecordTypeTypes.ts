@@ -3,9 +3,10 @@
     state is built by the panel script, which is not type checked yet, so these name only what the
     modules read and write on it. An object and its record types come from the posted model.
 */
+import type { RecipeCockpitRecordTypeImpactKind } from '../../../RecipeCockpitRecordTypesConstants';
 
 export interface IRecordTypeImpact {
-    kind: 'picklist' | 'multiselect' | 'dependent';
+    kind: RecipeCockpitRecordTypeImpactKind;
     fieldApiName: string;
     valueCount: number;
 }

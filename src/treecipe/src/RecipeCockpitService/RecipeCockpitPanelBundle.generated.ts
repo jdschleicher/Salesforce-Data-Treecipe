@@ -5010,7 +5010,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/RecordTypesSection.ts
   var recordTypesSectionCount = 0;
   var recordTypeSearchTextByObject = /* @__PURE__ */ new WeakMap();
-  var RECORD_TYPE_IMPACT_KIND_LABELS = { picklist: "Picklist", multiselect: "Multi-select", dependent: "Dependent picklist" };
+  var RECORD_TYPE_IMPACT_KIND_LABELS = Object.freeze({ picklist: "Picklist", multiselect: "Multi-select", dependent: "Dependent picklist" });
   function listRecordTypeObjects(treeState) {
     if (treeState.listedRecordTypeObjects) {
       return treeState.listedRecordTypeObjects;

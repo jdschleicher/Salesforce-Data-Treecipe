@@ -91,6 +91,7 @@ import {
     RECIPE_COCKPIT_TODOS_ONLY_LABEL,
     RECIPE_COCKPIT_TODO_IN_VALUE_LABEL
 } from './RecipeCockpitRecordTypesConstants';
+import type { RecipeCockpitRecordTypeImpactKind } from './RecipeCockpitRecordTypesConstants';
 import { RECIPE_COCKPIT_QUERY_INTRO } from './RecipeCockpitQueryTabConstants';
 import {
     RECIPE_COCKPIT_UPDATER_INTRO,
@@ -320,6 +321,7 @@ export {
     RECIPE_COCKPIT_TODOS_ONLY_LABEL,
     RECIPE_COCKPIT_TODO_IN_VALUE_LABEL
 };
+export type { RecipeCockpitRecordTypeImpactKind };
 
 // THE QUERY TAB'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULE IMPORTS (#640); THE HOST'S NAME STAYS
 export { RECIPE_COCKPIT_QUERY_INTRO };
@@ -1175,7 +1177,6 @@ export interface IRecipeCockpitObjectViewModel {
     todos?: IRecipeCockpitTodoViewModel[];
 }
 
-export type RecipeCockpitRecordTypeImpactKind = 'picklist' | 'multiselect' | 'dependent';
 
 // A FIELD A RECORD TYPE RESTRICTS: COUNTS ONLY, SO THE MODEL DOES NOT GROW BY EVERY RECORD TYPE'S VALUES
 export interface IRecipeCockpitRecordTypeImpactViewModel {

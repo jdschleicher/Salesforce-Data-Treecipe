@@ -7,6 +7,7 @@ import {
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE
 } from '../../../RecipeCockpitRecordTypesConstants';
+import type { RecipeCockpitRecordTypeImpactKind } from '../../../RecipeCockpitRecordTypesConstants';
 import { IRecordType, IRecordTypeObject, IRecordTypeRowState, IRecordTypesTreeState } from './RecordTypeTypes';
 
 /*
@@ -39,7 +40,7 @@ let recordTypesSectionCount = 0;
 // WHAT THE TREECIPE SEARCH MATCHES IN A ROW: THE OBJECT, ITS RECORD TYPES AND THE FIELDS THEY RESTRICT; BUILT ONCE PER OBJECT, NOT PER KEYSTROKE
 const recordTypeSearchTextByObject = new WeakMap<IRecordTypeObject, string>();
 
-const RECORD_TYPE_IMPACT_KIND_LABELS: Record<IRecordType['impacts'][number]['kind'], string> = { picklist: 'Picklist', multiselect: 'Multi-select', dependent: 'Dependent picklist' };
+const RECORD_TYPE_IMPACT_KIND_LABELS: Readonly<Record<RecipeCockpitRecordTypeImpactKind, string>> = Object.freeze({ picklist: 'Picklist', multiselect: 'Multi-select', dependent: 'Dependent picklist' });
 
 // EVERY OBJECT THE CARD DRAWS THAT HAS RECORD TYPES TO CHOOSE FROM, ONCE, IN THE CARD'S ORDER
 // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, AND THE SEARCH AND EVERY TICK ASK FOR THIS LIST (#321), SO IT IS BUILT ONCE PER CARD

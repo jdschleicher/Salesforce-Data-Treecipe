@@ -4,6 +4,9 @@
     RecipeCockpitService.ts re-exports every name.
 */
 
+// WHAT A RECORD TYPE RESTRICTS ON A FIELD (#321): THE ONE COPY THE HOST'S MODEL AND THE PANEL'S ROWS BOTH READ
+export type RecipeCockpitRecordTypeImpactKind = 'picklist' | 'multiselect' | 'dependent';
+
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Click to show record type impacted fields only';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
