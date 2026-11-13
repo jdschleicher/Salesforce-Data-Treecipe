@@ -21,3 +21,8 @@ export { drawTreePermissionSet, renderPermissionSetAssignState } from './trouble
 export { buildValidationRuleSourceLink, renderTreeValidationRules } from './troubleshooting/TroubleshootingValidationRules';
 export { readHistorySort, renderTroubleshootingHistory } from './troubleshooting/TroubleshootingHistory';
 export { buildQueryTab, drawTreeQueryButtons, renderTreeQueries, renderTreeQueryResult, requestTreeQueries } from './query/QueryTab';
+export { acknowledgeRecordLinks } from './RecipeCockpitRecordTable';
+export { buildUpdaterTab } from './adapter/AdapterTab';
+export { clearUpdaterRecords, clearUpdaterValues, drawUpdaterLoadButtons, renderUpdaterRecords, renderUpdaterSnapshots, renderUpdaterValues, requestUpdaterSnapshots } from './adapter/AdapterLoadAndUpdate';
+export { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
+export { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';

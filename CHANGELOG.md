@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.202.3] - The Recipe Cockpit's Treecipe Adapter tab is a checked TypeScript module (#641, slice 3c of #565)
+
+Nothing a user sees changes: every Adapter and Updater suite, Adapter journey and rendered baseline passes with no expectation changed.
+
+- **What moved out of the template-literal script.** The tab's 69 functions, about 1,890 lines, are now in `RecipeCockpitService/panel/adapter/`, type checked by `npm run compile`. The script lost 1,938 lines, from 9,854 to 7,916.
+  - `AdapterTab.ts`: the two steps, step 2's object and field rows, the summary and the filter.
+  - `AdapterFieldEditor.ts`: the Adapter's own field editor.
+  - `AdapterLoadAndUpdate.ts`: Load records, Generate values, Update records, the saved snapshots and Restore, and the run buttons.
+  - `AdapterRetrieve.ts`: Retrieve latest metadata, Apply retrieved files to project, fields only the org holds and the org's recent changes.
+  - `AdapterChild.ts`: Add to data set, its block and its preview.
+  - `AdapterTypes.ts`: what the host posts, read as untrusted, and what the tab keeps on a tree card.
+- **The tab's messages are typed.** What the panel posts (`loadUpdaterRecords`, `generateUpdaterValues`, `updateUpdaterRecords`, `retrieveAdapterMetadata`, `prepareAdapterChild`, `generateAdapterChild` …) is one typed union, so a misspelt field fails the build.
+- **14 entry points join the bridge**, because the script's message handler and tab switch still call them. The run locks stay the script's, since its `updaterLoadState` handler sets them.
+- **The shared preview table** (`buildRecordTable`, `acknowledgeRecordLinks`) is `panel/RecipeCockpitRecordTable.ts`; the Query tab imports it instead of declaring it.
+- **The tab's 53 words** moved into `RecipeCockpitAdapterConstants.ts`, which imports nothing, and `RecipeCockpitService.ts` re-exports every name. 53 constants the string injected with `JSON.stringify` are gone.
+- **Unchanged and still in the string:** `UPDATER_WHERE_MAX_LENGTH`, which `RecipeCockpitTreeUpdaterQuery.ts` keeps beside its check, and the Treecipe tab's field editor helpers and fixed-value constants the Adapter's editor calls, which move with #643. `RecipeCockpitTreeUpdaterQuery.ts`, `RecipeCockpitOrgChangeDetection.ts`, `RecipeCockpitRecordUpdate.ts` and `RecipeCockpitAdaptedDataset.ts` are not changed.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` names the Adapter functions among those that must not be defined again in the string, checks the run locks are `declare`d from the script, and checks that the service re-exports every Adapter constant as the same value. `RecipeCockpitRecordLinks.test.ts` reads the child preview from its module, and `BaselinesCatchChanges.test.ts` renames the Next button in the bundle's constant; neither expectation changed.
+
 ## [3.202.2] - The Recipe Cockpit's Query tab is a checked TypeScript module (#640, slice 3b of #565)
 
 Nothing a user sees changes: every Recipe Cockpit suite, Query journey and rendered baseline passes with no expectation changed.

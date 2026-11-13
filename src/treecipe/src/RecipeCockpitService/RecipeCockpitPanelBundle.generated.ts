@@ -23,6 +23,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   var RecipeCockpitPanel_exports = {};
   __export(RecipeCockpitPanel_exports, {
     SVG_NAMESPACE: () => SVG_NAMESPACE,
+    acknowledgeRecordLinks: () => acknowledgeRecordLinks,
     buildActionCard: () => buildActionCard,
     buildPencilGlyph: () => buildPencilGlyph,
     buildQueryTab: () => buildQueryTab,
@@ -32,15 +33,24 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     buildToggleElement: () => buildToggleElement,
     buildTreeGlyph: () => buildTreeGlyph,
     buildTroubleshootingTab: () => buildTroubleshootingTab,
+    buildUpdaterTab: () => buildUpdaterTab,
     buildValidationRuleSourceLink: () => buildValidationRuleSourceLink,
+    clearAdapterChildPreviews: () => clearAdapterChildPreviews,
+    clearAdapterChildren: () => clearAdapterChildren,
+    clearUpdaterRecords: () => clearUpdaterRecords,
+    clearUpdaterValues: () => clearUpdaterValues,
     closeConfirmDialog: () => closeConfirmDialog,
     createButton: () => createButton,
     createElement: () => createElement,
     drawToggle: () => drawToggle,
     drawTreePermissionSet: () => drawTreePermissionSet,
     drawTreeQueryButtons: () => drawTreeQueryButtons,
+    drawUpdaterLoadButtons: () => drawUpdaterLoadButtons,
     isMotionReduced: () => isMotionReduced,
     readHistorySort: () => readHistorySort,
+    renderAdapterChildBlock: () => renderAdapterChildBlock,
+    renderAdapterChildPreview: () => renderAdapterChildPreview,
+    renderAdapterMetadataChanges: () => renderAdapterMetadataChanges,
     renderConfirmRequest: () => renderConfirmRequest,
     renderPermissionSetAssignState: () => renderPermissionSetAssignState,
     renderTreeQueries: () => renderTreeQueries,
@@ -48,8 +58,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     renderTreeValidationRules: () => renderTreeValidationRules,
     renderTroubleshootingHistory: () => renderTroubleshootingHistory,
     renderTroubleshootingSummary: () => renderTroubleshootingSummary,
+    renderUpdaterRecords: () => renderUpdaterRecords,
+    renderUpdaterSnapshots: () => renderUpdaterSnapshots,
+    renderUpdaterValues: () => renderUpdaterValues,
     requestTreeQueries: () => requestTreeQueries,
     requestTroubleshootingSummary: () => requestTroubleshootingSummary,
+    requestUpdaterSnapshots: () => requestUpdaterSnapshots,
     selectTodosView: () => selectTodosView,
     selectTroubleshootingSubTab: () => selectTroubleshootingSubTab,
     setShown: () => setShown,
@@ -2005,6 +2019,107 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitQueryTabConstants.ts
   var RECIPE_COCKPIT_QUERY_INTRO = "The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks), then export what it returned as JSON or CSV. A query only reads.";
 
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitAdapterConstants.ts
+  var RECIPE_COCKPIT_UPDATER_INTRO = "Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field's faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.";
+  var RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = "Filter by fields & objects to add";
+  var RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING = "1. Choose the parent object, and query for the parent records you expect";
+  var RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL = "Parent object";
+  var RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER = "WHERE for the parent records (optional), e.g. Name LIKE 'Acme%'";
+  var RECIPE_COCKPIT_UPDATER_NEXT_LABEL = "Next";
+  var RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX = "2. The treecipe under ";
+  var RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = "Change parent";
+  var RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX = "Parent records: WHERE ";
+  var RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE = "Parent records: every record (no WHERE in step 1)";
+  var RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL = "Retrieve latest metadata";
+  var RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL = "Retrieving…";
+  var RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE = "Retrieve the latest metadata of these objects from the sandbox or scratch org chosen in Target Org Manager, into RunArtifacts in the tree folder, and mark the fields that are new or changed in the org. Nothing in the project changes.";
+  var RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL = "new in org";
+  var RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL = "changed in org";
+  var RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL = "not retrieved from the org";
+  var RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE = "Only in the org: this project has no file for it yet.";
+  var RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL = "new child object in org";
+  var RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE = "Only in the org: this treecipe has no block for it yet.";
+  var RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL = "Add to data set";
+  var RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_LABEL = "Generate preview";
+  var RECIPE_COCKPIT_ADAPTER_CHILD_COUNT_LABEL = "per loaded record of";
+  var RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON = "Load records first: new child records are added under the parent records the last load read.";
+  var RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON = "The last load read no records of the parent object, so there is nothing to add under.";
+  var RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX = "The parent object is excluded on the Treecipe tab: ";
+  var RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE = "A preview only: nothing is written to the org or the recipe file.";
+  var RECIPE_COCKPIT_ADAPTER_HINTS_HEADING = "Recent changes in the org";
+  var RECIPE_COCKPIT_ADAPTER_SOURCE_TRACKING_HEADING = "Source tracking";
+  var RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING = "Setup audit trail, last 180 days";
+  var RECIPE_COCKPIT_ADAPTER_APPLY_LABEL = "Apply retrieved files to project";
+  var RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL = "Applying…";
+  var RECIPE_COCKPIT_ADAPTER_APPLY_TITLE = "Copy the field files the org changed or added into this project: a changed field over its project file, a new field into the default package directory. Asks first.";
+  var RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON = "No field file is new or changed against this project, so there is nothing to apply.";
+  var RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = "No fields chosen";
+  var RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = "read from the recipe file, so its type is not known";
+  var RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = "the record type is not changed here";
+  var RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = "a lookup points to another record, which the Adapter does not change";
+  var RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = "Salesforce sets this field's value";
+  var RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ["AutoNumber", "Summary"];
+  var RECIPE_COCKPIT_UPDATER_LOAD_LABEL = "Load records";
+  var RECIPE_COCKPIT_UPDATER_LOADING_LABEL = "Loading…";
+  var RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER = "WHERE (optional), e.g. CreatedDate = LAST_N_DAYS:30";
+  var RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = "The last load read 0 records: change the parent's WHERE in step 1, or the WHERE under an object, and load again.";
+  var RECIPE_COCKPIT_UPDATER_GENERATE_LABEL = "Generate values";
+  var RECIPE_COCKPIT_UPDATER_GENERATING_LABEL = "Generating…";
+  var RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = "Keeps this value in the Treecipe Adapter only: nothing is written to the recipe or to the org.";
+  var RECIPE_COCKPIT_UPDATER_UPDATE_LABEL = "Update records";
+  var RECIPE_COCKPIT_UPDATER_UPDATING_LABEL = "Updating…";
+  var RECIPE_COCKPIT_UPDATER_SNAPSHOTS_HEADING = "Previous updates";
+  var RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE = "No update of this tree has saved old values yet.";
+  var RECIPE_COCKPIT_UPDATER_RESTORE_LABEL = "Restore previous values…";
+  var RECIPE_COCKPIT_UPDATER_RESTORING_LABEL = "Restoring…";
+  var RECIPE_COCKPIT_RECORD_LINK_TITLE = "Open this record in the org it was read from";
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitRecordTable.ts
+  function buildRecordTable(columns, rows, recordLinks, recordLinkSequence, objectApiName) {
+    const links = recordLinks;
+    const linkColumnIndex = links && typeof recordLinkSequence === "number" && Number.isInteger(links.columnIndex) ? links.columnIndex : -1;
+    const linkedRowIndexes = new Set(linkColumnIndex !== -1 && links && Array.isArray(links.rowIndexes) ? links.rowIndexes : []);
+    const rowTable = buildRowTable({
+      className: "treeQueryTable",
+      columns: columns.map(function(column, columnIndex) {
+        return { key: String(columnIndex), label: String(column) };
+      })
+    });
+    rows.forEach(function(row, rowIndex) {
+      const rowElement = createElement("tr", "treeQueryRow");
+      columns.forEach(function(_column, columnIndex) {
+        const cellText = Array.isArray(row) && row[columnIndex] !== void 0 ? String(row[columnIndex]) : "";
+        if (columnIndex !== linkColumnIndex || !linkedRowIndexes.has(rowIndex) || cellText === "") {
+          rowElement.appendChild(createElement("td", "", cellText));
+          return;
+        }
+        const cellElement = createElement("td", "");
+        const recordLinkElement = createButton("link", "treeQueryRecordLink", cellText);
+        recordLinkElement.setAttribute("title", RECIPE_COCKPIT_RECORD_LINK_TITLE);
+        recordLinkElement.addEventListener("click", function() {
+          if (renderedSequence === null) {
+            return;
+          }
+          const openMessage = { command: "openPreviewRecord", renderSequence: renderedSequence, recordLinkSequence, rowIndex };
+          if (typeof objectApiName === "string") {
+            openMessage.objectApiName = objectApiName;
+          }
+          vscodeApi.postMessage(openMessage);
+        });
+        cellElement.appendChild(recordLinkElement);
+        rowElement.appendChild(cellElement);
+      });
+      rowTable.bodyElement.appendChild(rowElement);
+    });
+    return rowTable.wrapElement;
+  }
+  function acknowledgeRecordLinks(previewMessage) {
+    if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence || typeof previewMessage.recordLinkSequence !== "number") {
+      return;
+    }
+    vscodeApi.postMessage({ command: "recordLinksRendered", renderSequence: renderedSequence, recordLinkSequence: previewMessage.recordLinkSequence });
+  }
+
   // src/treecipe/src/RecipeCockpitService/panel/query/QueryTab.ts
   function buildQueryTab(treeState, panelElement) {
     const querySearch = buildTabSearch(treeState, "query", "Search queries", applyQueryFilter);
@@ -2274,6 +2389,1707 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     if (treeState.querySearch) {
       treeState.querySearch.matchCountElement.textContent = !searchQuery ? pluralize(queryStates.length, "query", "queries") : matchingCount > 0 ? matchingCount + " of " + pluralize(queryStates.length, "query", "queries") : "no matches";
     }
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterLoadAndUpdate.ts
+  function requestUpdaterRecords(treeState) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) {
+      return;
+    }
+    const objects = treeState.updaterObjectStates.map(function(updaterObjectState) {
+      const objectApiName = updaterObjectState.object.objectApiName;
+      return {
+        objectApiName,
+        fieldApiNames: listUpdaterChoosableFieldStates(updaterObjectState).filter(function(fieldState) {
+          return hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
+        }).map(function(fieldState) {
+          return fieldState.field.fieldApiName;
+        }),
+        whereClause: objectApiName === treeState.updaterParentObjectApiName ? treeState.updaterParentWhereText : hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : ""
+      };
+    });
+    if (objects.length === 0) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "load";
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "loadUpdaterRecords", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects });
+  }
+  function requestUpdaterValues(treeState) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) {
+      return;
+    }
+    const fields = [];
+    treeState.updaterObjectStates.forEach(function(updaterObjectState) {
+      listUpdaterChoosableFieldStates(updaterObjectState).forEach(function(fieldState) {
+        if (fieldState.lockReason || !hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+          return;
+        }
+        const fieldRequest = { objectApiName: updaterObjectState.object.objectApiName, fieldApiName: fieldState.field.fieldApiName };
+        if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) {
+          fieldRequest.value = treeState.updaterEditedValues[fieldState.fieldKey];
+        }
+        fields.push(fieldRequest);
+      });
+    });
+    if (fields.length === 0) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "generate";
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "generateUpdaterValues", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields });
+  }
+  function requestUpdaterUpdate(treeState) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "update";
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "updateUpdaterRecords", treeKey: treeState.tree.treeKey });
+  }
+  function requestUpdaterSnapshots(treeState) {
+    if (renderedSequence === null) {
+      treeState.isUpdaterSnapshotsWanted = true;
+      return;
+    }
+    treeState.isUpdaterSnapshotsWanted = false;
+    vscodeApi.postMessage({ command: "loadUpdaterSnapshots", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+  }
+  function renderUpdaterSnapshots(snapshotsMessage) {
+    if (renderedSequence === null || snapshotsMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(snapshotsMessage.treeKey);
+    if (!treeState || !treeState.updaterSnapshotListElement) {
+      return;
+    }
+    const listElement = treeState.updaterSnapshotListElement;
+    const snapshotButtonElements = [];
+    listElement.textContent = "";
+    treeState.updaterSnapshotButtonElements = snapshotButtonElements;
+    const snapshotNames = Array.isArray(snapshotsMessage.snapshotNames) ? snapshotsMessage.snapshotNames.filter(function(snapshotName) {
+      return typeof snapshotName === "string";
+    }) : [];
+    const hiddenSnapshotCount = Number(snapshotsMessage.hiddenSnapshotCount) || 0;
+    if (snapshotNames.length === 0) {
+      listElement.appendChild(createElement("div", "updaterSnapshotsNote muted", RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE));
+    }
+    snapshotNames.forEach(function(snapshotName) {
+      const rowElement = createElement("div", "updaterSnapshot");
+      rowElement.appendChild(createElement("span", "updaterSnapshotName", snapshotName));
+      const restoreElement = createButton("secondary", "updaterRestore", RECIPE_COCKPIT_UPDATER_RESTORE_LABEL, "compact");
+      restoreElement.setAttribute("aria-label", RECIPE_COCKPIT_UPDATER_RESTORE_LABEL + " " + snapshotName);
+      restoreElement.addEventListener("click", function() {
+        requestUpdaterRestore(treeState, snapshotName);
+      });
+      snapshotButtonElements.push({ element: restoreElement, snapshotName });
+      rowElement.appendChild(restoreElement);
+      listElement.appendChild(rowElement);
+    });
+    if (hiddenSnapshotCount > 0) {
+      listElement.appendChild(createElement("div", "updaterSnapshotsNote muted", hiddenSnapshotCount + " older not shown: they are in RunArtifacts/UpdateAttempts in the tree folder, or in treecipe/UpdateAttempts for updates made before it."));
+    }
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "updaterSnapshotsRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, snapshotsSequence: snapshotsMessage.snapshotsSequence });
+  }
+  function requestUpdaterRestore(treeState, snapshotName) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "restore";
+    updaterRestoringSnapshotName = snapshotName;
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "restoreUpdaterSnapshot", treeKey: treeState.tree.treeKey, snapshotName });
+  }
+  function countUpdaterValueRecords(valuesMessage) {
+    return (Array.isArray(valuesMessage.objects) ? valuesMessage.objects : []).reduce(function(total, generatedObject) {
+      return total + (generatedObject ? Number(generatedObject.recordCount) || 0 : 0);
+    }, 0);
+  }
+  function renderUpdaterValues(valuesMessage) {
+    if (renderedSequence === null || valuesMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(valuesMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.updaterValuesMessage = valuesMessage;
+    if (treeState.updaterObjectStates) {
+      applyUpdaterValues(treeState, valuesMessage);
+    }
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "updaterValuesRendered", renderSequence: renderedSequence, valuesSequence: valuesMessage.valuesSequence });
+  }
+  function applyUpdaterValues(treeState, valuesMessage) {
+    const generatedObjects = Array.isArray(valuesMessage.objects) ? valuesMessage.objects : [];
+    (treeState.updaterObjectStates || []).forEach(function(updaterObjectState) {
+      updaterObjectState.generatedValues = generatedObjects.find(function(generatedObject) {
+        return generatedObject && generatedObject.objectApiName === updaterObjectState.object.objectApiName;
+      }) || null;
+      updaterObjectState.generatedValuesLinkSequence = valuesMessage.recordLinkSequence;
+      drawUpdaterObjectValues(updaterObjectState);
+    });
+  }
+  function clearUpdaterValues() {
+    treeStates.forEach(function(treeState) {
+      if (!treeState.updaterValuesMessage) {
+        return;
+      }
+      treeState.updaterValuesMessage = null;
+      if (!treeState.updaterObjectStates) {
+        return;
+      }
+      treeState.updaterObjectStates.forEach(function(updaterObjectState) {
+        updaterObjectState.generatedValues = null;
+        drawUpdaterObjectValues(updaterObjectState);
+      });
+    });
+  }
+  function drawUpdaterObjectValues(updaterObjectState) {
+    const valuesElement = updaterObjectState.valuesElement;
+    if (!valuesElement) {
+      return;
+    }
+    valuesElement.textContent = "";
+    const generatedValues = updaterObjectState.generatedValues;
+    if (!generatedValues) {
+      valuesElement.classList.add("hidden");
+      return;
+    }
+    const columns = Array.isArray(generatedValues.columns) ? generatedValues.columns.map(String) : [];
+    const rows = Array.isArray(generatedValues.rows) ? generatedValues.rows : [];
+    const recordCount = Number(generatedValues.recordCount) || 0;
+    const hiddenColumnCount = Number(generatedValues.hiddenColumnCount) || 0;
+    let summaryText = recordCount === 0 ? "No new values: the last load read no records of this object" : "New values for " + pluralize(recordCount, "record", "records") + ", not written to the org yet";
+    if (rows.length < recordCount) {
+      summaryText += ". Showing the first " + rows.length;
+    }
+    if (hiddenColumnCount > 0) {
+      summaryText += (rows.length < recordCount ? ", " : ". Showing ") + pluralize(columns.length, "column", "columns") + ", " + hiddenColumnCount + " more not shown";
+    }
+    valuesElement.appendChild(createElement("div", "updaterValuesSummary muted", summaryText));
+    if (columns.length > 0 && rows.length > 0) {
+      valuesElement.appendChild(buildRecordTable(columns, rows, generatedValues.recordLinks, updaterObjectState.generatedValuesLinkSequence, updaterObjectState.object.objectApiName));
+    }
+    valuesElement.classList.remove("hidden");
+  }
+  function countUpdaterLoadedRecords(recordsMessage) {
+    return (Array.isArray(recordsMessage.objects) ? recordsMessage.objects : []).reduce(function(total, loadedObject) {
+      return total + (loadedObject ? Number(loadedObject.recordCount) || 0 : 0);
+    }, 0);
+  }
+  function drawUpdaterLoadButtons() {
+    treeStates.forEach(function(treeState) {
+      if (!treeState.updaterLoadButtonElement) {
+        return;
+      }
+      const updaterObjectStates = treeState.updaterObjectStates || [];
+      drawAdapterChildControls(treeState);
+      const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
+      const busyReason = updaterLoadRunningTreeKey !== null ? "Records are being loaded, generated, updated or restored." : "";
+      setTextShown(treeState.updaterLoadCard.titleElement, isThisCardLoading && updaterRunKind === "load" ? RECIPE_COCKPIT_UPDATER_LOADING_LABEL : RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+      if (treeState.updaterRetrieveMetadataElement) {
+        treeState.updaterRetrieveMetadataElement.textContent = isThisCardLoading && updaterRunKind === "retrieve" ? RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL : RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL;
+        treeState.updaterRetrieveMetadataElement.disabled = updaterLoadRunningTreeKey !== null;
+        treeState.updaterRetrieveMetadataElement.setAttribute("title", busyReason || RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE);
+      }
+      if (treeState.updaterApplyRetrievedElement) {
+        const applyReason = busyReason || (countAdapterFileChanges(treeState) === 0 ? RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON : "");
+        treeState.updaterApplyRetrievedElement.textContent = isThisCardLoading && updaterRunKind === "apply" ? RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL : RECIPE_COCKPIT_ADAPTER_APPLY_LABEL;
+        treeState.updaterApplyRetrievedElement.disabled = applyReason !== "";
+        treeState.updaterApplyRetrievedElement.setAttribute("title", applyReason || RECIPE_COCKPIT_ADAPTER_APPLY_TITLE);
+      }
+      drawActionCardState(
+        treeState.updaterLoadCard,
+        busyReason || (updaterObjectStates.length === 0 ? "This tree has no object to load." : ""),
+        "Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads."
+      );
+      (treeState.updaterSnapshotButtonElements || []).forEach(function(snapshotButton) {
+        const isThisRestoring = isThisCardLoading && updaterRunKind === "restore" && updaterRestoringSnapshotName === snapshotButton.snapshotName;
+        snapshotButton.element.disabled = updaterLoadRunningTreeKey !== null;
+        snapshotButton.element.textContent = isThisRestoring ? RECIPE_COCKPIT_UPDATER_RESTORING_LABEL : RECIPE_COCKPIT_UPDATER_RESTORE_LABEL;
+        snapshotButton.element.setAttribute("title", "Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to RunArtifacts in the tree folder first.");
+      });
+      if (!treeState.updaterGenerateCard) {
+        return;
+      }
+      const hasChosenField = updaterObjectStates.some(function(updaterObjectState) {
+        return updaterObjectState.chosenFieldCount > 0;
+      });
+      const generateReason = !treeState.updaterRecordsMessage ? "Load records first: new values are generated for the records the last load read." : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON : !hasChosenField ? "Choose a field to fill first." : "";
+      setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && updaterRunKind === "generate" ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL : RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
+      drawActionCardState(
+        treeState.updaterGenerateCard,
+        generateReason || busyReason,
+        "Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org."
+      );
+      if (!treeState.updaterUpdateCard) {
+        return;
+      }
+      const valueRecordCount = treeState.updaterValuesMessage ? countUpdaterValueRecords(treeState.updaterValuesMessage) : 0;
+      const orgLabel = treeState.updaterRecordsMessage ? String(treeState.updaterRecordsMessage.orgLabel || "") : "";
+      const updateReason = treeState.updaterRecordsMessage && countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON : !treeState.updaterValuesMessage ? "Generate values first: the update writes the values the last Generate values made." : valueRecordCount === 0 ? "There are no new values to write: the last load read no records." : "";
+      setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && updaterRunKind === "update" ? RECIPE_COCKPIT_UPDATER_UPDATING_LABEL : valueRecordCount > 0 ? "Update " + pluralize(valueRecordCount, "record", "records") + (orgLabel ? " in " + orgLabel : "") : RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
+      drawActionCardState(
+        treeState.updaterUpdateCard,
+        updateReason || busyReason,
+        "Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to RunArtifacts in the tree folder first."
+      );
+    });
+  }
+  function renderUpdaterRecords(recordsMessage) {
+    if (renderedSequence === null || recordsMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(recordsMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.updaterRecordsMessage = recordsMessage;
+    if (treeState.updaterObjectStates) {
+      applyUpdaterRecords(treeState, recordsMessage);
+    }
+  }
+  function applyUpdaterRecords(treeState, recordsMessage) {
+    const loadedObjects = Array.isArray(recordsMessage.objects) ? recordsMessage.objects : [];
+    let recordCount = 0;
+    (treeState.updaterObjectStates || []).forEach(function(updaterObjectState) {
+      const loadedRecords = loadedObjects.find(function(loadedObject) {
+        return loadedObject && loadedObject.objectApiName === updaterObjectState.object.objectApiName;
+      }) || null;
+      updaterObjectState.loadedRecords = loadedRecords;
+      updaterObjectState.loadedRecordsLinkSequence = recordsMessage.recordLinkSequence;
+      if (loadedRecords && !loadedRecords.failureMessage && !loadedRecords.skippedReason) {
+        recordCount += Number(loadedRecords.recordCount) || 0;
+      }
+      drawUpdaterObjectCount(updaterObjectState);
+      drawUpdaterObjectRecords(updaterObjectState);
+    });
+    treeState.updaterLoadNoteElement.textContent = "Loaded " + pluralize(recordCount, "record", "records") + " from " + String(recordsMessage.orgLabel || "the org");
+    drawUpdaterLoadButtons();
+  }
+  function clearUpdaterRecords() {
+    treeStates.forEach(function(treeState) {
+      if (!treeState.updaterRecordsMessage) {
+        return;
+      }
+      treeState.updaterRecordsMessage = null;
+      if (!treeState.updaterObjectStates) {
+        return;
+      }
+      treeState.updaterObjectStates.forEach(function(updaterObjectState) {
+        updaterObjectState.loadedRecords = null;
+        drawUpdaterObjectCount(updaterObjectState);
+        drawUpdaterObjectRecords(updaterObjectState);
+      });
+      treeState.updaterLoadNoteElement.textContent = "";
+    });
+    drawUpdaterLoadButtons();
+  }
+  function drawUpdaterObjectRecords(updaterObjectState) {
+    const recordsElement = updaterObjectState.recordsElement;
+    if (!recordsElement) {
+      return;
+    }
+    recordsElement.textContent = "";
+    const loadedRecords = updaterObjectState.loadedRecords;
+    if (!loadedRecords) {
+      recordsElement.classList.add("hidden");
+      return;
+    }
+    if (loadedRecords.failureMessage) {
+      recordsElement.appendChild(createElement("div", "updaterRecordsFailure", "Could not be read: " + String(loadedRecords.failureMessage)));
+    } else if (loadedRecords.skippedReason) {
+      recordsElement.appendChild(createElement("div", "updaterRecordsSkipped muted", String(loadedRecords.skippedReason)));
+    } else {
+      const columns = Array.isArray(loadedRecords.columns) ? loadedRecords.columns.map(String) : [];
+      const rows = Array.isArray(loadedRecords.rows) ? loadedRecords.rows : [];
+      const recordCount = Number(loadedRecords.recordCount) || 0;
+      const hiddenColumnCount = Number(loadedRecords.hiddenColumnCount) || 0;
+      let summaryText = pluralize(recordCount, "record", "records");
+      if (loadedRecords.isTruncated) {
+        summaryText += ", the first of " + String(loadedRecords.totalSize) + " it matched";
+      }
+      if (rows.length < recordCount) {
+        summaryText += ". Showing the first " + rows.length;
+      }
+      if (hiddenColumnCount > 0) {
+        summaryText += (rows.length < recordCount ? ", " : ". Showing ") + pluralize(columns.length, "column", "columns") + ", " + hiddenColumnCount + " more not shown";
+      }
+      recordsElement.appendChild(createElement("div", "updaterRecordsSummary muted", summaryText));
+      if (columns.length > 0) {
+        recordsElement.appendChild(buildRecordTable(columns, rows, loadedRecords.recordLinks, updaterObjectState.loadedRecordsLinkSequence, updaterObjectState.object.objectApiName));
+      }
+    }
+    recordsElement.classList.remove("hidden");
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterChild.ts
+  function isAdapterChildOf(adapterChild, parentObjectApiName, childObject) {
+    return !!adapterChild && !!childObject && adapterChild.parentObjectApiName === parentObjectApiName && adapterChild.childObjectApiName === String(childObject.childObjectApiName) && adapterChild.lookupFieldApiName === String(childObject.fieldApiName);
+  }
+  function findAdapterChildAddReason(treeState, parentObjectApiName) {
+    if (updaterLoadRunningTreeKey !== null) {
+      return "Records are being loaded, generated, updated or restored.";
+    }
+    if (findObjectExclusion(treeState.tree, parentObjectApiName)) {
+      return RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX + parentObjectApiName + ".";
+    }
+    if (!treeState.updaterRecordsMessage) {
+      return RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON;
+    }
+    const loadedObjects = Array.isArray(treeState.updaterRecordsMessage.objects) ? treeState.updaterRecordsMessage.objects : [];
+    const parentRecords = loadedObjects.find(function(loadedObject) {
+      return loadedObject && loadedObject.objectApiName === parentObjectApiName;
+    });
+    return parentRecords && Number(parentRecords.recordCount) > 0 ? "" : RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON;
+  }
+  function drawAdapterChildAddButton(treeState, updaterObjectState, orgOnlyFieldState) {
+    const addElement = orgOnlyFieldState.addElement;
+    if (!addElement) {
+      return;
+    }
+    const parentObjectApiName = updaterObjectState.object.objectApiName;
+    const reason = findAdapterChildAddReason(treeState, parentObjectApiName);
+    const isPreparing = updaterRunKind === "prepareChild" && updaterLoadRunningTreeKey === treeState.tree.treeKey && adapterChildPreparingKey === adapterChildKeyOf(parentObjectApiName, orgOnlyFieldState.childObject);
+    addElement.textContent = isPreparing ? "Retrieving…" : RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL;
+    addElement.disabled = reason !== "";
+    addElement.setAttribute("title", reason || "Retrieve " + String(orgOnlyFieldState.childObject.childObjectApiName) + " from the org the records were loaded from, then set how many to add under each loaded " + parentObjectApiName + " record and which fields to fill.");
+  }
+  function adapterChildKeyOf(parentObjectApiName, childObject) {
+    return [parentObjectApiName, String(childObject.childObjectApiName), String(childObject.fieldApiName)].join("\\n");
+  }
+  function drawAdapterChildControls(treeState) {
+    (treeState.updaterObjectStates || []).forEach(function(updaterObjectState) {
+      (updaterObjectState.orgOnlyFieldStates || []).forEach(function(orgOnlyFieldState) {
+        if (orgOnlyFieldState.childObject) {
+          drawAdapterChildAddButton(treeState, updaterObjectState, orgOnlyFieldState);
+        }
+      });
+    });
+    const adapterChild = treeState.adapterChild;
+    if (!adapterChild) {
+      return;
+    }
+    const isGenerating = updaterRunKind === "generateChild" && updaterLoadRunningTreeKey === treeState.tree.treeKey;
+    adapterChild.generateElement.textContent = isGenerating ? "Generating…" : RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_LABEL;
+    adapterChild.generateElement.disabled = updaterLoadRunningTreeKey !== null;
+    adapterChild.generateElement.setAttribute("title", updaterLoadRunningTreeKey !== null ? "Records are being loaded, generated, updated or restored." : "Generate the new " + adapterChild.childObjectApiName + " records with the recipe’s own backend and show a preview. Nothing is written to the org.");
+  }
+  function requestAdapterChild(treeState, updaterObjectState, childObject) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "prepareChild";
+    adapterChildPreparingKey = adapterChildKeyOf(updaterObjectState.object.objectApiName, childObject);
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({
+      command: "prepareAdapterChild",
+      treeKey: treeState.tree.treeKey,
+      renderSequence: renderedSequence,
+      parentObjectApiName: updaterObjectState.object.objectApiName,
+      childObjectApiName: String(childObject.childObjectApiName),
+      lookupFieldApiName: String(childObject.fieldApiName)
+    });
+  }
+  function clearAdapterChildren() {
+    treeStates.forEach(function(treeState) {
+      const adapterChild = treeState.adapterChild;
+      treeState.adapterChildBlockMessage = null;
+      treeState.adapterChildPreviewMessage = null;
+      if (!adapterChild) {
+        return;
+      }
+      treeState.adapterChild = null;
+      (treeState.updaterObjectStates || []).forEach(function(updaterObjectState) {
+        if (updaterObjectState.object.objectApiName === adapterChild.parentObjectApiName) {
+          drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState);
+        }
+      });
+    });
+  }
+  function clearAdapterChildPreviews() {
+    treeStates.forEach(function(treeState) {
+      treeState.adapterChildPreviewMessage = null;
+      if (treeState.adapterChild) {
+        drawAdapterChildPreview(treeState.adapterChild, null);
+      }
+    });
+  }
+  function renderAdapterChildBlock(blockMessage) {
+    if (renderedSequence === null || blockMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(blockMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    clearAdapterChildren();
+    treeState.adapterChildBlockMessage = blockMessage;
+    if (treeState.updaterObjectStates) {
+      buildAdapterChildBlock(treeState);
+    }
+  }
+  function buildAdapterChildBlock(treeState) {
+    const blockMessage = treeState.adapterChildBlockMessage;
+    if (!blockMessage) {
+      return;
+    }
+    const childObjectApiName = String(blockMessage.childObjectApiName);
+    const parentObjectApiName = String(blockMessage.parentObjectApiName);
+    const parentRecordCount = Number(blockMessage.parentRecordCount) || 0;
+    const childTreeState = {
+      tree: { treeKey: treeState.tree.treeKey, fixedValues: [] },
+      updaterChosenFieldKeys: /* @__PURE__ */ Object.create(null),
+      updaterEditedValues: /* @__PURE__ */ Object.create(null),
+      updaterObjectStates: [],
+      updaterSummaryElement: null
+    };
+    const childObjectState = { object: { objectApiName: childObjectApiName }, chosenFieldCount: 0, countText: "", countElement: createElement("span", "adapterChildChosen muted"), loadedRecords: null };
+    const editorElement = createElement("div", "adapterChildEditor");
+    editorElement.setAttribute("role", "group");
+    editorElement.setAttribute("aria-label", "Add " + childObjectApiName + " under the loaded " + parentObjectApiName + " records");
+    editorElement.appendChild(createElement(
+      "div",
+      "adapterChildHeading",
+      "Add " + childObjectApiName + " under the " + pluralize(parentRecordCount, parentObjectApiName + " record", parentObjectApiName + " records") + " loaded from " + String(blockMessage.orgLabel || "the org") + ", generated by " + String(blockMessage.fakerService) + "."
+    ));
+    const countRowElement = createElement("div", "adapterChildCount");
+    const countInputElement = createElement("input", "adapterChildCountInput");
+    countInputElement.setAttribute("type", "text");
+    countInputElement.setAttribute("inputmode", "numeric");
+    countInputElement.setAttribute("maxlength", "6");
+    countInputElement.setAttribute("aria-label", childObjectApiName + " records " + RECIPE_COCKPIT_ADAPTER_CHILD_COUNT_LABEL + " " + parentObjectApiName);
+    countInputElement.value = "1";
+    countRowElement.appendChild(createElement("span", "adapterChildCountText", "Create"));
+    countRowElement.appendChild(countInputElement);
+    countRowElement.appendChild(createElement("span", "adapterChildCountText", childObjectApiName + " records " + RECIPE_COCKPIT_ADAPTER_CHILD_COUNT_LABEL + " " + parentObjectApiName));
+    countRowElement.appendChild(childObjectState.countElement);
+    editorElement.appendChild(countRowElement);
+    const fieldsElement = createElement("div", "adapterChildFields");
+    const fieldStates = (Array.isArray(blockMessage.fields) ? blockMessage.fields : []).map(function(childField) {
+      const fieldApiName = String(childField.fieldApiName);
+      const fieldState = {
+        fieldChange: null,
+        childObject: null,
+        field: {
+          fieldApiName,
+          fieldLabel: String(childField.fieldLabel || ""),
+          fieldType: String(childField.fieldTypeWithSize || ""),
+          fieldTypeWithSize: String(childField.fieldTypeWithSize || ""),
+          recipeValue: typeof childField.expression === "string" ? childField.expression : "",
+          controllingField: "",
+          isOnlyInRecipeFile: false
+        },
+        fieldKey: updaterFieldKeyOf(childObjectApiName, fieldApiName),
+        lockReason: typeof childField.lockReason === "string" ? childField.lockReason : "",
+        orgOnlyNote: typeof childField.note === "string" ? childField.note : "",
+        orgChange: null,
+        orgChipElement: null,
+        isMatch: true,
+        rowElement: null,
+        chooseElement: null,
+        editButtonElement: null,
+        editBadgeElement: null,
+        editedValueElement: null,
+        expressionRowElement: null,
+        editorElement: null,
+        isEditorOpen: false
+      };
+      if (!fieldState.lockReason && fieldState.field.recipeValue) {
+        childTreeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
+        childObjectState.chosenFieldCount++;
+      }
+      const rowElement = buildUpdaterFieldRow(childTreeState, childObjectState, fieldState);
+      const headerElement = rowElement.firstChild;
+      if (childField.isRequired === true) {
+        headerElement.appendChild(createElement("span", "adapterChildRequired", "required"));
+      }
+      if (fieldState.orgOnlyNote) {
+        headerElement.appendChild(createElement("span", "updaterFieldNote muted", fieldState.orgOnlyNote));
+      }
+      fieldsElement.appendChild(rowElement);
+      return fieldState;
+    });
+    drawUpdaterObjectCount(childObjectState);
+    editorElement.appendChild(fieldsElement);
+    const unreadableFieldCount = Number(blockMessage.unreadableFieldCount) || 0;
+    if (unreadableFieldCount > 0) {
+      editorElement.appendChild(createElement("div", "adapterChildUnreadable muted", pluralize(unreadableFieldCount, "field file", "field files") + " could not be read and " + (unreadableFieldCount === 1 ? "is" : "are") + " left out."));
+    }
+    const refusalElement = createElement("div", "adapterChildRefusal hidden");
+    refusalElement.setAttribute("role", "alert");
+    editorElement.appendChild(refusalElement);
+    const generateElement = createButton("primary", "adapterChildGenerate", RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_LABEL, "compact");
+    editorElement.appendChild(generateElement);
+    editorElement.appendChild(createElement("div", "adapterChildPreviewNote muted", RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE));
+    const previewElement = createElement("div", "adapterChildPreview hidden");
+    editorElement.appendChild(previewElement);
+    const adapterChild = {
+      parentObjectApiName,
+      childObjectApiName,
+      lookupFieldApiName: String(blockMessage.lookupFieldApiName),
+      childTreeState,
+      fieldStates,
+      editorElement,
+      countInputElement,
+      refusalElement,
+      generateElement,
+      previewElement
+    };
+    generateElement.addEventListener("click", function() {
+      if (generateElement.disabled) {
+        return;
+      }
+      requestAdapterChildPreview(treeState, adapterChild);
+    });
+    countInputElement.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        requestAdapterChildPreview(treeState, adapterChild);
+      }
+    });
+    treeState.adapterChild = adapterChild;
+    if (treeState.adapterChildPreviewMessage) {
+      drawAdapterChildPreview(adapterChild, treeState.adapterChildPreviewMessage);
+    }
+    const parentObjectState = (treeState.updaterObjectStates || []).find(function(updaterObjectState) {
+      return updaterObjectState.object.objectApiName === parentObjectApiName;
+    });
+    if (parentObjectState) {
+      drawAdapterObjectOrgOnlyFields(treeState, parentObjectState);
+    }
+    drawUpdaterLoadButtons();
+  }
+  function requestAdapterChildPreview(treeState, adapterChild) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || treeState.adapterChild !== adapterChild) {
+      return;
+    }
+    const countText = String(adapterChild.countInputElement.value || "").trim();
+    const countPerParent = Number(countText);
+    if (!/^[1-9][0-9]*$/.test(countText) || !Number.isSafeInteger(countPerParent)) {
+      adapterChild.refusalElement.textContent = "The count per " + adapterChild.parentObjectApiName + " record must be a whole number of one or more.";
+      setShown(adapterChild.refusalElement, true);
+      return;
+    }
+    adapterChild.refusalElement.textContent = "";
+    setShown(adapterChild.refusalElement, false);
+    const fields = [];
+    adapterChild.fieldStates.forEach(function(fieldState) {
+      if (fieldState.lockReason || !hasOwnKey(adapterChild.childTreeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+        return;
+      }
+      const fieldRequest = { fieldApiName: fieldState.field.fieldApiName };
+      if (hasOwnKey(adapterChild.childTreeState.updaterEditedValues, fieldState.fieldKey)) {
+        fieldRequest.value = adapterChild.childTreeState.updaterEditedValues[fieldState.fieldKey];
+      }
+      fields.push(fieldRequest);
+    });
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "generateChild";
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({
+      command: "generateAdapterChild",
+      treeKey: treeState.tree.treeKey,
+      renderSequence: renderedSequence,
+      childObjectApiName: adapterChild.childObjectApiName,
+      countPerParent,
+      fields
+    });
+  }
+  function renderAdapterChildPreview(previewMessage) {
+    if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(previewMessage.treeKey);
+    if (!treeState || !treeState.adapterChildBlockMessage || treeState.adapterChildBlockMessage.childObjectApiName !== previewMessage.childObjectApiName) {
+      return;
+    }
+    treeState.adapterChildPreviewMessage = previewMessage;
+    if (treeState.adapterChild) {
+      drawAdapterChildPreview(treeState.adapterChild, previewMessage);
+    }
+  }
+  function drawAdapterChildPreview(adapterChild, previewMessage) {
+    const previewElement = adapterChild.previewElement;
+    previewElement.textContent = "";
+    if (!previewMessage) {
+      setShown(previewElement, false);
+      return;
+    }
+    const columns = Array.isArray(previewMessage.columns) ? previewMessage.columns.map(String) : [];
+    const rows = Array.isArray(previewMessage.rows) ? previewMessage.rows : [];
+    const recordCount = Number(previewMessage.recordCount) || 0;
+    const hiddenColumnCount = Number(previewMessage.hiddenColumnCount) || 0;
+    let summaryText = pluralize(recordCount, "new " + adapterChild.childObjectApiName + " record", "new " + adapterChild.childObjectApiName + " records") + ", " + String(previewMessage.countPerParent) + " per " + adapterChild.parentObjectApiName + " record";
+    if (rows.length < recordCount) {
+      summaryText += ". Showing the first " + rows.length;
+    }
+    if (hiddenColumnCount > 0) {
+      summaryText += (rows.length < recordCount ? ", " : ". Showing ") + pluralize(columns.length, "column", "columns") + ", " + hiddenColumnCount + " more not shown";
+    }
+    previewElement.appendChild(createElement("div", "adapterChildPreviewSummary muted", summaryText));
+    if (columns.length > 0) {
+      previewElement.appendChild(buildRecordTable(columns, rows));
+    }
+    setShown(previewElement, true);
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterRetrieve.ts
+  function requestAdapterMetadataRetrieve(treeState) {
+    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterParentObjectApiName) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "retrieve";
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "retrieveAdapterMetadata", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
+  }
+  function requestAdapterRetrievedFilesApply(treeState) {
+    if (renderedSequence === null || !treeState.adapterChangesMessage || updaterLoadRunningTreeKey !== null) {
+      return;
+    }
+    updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    updaterRunKind = "apply";
+    drawUpdaterLoadButtons();
+    vscodeApi.postMessage({ command: "applyAdapterRetrievedFiles", treeKey: treeState.tree.treeKey, renderSequence: treeState.adapterChangesMessage.renderSequence });
+  }
+  function countAdapterFileChanges(treeState) {
+    const changesMessage = treeState.adapterChangesMessage;
+    if (!changesMessage || !Array.isArray(changesMessage.objects)) {
+      return 0;
+    }
+    return changesMessage.objects.reduce(function(total, objectChanges) {
+      return total + (objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges.length : 0);
+    }, 0);
+  }
+  function renderAdapterMetadataChanges(changesMessage) {
+    if (renderedSequence === null || changesMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(changesMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeStates.forEach(function(otherTreeState) {
+      if (otherTreeState !== treeState && otherTreeState.adapterChangesMessage) {
+        clearAdapterMetadataChanges(otherTreeState);
+      }
+    });
+    treeState.adapterChangesMessage = changesMessage;
+    applyAdapterMetadataChanges(treeState);
+  }
+  function clearAdapterMetadataChanges(treeState) {
+    treeState.adapterChangesMessage = { objects: [], orgLabel: "" };
+    applyAdapterMetadataChanges(treeState);
+    treeState.adapterChangesMessage = null;
+    if (treeState.updaterOrgChangesNoteElement) {
+      setShown(treeState.updaterOrgChangesNoteElement, false);
+    }
+    if (treeState.updaterApplyRetrievedElement) {
+      setShown(treeState.updaterApplyRetrievedElement, false);
+    }
+    drawUpdaterLoadButtons();
+  }
+  function applyAdapterMetadataChanges(treeState) {
+    const changesMessage = treeState.adapterChangesMessage;
+    const orgChangesNoteElement = treeState.updaterOrgChangesNoteElement;
+    if (!changesMessage || !treeState.updaterObjectStates || !orgChangesNoteElement) {
+      return;
+    }
+    const objectChangesByName = /* @__PURE__ */ Object.create(null);
+    (Array.isArray(changesMessage.objects) ? changesMessage.objects : []).forEach(function(objectChanges) {
+      if (objectChanges && typeof objectChanges.objectApiName === "string") {
+        objectChangesByName[objectChanges.objectApiName] = objectChanges;
+      }
+    });
+    let newCount = 0;
+    let changedCount = 0;
+    treeState.updaterObjectStates.forEach(function(updaterObjectState) {
+      const objectChanges = hasOwnKey(objectChangesByName, updaterObjectState.object.objectApiName) ? objectChangesByName[updaterObjectState.object.objectApiName] : null;
+      const fieldChanges = objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges : [];
+      const fieldChangesByLowerName = /* @__PURE__ */ Object.create(null);
+      fieldChanges.forEach(function(fieldChange) {
+        if (fieldChange && typeof fieldChange.fieldApiName === "string") {
+          fieldChangesByLowerName[fieldChange.fieldApiName.toLowerCase()] = fieldChange;
+        }
+      });
+      updaterObjectState.orgChanges = objectChanges;
+      updaterObjectState.fieldStates.forEach(function(fieldState) {
+        const lowerFieldName = fieldState.field.fieldApiName.toLowerCase();
+        fieldState.orgChange = hasOwnKey(fieldChangesByLowerName, lowerFieldName) ? fieldChangesByLowerName[lowerFieldName] : null;
+        fieldState.orgSearchText = fieldState.orgChange ? describeAdapterFieldChange(fieldState.orgChange).toLowerCase() : "";
+        drawAdapterFieldOrgChip(fieldState);
+      });
+      const modelFieldNames = /* @__PURE__ */ Object.create(null);
+      updaterObjectState.fieldStates.forEach(function(fieldState) {
+        modelFieldNames[fieldState.field.fieldApiName.toLowerCase()] = true;
+      });
+      const newChildObjects = objectChanges && Array.isArray(objectChanges.newChildObjects) ? objectChanges.newChildObjects : [];
+      const orgOnlyFieldStates = fieldChanges.filter(function(fieldChange) {
+        return fieldChange.status === "new" && !hasOwnKey(modelFieldNames, String(fieldChange.fieldApiName).toLowerCase());
+      }).map(function(fieldChange) {
+        return buildAdapterOrgOnlyFieldState(updaterObjectState, fieldChange);
+      });
+      updaterObjectState.orgOnlyFieldStates = orgOnlyFieldStates.concat(newChildObjects.map(function(childObject) {
+        return {
+          fieldChange: null,
+          childObject,
+          searchText: [childObject.childObjectApiName, childObject.fieldApiName, RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL].join("\\n").toLowerCase(),
+          isMatch: true,
+          rowElement: null
+        };
+      }));
+      const moreNewChildObjectCount = objectChanges ? Number(objectChanges.moreNewChildObjectCount) || 0 : 0;
+      updaterObjectState.moreNewChildObjectCount = moreNewChildObjectCount;
+      const choosableFieldKeys = /* @__PURE__ */ Object.create(null);
+      listUpdaterChoosableFieldStates(updaterObjectState).forEach(function(fieldState) {
+        if (!fieldState.lockReason) {
+          choosableFieldKeys[fieldState.fieldKey] = true;
+        }
+      });
+      updaterObjectState.chosenFieldCount = 0;
+      Object.keys(treeState.updaterChosenFieldKeys).forEach(function(fieldKey) {
+        if (fieldKey.split("\\n")[0] !== updaterObjectState.object.objectApiName) {
+          return;
+        }
+        if (hasOwnKey(choosableFieldKeys, fieldKey)) {
+          updaterObjectState.chosenFieldCount++;
+        } else {
+          delete treeState.updaterChosenFieldKeys[fieldKey];
+        }
+      });
+      drawUpdaterObjectCount(updaterObjectState);
+      const objectNewCount = fieldChanges.filter(function(fieldChange) {
+        return fieldChange.status === "new";
+      }).length;
+      const objectChangedCount = fieldChanges.filter(function(fieldChange) {
+        return fieldChange.status === "changed";
+      }).length;
+      newCount += objectNewCount;
+      changedCount += objectChangedCount;
+      const chipParts = [];
+      if (objectChanges && objectChanges.isRetrieved === false) {
+        chipParts.push(RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL);
+      }
+      if (objectNewCount > 0) {
+        chipParts.push(objectNewCount + " " + RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL);
+      }
+      if (objectChangedCount > 0) {
+        chipParts.push(objectChangedCount + " " + RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL);
+      }
+      const childObjectCount = newChildObjects.length + moreNewChildObjectCount;
+      if (childObjectCount > 0) {
+        chipParts.push(pluralize(childObjectCount, RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL, RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL.replace("object", "objects")));
+      }
+      updaterObjectState.orgChangesChipElement.textContent = chipParts.join(" · ");
+      setShown(updaterObjectState.orgChangesChipElement, chipParts.length > 0);
+      drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState);
+    });
+    drawUpdaterSummary(treeState);
+    orgChangesNoteElement.textContent = "Retrieved from " + String(changesMessage.orgLabel || "the org") + ": " + pluralize(newCount, "field", "fields") + " " + RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL + ", " + pluralize(changedCount, "field", "fields") + " " + RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL + ".";
+    if (changesMessage.childObjectsNote) {
+      orgChangesNoteElement.textContent += " " + String(changesMessage.childObjectsNote);
+    }
+    setShown(orgChangesNoteElement, true);
+    if (treeState.updaterApplyRetrievedElement) {
+      setShown(treeState.updaterApplyRetrievedElement, true);
+    }
+    drawAdapterOrgHints(treeState, changesMessage.hints);
+    drawUpdaterLoadButtons();
+    if (treeState.searchQueries.updater) {
+      applyUpdaterFilter(treeState);
+    }
+  }
+  function describeAdapterFieldChange(fieldChange) {
+    const differences = Array.isArray(fieldChange.differences) ? fieldChange.differences.map(String) : [];
+    return (fieldChange.status === "new" ? RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL : RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL) + (differences.length > 0 ? ": " + differences.join("; ") : "");
+  }
+  function drawAdapterFieldOrgChip(fieldState) {
+    const chipElement = fieldState.orgChipElement;
+    if (!chipElement) {
+      return;
+    }
+    if (!fieldState.orgChange) {
+      chipElement.textContent = "";
+      chipElement.removeAttribute("title");
+      setShown(chipElement, false);
+      return;
+    }
+    chipElement.textContent = fieldState.orgChange.status === "new" ? RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL : RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL;
+    chipElement.setAttribute("title", describeAdapterFieldChange(fieldState.orgChange));
+    setShown(chipElement, true);
+  }
+  function buildAdapterOrgOnlyFieldState(updaterObjectState, fieldChange) {
+    const orgOnly = fieldChange.orgOnly && typeof fieldChange.orgOnly === "object" ? fieldChange.orgOnly : null;
+    const fieldApiName = String(fieldChange.fieldApiName);
+    const field = !orgOnly ? null : {
+      fieldApiName,
+      fieldLabel: String(fieldChange.fieldLabel || ""),
+      fieldType: String(fieldChange.fieldType || ""),
+      fieldTypeWithSize: String(orgOnly.fieldTypeWithSize || ""),
+      recipeValue: typeof orgOnly.expression === "string" ? orgOnly.expression : "",
+      controllingField: "",
+      isOnlyInRecipeFile: false
+    };
+    const orgOnlyNote = orgOnly && typeof orgOnly.note === "string" ? orgOnly.note : "";
+    return {
+      fieldChange,
+      childObject: null,
+      field,
+      fieldKey: updaterFieldKeyOf(updaterObjectState.object.objectApiName, fieldApiName),
+      lockReason: !orgOnly ? RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE : typeof orgOnly.lockReason === "string" ? orgOnly.lockReason : "",
+      orgOnlyNote,
+      orgChange: fieldChange,
+      orgChipElement: null,
+      orgSearchText: "",
+      searchText: [fieldApiName, fieldChange.fieldLabel, field ? field.fieldTypeWithSize || field.fieldType : fieldChange.fieldType, field ? field.recipeValue : "", RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL, orgOnlyNote].join("\\n").toLowerCase(),
+      isMatch: true,
+      rowElement: null,
+      chooseElement: null,
+      editButtonElement: null,
+      editBadgeElement: null,
+      editedValueElement: null,
+      expressionRowElement: null,
+      editorElement: null,
+      isEditorOpen: false
+    };
+  }
+  function drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState) {
+    const containerElement = updaterObjectState.orgOnlyFieldsElement;
+    if (!containerElement) {
+      return;
+    }
+    containerElement.textContent = "";
+    updaterObjectState.orgOnlyFieldStates.forEach(function(orgOnlyFieldState) {
+      if (orgOnlyFieldState.childObject) {
+        const childObject = orgOnlyFieldState.childObject;
+        const childRowElement = createElement("div", "updaterField updaterOrgOnlyObject");
+        const childHeaderElement = createElement("div", "updaterFieldHeader");
+        childHeaderElement.appendChild(createElement("span", "updaterFieldName", String(childObject.childObjectApiName)));
+        childHeaderElement.appendChild(createElement("span", "updaterFieldLabel muted", "via " + String(childObject.fieldApiName)));
+        childHeaderElement.appendChild(createElement("span", "updaterOrgChangeChip", RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL));
+        childHeaderElement.appendChild(createElement("span", "updaterFieldNote muted", RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE));
+        const addElement = createButton("secondary", "adapterChildAdd", RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL, "compact");
+        addElement.addEventListener("click", function() {
+          if (addElement.disabled) {
+            return;
+          }
+          requestAdapterChild(treeState, updaterObjectState, childObject);
+        });
+        orgOnlyFieldState.addElement = addElement;
+        childHeaderElement.appendChild(addElement);
+        childRowElement.appendChild(childHeaderElement);
+        const adapterChild = treeState.adapterChild;
+        if (adapterChild && isAdapterChildOf(adapterChild, updaterObjectState.object.objectApiName, childObject)) {
+          childRowElement.appendChild(adapterChild.editorElement);
+        }
+        drawAdapterChildAddButton(treeState, updaterObjectState, orgOnlyFieldState);
+        orgOnlyFieldState.rowElement = childRowElement;
+        setShown(childRowElement, orgOnlyFieldState.isMatch);
+        containerElement.appendChild(childRowElement);
+        return;
+      }
+      if (isChoosableOrgOnlyRow(orgOnlyFieldState)) {
+        const fieldRowElement = buildUpdaterFieldRow(treeState, updaterObjectState, orgOnlyFieldState);
+        setShown(fieldRowElement, orgOnlyFieldState.isMatch);
+        containerElement.appendChild(fieldRowElement);
+        return;
+      }
+      const fieldChange = orgOnlyFieldState.fieldChange;
+      const rowElement = createElement("div", "updaterField updaterOrgOnlyField");
+      const headerElement = createElement("div", "updaterFieldHeader");
+      headerElement.appendChild(createElement("span", "updaterFieldName", String(fieldChange.fieldApiName)));
+      if (fieldChange.fieldLabel && fieldChange.fieldLabel !== fieldChange.fieldApiName) {
+        headerElement.appendChild(createElement("span", "updaterFieldLabel muted", String(fieldChange.fieldLabel)));
+      }
+      if (fieldChange.fieldType) {
+        headerElement.appendChild(createElement("span", "fieldType", String(fieldChange.fieldType)));
+      }
+      headerElement.appendChild(createElement("span", "updaterOrgChangeChip", RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL));
+      headerElement.appendChild(createElement("span", "updaterFieldNote muted", RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE));
+      rowElement.appendChild(headerElement);
+      orgOnlyFieldState.rowElement = rowElement;
+      setShown(rowElement, orgOnlyFieldState.isMatch);
+      containerElement.appendChild(rowElement);
+    });
+    const moreNewChildObjectCount = updaterObjectState.moreNewChildObjectCount || 0;
+    if (moreNewChildObjectCount > 0) {
+      containerElement.appendChild(createElement("div", "updaterOrgOnlyMore muted", moreNewChildObjectCount + " more " + RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL.replace("object", "objects") + " not listed"));
+    }
+  }
+  function drawAdapterOrgHints(treeState, hints) {
+    const hintsElement = treeState.updaterOrgHintsElement;
+    if (!hintsElement) {
+      return;
+    }
+    hintsElement.textContent = "";
+    if (!hints) {
+      setShown(hintsElement, false);
+      return;
+    }
+    hintsElement.appendChild(createElement("div", "updaterOrgHintsHeading", RECIPE_COCKPIT_ADAPTER_HINTS_HEADING));
+    const hintParts = [
+      [RECIPE_COCKPIT_ADAPTER_SOURCE_TRACKING_HEADING, hints.sourceTracking, "updaterOrgHintsSourceTracking"],
+      [RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING, hints.auditTrail, "updaterOrgHintsAuditTrail"]
+    ];
+    hintParts.forEach(function(hintPart) {
+      const hintList = hintPart[1] || {};
+      const rows = Array.isArray(hintList.rows) ? hintList.rows : [];
+      const listElement = createElement("div", "updaterOrgHintList " + hintPart[2]);
+      listElement.appendChild(createElement("div", "updaterOrgHintListHeading", hintPart[0]));
+      if (hintList.note) {
+        listElement.appendChild(createElement("div", "updaterOrgHintNote muted", String(hintList.note)));
+      } else if (rows.length === 0) {
+        listElement.appendChild(createElement("div", "updaterOrgHintNote muted", "Nothing listed for these objects."));
+      }
+      rows.forEach(function(hintRow) {
+        const rowElement = createElement("div", "updaterOrgHint");
+        if (hintRow.changedAt) {
+          rowElement.appendChild(createElement("span", "updaterOrgHintTime muted", String(hintRow.changedAt).slice(0, 16).replace("T", " ")));
+        }
+        rowElement.appendChild(createElement("span", "updaterOrgHintObject", String(hintRow.objectApiName)));
+        rowElement.appendChild(createElement("span", "updaterOrgHintText", String(hintRow.text)));
+        listElement.appendChild(rowElement);
+      });
+      const moreCount = Number(hintList.moreCount) || 0;
+      const skippedCount = Number(hintList.skippedCount) || 0;
+      if (moreCount > 0) {
+        listElement.appendChild(createElement("div", "updaterOrgHintNote muted", moreCount + " more not shown."));
+      }
+      if (skippedCount > 0) {
+        listElement.appendChild(createElement("div", "updaterOrgHintNote muted", pluralize(skippedCount, "row", "rows") + " could not be read."));
+      }
+      hintsElement.appendChild(listElement);
+    });
+    setShown(hintsElement, true);
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterFieldEditor.ts
+  function buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState) {
+    const buttonElement = createButton("icon", "updaterFieldEdit");
+    buttonElement.appendChild(buildPencilGlyph("default"));
+    buttonElement.setAttribute("aria-expanded", "false");
+    buttonElement.addEventListener("click", function() {
+      if (buttonElement.disabled) {
+        return;
+      }
+      if (fieldState.isEditorOpen) {
+        closeUpdaterFieldEditor(fieldState);
+      } else {
+        openUpdaterFieldEditor(treeState, updaterObjectState, fieldState);
+      }
+    });
+    fieldState.editButtonElement = buttonElement;
+    return buttonElement;
+  }
+  function findUpdaterRecipeStartValue(tree, object, field) {
+    const recipeFileEdit = findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object));
+    if (recipeFileEdit !== null) {
+      return recipeFileEdit;
+    }
+    const valueLines = String(field.recipeValue || "").split("\\n").map(function(valueLine) {
+      return unquoteExpressionLine(valueLine.trim());
+    });
+    const expressionLine = valueLines.find(function(valueLine) {
+      return isExpressionValue(valueLine);
+    });
+    return expressionLine !== void 0 ? expressionLine : "";
+  }
+  function findUpdaterEditStartValue(treeState, updaterObjectState, fieldState) {
+    if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) {
+      return treeState.updaterEditedValues[fieldState.fieldKey];
+    }
+    return findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object, fieldState.field);
+  }
+  function openUpdaterFieldEditor(treeState, updaterObjectState, fieldState) {
+    if (!fieldState.rowElement) {
+      return;
+    }
+    const field = fieldState.field;
+    const fieldLabel = updaterObjectState.object.objectApiName + "." + field.fieldApiName;
+    const recipeStartValue = findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object, field);
+    if (!fieldState.editorElement) {
+      fieldState.editorElement = createElement("div", "fieldEditor updaterFieldEditor hidden");
+      fieldState.editorElement.setAttribute("role", "group");
+      fieldState.rowElement.appendChild(fieldState.editorElement);
+    }
+    const editorElement = fieldState.editorElement;
+    const inputsElement = createElement("div", "fieldEditorInputs");
+    const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, updaterObjectState, fieldState), "New value or faker expression for " + fieldLabel, "");
+    editorElement.setAttribute("aria-label", "New value for " + fieldLabel);
+    inputsElement.appendChild(valueElement);
+    const describeEdit = function() {
+      return (isExpressionValue(String(valueElement.value).trim()) ? "Generated from this faker expression for every loaded record." : "This fixed value for every loaded record. " + describeFixedValueForm(field) + " Start with \${{ to generate from a faker expression instead.") + " " + RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT;
+    };
+    const hintElement = createElement("div", "fieldEditorHint muted", describeEdit());
+    valueElement.addEventListener("input", function() {
+      hintElement.textContent = describeEdit();
+    });
+    const save = function() {
+      const typedValue = String(valueElement.value);
+      const value = isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue;
+      if (value === "" || value === recipeStartValue) {
+        delete treeState.updaterEditedValues[fieldState.fieldKey];
+      } else {
+        treeState.updaterEditedValues[fieldState.fieldKey] = value;
+      }
+      closeUpdaterFieldEditor(fieldState);
+      drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState);
+    };
+    const actionsElement = createElement("div", "fieldEditorActions");
+    const saveElement = createButton("primary", "fieldEditorSave", "Save", "compact");
+    const clearElement = createButton("secondary", "fieldEditorClear", "Clear", "compact");
+    const cancelElement = createButton("secondary", "fieldEditorCancel", "Cancel", "compact");
+    saveElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      save();
+    });
+    clearElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      delete treeState.updaterEditedValues[fieldState.fieldKey];
+      closeUpdaterFieldEditor(fieldState);
+      drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState);
+    });
+    cancelElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      closeUpdaterFieldEditor(fieldState);
+    });
+    valueElement.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        save();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeUpdaterFieldEditor(fieldState);
+      }
+    });
+    actionsElement.appendChild(saveElement);
+    actionsElement.appendChild(clearElement);
+    actionsElement.appendChild(cancelElement);
+    editorElement.appendChild(inputsElement);
+    editorElement.appendChild(hintElement);
+    editorElement.appendChild(actionsElement);
+    editorElement.classList.remove("hidden");
+    fieldState.isEditorOpen = true;
+    if (fieldState.editButtonElement) {
+      fieldState.editButtonElement.setAttribute("aria-expanded", "true");
+    }
+    if (typeof valueElement.focus === "function") {
+      valueElement.focus();
+    }
+  }
+  function closeUpdaterFieldEditor(fieldState) {
+    if (!fieldState.editorElement || !fieldState.isEditorOpen) {
+      return;
+    }
+    fieldState.editorElement.textContent = "";
+    fieldState.editorElement.classList.add("hidden");
+    fieldState.isEditorOpen = false;
+    if (fieldState.editButtonElement) {
+      fieldState.editButtonElement.setAttribute("aria-expanded", "false");
+      if (typeof fieldState.editButtonElement.focus === "function") {
+        fieldState.editButtonElement.focus();
+      }
+    }
+  }
+  function drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState) {
+    const isEdited = hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey);
+    const editedValue = isEdited ? treeState.updaterEditedValues[fieldState.fieldKey] : "";
+    const fieldName = updaterObjectState.object.objectApiName + "." + fieldState.field.fieldApiName;
+    const hasNoExpression = !isEdited && findUpdaterEditStartValue(treeState, updaterObjectState, fieldState) === "";
+    if (fieldState.editedValueElement) {
+      fieldState.editedValueElement.textContent = editedValue;
+      setShown(fieldState.editedValueElement, isEdited);
+    }
+    if (fieldState.expressionRowElement) {
+      setShown(fieldState.expressionRowElement, !isEdited);
+    }
+    if (fieldState.editBadgeElement) {
+      fieldState.editBadgeElement.textContent = !isEdited ? "" : isExpressionValue(editedValue) ? EDITED_EXPRESSION_BADGE_LABEL : FIXED_VALUE_BADGE_LABEL;
+      setShown(fieldState.editBadgeElement, isEdited);
+    }
+    if (fieldState.editButtonElement) {
+      const title = isEdited ? "New value: " + editedValue + " — click to change it" : hasNoExpression ? "Its recipe has no faker expression for it: click to type a value or an expression" : "Click to type a fixed value, or edit the faker expression, for this field’s new values";
+      fieldState.editButtonElement.setAttribute("aria-pressed", isEdited ? "true" : "false");
+      fieldState.editButtonElement.setAttribute("title", title);
+      fieldState.editButtonElement.setAttribute("aria-label", fieldName + ": " + title);
+    }
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterTab.ts
+  function updaterFieldKeyOf(objectApiName, fieldApiName) {
+    return objectApiName + "\\n" + fieldApiName;
+  }
+  function findUpdaterFieldLockReason(tree, objectApiName, field) {
+    if (field.isOnlyInRecipeFile) {
+      return RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON;
+    }
+    if (field.fieldApiName === "RecordTypeId") {
+      return RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON;
+    }
+    const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + "\\n" + field.fieldApiName);
+    if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
+      return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
+    }
+    if (field.controllingField) {
+      return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;
+    }
+    if (RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
+      return RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON;
+    }
+    return "";
+  }
+  function buildUpdaterTab(treeState, panelElement) {
+    treeState.updaterCardObjectApiNames = listUpdaterCardObjectApiNames(treeState);
+    if (treeState.updaterCardObjectApiNames.indexOf(treeState.updaterParentObjectApiName) === -1) {
+      treeState.updaterParentObjectApiName = "";
+      treeState.updaterStep = "parent";
+    }
+    treeState.updaterParentStepElement = buildUpdaterParentStep(treeState);
+    panelElement.appendChild(treeState.updaterParentStepElement);
+    const structureElement = createElement("div", "updaterStructureStep hidden");
+    const headingRowElement = createElement("div", "updaterStepHeadingRow");
+    treeState.updaterStructureHeadingElement = createElement("div", "updaterStepHeading");
+    const changeParentElement = createButton("link", "updaterChangeParent", RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL);
+    changeParentElement.addEventListener("click", function() {
+      treeState.updaterStep = "parent";
+      drawUpdaterStep(treeState);
+      if (typeof treeState.updaterParentSelectElement.focus === "function") {
+        treeState.updaterParentSelectElement.focus();
+      }
+      savePanelPlace();
+    });
+    headingRowElement.appendChild(treeState.updaterStructureHeadingElement);
+    headingRowElement.appendChild(changeParentElement);
+    structureElement.appendChild(headingRowElement);
+    treeState.updaterParentWhereNoteElement = createElement("div", "updaterParentWhereNote muted");
+    structureElement.appendChild(treeState.updaterParentWhereNoteElement);
+    const filterRowElement = createElement("div", "updaterFilterRow");
+    const updaterSearch = buildTabSearch(treeState, "updater", RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER, applyUpdaterFilter);
+    treeState.updaterSearch = updaterSearch;
+    filterRowElement.appendChild(updaterSearch.element);
+    const retrieveMetadataElement = createButton("secondary", "updaterRetrieveMetadata", RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL);
+    treeState.updaterRetrieveMetadataElement = retrieveMetadataElement;
+    retrieveMetadataElement.setAttribute("title", RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE);
+    retrieveMetadataElement.addEventListener("click", function() {
+      requestAdapterMetadataRetrieve(treeState);
+    });
+    filterRowElement.appendChild(retrieveMetadataElement);
+    const orgChangesNoteElement = createElement("div", "updaterOrgChangesNote muted hidden");
+    treeState.updaterOrgChangesNoteElement = orgChangesNoteElement;
+    structureElement.appendChild(filterRowElement);
+    structureElement.appendChild(orgChangesNoteElement);
+    const applyRetrievedElement = createButton("secondary", "updaterApplyRetrieved hidden", RECIPE_COCKPIT_ADAPTER_APPLY_LABEL);
+    treeState.updaterApplyRetrievedElement = applyRetrievedElement;
+    applyRetrievedElement.addEventListener("click", function() {
+      requestAdapterRetrievedFilesApply(treeState);
+    });
+    structureElement.appendChild(applyRetrievedElement);
+    const orgHintsElement = createElement("div", "updaterOrgHints hidden");
+    treeState.updaterOrgHintsElement = orgHintsElement;
+    structureElement.appendChild(orgHintsElement);
+    structureElement.appendChild(createElement("div", "updaterIntro muted", RECIPE_COCKPIT_UPDATER_INTRO));
+    treeState.updaterSummaryElement = createElement("div", "updaterSummary");
+    structureElement.appendChild(treeState.updaterSummaryElement);
+    const loadRowElement = createElement("div", "updaterLoadRow");
+    const cardsElement = createElement("div", "updaterCards actionCards");
+    treeState.updaterLoadCard = buildActionCard("loadUpdaterRecords", "updaterLoad", RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+    const loadButtonElement = treeState.updaterLoadCard.buttonElement;
+    treeState.updaterLoadButtonElement = loadButtonElement;
+    loadButtonElement.addEventListener("click", function() {
+      requestUpdaterRecords(treeState);
+    });
+    treeState.updaterLoadNoteElement = createElement("span", "updaterLoadNote muted");
+    const generateCard = buildActionCard("generateUpdaterValues", "updaterGenerate", RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
+    treeState.updaterGenerateCard = generateCard;
+    treeState.updaterGenerateButtonElement = generateCard.buttonElement;
+    treeState.updaterGenerateButtonElement.addEventListener("click", function() {
+      requestUpdaterValues(treeState);
+    });
+    const updateCard = buildActionCard("updateUpdaterRecords", "updaterUpdate", RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
+    treeState.updaterUpdateCard = updateCard;
+    treeState.updaterUpdateButtonElement = updateCard.buttonElement;
+    treeState.updaterUpdateButtonElement.addEventListener("click", function() {
+      requestUpdaterUpdate(treeState);
+    });
+    cardsElement.appendChild(loadButtonElement);
+    cardsElement.appendChild(treeState.updaterGenerateButtonElement);
+    cardsElement.appendChild(treeState.updaterUpdateButtonElement);
+    loadRowElement.appendChild(treeState.updaterLoadNoteElement);
+    structureElement.appendChild(cardsElement);
+    structureElement.appendChild(loadRowElement);
+    treeState.updaterObjectsElement = createElement("div", "updaterObjects");
+    structureElement.appendChild(treeState.updaterObjectsElement);
+    treeState.updaterStructureStepElement = structureElement;
+    panelElement.appendChild(structureElement);
+    const snapshotsElement = createElement("div", "updaterSnapshots");
+    snapshotsElement.appendChild(createElement("div", "updaterSnapshotsHeading", RECIPE_COCKPIT_UPDATER_SNAPSHOTS_HEADING));
+    const snapshotListElement = createElement("div", "updaterSnapshotList");
+    treeState.updaterSnapshotListElement = snapshotListElement;
+    snapshotListElement.appendChild(createElement("div", "updaterSnapshotsNote muted", "Reading the saved old values…"));
+    treeState.updaterSnapshotButtonElements = [];
+    snapshotsElement.appendChild(snapshotListElement);
+    panelElement.appendChild(snapshotsElement);
+    treeState.updaterObjectStates = [];
+    if (treeState.updaterStep === "structure") {
+      drawUpdaterStructure(treeState);
+    }
+    drawUpdaterStep(treeState);
+    drawUpdaterLoadButtons();
+  }
+  function listUpdaterCardObjectApiNames(treeState) {
+    const objectApiNames = [];
+    treeState.objectStates.forEach(function(treeObjectState) {
+      const objectApiName = treeObjectState.object.objectApiName;
+      if (treeObjectState.isIteration || objectApiNames.indexOf(objectApiName) !== -1) {
+        return;
+      }
+      objectApiNames.push(objectApiName);
+    });
+    return objectApiNames;
+  }
+  function indexUpdaterSubtree(treeState, parentObjectApiName) {
+    const tree = treeState.tree;
+    const drawableObjectApiNames = treeState.updaterCardObjectApiNames;
+    const subtreeObjectApiNames = /* @__PURE__ */ Object.create(null);
+    subtreeObjectApiNames[parentObjectApiName] = true;
+    let isGrowing = true;
+    while (isGrowing) {
+      isGrowing = false;
+      tree.objects.forEach(function(treeObject) {
+        if (hasOwnKey(subtreeObjectApiNames, treeObject.objectApiName) || drawableObjectApiNames.indexOf(treeObject.objectApiName) === -1) {
+          return;
+        }
+        const isUnderParent = treeObject.parentLookups.some(function(parentLookup) {
+          return parentLookup.parentObjectApiName !== treeObject.objectApiName && hasOwnKey(subtreeObjectApiNames, parentLookup.parentObjectApiName);
+        });
+        if (!isUnderParent) {
+          return;
+        }
+        subtreeObjectApiNames[treeObject.objectApiName] = true;
+        isGrowing = true;
+      });
+    }
+    return subtreeObjectApiNames;
+  }
+  function buildUpdaterParentStep(treeState) {
+    const stepElement = createElement("div", "updaterParentStep");
+    const fieldsElement = createElement("div", "updaterParentFields");
+    const selectId = "updaterParentSelect-" + treeState.tree.treeKey.replace(/[^A-Za-z0-9_-]/g, "_");
+    const labelElement = createElement("label", "updaterParentSelectLabel", RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL);
+    const selectElement = createElement("select", "updaterParentSelect");
+    const whereInputElement = createElement("input", "updaterParentWhereInput");
+    const nextElement = createButton("primary", "updaterNext", RECIPE_COCKPIT_UPDATER_NEXT_LABEL);
+    const objectApiNames = treeState.updaterCardObjectApiNames;
+    const chosenIndex = Math.max(0, objectApiNames.indexOf(treeState.updaterParentObjectApiName));
+    stepElement.appendChild(createElement("div", "updaterStepHeading", RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING));
+    selectElement.setAttribute("id", selectId);
+    selectElement.setAttribute("aria-label", RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
+    labelElement.setAttribute("for", selectId);
+    objectApiNames.forEach(function(objectApiName, optionIndex) {
+      const optionElement = createElement("option", "", objectApiName);
+      optionElement.value = String(optionIndex);
+      optionElement.selected = optionIndex === chosenIndex;
+      selectElement.appendChild(optionElement);
+    });
+    selectElement.value = objectApiNames.length > 0 ? String(chosenIndex) : "";
+    selectElement.disabled = objectApiNames.length === 0;
+    whereInputElement.setAttribute("type", "text");
+    whereInputElement.setAttribute("placeholder", RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER);
+    whereInputElement.setAttribute("maxlength", String(UPDATER_WHERE_MAX_LENGTH));
+    whereInputElement.setAttribute("aria-label", RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER);
+    whereInputElement.value = treeState.updaterParentWhereText;
+    whereInputElement.addEventListener("input", function() {
+      treeState.updaterParentWhereText = String(whereInputElement.value || "");
+      savePanelPlace();
+    });
+    nextElement.disabled = objectApiNames.length === 0;
+    nextElement.addEventListener("click", function() {
+      const optionIndex = /^[0-9]+$/.test(String(selectElement.value)) ? Number(selectElement.value) : -1;
+      const objectApiName = objectApiNames[optionIndex];
+      if (!objectApiName) {
+        return;
+      }
+      treeState.updaterParentObjectApiName = objectApiName;
+      treeState.updaterStep = "structure";
+      drawUpdaterStructure(treeState);
+      drawUpdaterStep(treeState);
+      savePanelPlace();
+    });
+    fieldsElement.appendChild(labelElement);
+    fieldsElement.appendChild(selectElement);
+    fieldsElement.appendChild(whereInputElement);
+    fieldsElement.appendChild(nextElement);
+    stepElement.appendChild(fieldsElement);
+    if (objectApiNames.length === 0) {
+      stepElement.appendChild(createElement("div", "treeEmpty muted", "This tree has no objects with a recipe."));
+    }
+    treeState.updaterParentSelectElement = selectElement;
+    treeState.updaterParentWhereInputElement = whereInputElement;
+    return stepElement;
+  }
+  function drawUpdaterStep(treeState) {
+    const isStructure = treeState.updaterStep === "structure";
+    setShown(treeState.updaterParentStepElement, !isStructure);
+    setShown(treeState.updaterStructureStepElement, isStructure);
+  }
+  function drawUpdaterStructure(treeState) {
+    const parentObjectApiName = treeState.updaterParentObjectApiName;
+    const subtreeObjectApiNames = indexUpdaterSubtree(treeState, parentObjectApiName);
+    const drawnObjectApiNames = /* @__PURE__ */ Object.create(null);
+    const updaterObjectStates = [];
+    treeState.updaterObjectsElement.textContent = "";
+    treeState.updaterObjectStates = updaterObjectStates;
+    treeState.objectStates.forEach(function(treeObjectState) {
+      const objectApiName = treeObjectState.object.objectApiName;
+      if (treeObjectState.isIteration || hasOwnKey(drawnObjectApiNames, objectApiName) || !hasOwnKey(subtreeObjectApiNames, objectApiName)) {
+        return;
+      }
+      drawnObjectApiNames[objectApiName] = true;
+      updaterObjectStates.push(buildUpdaterObjectState(treeState, treeObjectState));
+    });
+    const chosenFieldKeys = /* @__PURE__ */ Object.create(null);
+    const choosableOrgOnlyFieldKeys = listAdapterChoosableOrgOnlyFieldKeys(treeState);
+    Object.keys(treeState.updaterChosenFieldKeys).forEach(function(fieldKey) {
+      const objectApiName = fieldKey.split("\\n")[0];
+      if (!hasOwnKey(drawnObjectApiNames, objectApiName) && treeState.updaterCardObjectApiNames.indexOf(objectApiName) !== -1) {
+        chosenFieldKeys[fieldKey] = true;
+      }
+      if (hasOwnKey(drawnObjectApiNames, objectApiName) && hasOwnKey(choosableOrgOnlyFieldKeys, fieldKey)) {
+        chosenFieldKeys[fieldKey] = true;
+      }
+    });
+    updaterObjectStates.forEach(function(updaterObjectState) {
+      updaterObjectState.fieldStates.forEach(function(fieldState) {
+        if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+          chosenFieldKeys[fieldState.fieldKey] = true;
+          updaterObjectState.chosenFieldCount++;
+        }
+      });
+    });
+    treeState.updaterChosenFieldKeys = chosenFieldKeys;
+    const expandedObjectKeys = /* @__PURE__ */ Object.create(null);
+    updaterObjectStates.forEach(function(updaterObjectState) {
+      if (updaterObjectState.isExpandedByReader) {
+        expandedObjectKeys[updaterObjectState.object.objectApiName] = true;
+      }
+    });
+    treeState.updaterExpandedObjectKeys = expandedObjectKeys;
+    updaterObjectStates.forEach(function(updaterObjectState) {
+      treeState.updaterObjectsElement.appendChild(updaterObjectState.element);
+    });
+    treeState.updaterStructureHeadingElement.textContent = RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX + parentObjectApiName;
+    drawUpdaterParentWhereNote(treeState);
+    drawUpdaterSummary(treeState);
+    applyUpdaterFilter(treeState);
+    drawUpdaterLoadButtons();
+    if (treeState.updaterRecordsMessage) {
+      applyUpdaterRecords(treeState, treeState.updaterRecordsMessage);
+    }
+    if (treeState.updaterValuesMessage) {
+      applyUpdaterValues(treeState, treeState.updaterValuesMessage);
+    }
+    applyAdapterMetadataChanges(treeState);
+    if (treeState.adapterChildBlockMessage && !treeState.adapterChild) {
+      buildAdapterChildBlock(treeState);
+    }
+  }
+  function drawUpdaterParentWhereNote(treeState) {
+    const whereText = treeState.updaterParentWhereText.trim();
+    treeState.updaterParentWhereNoteElement.textContent = whereText ? RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX + whereText : RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE;
+  }
+  function buildUpdaterObjectState(treeState, treeObjectState) {
+    const object = treeObjectState.object;
+    const objectElement = createElement("div", "updaterObject");
+    const headerElement = createElement("div", "updaterObjectHeader");
+    const toggleElement = buildToggleElement("updaterObjectToggle");
+    const updaterObjectState = {
+      object,
+      element: objectElement,
+      toggleElement,
+      bodyElement: createElement("div", "updaterObjectBody hidden"),
+      countElement: createElement("span", "updaterObjectCount muted"),
+      // WHAT THE LAST "Retrieve latest metadata" FOUND FOR THIS OBJECT (#445), ITS CHIP, AND ITS ORG-ONLY ROWS ONCE THE BODY IS BUILT
+      orgChanges: null,
+      orgChangesChipElement: createElement("span", "updaterOrgChangeChip hidden"),
+      orgOnlyFieldsElement: null,
+      orgOnlyFieldStates: [],
+      objectSearchText: object.objectApiName.toLowerCase(),
+      isBodyBuilt: false,
+      isExpanded: false,
+      isExpandedByReader: hasOwnKey(treeState.updaterExpandedObjectKeys, object.objectApiName),
+      matchingFieldCount: object.fields.length,
+      chosenFieldCount: 0,
+      countText: "",
+      // WHAT THE LAST LOAD READ FOR THIS OBJECT (#416), AND ITS SECTION ONCE THE BODY IS BUILT
+      loadedRecords: null,
+      recordsElement: null,
+      // WHAT THE LAST GENERATION MADE FOR THIS OBJECT (#417), AND ITS SECTION ONCE THE BODY IS BUILT
+      generatedValues: null,
+      valuesElement: null,
+      fieldStates: object.fields.map(function(field) {
+        return {
+          field,
+          fieldKey: updaterFieldKeyOf(object.objectApiName, field.fieldApiName),
+          lockReason: findUpdaterFieldLockReason(treeState.tree, object.objectApiName, field),
+          orgChange: null,
+          orgChipElement: null,
+          orgSearchText: "",
+          // WHAT THE ROW DRAWS: NAME, LABEL, SIZED TYPE AND FAKER EXPRESSION
+          searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType, field.recipeValue].join("\\n").toLowerCase(),
+          isMatch: true,
+          rowElement: null,
+          chooseElement: null,
+          editButtonElement: null,
+          editBadgeElement: null,
+          editedValueElement: null,
+          expressionRowElement: null,
+          editorElement: null,
+          isEditorOpen: false
+        };
+      })
+    };
+    toggleElement.setAttribute("aria-expanded", "false");
+    toggleElement.setAttribute("aria-label", "Show or hide the fields of " + object.objectApiName);
+    toggleElement.addEventListener("click", function() {
+      updaterObjectState.isExpandedByReader = !updaterObjectState.isExpanded;
+      if (updaterObjectState.isExpandedByReader) {
+        treeState.updaterExpandedObjectKeys[object.objectApiName] = true;
+      } else {
+        delete treeState.updaterExpandedObjectKeys[object.objectApiName];
+      }
+      setUpdaterObjectExpanded(treeState, updaterObjectState, updaterObjectState.isExpandedByReader, true);
+      savePanelPlace();
+    });
+    headerElement.appendChild(toggleElement);
+    headerElement.appendChild(buildSourceLink("updaterObjectName", object.objectApiName, object.recipeFilePath, object.lineNumber));
+    const parentLookupsText = formatParentLookups(treeObjectState.treeObject);
+    if (parentLookupsText) {
+      headerElement.appendChild(createElement("span", "treeLookups muted", parentLookupsText));
+    }
+    headerElement.appendChild(updaterObjectState.countElement);
+    headerElement.appendChild(updaterObjectState.orgChangesChipElement);
+    objectElement.appendChild(headerElement);
+    objectElement.appendChild(updaterObjectState.bodyElement);
+    return updaterObjectState;
+  }
+  function setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, isAnimated) {
+    if (isExpanded && !updaterObjectState.isBodyBuilt) {
+      if (updaterObjectState.object.objectApiName !== treeState.updaterParentObjectApiName) {
+        updaterObjectState.bodyElement.appendChild(buildUpdaterWhereElement(treeState, updaterObjectState));
+      }
+      updaterObjectState.recordsElement = createElement("div", "updaterRecords hidden");
+      updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
+      drawUpdaterObjectRecords(updaterObjectState);
+      updaterObjectState.valuesElement = createElement("div", "updaterValues hidden");
+      updaterObjectState.bodyElement.appendChild(updaterObjectState.valuesElement);
+      drawUpdaterObjectValues(updaterObjectState);
+      updaterObjectState.fieldStates.forEach(function(fieldState) {
+        const rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
+        setShown(rowElement, fieldState.isMatch);
+        updaterObjectState.bodyElement.appendChild(rowElement);
+      });
+      updaterObjectState.orgOnlyFieldsElement = createElement("div", "updaterOrgOnlyFields");
+      updaterObjectState.bodyElement.appendChild(updaterObjectState.orgOnlyFieldsElement);
+      updaterObjectState.isBodyBuilt = true;
+      drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState);
+    }
+    setShownWithMotion(updaterObjectState.bodyElement, isExpanded, isAnimated);
+    updaterObjectState.isExpanded = isExpanded;
+    drawToggle(updaterObjectState.toggleElement, isExpanded, isAnimated);
+  }
+  function buildUpdaterFieldRow(treeState, updaterObjectState, fieldState) {
+    const field = fieldState.field;
+    const isOrgOnlyField = !!fieldState.fieldChange;
+    const rowElement = createElement("div", isOrgOnlyField ? "updaterField updaterOrgOnlyField" : "updaterField");
+    const headerElement = createElement("div", "updaterFieldHeader");
+    const chooseElement = createButton("check", "updaterFieldChoose");
+    chooseElement.setAttribute("role", "checkbox");
+    chooseElement.addEventListener("click", function() {
+      if (chooseElement.disabled) {
+        return;
+      }
+      if (hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+        delete treeState.updaterChosenFieldKeys[fieldState.fieldKey];
+        updaterObjectState.chosenFieldCount--;
+      } else {
+        treeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
+        updaterObjectState.chosenFieldCount++;
+      }
+      drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
+      drawUpdaterObjectCount(updaterObjectState);
+      drawUpdaterSummary(treeState);
+      drawUpdaterLoadButtons();
+      savePanelPlace();
+    });
+    fieldState.chooseElement = chooseElement;
+    headerElement.appendChild(chooseElement);
+    if (!fieldState.lockReason) {
+      headerElement.appendChild(buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState));
+    }
+    headerElement.appendChild(createElement("span", "updaterFieldName", field.fieldApiName));
+    if (field.fieldLabel && field.fieldLabel !== field.fieldApiName) {
+      headerElement.appendChild(createElement("span", "updaterFieldLabel muted", field.fieldLabel));
+    }
+    const fieldTypeText = field.fieldTypeWithSize || field.fieldType;
+    if (fieldTypeText) {
+      headerElement.appendChild(createElement("span", "fieldType", fieldTypeText));
+    }
+    if (fieldState.lockReason) {
+      headerElement.appendChild(createElement("span", "updaterFieldNote muted", fieldState.lockReason));
+    }
+    fieldState.editBadgeElement = createElement("span", "fixedValueBadge hidden");
+    headerElement.appendChild(fieldState.editBadgeElement);
+    fieldState.orgChipElement = createElement("span", "updaterOrgChangeChip hidden");
+    headerElement.appendChild(fieldState.orgChipElement);
+    drawAdapterFieldOrgChip(fieldState);
+    if (isOrgOnlyField) {
+      headerElement.appendChild(createElement("span", "updaterFieldNote muted", RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE));
+      if (fieldState.orgOnlyNote) {
+        headerElement.appendChild(createElement("span", "updaterFieldNote updaterOrgOnlyFixedNote muted", fieldState.orgOnlyNote));
+      }
+    }
+    rowElement.appendChild(headerElement);
+    if (field.recipeValue) {
+      fieldState.expressionRowElement = createElement("div", "expressionRow");
+      fieldState.expressionRowElement.appendChild(createElement("pre", "expression", field.recipeValue));
+      rowElement.appendChild(fieldState.expressionRowElement);
+    }
+    fieldState.editedValueElement = createElement("pre", "updaterEditedValue hidden");
+    rowElement.appendChild(fieldState.editedValueElement);
+    fieldState.rowElement = rowElement;
+    drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
+    drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState);
+    return rowElement;
+  }
+  function drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState) {
+    const chooseElement = fieldState.chooseElement;
+    if (!chooseElement) {
+      return;
+    }
+    const fieldName = updaterObjectState.object.objectApiName + "." + fieldState.field.fieldApiName;
+    const isChosen = hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
+    const title = fieldState.lockReason ? "Cannot be chosen: " + fieldState.lockReason : isChosen ? "Chosen — click to leave this field as it is" : "Click to choose this field to fill";
+    chooseElement.textContent = isChosen ? "✓" : "";
+    chooseElement.setAttribute("aria-checked", isChosen ? "true" : "false");
+    chooseElement.disabled = !!fieldState.lockReason;
+    chooseElement.setAttribute("title", title);
+    chooseElement.setAttribute("aria-label", fieldName + ": " + title);
+  }
+  function isChoosableOrgOnlyRow(orgOnlyRowState) {
+    return !!orgOnlyRowState.field;
+  }
+  function listUpdaterChoosableFieldStates(updaterObjectState) {
+    const recipeFieldStates = updaterObjectState.fieldStates;
+    return recipeFieldStates.concat(updaterObjectState.orgOnlyFieldStates.filter(isChoosableOrgOnlyRow));
+  }
+  function listAdapterChoosableOrgOnlyFieldKeys(treeState) {
+    const fieldKeys = /* @__PURE__ */ Object.create(null);
+    const changesMessage = treeState.adapterChangesMessage;
+    (changesMessage && Array.isArray(changesMessage.objects) ? changesMessage.objects : []).forEach(function(objectChanges) {
+      (objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges : []).forEach(function(fieldChange) {
+        if (fieldChange && fieldChange.orgOnly && typeof fieldChange.orgOnly === "object" && !fieldChange.orgOnly.lockReason) {
+          fieldKeys[updaterFieldKeyOf(String(objectChanges?.objectApiName), String(fieldChange.fieldApiName))] = true;
+        }
+      });
+    });
+    return fieldKeys;
+  }
+  function drawUpdaterObjectCount(updaterObjectState) {
+    const loadedRecords = updaterObjectState.loadedRecords;
+    updaterObjectState.countElement.textContent = updaterObjectState.countText + (updaterObjectState.chosenFieldCount > 0 ? " · " + updaterObjectState.chosenFieldCount + " chosen" : "") + (!loadedRecords ? "" : loadedRecords.failureMessage || loadedRecords.skippedReason ? " · not read" : " · " + pluralize(Number(loadedRecords.recordCount) || 0, "record", "records"));
+  }
+  function buildUpdaterWhereElement(treeState, updaterObjectState) {
+    const objectApiName = updaterObjectState.object.objectApiName;
+    const whereElement = createElement("div", "updaterWhere");
+    const inputElement = createElement("input", "updaterWhereInput");
+    inputElement.setAttribute("type", "text");
+    inputElement.setAttribute("placeholder", RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER);
+    inputElement.setAttribute("maxlength", String(UPDATER_WHERE_MAX_LENGTH));
+    inputElement.setAttribute("aria-label", "WHERE for " + objectApiName + " records");
+    inputElement.value = hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : "";
+    inputElement.addEventListener("input", function() {
+      treeState.updaterWhereTexts[objectApiName] = String(inputElement.value || "");
+    });
+    whereElement.appendChild(inputElement);
+    updaterObjectState.whereInputElement = inputElement;
+    return whereElement;
+  }
+  function drawUpdaterSummary(treeState) {
+    if (!treeState.updaterSummaryElement || !treeState.updaterObjectStates) {
+      return;
+    }
+    let chosenFieldCount = 0;
+    let chosenObjectCount = 0;
+    treeState.updaterObjectStates.forEach(function(updaterObjectState) {
+      chosenFieldCount += updaterObjectState.chosenFieldCount;
+      if (updaterObjectState.chosenFieldCount > 0) {
+        chosenObjectCount++;
+      }
+    });
+    treeState.updaterSummaryElement.textContent = chosenFieldCount === 0 ? RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN : pluralize(chosenFieldCount, "field", "fields") + " chosen on " + pluralize(chosenObjectCount, "object", "objects");
+  }
+  function applyUpdaterFilter(treeState) {
+    const updaterSearch = treeState.updaterSearch;
+    const updaterObjectStates = treeState.updaterObjectStates;
+    if (!updaterSearch || !updaterObjectStates) {
+      return;
+    }
+    const searchQuery = treeState.searchQueries.updater;
+    let totalFieldCount = 0;
+    let matchingFieldCount = 0;
+    updaterObjectStates.forEach(function(updaterObjectState) {
+      const isObjectNameMatch = !searchQuery || updaterObjectState.objectSearchText.indexOf(searchQuery) !== -1;
+      let objectMatchingFieldCount = 0;
+      updaterObjectState.fieldStates.forEach(function(fieldState) {
+        fieldState.isMatch = isObjectNameMatch || fieldState.searchText.indexOf(searchQuery) !== -1 || fieldState.orgSearchText !== "" && fieldState.orgSearchText.indexOf(searchQuery) !== -1;
+        if (fieldState.isMatch) {
+          objectMatchingFieldCount++;
+        }
+        if (fieldState.rowElement) {
+          setShown(fieldState.rowElement, fieldState.isMatch);
+        }
+      });
+      updaterObjectState.orgOnlyFieldStates.forEach(function(orgOnlyFieldState) {
+        orgOnlyFieldState.isMatch = !searchQuery || isObjectNameMatch || orgOnlyFieldState.searchText.indexOf(searchQuery) !== -1;
+        if (orgOnlyFieldState.rowElement) {
+          setShown(orgOnlyFieldState.rowElement, orgOnlyFieldState.isMatch);
+        }
+      });
+      const objectFieldCount = updaterObjectState.fieldStates.length;
+      updaterObjectState.matchingFieldCount = objectMatchingFieldCount;
+      totalFieldCount += objectFieldCount;
+      matchingFieldCount += objectMatchingFieldCount;
+      updaterObjectState.countText = !searchQuery || isObjectNameMatch ? pluralize(objectFieldCount, "field", "fields") : objectMatchingFieldCount > 0 ? objectMatchingFieldCount + " of " + pluralize(objectFieldCount, "field", "fields") : "no matching fields";
+      drawUpdaterObjectCount(updaterObjectState);
+    });
+    updaterSearch.matchCountElement.textContent = !searchQuery ? pluralize(totalFieldCount, "field", "fields") : matchingFieldCount > 0 ? matchingFieldCount + " of " + pluralize(totalFieldCount, "field", "fields") : "no matches";
+    if (!searchQuery) {
+      updaterObjectStates.forEach(function(updaterObjectState) {
+        setUpdaterObjectExpanded(treeState, updaterObjectState, updaterObjectState.isExpandedByReader, false);
+      });
+      return;
+    }
+    expandMatchesWithinBudget(
+      updaterObjectStates,
+      function(updaterObjectState) {
+        return updaterObjectState.matchingFieldCount;
+      },
+      function(updaterObjectState) {
+        return updaterObjectState.fieldStates.length;
+      },
+      function(updaterObjectState, isExpanded) {
+        setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, false);
+      }
+    );
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();
