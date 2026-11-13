@@ -18,6 +18,7 @@ Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open 
   - names the 25 functions among those that must not be defined again in the string;
   - checks the new modules' declared names;
   - checks that the service and `RecipeCockpitOrgAuthorize.ts` re-export the new constants as the same values.
+
 ## [3.202.5] - The Recipe Cockpit's field editor, picklist tiles and lookup wiring are checked TypeScript modules (#653, slice 3e-2 of #565)
 
 Nothing a user sees changes: every fixed value, picklist choice, Wire to…, Add friend and Add parent suite, the Treecipe tab and generate-and-insert journeys, and every rendered baseline pass with no expectation changed.
