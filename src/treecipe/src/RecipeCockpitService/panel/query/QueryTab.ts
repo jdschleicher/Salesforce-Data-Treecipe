@@ -19,7 +19,7 @@ declare const QUERY_MAX_LENGTH: number;
 declare function drawActionCardState(actionCard: IActionCardView, reason: string, title: string): void;
 declare function pluralize(count: number, singular: string, plural: string): string;
 // THE PREVIEW TABLE IS SHARED WITH THE TREECIPE ADAPTER, WHOSE SLICE (#641) MOVES IT
-declare function buildRecordTable(columns: string[], rows: unknown[], recordLinks: unknown, recordLinkSequence: unknown, rowClassNames: undefined): HTMLElement;
+declare function buildRecordTable(columns: string[], rows: unknown[], recordLinks: unknown, recordLinkSequence: unknown, objectApiName: string | undefined): HTMLElement;
 
 // WHAT THIS TAB POSTS; THE HOST'S ROUTER CHECKS EACH FIELD AGAIN (routePanelMessage)
 type QueryExportFormat = 'json' | 'csv';
