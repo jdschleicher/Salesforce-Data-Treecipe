@@ -1,5 +1,27 @@
 # Change Log
 
+## [3.202.9] - The Treecipe tab's navigation is checked TypeScript modules (#656, slice 3e-5 of #565)
+
+Nothing a user sees changes. Every tree picker, tree preferences, nickname reference, friend chip, friends menu, tab outline and sections suite passes with no expectation changed. So do the Treecipe tab and first journeys and the rendered baselines.
+
+- **What moved out of the template-literal script.** 58 functions are now in `RecipeCockpitService/panel/treecipe/navigation/`, type checked by `npm run compile`. These are the menus that handle keys and focus:
+  - `TreePicker.ts`: the Treecipes dropdown, Favorites only, and the shown card's insert order line with its "Show all".
+  - `TreecipesSearch.ts`: the search across every card, its index, its results, and opening the row a result or a link names.
+  - `Nicknames.ts`: the nickname index, the 🌳 chip, the ↖ back-link, and the one reference list open at a time.
+  - `Friends.ts`: friend chips and a parent row's 👥 N list.
+  - `StructureFilter.ts`: the Treecipe tab's filter, how far a search may open rows, the match count, and tree focus.
+  - The script lost 1,440 lines, from 3,997 to 2,557.
+- **17 entry points join the bridge**, because the tree card, place restore and the message handler still call them.
+- **The earlier slices' modules import what they used to declare**: `displayTitleOf`, `expandMatchesWithinBudget`, `applyStructureFilter`, `filterTreeObjectRows`, `drawStructureMatchCount`, `buildTreeObjectKey`, `applyTreeFocus`, `revealTreeObjectRow`, `findReferencedOwnerState`, `buildNicknameBackLink` and `drawTreePickerObjects`.
+- **One card's state, many views.** Each module passes its own view of a card's state. Navigation widens that view in one place, `asNavigationTreeState` / `asNavigationObjectState`, because the script builds one object per card that is every view.
+- **The choice, the favourites filter, the search and the open reference list stay the script's variables**, because it keeps them with the reader's place and resets them for every model. The modules declare them with `declare let`. The insert order line's measuring state and the menu hint counter belong to the modules.
+- **22 constants** moved into `RecipeCockpitNavigationConstants.ts`, which imports nothing; `RecipeCockpitService.ts` re-exports them. The favourite labels and `TODOS_VIEWS` are imports from their existing files. `YAML_NON_STRING_NICKNAME_PATTERN` stays injected, like `QUERY_MAX_LENGTH`, because its rule lives beside the recipe writer.
+- **Unchanged.** Escape still closes a nickname menu and returns focus to its opener, a nickname naming an excluded object still says so, a search still opens only its budget, and every allow-list refusal stands.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` now:
+  - names the 58 functions among those that must not be defined again in the string;
+  - checks the new modules' declared names;
+  - checks that the service re-exports the new constants as the same values.
+
 ## [3.202.8] - The Treecipe tab's field rows and the object/field selection cascade are checked TypeScript modules (#655, slice 3e-4 of #565)
 
 Nothing a user sees changes. Every exclude-objects, exclude-fields, object selection, occurrence, field box, no-fields-selected, Hide unselected, standard-field, validation rule, fixed value and recipe filter suite passes with no expectation changed. So do the Treecipe tab and Generate and insert journeys and the rendered baselines.

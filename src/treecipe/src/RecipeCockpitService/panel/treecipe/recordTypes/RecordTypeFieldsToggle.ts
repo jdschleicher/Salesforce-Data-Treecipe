@@ -1,6 +1,8 @@
 import { createButton, createElement } from '../../../../CockpitKit/panel/CockpitPanelElements';
 import { RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE, RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL } from '../../../RecipeCockpitRecordTypesConstants';
 import { IRecordTypesTreeState } from './RecordTypeTypes';
+import { displayTitleOf } from '../navigation/TreePicker';
+import { applyStructureFilter } from '../navigation/StructureFilter';
 
 /*
     "Record type fields only" (#320): the Treecipe tab's own check, per card and panel-only, kept
@@ -8,8 +10,6 @@ import { IRecordTypesTreeState } from './RecordTypeTypes';
     disabled with a note saying why, so turning it on can never empty the tab silently.
     These names are the panel script's own, read when a function runs.
 */
-declare function displayTitleOf(tree: unknown): string;
-declare function applyStructureFilter(treeState: IRecordTypesTreeState): void;
 declare function savePanelPlace(): void;
 
 // OBJECT API NAME -> FIELD API NAME -> THE DEVELOPER NAMES RESTRICTING IT

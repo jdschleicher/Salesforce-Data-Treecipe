@@ -38,12 +38,13 @@ describe('the first journey catches a broken cockpit (#577)', () => {
     test('fails naming the Treecipes dropdown and the step when the dropdown no longer listens for a change', async () => {
 
         const buildShellHtml = RecipeCockpitService.buildWebviewShellHtml.bind(RecipeCockpitService);
-        const changeListener = 'treePickerElement.addEventListener(\'change\', function () {';
+        // THE LISTENER IS IN THE BUNDLED NAVIGATION MODULE (#656), PRINTED AS esbuild WRITES IT
+        const changeListener = 'treePickerSelectElement.addEventListener("change", function() {';
         jest.spyOn(RecipeCockpitService, 'buildWebviewShellHtml').mockImplementation((nonce: string) => {
             const shellHtml = buildShellHtml(nonce);
             // THE BREAKAGE MUST REALLY BE MADE: A SHELL THAT NO LONGER HOLDS THIS LINE NEEDS THIS TEST UPDATED, NOT A PASS
             expect(shellHtml).toContain(changeListener);
-            return shellHtml.replace(changeListener, 'void (\'change\', function () {');
+            return shellHtml.replace(changeListener, 'void ("change", function() {');
         });
 
         const failureMessage = await runJourneyExpectingFailure();

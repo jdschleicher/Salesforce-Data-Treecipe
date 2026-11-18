@@ -7,16 +7,14 @@ import {
     RECIPE_COCKPIT_TODO_IN_VALUE_LABEL
 } from '../../../RecipeCockpitRecordTypesConstants';
 import { IRecipeTodo, IRecordTypesTreeObjectState, IRecordTypesTreeState } from './RecordTypeTypes';
+import { displayTitleOf } from '../navigation/TreePicker';
+import { applyStructureFilter, drawStructureMatchCount, filterTreeObjectRows } from '../navigation/StructureFilter';
 
 /*
     The Treecipe tab's "TODOs only" checks: the card's (#354) and each object's (#477), and the list
     of a field's or an object's TODO comments. These names are the panel script's own, read when a
     function runs.
 */
-declare function displayTitleOf(tree: unknown): string;
-declare function applyStructureFilter(treeState: IRecordTypesTreeState): void;
-declare function filterTreeObjectRows(treeState: IRecordTypesTreeState, treeObjectState: IRecordTypesTreeObjectState): void;
-declare function drawStructureMatchCount(treeState: IRecordTypesTreeState): void;
 declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;

@@ -15,6 +15,7 @@ import { buildTroubleshootingHistory, requestTroubleshootingHistory } from './Tr
 import { applyRemovedTodosFilter, buildTodosViewFrame, buildTroubleshootingTodos, setTodoGroupExpanded } from './TroubleshootingTodos';
 import { IShownState, ITroubleshootingSubTabState, ITroubleshootingSummaryMessage, ITroubleshootingTreeState } from './TroubleshootingTypes';
 import { buildTroubleshootingValidationRules, requestTreeValidationRules, setValidationRuleGroupExpanded } from './TroubleshootingValidationRules';
+import { expandMatchesWithinBudget } from '../treecipe/navigation/StructureFilter';
 
 /*
     The Troubleshooting tab's frame (#346, #365, #639): its sub-tabs, their searches and the summary of
@@ -27,7 +28,6 @@ declare const treeStates: ITroubleshootingTreeState[];
 declare const insertRunningDatasetFolderName: string | null;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
-declare function expandMatchesWithinBudget<GroupState>(groupStates: GroupState[], matchCountOf: (groupState: GroupState) => number, rowCountOf: (groupState: GroupState) => number, setExpanded: (groupState: GroupState, isExpanded: boolean) => void): void;
 
 // WHICH SUB-TABS A FILTER REDRAWS: ONE BY NAME, EVERY ACTION SUB-TAB AFTER A SUMMARY, OR ALL OF THEM
 export type TroubleshootingFilterScope = RecipeCockpitTroubleshootingSubTab | 'actions' | undefined;

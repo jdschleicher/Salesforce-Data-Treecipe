@@ -30,7 +30,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     appendUnavailableRecordTypesButton: () => appendUnavailableRecordTypesButton,
     applyDatasetsFilter: () => applyDatasetsFilter,
     applyRecordTypesFilter: () => applyRecordTypesFilter,
+    applyStructureFilter: () => applyStructureFilter,
     applyTreeFieldVisibility: () => applyTreeFieldVisibility,
+    applyTreeFocus: () => applyTreeFocus,
+    applyTreecipesSearch: () => applyTreecipesSearch,
     buildActionCard: () => buildActionCard,
     buildDataOrgView: () => buildDataOrgView,
     buildDatasetsTab: () => buildDatasetsTab,
@@ -51,6 +54,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     buildTreeFieldState: () => buildTreeFieldState,
     buildTreeGlyph: () => buildTreeGlyph,
     buildTreeInsertElement: () => buildTreeInsertElement,
+    buildTreePicker: () => buildTreePicker,
+    buildTreecipesSearch: () => buildTreecipesSearch,
     buildTroubleshootingTab: () => buildTroubleshootingTab,
     buildUpdaterTab: () => buildUpdaterTab,
     buildValidationRuleSourceLink: () => buildValidationRuleSourceLink,
@@ -62,35 +67,44 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     clearUpdaterValues: () => clearUpdaterValues,
     closeConfirmDialog: () => closeConfirmDialog,
     closeFieldEditor: () => closeFieldEditor,
+    closeNicknameMenu: () => closeNicknameMenu,
     createButton: () => createButton,
     createElement: () => createElement,
+    describeTreeDifferences: () => describeTreeDifferences,
+    displayTitleOf: () => displayTitleOf,
     drawDataOrgViews: () => drawDataOrgViews,
     drawDatasetInserts: () => drawDatasetInserts,
     drawFieldRowLookupDecision: () => drawFieldRowLookupDecision,
+    drawFriendChips: () => drawFriendChips,
     drawHideUnselectedToggle: () => drawHideUnselectedToggle,
     drawObjectFieldSelection: () => drawObjectFieldSelection,
+    drawObjectNickname: () => drawObjectNickname,
     drawObjectSelection: () => drawObjectSelection,
     drawObjectTodosToggle: () => drawObjectTodosToggle,
     drawPicklistValueEditor: () => drawPicklistValueEditor,
     drawRecordTypeChoices: () => drawRecordTypeChoices,
     drawRecordTypeFieldsToggle: () => drawRecordTypeFieldsToggle,
     drawResetSelection: () => drawResetSelection,
+    drawStructureMatchCount: () => drawStructureMatchCount,
     drawTodosToggle: () => drawTodosToggle,
     drawToggle: () => drawToggle,
     drawTreeInsert: () => drawTreeInsert,
     drawTreeInserts: () => drawTreeInserts,
     drawTreePermissionSet: () => drawTreePermissionSet,
+    drawTreePickerObjectsToggle: () => drawTreePickerObjectsToggle,
     drawTreeQueryButtons: () => drawTreeQueryButtons,
     drawUpdaterLoadButtons: () => drawUpdaterLoadButtons,
     findEmptyLookup: () => findEmptyLookup,
     findHideUnselectedReason: () => findHideUnselectedReason,
     findLookupWiring: () => findLookupWiring,
     findObjectFieldSelection: () => findObjectFieldSelection,
+    focusTreeInPlace: () => focusTreeInPlace,
     formatParentLookups: () => formatParentLookups,
     hasOwnKey: () => hasOwnKey,
     indexObjectExclusions: () => indexObjectExclusions,
     indexObjectImpacts: () => indexObjectImpacts,
     indexRecordTypeFields: () => indexRecordTypeFields,
+    isElementWithin: () => isElementWithin,
     isFieldTextMatch: () => isFieldTextMatch,
     isMotionReduced: () => isMotionReduced,
     isObjectHidingUnselectedIn: () => isObjectHidingUnselectedIn,
@@ -100,8 +114,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     isTodosOnlyIn: () => isTodosOnlyIn,
     isTreeFieldUnticked: () => isTreeFieldUnticked,
     listRecordTypeObjects: () => listRecordTypeObjects,
+    nicknameOfObject: () => nicknameOfObject,
     occurrenceNicknameOf: () => occurrenceNicknameOf,
     readHistorySort: () => readHistorySort,
+    readNestingParent: () => readNestingParent,
+    releaseTreePickerObjectsList: () => releaseTreePickerObjectsList,
     renderAdapterChildBlock: () => renderAdapterChildBlock,
     renderAdapterChildPreview: () => renderAdapterChildPreview,
     renderAdapterMetadataChanges: () => renderAdapterMetadataChanges,
@@ -645,149 +662,97 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     updateUpdaterRecords: { verb: "update", why: "Write the new values to the loaded records by Id. Their old values are saved first." }
   });
 
-  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelBuilders.ts
-  var ACTION_CARDS = { ...RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS, ...RECIPE_COCKPIT_STANDALONE_ACTION_CARDS };
-  var actionCardCount = 0;
-  function buildActionCard(action, className, title) {
-    const card = Object.prototype.hasOwnProperty.call(ACTION_CARDS, action) ? ACTION_CARDS[action] : void 0;
-    if (!card || typeof RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb] !== "string") {
-      throw new Error("Unknown action: " + action);
-    }
-    actionCardCount++;
-    const buttonElement = createButton("card", "actionCard " + className);
-    const headingElement = createElement("span", "actionCardHeading");
-    const emojiElement = createElement("span", "actionCardEmoji", RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb]);
-    const titleElement = createElement("span", "actionCardTitle", title);
-    const whyElement = createElement("span", "actionCardWhy", card.why);
-    const detailElement = createElement("span", "actionCardDetail muted hidden");
-    const reasonElement = createElement("span", "actionCardReason hidden");
-    emojiElement.setAttribute("aria-hidden", "true");
-    titleElement.setAttribute("id", "actionCardTitle" + actionCardCount);
-    whyElement.setAttribute("id", "actionCardWhy" + actionCardCount);
-    detailElement.setAttribute("id", "actionCardDetail" + actionCardCount);
-    reasonElement.setAttribute("id", "actionCardReason" + actionCardCount);
-    buttonElement.setAttribute("aria-labelledby", "actionCardTitle" + actionCardCount);
-    buttonElement.setAttribute("aria-describedby", ["actionCardWhy", "actionCardDetail", "actionCardReason"].map(function(idPrefix) {
-      return idPrefix + actionCardCount;
-    }).join(" "));
-    headingElement.appendChild(emojiElement);
-    headingElement.appendChild(titleElement);
-    buttonElement.appendChild(headingElement);
-    buttonElement.appendChild(whyElement);
-    buttonElement.appendChild(detailElement);
-    buttonElement.appendChild(reasonElement);
-    return { action, buttonElement, titleElement, detailElement, reasonElement };
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitDatasetsTabConstants.ts
+  var RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
+  var RECIPE_COCKPIT_FAVORITE_TREE_LABEL = "★";
+  var RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = "☆";
+  var RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = "Favorites only";
+  var RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON = "checking the org connection…";
+  var RECIPE_COCKPIT_DATASET_ADAPTED_LABEL = "adapted";
+  var RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX = "Record types: ";
+  var RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY = {
+    succeeded: { emoji: "✅", label: "Inserted" },
+    partial: { emoji: "⚠️", label: "Partly inserted" },
+    failed: { emoji: "❌", label: "Insert failed" },
+    cancelled: { emoji: "🚫", label: "Insert cancelled" },
+    unknown: { emoji: "❔", label: "Insert outcome unknown" }
+  };
+  var RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL = "View results";
+  var RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE = "No outcome was saved for this insert: it ran before Treecipe recorded how an insert ended, or it stopped before it could.";
+  var RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE = "The insert stopped on an error before it ended, so records it saved may still be in the org.";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY = {
+    succeeded: { emoji: "✅", label: "Succeeded" },
+    partial: { emoji: "⚠️", label: "Partly succeeded" },
+    failed: { emoji: "❌", label: "Failed" },
+    cancelled: { emoji: "⚠️", label: "Cancelled" },
+    unknown: { emoji: "⚠️", label: "Outcome unknown" },
+    unreadable: { emoji: "⚠️", label: "Unreadable" },
+    unrecorded: { emoji: "⚠️", label: "Not recorded" }
+  };
+  var RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS = [
+    { key: "time", label: "Time" },
+    { key: "step", label: "Step" },
+    { key: "org", label: "Org" },
+    { key: "status", label: "Status" },
+    { key: "detail", label: "Detail" },
+    { key: "files", label: "Files" }
+  ];
+  var RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS = ["time", "step", "org", "status"];
+  var RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL = "Insert journey";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE = "Reading this data set's inserts…";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE = "No inserts yet.";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = "Inserted first time, with nothing else needed.";
+  var RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = "View file";
+  var RECIPE_COCKPIT_INSERT_RUNNING_LABEL = "Inserting…";
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitNavigationConstants.ts
+  var RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT = 25;
+  var RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2e3;
+  var RECIPE_COCKPIT_FRIEND_EMOJI = "👥";
+  var RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI = "🌳";
+  var RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT = "Click to go to a child reference";
+  var RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT = "Click to go to the parent reference";
+  var RECIPE_COCKPIT_FRIENDS_MENU_HINT = "Click to go to a friend";
+  var RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = "Treecipe";
+  var RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER = "Search treecipes, objects, fields and record types";
+  var RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = "No treecipe, object, field or record type matches this search.";
+  var RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = " (no match)";
+  var RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL = "Insert order:";
+  var RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR = " → ";
+  var RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS = "No objects";
+  var RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX = " (excluded)";
+  var RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX = " (auto-excluded)";
+  var RECIPE_COCKPIT_TREE_PICKER_NO_FIELDS_SELECTED_SUFFIX = " (no fields selected)";
+  var RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX = " (impacted)";
+  var RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL = "Show all";
+  var RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS = "Show less";
+  var RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
+  var RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = " more — type more of the name to narrow the search";
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitOwnKey.ts
+  function hasOwnKey(record, key) {
+    return !!record && Object.prototype.hasOwnProperty.call(record, key);
   }
-  function buildRowTable(tableOptions) {
-    const wrapElement = createElement("div", "sdtRowTableWrap " + tableOptions.className + "Wrap");
-    const tableElement = createElement("table", "sdtRowTable " + tableOptions.className);
-    const headElement = createElement("thead", "");
-    const headRowElement = createElement("tr", "");
-    const bodyElement = createElement("tbody", "");
-    const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
-    const sortButtons = /* @__PURE__ */ Object.create(null);
-    const columnClassName = typeof tableOptions.columnClassName === "string" ? tableOptions.columnClassName : "";
-    tableOptions.columns.forEach(function(column) {
-      const headerElement = createElement("th", columnClassName ? columnClassName + "Header " + columnClassName + "Header-" + column.key : "");
-      headerElement.setAttribute("scope", "col");
-      if (!tableOptions.sort || sortColumns.indexOf(column.key) === -1) {
-        headerElement.textContent = column.label;
-      } else {
-        const isSorted = tableOptions.sort.column === column.key;
-        const sortArrow = isSorted ? tableOptions.sort.isDescending ? " ↓" : " ↑" : "";
-        headerElement.setAttribute("aria-sort", isSorted ? tableOptions.sort.isDescending ? "descending" : "ascending" : "none");
-        const sortButton = createButton("link", columnClassName + "Sort " + columnClassName + "Sort-" + column.key, column.label + sortArrow);
-        sortButton.addEventListener("click", function() {
-          if (tableOptions.onSort) {
-            tableOptions.onSort(column.key);
-          }
-        });
-        sortButtons[column.key] = sortButton;
-        headerElement.appendChild(sortButton);
-      }
-      headRowElement.appendChild(headerElement);
-    });
-    headElement.appendChild(headRowElement);
-    tableElement.appendChild(headElement);
-    tableElement.appendChild(bodyElement);
-    wrapElement.appendChild(tableElement);
-    return { wrapElement, bodyElement, sortButtons };
-  }
-  function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
-    const searchElement = createElement("div", "tabSearch");
-    const fieldElement = createElement("div", "tabSearchField");
-    const inputElement = createElement("input", "tabSearchInput");
-    const matchCountElement = createElement("span", "tabMatchCount muted");
-    const iconElement = buildSearchIconElement();
-    iconElement.addEventListener("click", function() {
-      if (typeof inputElement.focus === "function") {
-        inputElement.focus();
-      }
-    });
-    inputElement.setAttribute("type", "search");
-    inputElement.setAttribute("placeholder", placeholderText);
-    inputElement.setAttribute("aria-label", placeholderText + " (" + displayTitleOf(treeState.tree) + ")");
-    inputElement.value = treeState.searchTexts[tabName];
-    inputElement.addEventListener("input", function() {
-      treeState.searchTexts[tabName] = String(inputElement.value || "");
-      treeState.searchQueries[tabName] = treeState.searchTexts[tabName].trim().toLowerCase();
-      applySearch(treeState);
-      savePanelPlace();
-    });
-    fieldElement.appendChild(iconElement);
-    fieldElement.appendChild(inputElement);
-    searchElement.appendChild(fieldElement);
-    searchElement.appendChild(matchCountElement);
-    return { element: searchElement, inputElement, matchCountElement };
-  }
-  function buildSearchIconElement() {
-    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
-    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
-    glyphElement.setAttribute("class", "tabSearchIcon");
-    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
-    glyphElement.setAttribute("aria-hidden", "true");
-    glyphElement.setAttribute("focusable", "false");
-    pathElement.setAttribute("d", RECIPE_COCKPIT_SEARCH_GLYPH_PATH);
-    glyphElement.appendChild(pathElement);
-    return glyphElement;
-  }
-  function buildToggleElement(className) {
-    const toggleElement = createButton("secondary", "chevronToggle " + className);
-    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
-    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
-    glyphElement.setAttribute("class", "toggleGlyph");
-    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
-    glyphElement.setAttribute("aria-hidden", "true");
-    glyphElement.setAttribute("focusable", "false");
-    pathElement.setAttribute("d", RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
-    glyphElement.appendChild(pathElement);
-    toggleElement.appendChild(glyphElement);
-    return toggleElement;
-  }
-  function buildTreeGlyph(treeObjectState) {
-    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
-    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
-    glyphElement.setAttribute("class", "treeGlyph");
-    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
-    glyphElement.setAttribute("aria-hidden", "true");
-    glyphElement.setAttribute("focusable", "false");
-    pathElement.setAttribute("d", RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
-    pathElement.setAttribute("transform", RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM);
-    glyphElement.appendChild(pathElement);
-    treeObjectState.glyphPathElement = pathElement;
-    return glyphElement;
-  }
-  function buildPencilGlyph(size) {
-    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
-    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
-    glyphElement.setAttribute("class", size === "large" ? "fixedValueGlyph fixedValueGlyph-large" : "fixedValueGlyph");
-    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
-    glyphElement.setAttribute("aria-hidden", "true");
-    glyphElement.setAttribute("focusable", "false");
-    pathElement.setAttribute("d", RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
-    glyphElement.appendChild(pathElement);
-    return glyphElement;
-  }
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitDataOrgConstants.ts
+  var RECIPE_COCKPIT_REFRESH_ORGS_LABEL = "Refresh orgs";
+  var RECIPE_COCKPIT_OPEN_ORG_LABEL = "Open in browser";
+  var RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL = "New scratch org";
+  var RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL = "Authorize org";
+  var RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL = "Authorizing org…";
+  var RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = "Log in to an existing sandbox in your browser so Target Org Manager can list it.";
+  var RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = "Checking org connections…";
+  var RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = "Loading orgs…";
+  var RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = "No org listed";
+  var RECIPE_COCKPIT_INSERT_ACTION_LABEL = "Generate fake data and insert";
+  var RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = "No org is chosen yet.";
+  var RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = "You will be asked which org to insert into.";
+  var RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = "Can't insert: ";
+  var RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS = Object.freeze({
+    objectNotInOrg: { subTab: "fields", label: "Troubleshooting › Fields" },
+    objectNotCreateable: { subTab: "permissions", label: "Troubleshooting › Permissions" }
+  });
+  var RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = "Treecipe › ";
 
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitTroubleshootingConstants.ts
   var RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = "Assign permission sets to me…";
@@ -906,74 +871,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   var RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = "TODO in this field's value";
   var RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON = "A data set is being inserted.";
   var RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
-
-  // src/treecipe/src/RecipeCockpitService/RecipeCockpitDataOrgConstants.ts
-  var RECIPE_COCKPIT_REFRESH_ORGS_LABEL = "Refresh orgs";
-  var RECIPE_COCKPIT_OPEN_ORG_LABEL = "Open in browser";
-  var RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL = "New scratch org";
-  var RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL = "Authorize org";
-  var RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL = "Authorizing org…";
-  var RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP = "Log in to an existing sandbox in your browser so Target Org Manager can list it.";
-  var RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = "Checking org connections…";
-  var RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = "Loading orgs…";
-  var RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = "No org listed";
-  var RECIPE_COCKPIT_INSERT_ACTION_LABEL = "Generate fake data and insert";
-  var RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = "No org is chosen yet.";
-  var RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = "You will be asked which org to insert into.";
-  var RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = "Can't insert: ";
-  var RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS = Object.freeze({
-    objectNotInOrg: { subTab: "fields", label: "Troubleshooting › Fields" },
-    objectNotCreateable: { subTab: "permissions", label: "Troubleshooting › Permissions" }
-  });
-  var RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = "Treecipe › ";
-
-  // src/treecipe/src/RecipeCockpitService/RecipeCockpitDatasetsTabConstants.ts
-  var RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
-  var RECIPE_COCKPIT_FAVORITE_TREE_LABEL = "★";
-  var RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = "☆";
-  var RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = "Favorites only";
-  var RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON = "checking the org connection…";
-  var RECIPE_COCKPIT_DATASET_ADAPTED_LABEL = "adapted";
-  var RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX = "Record types: ";
-  var RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY = {
-    succeeded: { emoji: "✅", label: "Inserted" },
-    partial: { emoji: "⚠️", label: "Partly inserted" },
-    failed: { emoji: "❌", label: "Insert failed" },
-    cancelled: { emoji: "🚫", label: "Insert cancelled" },
-    unknown: { emoji: "❔", label: "Insert outcome unknown" }
-  };
-  var RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL = "View results";
-  var RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE = "No outcome was saved for this insert: it ran before Treecipe recorded how an insert ended, or it stopped before it could.";
-  var RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE = "The insert stopped on an error before it ended, so records it saved may still be in the org.";
-  var RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY = {
-    succeeded: { emoji: "✅", label: "Succeeded" },
-    partial: { emoji: "⚠️", label: "Partly succeeded" },
-    failed: { emoji: "❌", label: "Failed" },
-    cancelled: { emoji: "⚠️", label: "Cancelled" },
-    unknown: { emoji: "⚠️", label: "Outcome unknown" },
-    unreadable: { emoji: "⚠️", label: "Unreadable" },
-    unrecorded: { emoji: "⚠️", label: "Not recorded" }
-  };
-  var RECIPE_COCKPIT_DATASET_JOURNEY_COLUMNS = [
-    { key: "time", label: "Time" },
-    { key: "step", label: "Step" },
-    { key: "org", label: "Org" },
-    { key: "status", label: "Status" },
-    { key: "detail", label: "Detail" },
-    { key: "files", label: "Files" }
-  ];
-  var RECIPE_COCKPIT_DATASET_JOURNEY_SORT_COLUMNS = ["time", "step", "org", "status"];
-  var RECIPE_COCKPIT_DATASET_JOURNEY_TOGGLE_LABEL = "Insert journey";
-  var RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE = "Reading this data set's inserts…";
-  var RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE = "No inserts yet.";
-  var RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = "Inserted first time, with nothing else needed.";
-  var RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = "View file";
-  var RECIPE_COCKPIT_INSERT_RUNNING_LABEL = "Inserting…";
-
-  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitOwnKey.ts
-  function hasOwnKey(record, key) {
-    return !!record && Object.prototype.hasOwnProperty.call(record, key);
-  }
 
   // src/treecipe/src/RecipeCockpitService/panel/datasets/DatasetJourney.ts
   var datasetJourneyCount = 0;
@@ -1797,286 +1694,183 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     }
   }
 
-  // src/treecipe/src/RecipeCockpitService/RecipeCockpitRecordTypesConstants.ts
-  var RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = "Click to show record type impacted fields only";
-  var RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = "No object in this tree has more than one record type, so no field depends on one.";
-  var RECIPE_COCKPIT_TODOS_ONLY_LABEL = "Click to show fields with open TODOs";
-  var RECIPE_COCKPIT_NO_TODOS_NOTE = "No object of this tree has a TODO comment in the recipe.";
-  var RECIPE_COCKPIT_TODO_IN_VALUE_LABEL = "TODO in the value above";
-  var RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL = "TODOs only";
-  var RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE = "This object has no TODO comment in the recipe.";
-  var RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = "Record types";
-  var RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL = "Manage record types";
-  var RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = "No objects in this tree have two or more record types in local metadata";
-  var RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Tick the record types "Generate fake data and insert" generates for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. The run on screen is not rewritten.';
-  var RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = "Remember this selection";
-  var RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = "Save the ticked record types in treecipe/treecipe.config.json when the data is generated, so Generate Treecipe reuses them. With every object at its default record type, forgets a saved choice.";
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/RecordTypesSection.ts
-  var recordTypesSectionCount = 0;
-  var recordTypeSearchTextByObject = /* @__PURE__ */ new WeakMap();
-  var RECORD_TYPE_IMPACT_KIND_LABELS = Object.freeze({ picklist: "Picklist", multiselect: "Multi-select", dependent: "Dependent picklist" });
-  function listRecordTypeObjects(treeState) {
-    if (treeState.listedRecordTypeObjects) {
-      return treeState.listedRecordTypeObjects;
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingHistory.ts
+  function buildTroubleshootingHistory(treeState, subTabState) {
+    subTabState.noun = ["step", "steps"];
+    subTabState.historyRows = [];
+    treeState.historySubTabState = subTabState;
+    if (!treeState.historySort) {
+      treeState.historySort = readHistorySort(null);
     }
-    const listedObjectApiNames = /* @__PURE__ */ Object.create(null);
-    treeState.listedRecordTypeObjects = treeState.objectStates.filter(function(treeObjectState) {
-      return !treeObjectState.isIteration && Array.isArray(treeObjectState.object.recordTypes);
-    }).map(function(treeObjectState) {
-      return treeObjectState.object;
-    }).filter(function(object) {
-      if (listedObjectApiNames[object.objectApiName] === true) {
-        return false;
+    const historyListElement = createElement("div", "troubleshootingHistory");
+    treeState.historyListElement = historyListElement;
+    historyListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_HISTORY_LOADING_NOTE));
+    subTabState.listElement.appendChild(historyListElement);
+  }
+  function readHistorySort(savedSort) {
+    if (savedSort && typeof savedSort === "object") {
+      const { column, isDescending } = savedSort;
+      if (RECIPE_COCKPIT_HISTORY_SORT_COLUMNS.indexOf(column) !== -1 && typeof isDescending === "boolean") {
+        return { column, isDescending };
       }
-      listedObjectApiNames[object.objectApiName] = true;
-      return true;
-    });
-    return treeState.listedRecordTypeObjects;
-  }
-  function describeRecordTypeImpacts(recordType) {
-    if (recordType.impacts.length === 0) {
-      return "Restricts no picklist values";
     }
-    return recordType.impacts.map(function(impact) {
-      return RECORD_TYPE_IMPACT_KIND_LABELS[impact.kind] + " " + impact.fieldApiName + ": " + pluralize(impact.valueCount, "value", "values");
-    }).join(" · ");
+    return { column: "time", isDescending: true };
   }
-  function buildRecordTypesSection(treeState, tileElement) {
-    const rowElement = createElement("div", "treecipeFilterRow recordTypesManageRow");
-    const toggleElement = createButton("secondary", "recordTypesSectionToggle recordTypesManageButton", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
-    const bodyElement = createElement("div", "recordTypesSectionBody hidden");
-    const summaryElement = createElement("span", "recordTypesSectionSummary muted");
-    recordTypesSectionCount++;
-    bodyElement.setAttribute("id", "recordTypesSectionBody" + recordTypesSectionCount);
-    bodyElement.setAttribute("role", "region");
-    bodyElement.setAttribute("aria-label", RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE + " (" + displayTitleOf(treeState.tree) + ")");
-    summaryElement.setAttribute("id", "recordTypesSectionSummary" + recordTypesSectionCount);
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
-    toggleElement.setAttribute("aria-controls", "recordTypesSectionBody" + recordTypesSectionCount);
-    toggleElement.setAttribute("aria-describedby", "recordTypesSectionSummary" + recordTypesSectionCount);
-    toggleElement.setAttribute("aria-expanded", "false");
-    toggleElement.addEventListener("click", function() {
-      setRecordTypesExpanded(treeState, !treeState.isRecordTypesExpanded, true);
-      savePanelPlace();
-    });
-    rowElement.appendChild(toggleElement);
-    rowElement.appendChild(summaryElement);
-    tileElement.appendChild(rowElement);
-    treeState.recordTypesSection = { toggleElement, bodyElement, summaryElement, isBuilt: false };
-    drawRecordTypesSummary(treeState);
-    return bodyElement;
-  }
-  function appendUnavailableRecordTypesButton(treeState, tileElement) {
-    const rowElement = createElement("div", "treecipeFilterRow recordTypesManageRow disabled");
-    const toggleElement = createButton("secondary", "recordTypesSectionToggle recordTypesManageButton", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
-    const summaryElement = createElement("span", "recordTypesSectionSummary muted", RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
-    recordTypesSectionCount++;
-    summaryElement.setAttribute("id", "recordTypesSectionSummary" + recordTypesSectionCount);
-    toggleElement.disabled = true;
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
-    toggleElement.setAttribute("aria-describedby", "recordTypesSectionSummary" + recordTypesSectionCount);
-    toggleElement.setAttribute("title", RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
-    rowElement.appendChild(toggleElement);
-    rowElement.appendChild(summaryElement);
-    tileElement.appendChild(rowElement);
-  }
-  function setRecordTypesExpanded(treeState, isExpanded, isAnimated) {
-    const section = treeState.recordTypesSection;
-    if (!section) {
+  function requestTroubleshootingHistory(treeState) {
+    if (renderedSequence === null || treeState.isHistoryRequested || !treeState.historyListElement) {
       return;
     }
-    if (isExpanded && !section.isBuilt) {
-      section.isBuilt = true;
-      buildRecordTypesRows(treeState, section.bodyElement);
-    }
-    setShownWithMotion(section.bodyElement, isExpanded, isAnimated);
-    section.toggleElement.setAttribute("aria-expanded", isExpanded ? "true" : "false");
-    treeState.isRecordTypesExpanded = isExpanded;
+    treeState.isHistoryRequested = true;
+    vscodeApi.postMessage({ command: "loadTroubleshootingHistory", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
   }
-  function recordTypeObjectSearchText(object) {
-    const knownSearchText = recordTypeSearchTextByObject.get(object);
-    if (knownSearchText !== void 0) {
-      return knownSearchText;
-    }
-    const searchTextParts = [object.objectApiName];
-    object.recordTypes.forEach(function(recordType) {
-      searchTextParts.push(recordType.developerName);
-      recordType.impacts.forEach(function(impact) {
-        searchTextParts.push(impact.fieldApiName);
-      });
-    });
-    const searchText = searchTextParts.join("\\n").toLowerCase();
-    recordTypeSearchTextByObject.set(object, searchText);
-    return searchText;
-  }
-  function drawRecordTypesSummary(treeState) {
-    const section = treeState.recordTypesSection;
-    if (!section) {
+  function renderTroubleshootingHistory(historyMessage) {
+    if (renderedSequence === null || historyMessage.renderSequence !== renderedSequence) {
       return;
     }
-    const objects = listRecordTypeObjects(treeState);
-    const searchQuery = treeState.searchQueries.treecipe;
-    const matchingCount = objects.filter(function(object) {
-      return !searchQuery || recordTypeObjectSearchText(object).indexOf(searchQuery) !== -1;
-    }).length;
-    const isChanged = objects.some(function(object) {
-      return !isSameChoice(recordTypeChoices[object.objectApiName] || [], object.generatedRecordTypeDeveloperNames || []);
-    });
-    const isApplied = objects.some(function(object) {
-      return object.isRecordTypeSelectionApplied === true;
-    });
-    const countText = !searchQuery ? pluralize(objects.length, "object", "objects") : matchingCount > 0 ? matchingCount + " of " + pluralize(objects.length, "object", "objects") : "no matching objects";
-    section.summaryElement.textContent = countText + " · " + (isChanged ? "changed" : isApplied ? "generated from a choice" : "generated by default");
-  }
-  function buildRecordTypesRows(treeState, panelElement) {
-    panelElement.appendChild(createElement("div", "recordTypesIntro muted", RECIPE_COCKPIT_RECORD_TYPES_INTRO));
-    treeState.recordTypeObjectStates = listRecordTypeObjects(treeState).map(function(object) {
-      const objectElement = createElement("div", "recordTypeObject");
-      const headingElement = createElement("div", "recordTypeObjectHeading");
-      const statusElement = createElement("span", "recordTypeObjectStatus muted");
-      headingElement.appendChild(createElement("span", "recordTypeObjectName", object.objectApiName));
-      headingElement.appendChild(statusElement);
-      objectElement.appendChild(headingElement);
-      object.recordTypes.forEach(function(recordType) {
-        const rowElement = createElement("div", "recordTypeRow");
-        const checkboxElement = createButton("check", "treeFieldInclude recordTypeInclude");
-        const labelElement = createElement("span", "recordTypeName", recordType.developerName);
-        checkboxElement.setAttribute("role", "checkbox");
-        checkboxElement.setAttribute("aria-label", recordType.developerName + " (" + object.objectApiName + ")");
-        checkboxElement.addEventListener("click", function() {
-          if (checkboxElement.disabled) {
-            return;
-          }
-          toggleRecordTypeChoice(object.objectApiName, recordType.developerName);
-        });
-        rowElement.appendChild(checkboxElement);
-        rowElement.appendChild(labelElement);
-        if (!recordType.isActive) {
-          rowElement.appendChild(createElement("span", "recordTypeInactive muted", "inactive"));
-        }
-        rowElement.appendChild(createElement("div", "recordTypeImpact muted", describeRecordTypeImpacts(recordType)));
-        objectElement.appendChild(rowElement);
-        recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement });
-      });
-      panelElement.appendChild(objectElement);
-      return { object, element: objectElement, statusElement, searchText: recordTypeObjectSearchText(object) };
-    });
-    const rememberRowElement = createElement("div", "recordTypesRememberRow");
-    const rememberElement = createButton("check", "treeFieldInclude recordTypesRemember");
-    const rememberLabelElement = createElement("span", "recordTypesRememberLabel", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL);
-    rememberElement.setAttribute("role", "checkbox");
-    rememberElement.setAttribute("aria-label", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL);
-    rememberElement.setAttribute("title", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE);
-    rememberLabelElement.setAttribute("title", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE);
-    rememberElement.addEventListener("click", function() {
-      if (rememberElement.disabled) {
-        return;
-      }
-      toggleRecordTypeSelectionRemembered();
-    });
-    rememberLabelElement.addEventListener("click", function() {
-      if (rememberElement.disabled) {
-        return;
-      }
-      toggleRecordTypeSelectionRemembered();
-    });
-    rememberRowElement.appendChild(rememberElement);
-    rememberRowElement.appendChild(rememberLabelElement);
-    panelElement.appendChild(rememberRowElement);
-    recordTypeRememberElements.push(rememberElement);
-    drawRecordTypeChoices();
-    applyRecordTypesFilter(treeState);
-  }
-  function applyRecordTypesFilter(treeState) {
-    const searchQuery = treeState.searchQueries.treecipe;
-    (treeState.recordTypeObjectStates || []).forEach(function(objectState) {
-      setShown(objectState.element, !searchQuery || objectState.searchText.indexOf(searchQuery) !== -1);
-    });
-    drawRecordTypesSummary(treeState);
-  }
-  function toggleRecordTypeChoice(objectApiName, developerName) {
-    const choice = recordTypeChoices[objectApiName] || [];
-    const choiceIndex = choice.indexOf(developerName);
-    if (choiceIndex === -1) {
-      choice.push(developerName);
-    } else if (choice.length > 1) {
-      choice.splice(choiceIndex, 1);
+    const treeState = findTreeState(historyMessage.treeKey);
+    if (!treeState || !treeState.historyListElement) {
+      return;
     }
-    recordTypeChoices[objectApiName] = choice;
-    drawRecordTypeChoices();
+    treeState.historyMessage = historyMessage;
+    drawTroubleshootingHistory(treeState);
+    vscodeApi.postMessage({ command: "troubleshootingHistoryRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence });
   }
-  function toggleRecordTypeSelectionRemembered() {
-    isRecordTypeSelectionRemembered = !isRecordTypeSelectionRemembered;
-    drawRecordTypeChoices();
+  function historyStatusOf(row) {
+    return hasOwnKey(RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY, row.status) ? RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY[row.status] : { emoji: "", label: String(row.status) };
   }
-  function isSameChoice(firstNames, secondNames) {
-    return firstNames.length === secondNames.length && firstNames.every(function(name, nameIndex) {
-      return name === secondNames[nameIndex];
+  function historySortValue(treeState, row, column) {
+    if (column === "time") {
+      return Number(row.timeMs) || 0;
+    }
+    if (column === "step") {
+      return String(row.stepLabel).toLowerCase();
+    }
+    if (column === "org") {
+      return typeof row.orgLabel === "string" ? row.orgLabel.toLowerCase() : "";
+    }
+    if (column === "outcome") {
+      return historyStatusOf(row).label.toLowerCase();
+    }
+    return versionLabelOf(treeState, typeof row.runFolderName === "string" ? row.runFolderName : null).toLowerCase();
+  }
+  function sortHistoryRowStates(treeState, rowStates) {
+    const sort = treeState.historySort;
+    return rowStates.slice().sort(function(first, second) {
+      const firstValue = historySortValue(treeState, first.row, sort.column);
+      const secondValue = historySortValue(treeState, second.row, sort.column);
+      const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
+      if (order !== 0) {
+        return sort.isDescending ? -order : order;
+      }
+      return (Number(second.row.timeMs) || 0) - (Number(first.row.timeMs) || 0);
     });
   }
-  function buildRecordTypeSelection() {
-    const recordTypeSelection = /* @__PURE__ */ Object.create(null);
-    recordTypeObjects.forEach(function(object) {
-      const choice = recordTypeChoices[object.objectApiName] || [];
-      const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
-      if (choice.length > 0 && (isChanged || object.isRecordTypeSelectionApplied === true)) {
-        recordTypeSelection[object.objectApiName] = choice.slice();
+  function drawTroubleshootingHistory(treeState) {
+    const historyMessage = treeState.historyMessage;
+    const subTabState = treeState.historySubTabState;
+    const listElement = treeState.historyListElement;
+    const rows = Array.isArray(historyMessage.rows) ? historyMessage.rows : [];
+    const historyRows = [];
+    listElement.textContent = "";
+    subTabState.historyRows = historyRows;
+    if (rows.length === 0) {
+      listElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_HISTORY_EMPTY_NOTE));
+      applyTroubleshootingFilter(treeState, "history");
+      return;
+    }
+    const rowTable = buildRowTable({
+      className: "historyTable",
+      columnClassName: "history",
+      columns: RECIPE_COCKPIT_HISTORY_COLUMNS,
+      sortColumns: RECIPE_COCKPIT_HISTORY_SORT_COLUMNS,
+      sort: treeState.historySort,
+      onSort: function(column) {
+        sortTroubleshootingHistory(treeState, column);
       }
     });
-    return recordTypeSelection;
-  }
-  function drawRecordTypeChoices() {
-    recordTypeRowStates.forEach(function(rowState) {
-      const choice = recordTypeChoices[rowState.objectApiName] || [];
-      const isTicked = choice.indexOf(rowState.developerName) !== -1;
-      const isLastTicked = isTicked && choice.length === 1;
-      rowState.checkboxElement.textContent = isTicked ? "✓" : "";
-      rowState.checkboxElement.setAttribute("aria-checked", isTicked ? "true" : "false");
-      rowState.checkboxElement.disabled = insertRunningTreeKey !== null || isLastTicked;
-      if (isLastTicked) {
-        rowState.checkboxElement.setAttribute("title", "Each object keeps at least one record type");
-      } else {
-        rowState.checkboxElement.removeAttribute("title");
-      }
+    treeState.historySortButtons = rowTable.sortButtons;
+    rows.forEach(function(row) {
+      historyRows.push(buildHistoryRow(treeState, historyMessage, row));
     });
-    treeStates.forEach(function(treeState) {
-      (treeState.recordTypeObjectStates || []).forEach(function(objectState) {
-        const object = objectState.object;
-        const choice = recordTypeChoices[object.objectApiName] || [];
-        const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
-        objectState.statusElement.textContent = isChanged ? "changed: the next generate writes " + choice.join(", ") : (object.isRecordTypeSelectionApplied === true ? "generated: " : "generated by default: ") + choice.join(", ");
+    sortHistoryRowStates(treeState, historyRows).forEach(function(rowState) {
+      rowTable.bodyElement.appendChild(rowState.element);
+    });
+    listElement.appendChild(rowTable.wrapElement);
+    treeState.historyBodyElement = rowTable.bodyElement;
+    if (historyMessage.hiddenRowCount > 0) {
+      listElement.appendChild(createElement("div", "historyHiddenNote muted", pluralize(historyMessage.hiddenRowCount, "older step is", "older steps are") + " not shown."));
+    }
+    applyTroubleshootingFilter(treeState, "history");
+  }
+  function buildHistoryRow(treeState, historyMessage, row) {
+    const rowElement = createElement("tr", "historyRow historyRow-" + String(row.status));
+    const statusDisplay = historyStatusOf(row);
+    const runLabel = versionLabelOf(treeState, typeof row.runFolderName === "string" ? row.runFolderName : null);
+    const files = Array.isArray(row.files) ? row.files : [];
+    const timeCell = createElement("td", "historyTime", String(row.timeLabel));
+    if (typeof row.finishedAtLabel === "string") {
+      timeCell.setAttribute("title", "Ended " + row.finishedAtLabel);
+    }
+    const orgCell = createElement("td", "historyOrg", typeof row.orgLabel === "string" ? row.orgLabel : "");
+    if (typeof row.orgUsername === "string") {
+      orgCell.setAttribute("title", row.orgUsername);
+    }
+    const outcomeCell = createElement("td", "historyOutcome");
+    const statusElement = createElement("span", "historyStatus historyStatus-" + String(row.status));
+    const emojiElement = createElement("span", "historyStatusEmoji", statusDisplay.emoji);
+    emojiElement.setAttribute("aria-hidden", "true");
+    statusElement.appendChild(emojiElement);
+    statusElement.appendChild(createElement("span", "historyStatusLabel", statusDisplay.label));
+    outcomeCell.appendChild(statusElement);
+    const detailParts = [];
+    if (typeof row.succeededCount === "number") {
+      detailParts.push(row.succeededCount + " succeeded");
+    }
+    if (typeof row.failedCount === "number") {
+      detailParts.push(row.failedCount + " failed");
+    }
+    if (typeof row.detail === "string") {
+      detailParts.push(row.detail);
+    }
+    if (row.status === "unrecorded") {
+      detailParts.push(RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE);
+    }
+    if (row.status === "unreadable") {
+      detailParts.push(RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE);
+    }
+    const detailText = detailParts.join(" · ");
+    if (detailText) {
+      outcomeCell.appendChild(createElement("span", "historyDetail muted", detailText));
+    }
+    const filesCell = createElement("td", "historyFiles");
+    files.forEach(function(file) {
+      const fileButton = createButton("link", "historyFile", String(file.fileName));
+      fileButton.addEventListener("click", function() {
+        vscodeApi.postMessage({ command: "openTroubleshootingHistoryFile", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence, fileIndex: file.fileIndex });
       });
+      filesCell.appendChild(fileButton);
     });
-    treeStates.forEach(drawRecordTypesSummary);
-    recordTypeRememberElements.forEach(function(rememberElement) {
-      rememberElement.textContent = isRecordTypeSelectionRemembered ? "✓" : "";
-      rememberElement.setAttribute("aria-checked", isRecordTypeSelectionRemembered ? "true" : "false");
-      rememberElement.disabled = insertRunningTreeKey !== null;
-    });
+    rowElement.appendChild(timeCell);
+    rowElement.appendChild(createElement("td", "historyStep", String(row.stepLabel)));
+    rowElement.appendChild(orgCell);
+    rowElement.appendChild(outcomeCell);
+    rowElement.appendChild(createElement("td", "historyRun", runLabel));
+    rowElement.appendChild(filesCell);
+    const searchTexts = [String(row.timeLabel), String(row.stepLabel), statusDisplay.label, runLabel, detailText].concat(typeof row.orgLabel === "string" ? [row.orgLabel] : []).concat(typeof row.orgUsername === "string" ? [row.orgUsername] : []).concat(files.map(function(file) {
+      return String(file.fileName);
+    }));
+    return { row, element: rowElement, isShown: true, searchText: searchTexts.join("\\n").toLowerCase() };
   }
-
-  // src/treecipe/src/RecipeCockpitService/RecipeCockpitFieldRowsConstants.ts
-  var RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = "parent excluded";
-  var RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = "All fields";
-  var RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = "Standard fields";
-  var RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX = "__c";
-  var RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = "standard";
-  var RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = "Hide unselected";
-  var RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = "Every field of this object is ticked, so there is nothing to hide.";
-  var RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON = "object excluded";
-  var RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = "unticked";
-  var RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = "the record type is chosen by name";
-  var RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = "depends on ";
-  var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
-  var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
-  var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
-  var RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = "edited";
-  var RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = "org record · ";
-  var RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = "Edit values";
-  var RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON = "an edit replaces it";
-  var RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = "rule not applied";
-  var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = "↗ ";
+  function sortTroubleshootingHistory(treeState, column) {
+    const currentSort = treeState.historySort;
+    treeState.historySort = currentSort.column === column ? { column, isDescending: !currentSort.isDescending } : { column, isDescending: column === "time" };
+    drawTroubleshootingHistory(treeState);
+    const sortButton = treeState.historySortButtons && treeState.historySortButtons[column];
+    if (sortButton && typeof sortButton.focus === "function") {
+      sortButton.focus();
+    }
+    savePanelPlace();
+  }
 
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitTreecipeFieldEditorConstants.ts
   var RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ["Number", "Currency", "Percent"];
@@ -2103,237 +1897,27 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   };
   var RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = "Wire TODO lookups";
 
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/LookupWiring.ts
-  var lookupWiringIndexByTree = /* @__PURE__ */ new WeakMap();
-  var addableParentIndexByTree = /* @__PURE__ */ new WeakMap();
-  var emptyLookupIndexByTree = /* @__PURE__ */ new WeakMap();
-  function appendAddFriendControls(treeKey, object, objectHeaderElement) {
-    const friendObjectApiNames = object.iteration && object.iteration.insertableFriendObjectApiNames || [];
-    if (friendObjectApiNames.length === 0) {
-      return;
-    }
-    const addFriendElement = createButton("secondary", "treeAddFriend", RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL);
-    const addFriendsElement = createElement("div", "treeAddFriends hidden");
-    addFriendElement.setAttribute("title", "Add one of the friends of " + object.objectApiName + " under " + object.nickname);
-    addFriendElement.setAttribute("aria-label", "Add friend under " + object.nickname);
-    addFriendElement.setAttribute("aria-expanded", "false");
-    addFriendElement.addEventListener("click", function() {
-      const isOpening = addFriendsElement.classList.contains("hidden");
-      if (isOpening) {
-        addFriendsElement.classList.remove("hidden");
-      } else {
-        addFriendsElement.classList.add("hidden");
-      }
-      addFriendElement.setAttribute("aria-expanded", isOpening ? "true" : "false");
-    });
-    addFriendsElement.appendChild(createElement("span", "muted", "Add under " + object.nickname + ":"));
-    friendObjectApiNames.forEach(function(friendObjectApiName) {
-      const choiceElement = createButton("secondary", "treeAddFriendChoice", "+ " + friendObjectApiName);
-      choiceElement.setAttribute("aria-label", "Add " + friendObjectApiName + " under " + object.nickname);
-      choiceElement.addEventListener("click", function() {
-        if (isAddFriendRunning) {
-          return;
-        }
-        setAddFriendRunning(true);
-        vscodeApi.postMessage({
-          command: "addIterationFriend",
-          treeKey,
-          objectApiName: object.objectApiName,
-          objectNickname: object.nickname,
-          friendObjectApiName
-        });
-      });
-      choiceElement.disabled = isAddFriendRunning;
-      addFriendButtonElements.push(choiceElement);
-      addFriendsElement.appendChild(choiceElement);
-    });
-    addFriendButtonElements.push(addFriendElement);
-    objectHeaderElement.appendChild(addFriendElement);
-    objectHeaderElement.appendChild(addFriendsElement);
-    addFriendElement.disabled = isAddFriendRunning;
-  }
-  function setAddFriendRunning(isRunning) {
-    isAddFriendRunning = isRunning;
-    addFriendButtonElements.forEach(function(buttonElement) {
-      buttonElement.disabled = isRunning;
-    });
-  }
-  function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
-    return objectApiName + "\\n" + (objectNickname || "") + "\\n" + fieldApiName;
-  }
-  function findLookupWiring(tree, object, fieldApiName) {
-    if (!tree.lookupWirings || tree.lookupWirings.length === 0) {
-      return null;
-    }
-    let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
-    if (!lookupWiringIndex) {
-      lookupWiringIndex = /* @__PURE__ */ Object.create(null);
-      const builtIndex = lookupWiringIndex;
-      tree.lookupWirings.forEach(function(entry) {
-        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
-      });
-      lookupWiringIndexByTree.set(tree, lookupWiringIndex);
-    }
-    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-    return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
-  }
-  function buildWireLookupElement(tree, wiring) {
-    const wireElement = createButton("secondary", "treeWireLookup", RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL);
-    const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? " (" + wiring.objectNickname + ")" : "") + "." + wiring.fieldApiName;
-    wireElement.setAttribute("title", wiring.candidateNicknames.length === 1 ? "Point this lookup at " + wiring.candidateNicknames[0] + " in the recipe file, after a confirmation" : "Choose which of " + wiring.candidateNicknames.join(", ") + " this lookup points at in the recipe file");
-    wireElement.setAttribute("aria-label", "Wire " + fieldLabel);
-    wireElement.addEventListener("click", function() {
-      if (isWireLookupRunning) {
-        return;
-      }
-      setWireLookupRunning(true);
-      const wireMessage = { command: "wireLookup", treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
-      if (wiring.objectNickname) {
-        wireMessage.objectNickname = wiring.objectNickname;
-      }
-      vscodeApi.postMessage(wireMessage);
-    });
-    wireElement.disabled = isWireLookupRunning;
-    wireLookupButtonElements.push(wireElement);
-    return wireElement;
-  }
-  function findAddableParent(tree, object, fieldApiName) {
-    if (!tree.addableParents || tree.addableParents.length === 0) {
-      return null;
-    }
-    let addableParentIndex = addableParentIndexByTree.get(tree);
-    if (!addableParentIndex) {
-      addableParentIndex = /* @__PURE__ */ Object.create(null);
-      const builtIndex = addableParentIndex;
-      tree.addableParents.forEach(function(entry) {
-        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
-      });
-      addableParentIndexByTree.set(tree, addableParentIndex);
-    }
-    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-    return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
-  }
-  function findEmptyLookup(tree, object, fieldApiName) {
-    if (!tree.emptyLookups || tree.emptyLookups.length === 0) {
-      return null;
-    }
-    let emptyLookupIndex = emptyLookupIndexByTree.get(tree);
-    if (!emptyLookupIndex) {
-      emptyLookupIndex = /* @__PURE__ */ Object.create(null);
-      const builtIndex = emptyLookupIndex;
-      tree.emptyLookups.forEach(function(entry) {
-        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
-      });
-      emptyLookupIndexByTree.set(tree, emptyLookupIndex);
-    }
-    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-    return Object.prototype.hasOwnProperty.call(emptyLookupIndex, key) ? emptyLookupIndex[key] : null;
-  }
-  function buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup) {
-    const tree = treeObjectState.tree;
-    const addition = findAddableParent(tree, treeObjectState.object, emptyLookup.fieldApiName);
-    const fieldLabel = emptyLookup.objectApiName + (emptyLookup.objectNickname ? " (" + emptyLookup.objectNickname + ")" : "") + "." + emptyLookup.fieldApiName;
-    const decisionElement = createElement("span", "treeLookupDecision");
-    const createParentElement = createButton("secondary", "treeAddParentObject", RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX);
-    const useOrgRecordElement = createButton("secondary", "treeUseOrgRecord", RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX);
-    const postDecision = function(command) {
-      if (isWireLookupRunning) {
-        return;
-      }
-      setWireLookupRunning(true);
-      const decisionMessage = { command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
-      if (emptyLookup.objectNickname) {
-        decisionMessage.objectNickname = emptyLookup.objectNickname;
-      }
-      vscodeApi.postMessage(decisionMessage);
-    };
-    createParentElement.setAttribute("aria-label", "Create " + emptyLookup.parentObjectApiName + " in the recipe for " + fieldLabel);
-    createParentElement.addEventListener("click", function() {
-      if (createParentElement.disabled || !addition) {
-        return;
-      }
-      postDecision("addParentObject");
-    });
-    useOrgRecordElement.setAttribute("aria-label", "Use an existing " + emptyLookup.parentObjectApiName + " record from an org for " + fieldLabel);
-    useOrgRecordElement.addEventListener("click", function() {
-      if (useOrgRecordElement.disabled) {
-        return;
-      }
-      postDecision("useOrgRecordForLookup");
-    });
-    decisionElement.appendChild(createParentElement);
-    decisionElement.appendChild(useOrgRecordElement);
-    const decision = {
-      element: decisionElement,
-      createParentElement,
-      useOrgRecordElement,
-      emptyLookup,
-      createReason: addition ? "" : describeCreateParentRefusal(emptyLookup),
-      useReason: emptyLookup.orgRecordRefusal || ""
-    };
-    fieldState.lookupDecision = decision;
-    lookupDecisions.push(decision);
-    drawLookupDecisionButtons(decision);
-    return decisionElement;
-  }
-  function drawFieldRowLookupDecision(treeObjectState, fieldState) {
-    const decision = fieldState.lookupDecision;
-    if (!decision) {
-      return;
-    }
-    const tree = treeObjectState.tree;
-    const objectApiName = treeObjectState.object.objectApiName;
-    const fieldApiName = fieldState.field.fieldApiName;
-    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-    const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
-    const isParentExcluded = lockReason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
-    if (isParentExcluded) {
-      decision.element.classList.add("hidden");
-    } else {
-      decision.element.classList.remove("hidden");
-    }
-    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON : "";
-    drawLookupDecisionButtons(decision);
-  }
-  function describeCreateParentRefusal(emptyLookup) {
-    const template = emptyLookup.createRefusalReason !== void 0 && hasOwnKey(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason) ? RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason] : "the recipe cannot add {parent}";
-    return template.split("{parent}").join(emptyLookup.parentObjectApiName).split("{object}").join(emptyLookup.objectApiName);
-  }
-  function drawLookupDecisionButtons(decision) {
-    const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
-    const useReason = decision.useReason || decision.selectionReason || "";
-    decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
-    decision.createParentElement.setAttribute("title", decision.createReason ? "Cannot be created: " + decision.createReason : "Add a " + parentObjectApiName + " block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation");
-    decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
-    decision.useOrgRecordElement.setAttribute("title", useReason ? "Cannot use an org record: " + useReason : "Choose an org, then search " + parentObjectApiName + " or enter a record Id; the Id is written into the recipe file after a confirmation");
-  }
-  function buildWireAllLookupsElement(tree) {
-    const singleCandidateCount = (tree.lookupWirings || []).filter(function(wiring) {
-      return wiring.candidateNicknames.length === 1;
-    }).length;
-    if (singleCandidateCount === 0) {
-      return null;
-    }
-    const wireAllElement = createButton("secondary", "treeWireAllLookups", RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL + " (" + singleCandidateCount + ")");
-    wireAllElement.setAttribute("title", "Point every TODO lookup of this tree that has exactly one record to choose from at that record's nickname, in the recipe file, after a confirmation that lists them");
-    wireAllElement.addEventListener("click", function() {
-      if (isWireLookupRunning) {
-        return;
-      }
-      setWireLookupRunning(true);
-      vscodeApi.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
-    });
-    wireAllElement.disabled = isWireLookupRunning;
-    wireLookupButtonElements.push(wireAllElement);
-    return wireAllElement;
-  }
-  function setWireLookupRunning(isRunning) {
-    isWireLookupRunning = isRunning;
-    wireLookupButtonElements.forEach(function(buttonElement) {
-      buttonElement.disabled = isRunning;
-    });
-    lookupDecisions.forEach(drawLookupDecisionButtons);
-  }
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitFieldRowsConstants.ts
+  var RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = "parent excluded";
+  var RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = "All fields";
+  var RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = "Standard fields";
+  var RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX = "__c";
+  var RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = "standard";
+  var RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = "Hide unselected";
+  var RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = "Every field of this object is ticked, so there is nothing to hide.";
+  var RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON = "object excluded";
+  var RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = "unticked";
+  var RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = "the record type is chosen by name";
+  var RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = "depends on ";
+  var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
+  var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
+  var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
+  var RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = "edited";
+  var RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = "org record · ";
+  var RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = "Edit values";
+  var RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON = "an edit replaces it";
+  var RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = "rule not applied";
+  var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = "↗ ";
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/PicklistTiles.ts
   function appendPicklistValueList(containerElement, picklistValues) {
@@ -3245,126 +2829,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     return sourceLinkElement;
   }
 
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/TodosToggles.ts
-  function todoCountOf(treeState) {
-    if (typeof treeState.todoCount !== "number") {
-      treeState.todoCount = treeState.objectStates.reduce(function(todoCount, treeObjectState) {
-        return todoCount + treeObjectState.todoCount;
-      }, 0);
-    }
-    return treeState.todoCount;
-  }
-  function isTodosOnlyIn(treeState) {
-    return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
-  }
-  function appendTodosToggle(treeState, tileElement) {
-    const rowElement = createElement("div", "treecipeFilterRow");
-    tileElement.appendChild(rowElement);
-    const todoCount = todoCountOf(treeState);
-    const checkElement = createElement("span", "treeTodosCheck");
-    const toggleElement = createButton("check", "treeFieldInclude treeTodosToggle");
-    const labelElement = createElement("span", "treeTodosLabel", todoCount > 0 ? RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + todoCount + ")" : RECIPE_COCKPIT_TODOS_ONLY_LABEL);
-    toggleElement.setAttribute("role", "checkbox");
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
-    if (todoCount > 0) {
-      const title = "Show only the fields and objects with a TODO comment in the recipe (" + pluralize(todoCount, "TODO", "TODOs") + ")";
-      const toggleTodosOnly = function() {
-        if (toggleElement.disabled) {
-          return;
-        }
-        treeState.isTodosOnly = !treeState.isTodosOnly;
-        applyStructureFilter(treeState);
-        savePanelPlace();
-      };
-      toggleElement.setAttribute("title", title);
-      labelElement.setAttribute("title", title);
-      toggleElement.addEventListener("click", toggleTodosOnly);
-      labelElement.addEventListener("click", toggleTodosOnly);
-    } else {
-      toggleElement.disabled = true;
-      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_TODOS_NOTE);
-      checkElement.classList.add("disabled");
-    }
-    treeState.todosToggleElement = toggleElement;
-    checkElement.appendChild(toggleElement);
-    checkElement.appendChild(labelElement);
-    rowElement.appendChild(checkElement);
-    if (todoCount === 0) {
-      rowElement.appendChild(createElement("span", "treeTodosNote muted", RECIPE_COCKPIT_NO_TODOS_NOTE));
-    }
-    drawTodosToggle(treeState);
-  }
-  function drawTodosToggle(treeState) {
-    const toggleElement = treeState.todosToggleElement;
-    if (!toggleElement) {
-      return;
-    }
-    const isChecked = isTodosOnlyIn(treeState);
-    toggleElement.textContent = isChecked ? "✓" : "";
-    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
-  }
-  function buildTodoListElement(recipeFilePath, todos) {
-    const listElement = createElement("div", "treeTodos");
-    todos.forEach(function(todo) {
-      const todoElement = createElement("div", "treeTodo");
-      todoElement.appendChild(typeof todo.text === "string" ? createElement("span", "treeTodoText", todo.text) : createElement("span", "treeTodoText muted", RECIPE_COCKPIT_TODO_IN_VALUE_LABEL + " (line " + todo.lineNumber + ")"));
-      if (recipeFilePath && todo.lineNumber) {
-        todoElement.appendChild(buildSourceLink("treeTodoSource", "↗ yml", recipeFilePath, todo.lineNumber));
-      }
-      listElement.appendChild(todoElement);
-    });
-    return listElement;
-  }
-  function isObjectTodosOnlyIn(treeObjectState) {
-    return treeObjectState.isTodosOnly === true && treeObjectState.todoCount > 0;
-  }
-  function buildObjectTodosToggle(treeObjectState) {
-    const objectApiName = treeObjectState.object.objectApiName;
-    const checkElement = createElement("span", "treeFieldSelectAllCheck treeObjectTodosCheck");
-    const toggleElement = createButton("check", "treeObjectTodosToggle");
-    const labelText = treeObjectState.todoCount > 0 ? RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + treeObjectState.todoCount + ")" : RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL;
-    const labelElement = createElement("span", "treeObjectTodosLabel", labelText);
-    toggleElement.setAttribute("role", "checkbox");
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + objectApiName + ")");
-    if (treeObjectState.todoCount > 0) {
-      const title = "Show only the fields of " + objectApiName + " with a TODO comment in the recipe (" + pluralize(treeObjectState.todoCount, "TODO", "TODOs") + ")";
-      const toggleTodosOnly = function() {
-        if (toggleElement.disabled) {
-          return;
-        }
-        treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
-        if (treeObjectState.treeState.structureSearch) {
-          filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
-          drawStructureMatchCount(treeObjectState.treeState);
-        }
-        drawObjectTodosToggle(treeObjectState);
-        savePanelPlace();
-      };
-      toggleElement.setAttribute("title", title);
-      labelElement.setAttribute("title", title);
-      toggleElement.addEventListener("click", toggleTodosOnly);
-      labelElement.addEventListener("click", toggleTodosOnly);
-    } else {
-      toggleElement.disabled = true;
-      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
-      labelElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
-      checkElement.classList.add("disabled");
-    }
-    treeObjectState.todosToggleElement = toggleElement;
-    checkElement.appendChild(toggleElement);
-    checkElement.appendChild(labelElement);
-    drawObjectTodosToggle(treeObjectState);
-    return checkElement;
-  }
-  function drawObjectTodosToggle(treeObjectState) {
-    const toggleElement = treeObjectState.todosToggleElement;
-    if (!toggleElement) {
-      return;
-    }
-    const isChecked = isObjectTodosOnlyIn(treeObjectState);
-    toggleElement.textContent = isChecked ? "✓" : "";
-    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
-  }
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitRecordTypesConstants.ts
+  var RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = "Click to show record type impacted fields only";
+  var RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = "No object in this tree has more than one record type, so no field depends on one.";
+  var RECIPE_COCKPIT_TODOS_ONLY_LABEL = "Click to show fields with open TODOs";
+  var RECIPE_COCKPIT_NO_TODOS_NOTE = "No object of this tree has a TODO comment in the recipe.";
+  var RECIPE_COCKPIT_TODO_IN_VALUE_LABEL = "TODO in the value above";
+  var RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL = "TODOs only";
+  var RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE = "This object has no TODO comment in the recipe.";
+  var RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = "Record types";
+  var RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL = "Manage record types";
+  var RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = "No objects in this tree have two or more record types in local metadata";
+  var RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Tick the record types "Generate fake data and insert" generates for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. The run on screen is not rewritten.';
+  var RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = "Remember this selection";
+  var RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = "Save the ticked record types in treecipe/treecipe.config.json when the data is generated, so Generate Treecipe reuses them. With every object at its default record type, forgets a saved choice.";
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldScope.ts
   function drawObjectFieldSelection(treeObjectState) {
@@ -3581,6 +3059,1408 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     }
     filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
     return true;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/RecordTypeFieldsToggle.ts
+  function hasRecordTypeObjects(treeState) {
+    if (typeof treeState.hasRecordTypeObjects !== "boolean") {
+      treeState.hasRecordTypeObjects = treeState.objectStates.some(function(treeObjectState) {
+        return treeObjectState.hasRecordTypes;
+      });
+    }
+    return treeState.hasRecordTypeObjects;
+  }
+  function isRecordTypeFieldsOnlyIn(treeState) {
+    return treeState.isRecordTypeFieldsOnly === true && hasRecordTypeObjects(treeState);
+  }
+  function appendRecordTypeFieldsToggle(treeState, tileElement) {
+    const rowElement = createElement("div", "treecipeFilterRow");
+    tileElement.appendChild(rowElement);
+    const checkElement = createElement("span", "treeRecordTypeFieldsCheck");
+    const toggleElement = createButton("check", "treeFieldInclude treeRecordTypeFieldsToggle");
+    const labelElement = createElement("span", "treeRecordTypeFieldsLabel", RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL);
+    toggleElement.setAttribute("role", "checkbox");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
+    if (hasRecordTypeObjects(treeState)) {
+      const title = "Show only the picklist fields a record type restricts";
+      const toggleRecordTypeFieldsOnly = function() {
+        if (toggleElement.disabled) {
+          return;
+        }
+        treeState.isRecordTypeFieldsOnly = !treeState.isRecordTypeFieldsOnly;
+        applyStructureFilter(treeState);
+        savePanelPlace();
+      };
+      toggleElement.setAttribute("title", title);
+      labelElement.setAttribute("title", title);
+      toggleElement.addEventListener("click", toggleRecordTypeFieldsOnly);
+      labelElement.addEventListener("click", toggleRecordTypeFieldsOnly);
+    } else {
+      toggleElement.disabled = true;
+      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE);
+      checkElement.classList.add("disabled");
+    }
+    treeState.recordTypeFieldsToggleElement = toggleElement;
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    rowElement.appendChild(checkElement);
+    if (!hasRecordTypeObjects(treeState)) {
+      rowElement.appendChild(createElement("span", "treeRecordTypeFieldsNote muted", RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE));
+    }
+    drawRecordTypeFieldsToggle(treeState);
+  }
+  function drawRecordTypeFieldsToggle(treeState) {
+    const toggleElement = treeState.recordTypeFieldsToggleElement;
+    if (!toggleElement) {
+      return;
+    }
+    const isChecked = isRecordTypeFieldsOnlyIn(treeState);
+    toggleElement.textContent = isChecked ? "✓" : "";
+    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
+  }
+  function isRecordLike(candidate) {
+    return !!candidate && typeof candidate === "object" && !Array.isArray(candidate);
+  }
+  function indexRecordTypeFields(objects) {
+    const recordTypeFieldsIndex = /* @__PURE__ */ Object.create(null);
+    objects.forEach(function(object) {
+      if (!isRecordLike(object) || typeof object.objectApiName !== "string" || object.objectApiName === "__proto__") {
+        return;
+      }
+      if (!Array.isArray(object.recordTypes) || object.recordTypes.length < 2) {
+        return;
+      }
+      const listedFieldApiNames = /* @__PURE__ */ Object.create(null);
+      (Array.isArray(object.fields) ? object.fields : []).forEach(function(field) {
+        if (isRecordLike(field) && typeof field.fieldApiName === "string") {
+          listedFieldApiNames[field.fieldApiName] = true;
+        }
+      });
+      const developerNamesByFieldApiName = /* @__PURE__ */ Object.create(null);
+      object.recordTypes.forEach(function(recordType) {
+        if (!isRecordLike(recordType) || typeof recordType.developerName !== "string" || !Array.isArray(recordType.impacts)) {
+          return;
+        }
+        const developerName = recordType.developerName;
+        recordType.impacts.forEach(function(impact) {
+          if (!isRecordLike(impact)) {
+            return;
+          }
+          const fieldApiName = impact.fieldApiName;
+          if (typeof fieldApiName !== "string" || fieldApiName === "__proto__" || listedFieldApiNames[fieldApiName] !== true) {
+            return;
+          }
+          const developerNames = developerNamesByFieldApiName[fieldApiName] || (developerNamesByFieldApiName[fieldApiName] = []);
+          if (developerNames.indexOf(developerName) === -1) {
+            developerNames.push(developerName);
+          }
+        });
+      });
+      recordTypeFieldsIndex[object.objectApiName] = developerNamesByFieldApiName;
+    });
+    return recordTypeFieldsIndex;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/RecordTypesSection.ts
+  var recordTypesSectionCount = 0;
+  var recordTypeSearchTextByObject = /* @__PURE__ */ new WeakMap();
+  var RECORD_TYPE_IMPACT_KIND_LABELS = Object.freeze({ picklist: "Picklist", multiselect: "Multi-select", dependent: "Dependent picklist" });
+  function listRecordTypeObjects(treeState) {
+    if (treeState.listedRecordTypeObjects) {
+      return treeState.listedRecordTypeObjects;
+    }
+    const listedObjectApiNames = /* @__PURE__ */ Object.create(null);
+    treeState.listedRecordTypeObjects = treeState.objectStates.filter(function(treeObjectState) {
+      return !treeObjectState.isIteration && Array.isArray(treeObjectState.object.recordTypes);
+    }).map(function(treeObjectState) {
+      return treeObjectState.object;
+    }).filter(function(object) {
+      if (listedObjectApiNames[object.objectApiName] === true) {
+        return false;
+      }
+      listedObjectApiNames[object.objectApiName] = true;
+      return true;
+    });
+    return treeState.listedRecordTypeObjects;
+  }
+  function describeRecordTypeImpacts(recordType) {
+    if (recordType.impacts.length === 0) {
+      return "Restricts no picklist values";
+    }
+    return recordType.impacts.map(function(impact) {
+      return RECORD_TYPE_IMPACT_KIND_LABELS[impact.kind] + " " + impact.fieldApiName + ": " + pluralize(impact.valueCount, "value", "values");
+    }).join(" · ");
+  }
+  function buildRecordTypesSection(treeState, tileElement) {
+    const rowElement = createElement("div", "treecipeFilterRow recordTypesManageRow");
+    const toggleElement = createButton("secondary", "recordTypesSectionToggle recordTypesManageButton", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
+    const bodyElement = createElement("div", "recordTypesSectionBody hidden");
+    const summaryElement = createElement("span", "recordTypesSectionSummary muted");
+    recordTypesSectionCount++;
+    bodyElement.setAttribute("id", "recordTypesSectionBody" + recordTypesSectionCount);
+    bodyElement.setAttribute("role", "region");
+    bodyElement.setAttribute("aria-label", RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE + " (" + displayTitleOf(treeState.tree) + ")");
+    summaryElement.setAttribute("id", "recordTypesSectionSummary" + recordTypesSectionCount);
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
+    toggleElement.setAttribute("aria-controls", "recordTypesSectionBody" + recordTypesSectionCount);
+    toggleElement.setAttribute("aria-describedby", "recordTypesSectionSummary" + recordTypesSectionCount);
+    toggleElement.setAttribute("aria-expanded", "false");
+    toggleElement.addEventListener("click", function() {
+      setRecordTypesExpanded(treeState, !treeState.isRecordTypesExpanded, true);
+      savePanelPlace();
+    });
+    rowElement.appendChild(toggleElement);
+    rowElement.appendChild(summaryElement);
+    tileElement.appendChild(rowElement);
+    treeState.recordTypesSection = { toggleElement, bodyElement, summaryElement, isBuilt: false };
+    drawRecordTypesSummary(treeState);
+    return bodyElement;
+  }
+  function appendUnavailableRecordTypesButton(treeState, tileElement) {
+    const rowElement = createElement("div", "treecipeFilterRow recordTypesManageRow disabled");
+    const toggleElement = createButton("secondary", "recordTypesSectionToggle recordTypesManageButton", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
+    const summaryElement = createElement("span", "recordTypesSectionSummary muted", RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
+    recordTypesSectionCount++;
+    summaryElement.setAttribute("id", "recordTypesSectionSummary" + recordTypesSectionCount);
+    toggleElement.disabled = true;
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
+    toggleElement.setAttribute("aria-describedby", "recordTypesSectionSummary" + recordTypesSectionCount);
+    toggleElement.setAttribute("title", RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
+    rowElement.appendChild(toggleElement);
+    rowElement.appendChild(summaryElement);
+    tileElement.appendChild(rowElement);
+  }
+  function setRecordTypesExpanded(treeState, isExpanded, isAnimated) {
+    const section = treeState.recordTypesSection;
+    if (!section) {
+      return;
+    }
+    if (isExpanded && !section.isBuilt) {
+      section.isBuilt = true;
+      buildRecordTypesRows(treeState, section.bodyElement);
+    }
+    setShownWithMotion(section.bodyElement, isExpanded, isAnimated);
+    section.toggleElement.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    treeState.isRecordTypesExpanded = isExpanded;
+  }
+  function recordTypeObjectSearchText(object) {
+    const knownSearchText = recordTypeSearchTextByObject.get(object);
+    if (knownSearchText !== void 0) {
+      return knownSearchText;
+    }
+    const searchTextParts = [object.objectApiName];
+    object.recordTypes.forEach(function(recordType) {
+      searchTextParts.push(recordType.developerName);
+      recordType.impacts.forEach(function(impact) {
+        searchTextParts.push(impact.fieldApiName);
+      });
+    });
+    const searchText = searchTextParts.join("\\n").toLowerCase();
+    recordTypeSearchTextByObject.set(object, searchText);
+    return searchText;
+  }
+  function drawRecordTypesSummary(treeState) {
+    const section = treeState.recordTypesSection;
+    if (!section) {
+      return;
+    }
+    const objects = listRecordTypeObjects(treeState);
+    const searchQuery = treeState.searchQueries.treecipe;
+    const matchingCount = objects.filter(function(object) {
+      return !searchQuery || recordTypeObjectSearchText(object).indexOf(searchQuery) !== -1;
+    }).length;
+    const isChanged = objects.some(function(object) {
+      return !isSameChoice(recordTypeChoices[object.objectApiName] || [], object.generatedRecordTypeDeveloperNames || []);
+    });
+    const isApplied = objects.some(function(object) {
+      return object.isRecordTypeSelectionApplied === true;
+    });
+    const countText = !searchQuery ? pluralize(objects.length, "object", "objects") : matchingCount > 0 ? matchingCount + " of " + pluralize(objects.length, "object", "objects") : "no matching objects";
+    section.summaryElement.textContent = countText + " · " + (isChanged ? "changed" : isApplied ? "generated from a choice" : "generated by default");
+  }
+  function buildRecordTypesRows(treeState, panelElement) {
+    panelElement.appendChild(createElement("div", "recordTypesIntro muted", RECIPE_COCKPIT_RECORD_TYPES_INTRO));
+    treeState.recordTypeObjectStates = listRecordTypeObjects(treeState).map(function(object) {
+      const objectElement = createElement("div", "recordTypeObject");
+      const headingElement = createElement("div", "recordTypeObjectHeading");
+      const statusElement = createElement("span", "recordTypeObjectStatus muted");
+      headingElement.appendChild(createElement("span", "recordTypeObjectName", object.objectApiName));
+      headingElement.appendChild(statusElement);
+      objectElement.appendChild(headingElement);
+      object.recordTypes.forEach(function(recordType) {
+        const rowElement = createElement("div", "recordTypeRow");
+        const checkboxElement = createButton("check", "treeFieldInclude recordTypeInclude");
+        const labelElement = createElement("span", "recordTypeName", recordType.developerName);
+        checkboxElement.setAttribute("role", "checkbox");
+        checkboxElement.setAttribute("aria-label", recordType.developerName + " (" + object.objectApiName + ")");
+        checkboxElement.addEventListener("click", function() {
+          if (checkboxElement.disabled) {
+            return;
+          }
+          toggleRecordTypeChoice(object.objectApiName, recordType.developerName);
+        });
+        rowElement.appendChild(checkboxElement);
+        rowElement.appendChild(labelElement);
+        if (!recordType.isActive) {
+          rowElement.appendChild(createElement("span", "recordTypeInactive muted", "inactive"));
+        }
+        rowElement.appendChild(createElement("div", "recordTypeImpact muted", describeRecordTypeImpacts(recordType)));
+        objectElement.appendChild(rowElement);
+        recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement });
+      });
+      panelElement.appendChild(objectElement);
+      return { object, element: objectElement, statusElement, searchText: recordTypeObjectSearchText(object) };
+    });
+    const rememberRowElement = createElement("div", "recordTypesRememberRow");
+    const rememberElement = createButton("check", "treeFieldInclude recordTypesRemember");
+    const rememberLabelElement = createElement("span", "recordTypesRememberLabel", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL);
+    rememberElement.setAttribute("role", "checkbox");
+    rememberElement.setAttribute("aria-label", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL);
+    rememberElement.setAttribute("title", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE);
+    rememberLabelElement.setAttribute("title", RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE);
+    rememberElement.addEventListener("click", function() {
+      if (rememberElement.disabled) {
+        return;
+      }
+      toggleRecordTypeSelectionRemembered();
+    });
+    rememberLabelElement.addEventListener("click", function() {
+      if (rememberElement.disabled) {
+        return;
+      }
+      toggleRecordTypeSelectionRemembered();
+    });
+    rememberRowElement.appendChild(rememberElement);
+    rememberRowElement.appendChild(rememberLabelElement);
+    panelElement.appendChild(rememberRowElement);
+    recordTypeRememberElements.push(rememberElement);
+    drawRecordTypeChoices();
+    applyRecordTypesFilter(treeState);
+  }
+  function applyRecordTypesFilter(treeState) {
+    const searchQuery = treeState.searchQueries.treecipe;
+    (treeState.recordTypeObjectStates || []).forEach(function(objectState) {
+      setShown(objectState.element, !searchQuery || objectState.searchText.indexOf(searchQuery) !== -1);
+    });
+    drawRecordTypesSummary(treeState);
+  }
+  function toggleRecordTypeChoice(objectApiName, developerName) {
+    const choice = recordTypeChoices[objectApiName] || [];
+    const choiceIndex = choice.indexOf(developerName);
+    if (choiceIndex === -1) {
+      choice.push(developerName);
+    } else if (choice.length > 1) {
+      choice.splice(choiceIndex, 1);
+    }
+    recordTypeChoices[objectApiName] = choice;
+    drawRecordTypeChoices();
+  }
+  function toggleRecordTypeSelectionRemembered() {
+    isRecordTypeSelectionRemembered = !isRecordTypeSelectionRemembered;
+    drawRecordTypeChoices();
+  }
+  function isSameChoice(firstNames, secondNames) {
+    return firstNames.length === secondNames.length && firstNames.every(function(name, nameIndex) {
+      return name === secondNames[nameIndex];
+    });
+  }
+  function buildRecordTypeSelection() {
+    const recordTypeSelection = /* @__PURE__ */ Object.create(null);
+    recordTypeObjects.forEach(function(object) {
+      const choice = recordTypeChoices[object.objectApiName] || [];
+      const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
+      if (choice.length > 0 && (isChanged || object.isRecordTypeSelectionApplied === true)) {
+        recordTypeSelection[object.objectApiName] = choice.slice();
+      }
+    });
+    return recordTypeSelection;
+  }
+  function drawRecordTypeChoices() {
+    recordTypeRowStates.forEach(function(rowState) {
+      const choice = recordTypeChoices[rowState.objectApiName] || [];
+      const isTicked = choice.indexOf(rowState.developerName) !== -1;
+      const isLastTicked = isTicked && choice.length === 1;
+      rowState.checkboxElement.textContent = isTicked ? "✓" : "";
+      rowState.checkboxElement.setAttribute("aria-checked", isTicked ? "true" : "false");
+      rowState.checkboxElement.disabled = insertRunningTreeKey !== null || isLastTicked;
+      if (isLastTicked) {
+        rowState.checkboxElement.setAttribute("title", "Each object keeps at least one record type");
+      } else {
+        rowState.checkboxElement.removeAttribute("title");
+      }
+    });
+    treeStates.forEach(function(treeState) {
+      (treeState.recordTypeObjectStates || []).forEach(function(objectState) {
+        const object = objectState.object;
+        const choice = recordTypeChoices[object.objectApiName] || [];
+        const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
+        objectState.statusElement.textContent = isChanged ? "changed: the next generate writes " + choice.join(", ") : (object.isRecordTypeSelectionApplied === true ? "generated: " : "generated by default: ") + choice.join(", ");
+      });
+    });
+    treeStates.forEach(drawRecordTypesSummary);
+    recordTypeRememberElements.forEach(function(rememberElement) {
+      rememberElement.textContent = isRecordTypeSelectionRemembered ? "✓" : "";
+      rememberElement.setAttribute("aria-checked", isRecordTypeSelectionRemembered ? "true" : "false");
+      rememberElement.disabled = insertRunningTreeKey !== null;
+    });
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/navigation/NavigationTypes.ts
+  function asNavigationTreeState(treeStateView) {
+    return treeStateView;
+  }
+  function asNavigationObjectState(treeObjectStateView) {
+    return treeObjectStateView;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/navigation/Nicknames.ts
+  var nicknameMenuHintSequence = 0;
+  function nicknameOfObject(object) {
+    return object.nickname || object.recipeNickname || "";
+  }
+  function isReferenceableNickname(nickname) {
+    return /^[A-Za-z][A-Za-z0-9_]*$/.test(nickname) && !YAML_NON_STRING_NICKNAME_PATTERN.test(nickname);
+  }
+  function readReferencedNickname(recipeValue) {
+    const valueText = String(recipeValue || "");
+    const firstLineEnd = valueText.indexOf("\\n");
+    const firstLine = (firstLineEnd === -1 ? valueText : valueText.slice(0, firstLineEnd)).trim();
+    if (!isReferenceableNickname(firstLine)) {
+      return null;
+    }
+    if (firstLineEnd === -1) {
+      return firstLine;
+    }
+    return valueText.slice(firstLineEnd + 1).split("\\n").every(function(valueLine) {
+      return valueLine.trim().charAt(0) === "#";
+    }) ? firstLine : null;
+  }
+  function nicknameKeyOf(recipeFilePath, nickname) {
+    return String(recipeFilePath || "") + "\\n" + nickname;
+  }
+  function ensureNicknameIndex(treeState) {
+    if (treeState.nicknameIndex) {
+      return treeState.nicknameIndex;
+    }
+    const ownerStatesByKey = /* @__PURE__ */ Object.create(null);
+    treeState.objectStates.forEach(function(treeObjectState) {
+      const nickname = nicknameOfObject(treeObjectState.object);
+      if (!nickname) {
+        return;
+      }
+      const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
+      if (!hasOwnKey(ownerStatesByKey, nicknameKey)) {
+        ownerStatesByKey[nicknameKey] = { nickname, states: [] };
+      }
+      ownerStatesByKey[nicknameKey].states.push(treeObjectState);
+    });
+    const nicknameIndex = { ownerStateByKey: /* @__PURE__ */ Object.create(null), usagesByKey: /* @__PURE__ */ Object.create(null) };
+    Object.keys(ownerStatesByKey).forEach(function(nicknameKey) {
+      const owners = ownerStatesByKey[nicknameKey];
+      if (owners.states.length !== 1 || owners.states[0].object.hasIndistinctOccurrences || !isReferenceableNickname(owners.nickname)) {
+        return;
+      }
+      nicknameIndex.ownerStateByKey[nicknameKey] = owners.states[0];
+      nicknameIndex.usagesByKey[nicknameKey] = [];
+    });
+    treeState.objectStates.forEach(function(treeObjectState) {
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        if (!fieldState.field.lineNumber) {
+          return;
+        }
+        const nickname = readReferencedNickname(fieldState.field.recipeValue);
+        if (nickname === null) {
+          return;
+        }
+        const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
+        if (!hasOwnKey(nicknameIndex.ownerStateByKey, nicknameKey) || nicknameIndex.ownerStateByKey[nicknameKey] === treeObjectState) {
+          return;
+        }
+        nicknameIndex.usagesByKey[nicknameKey].push({ objectState: treeObjectState, fieldState });
+      });
+    });
+    Object.keys(nicknameIndex.usagesByKey).forEach(function(nicknameKey) {
+      nicknameIndex.usagesByKey[nicknameKey].sort(function(firstUsage, secondUsage) {
+        return firstUsage.fieldState.field.lineNumber - secondUsage.fieldState.field.lineNumber;
+      });
+    });
+    treeState.nicknameIndex = nicknameIndex;
+    return nicknameIndex;
+  }
+  function findReferencedOwnerState(treeObjectStateView, fieldState) {
+    const treeObjectState = asNavigationObjectState(treeObjectStateView);
+    if (!treeObjectState.treeState || !fieldState.field.lineNumber) {
+      return null;
+    }
+    const nickname = readReferencedNickname(fieldState.field.recipeValue);
+    if (nickname === null) {
+      return null;
+    }
+    const nicknameIndex = ensureNicknameIndex(treeObjectState.treeState);
+    const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
+    const ownerState = hasOwnKey(nicknameIndex.ownerStateByKey, nicknameKey) ? nicknameIndex.ownerStateByKey[nicknameKey] : null;
+    return ownerState === treeObjectState ? null : ownerState;
+  }
+  function listNicknameUsages(treeObjectState) {
+    const nicknameIndex = ensureNicknameIndex(treeObjectState.treeState);
+    const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nicknameOfObject(treeObjectState.object));
+    return hasOwnKey(nicknameIndex.ownerStateByKey, nicknameKey) && nicknameIndex.ownerStateByKey[nicknameKey] === treeObjectState ? nicknameIndex.usagesByKey[nicknameKey] : null;
+  }
+  function drawObjectNickname(treeObjectState) {
+    const slotElement = treeObjectState.nicknameSlotElement;
+    if (!slotElement || !treeObjectState.treeState) {
+      return;
+    }
+    const nickname = nicknameOfObject(treeObjectState.object);
+    const usages = listNicknameUsages(treeObjectState);
+    slotElement.textContent = "";
+    treeObjectState.nicknameChipElement = null;
+    if (!usages || usages.length === 0) {
+      const nicknameTextElement = createElement("span", "treeNickname muted");
+      nicknameTextElement.appendChild(buildChipEmoji(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI));
+      nicknameTextElement.appendChild(createElement("span", "treeNicknameText", nickname));
+      nicknameTextElement.setAttribute("title", usages ? "No field of this treecipe points to " + nickname : nickname + " does not name exactly one object of this recipe, so no field can point to it");
+      slotElement.appendChild(nicknameTextElement);
+      drawFriendsButton(treeObjectState);
+      return;
+    }
+    const chipElement = createButton("secondary", "treeNickname", "", "compact");
+    chipElement.appendChild(buildChipEmoji(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI));
+    chipElement.appendChild(createElement("span", "treeNicknameText", nickname));
+    chipElement.setAttribute("aria-haspopup", "menu");
+    chipElement.setAttribute("aria-expanded", "false");
+    chipElement.setAttribute("aria-label", nickname + ": " + pluralize(usages.length, "field points", "fields point") + " to it");
+    chipElement.setAttribute("title", "Show the fields that point to " + nickname);
+    chipElement.addEventListener("click", function() {
+      if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState) {
+        closeNicknameMenu(true);
+        return;
+      }
+      openNicknameMenuOf(treeObjectState);
+    });
+    treeObjectState.nicknameChipElement = chipElement;
+    slotElement.appendChild(chipElement);
+    drawFriendsButton(treeObjectState);
+  }
+  function describeMenuObject(objectState) {
+    const object = objectState.object;
+    return object.objectApiName + (object.nickname ? " · " + object.nickname : "");
+  }
+  function describeExclusion(objectState) {
+    return objectState.element.classList.contains("excluded") ? " — excluded" : "";
+  }
+  function describeNicknameUsage(usage) {
+    return describeMenuObject(usage.objectState) + "." + usage.fieldState.field.fieldApiName + describeExclusion(usage.objectState);
+  }
+  function openNicknameMenuOf(treeObjectState) {
+    const usages = listNicknameUsages(treeObjectState) || [];
+    openReferenceMenu(treeObjectState, treeObjectState.headerElement, function() {
+      return treeObjectState.nicknameChipElement;
+    }, RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT, usages.map(function(usage) {
+      return { label: describeNicknameUsage(usage), choose: function() {
+        chooseNicknameUsage(usage);
+      } };
+    }));
+  }
+  function openReferenceMenu(menuOwner, hostElement, openerOf, hintText, entries) {
+    closeNicknameMenu(false);
+    if (!menuOwner.nicknameMenuElement) {
+      menuOwner.nicknameMenuElement = createElement("div", "treeNicknameMenu hidden");
+      hostElement.appendChild(menuOwner.nicknameMenuElement);
+    }
+    const menuElement = menuOwner.nicknameMenuElement;
+    menuElement.textContent = "";
+    nicknameMenuHintSequence += 1;
+    const hintId = "treeNicknameMenuHint" + nicknameMenuHintSequence;
+    const hintElement = createElement("span", "treeNicknameMenuHint", hintText);
+    hintElement.setAttribute("id", hintId);
+    menuElement.appendChild(hintElement);
+    const itemsElement = createElement("div", "treeNicknameMenuItems");
+    itemsElement.setAttribute("role", "menu");
+    itemsElement.setAttribute("aria-labelledby", hintId);
+    menuElement.appendChild(itemsElement);
+    const itemElements = entries.map(function(entry, entryIndex) {
+      const itemElement = createButton("link", "treeNicknameMenuItem", entry.label);
+      itemElement.setAttribute("role", "menuitem");
+      itemElement.setAttribute("tabindex", entryIndex === 0 ? "0" : "-1");
+      itemElement.addEventListener("click", function() {
+        entry.choose();
+      });
+      itemElement.addEventListener("keydown", function(event) {
+        handleNicknameMenuKey(event, entryIndex);
+      });
+      itemsElement.appendChild(itemElement);
+      return itemElement;
+    });
+    menuElement.classList.remove("hidden");
+    const openerElement = openerOf();
+    if (openerElement) {
+      openerElement.setAttribute("aria-expanded", "true");
+    }
+    openNicknameMenu = { menuOwner, menuElement, itemElements, entries, openerOf };
+    if (itemElements.length > 0) {
+      itemElements[0].focus();
+    }
+  }
+  function closeNicknameMenu(isFocusReturned) {
+    if (!openNicknameMenu) {
+      return;
+    }
+    const closingMenu = openNicknameMenu;
+    openNicknameMenu = null;
+    closingMenu.menuElement.textContent = "";
+    closingMenu.menuElement.classList.add("hidden");
+    const openerElement = closingMenu.openerOf();
+    if (openerElement) {
+      openerElement.setAttribute("aria-expanded", "false");
+      if (isFocusReturned) {
+        openerElement.focus();
+      }
+    }
+  }
+  function chooseNicknameUsage(usage) {
+    const treeState = usage.objectState.treeState;
+    closeNicknameMenu(false);
+    revealTreeObjectRow(treeState, usage.objectState, usage.fieldState, null);
+    if (usage.fieldState.rowElement) {
+      const backLinkElement = findDescendantWithClass(usage.fieldState.rowElement, "treeNicknameBackLink");
+      if (backLinkElement) {
+        backLinkElement.focus();
+      }
+    }
+  }
+  function handleNicknameMenuKey(event, usageIndex) {
+    if (!openNicknameMenu) {
+      return;
+    }
+    const itemElements = openNicknameMenu.itemElements;
+    let nextIndex = null;
+    if (event.key === "ArrowDown") {
+      nextIndex = (usageIndex + 1) % itemElements.length;
+    }
+    if (event.key === "ArrowUp") {
+      nextIndex = (usageIndex - 1 + itemElements.length) % itemElements.length;
+    }
+    if (event.key === "Home") {
+      nextIndex = 0;
+    }
+    if (event.key === "End") {
+      nextIndex = itemElements.length - 1;
+    }
+    if (nextIndex !== null) {
+      const focusedIndex = nextIndex;
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      itemElements.forEach(function(itemElement, itemIndex) {
+        itemElement.setAttribute("tabindex", itemIndex === focusedIndex ? "0" : "-1");
+      });
+      itemElements[focusedIndex].focus();
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      openNicknameMenu.entries[usageIndex].choose();
+      return;
+    }
+    if (event.key === "Escape") {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      if (typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+      closeNicknameMenu(true);
+      return;
+    }
+    if (event.key === "Tab") {
+      closeNicknameMenu(false);
+    }
+  }
+  function isElementWithin(element, containerElement) {
+    for (let currentElement = element; currentElement; currentElement = currentElement.parentNode) {
+      if (currentElement === containerElement) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function findDescendantWithClass(rootElement, className) {
+    if (rootElement.classList && rootElement.classList.contains(className)) {
+      return rootElement;
+    }
+    const childElements = rootElement.children || [];
+    for (let childIndex = 0; childIndex < childElements.length; childIndex++) {
+      const foundElement = findDescendantWithClass(childElements[childIndex], className);
+      if (foundElement) {
+        return foundElement;
+      }
+    }
+    return null;
+  }
+  function buildNicknameBackLink(treeStateView, ownerState, fieldHeaderElement) {
+    const treeState = asNavigationTreeState(treeStateView);
+    const nickname = nicknameOfObject(ownerState.object);
+    const backLinkElement = createButton("secondary", "treeNicknameBackLink", "↖ " + nickname, "compact");
+    const menuOwner = { nicknameMenuElement: null };
+    const openerOf = function() {
+      return backLinkElement;
+    };
+    backLinkElement.setAttribute("aria-haspopup", "menu");
+    backLinkElement.setAttribute("aria-expanded", "false");
+    backLinkElement.setAttribute("title", "Show the " + ownerState.object.objectApiName + " that holds " + nickname);
+    backLinkElement.setAttribute("aria-label", nickname + ": show the " + ownerState.object.objectApiName + " this field points to");
+    backLinkElement.addEventListener("click", function() {
+      if (openNicknameMenu && openNicknameMenu.menuOwner === menuOwner) {
+        closeNicknameMenu(true);
+        return;
+      }
+      openReferenceMenu(menuOwner, fieldHeaderElement, openerOf, RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT, [{
+        label: describeMenuObject(ownerState) + describeExclusion(ownerState),
+        choose: function() {
+          closeNicknameMenu(false);
+          revealTreeObjectRow(treeState, ownerState, null, ownerState.nicknameChipElement);
+        }
+      }]);
+    });
+    return backLinkElement;
+  }
+  function readNestingParent(object) {
+    if (object.iteration) {
+      return object.iteration.parentObjectApiName ? { objectApiName: object.iteration.parentObjectApiName, nickname: object.iteration.parentNickname || "" } : null;
+    }
+    return typeof object.countParentObjectApiName === "string" && object.countParentObjectApiName ? { objectApiName: object.countParentObjectApiName, nickname: typeof object.parentNickname === "string" ? object.parentNickname : "" } : null;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/navigation/Friends.ts
+  function drawFriendsButton(treeObjectState) {
+    treeObjectState.friendsButtonElement = null;
+    const friends = listFriendsOf(treeObjectState);
+    if (friends.length === 0) {
+      return;
+    }
+    const objectApiName = treeObjectState.object.objectApiName;
+    const buttonElement = createButton("secondary", "treeFriendsButton", "", "compact");
+    buttonElement.appendChild(buildChipEmoji(RECIPE_COCKPIT_FRIEND_EMOJI));
+    buttonElement.appendChild(createElement("span", "treeFriendsCount", String(friends.length)));
+    buttonElement.setAttribute("aria-haspopup", "menu");
+    buttonElement.setAttribute("aria-expanded", "false");
+    buttonElement.setAttribute("aria-label", objectApiName + ": " + pluralize(friends.length, "friend", "friends"));
+    buttonElement.setAttribute("title", "Show the friends of " + nicknameOfObject(treeObjectState.object));
+    buttonElement.addEventListener("click", function() {
+      if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState.friendsMenuOwner) {
+        closeNicknameMenu(true);
+        return;
+      }
+      openFriendsMenuOf(treeObjectState);
+    });
+    treeObjectState.friendsButtonElement = buttonElement;
+    treeObjectState.nicknameSlotElement.appendChild(buttonElement);
+  }
+  function openFriendsMenuOf(treeObjectState) {
+    const treeState = treeObjectState.treeState;
+    openReferenceMenu(treeObjectState.friendsMenuOwner, treeObjectState.headerElement, function() {
+      return treeObjectState.friendsButtonElement;
+    }, RECIPE_COCKPIT_FRIENDS_MENU_HINT, listFriendsOf(treeObjectState).map(function(friend) {
+      return {
+        label: friend.label + ": " + describeMenuObject(friend.friendState) + describeExclusion(friend.friendState),
+        choose: function() {
+          closeNicknameMenu(false);
+          const friendState = friend.friendState;
+          revealTreeObjectRow(treeState, friendState, null, friendState.friendChipElementsByOwnerState.get(treeObjectState) || friendState.toggleElement);
+        }
+      };
+    }));
+  }
+  function ensureFriendIndex(treeState) {
+    if (treeState.friendIndex) {
+      return treeState.friendIndex;
+    }
+    if (!treeState.objectStates.some(function(treeObjectState) {
+      return readNestingParent(treeObjectState.object) !== null;
+    })) {
+      treeState.friendIndex = { chipsByObjectState: /* @__PURE__ */ new Map(), friendsByOwnerState: /* @__PURE__ */ new Map() };
+      return treeState.friendIndex;
+    }
+    const nicknameIndex = ensureNicknameIndex(treeState);
+    const parentsByObjectState = /* @__PURE__ */ new Map();
+    const friendStatesByParentKey = /* @__PURE__ */ Object.create(null);
+    const ownerStateByParentKey = /* @__PURE__ */ Object.create(null);
+    treeState.objectStates.forEach(function(treeObjectState) {
+      const nestingParent = readNestingParent(treeObjectState.object);
+      if (!nestingParent) {
+        return;
+      }
+      const recipeFilePath = treeObjectState.object.recipeFilePath;
+      const parents = [];
+      const parentKeys = /* @__PURE__ */ Object.create(null);
+      const addParent = function(parent) {
+        if (parentKeys[parent.parentKey] === true) {
+          return;
+        }
+        parentKeys[parent.parentKey] = true;
+        parents.push(parent);
+        if (!hasOwnKey(friendStatesByParentKey, parent.parentKey)) {
+          friendStatesByParentKey[parent.parentKey] = [];
+          ownerStateByParentKey[parent.parentKey] = parent.ownerState;
+        }
+        friendStatesByParentKey[parent.parentKey].push(treeObjectState);
+      };
+      const nestingNicknameKey = nicknameKeyOf(recipeFilePath, nestingParent.nickname);
+      const nestingOwnerState = nestingParent.nickname && hasOwnKey(nicknameIndex.ownerStateByKey, nestingNicknameKey) && nicknameIndex.ownerStateByKey[nestingNicknameKey] !== treeObjectState ? nicknameIndex.ownerStateByKey[nestingNicknameKey] : null;
+      addParent(nestingOwnerState ? { parentKey: "nickname\\n" + nestingNicknameKey, label: nestingParent.nickname, ownerState: nestingOwnerState } : { parentKey: "object\\n" + String(recipeFilePath || "") + "\\n" + nestingParent.objectApiName, label: nestingParent.objectApiName, ownerState: null });
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        const ownerState = findReferencedOwnerState(treeObjectState, fieldState);
+        if (!ownerState) {
+          return;
+        }
+        const ownerNickname = nicknameOfObject(ownerState.object);
+        addParent({ parentKey: "nickname\\n" + nicknameKeyOf(recipeFilePath, ownerNickname), label: ownerNickname, ownerState });
+      });
+      parentsByObjectState.set(treeObjectState, parents);
+    });
+    const lineNumberOf = function(treeObjectState) {
+      return typeof treeObjectState.object.lineNumber === "number" ? treeObjectState.object.lineNumber : Number.MAX_SAFE_INTEGER;
+    };
+    const friendNumbersByParentKey = /* @__PURE__ */ Object.create(null);
+    const friendsByOwnerState = /* @__PURE__ */ new Map();
+    Object.keys(friendStatesByParentKey).forEach(function(parentKey) {
+      const friendNumbers = /* @__PURE__ */ new Map();
+      const ownerState = ownerStateByParentKey[parentKey];
+      const ownerFriends = [];
+      friendStatesByParentKey[parentKey].sort(function(firstState, secondState) {
+        return lineNumberOf(firstState) - lineNumberOf(secondState);
+      }).forEach(function(friendState, friendIndex) {
+        friendNumbers.set(friendState, friendIndex + 1);
+        if (ownerState) {
+          ownerFriends.push({ friendState, label: nicknameOfObject(ownerState.object) + "-" + (friendIndex + 1) });
+        }
+      });
+      friendNumbersByParentKey[parentKey] = friendNumbers;
+      if (ownerState) {
+        friendsByOwnerState.set(ownerState, ownerFriends);
+      }
+    });
+    const chipsByObjectState = /* @__PURE__ */ new Map();
+    parentsByObjectState.forEach(function(parents, treeObjectState) {
+      chipsByObjectState.set(treeObjectState, parents.map(function(parent) {
+        const friendNumber = friendNumbersByParentKey[parent.parentKey].get(treeObjectState);
+        return { label: parent.label + "-" + friendNumber, parentLabel: parent.label, friendNumber, ownerState: parent.ownerState };
+      }));
+    });
+    treeState.friendIndex = { chipsByObjectState, friendsByOwnerState };
+    return treeState.friendIndex;
+  }
+  function listFriendChips(treeObjectState) {
+    if (!treeObjectState.treeState) {
+      return [];
+    }
+    return ensureFriendIndex(treeObjectState.treeState).chipsByObjectState.get(treeObjectState) || [];
+  }
+  function listFriendsOf(treeObjectState) {
+    if (!treeObjectState.treeState) {
+      return [];
+    }
+    return ensureFriendIndex(treeObjectState.treeState).friendsByOwnerState.get(treeObjectState) || [];
+  }
+  function listFriendLabelsByObjectApiName(treeState) {
+    const friendLabelsByObjectApiName = /* @__PURE__ */ Object.create(null);
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (treeObjectState.isIteration) {
+        return;
+      }
+      listFriendChips(treeObjectState).forEach(function(chip) {
+        const objectApiName = treeObjectState.object.objectApiName;
+        if (!hasOwnKey(friendLabelsByObjectApiName, objectApiName)) {
+          friendLabelsByObjectApiName[objectApiName] = [];
+        }
+        if (friendLabelsByObjectApiName[objectApiName].indexOf(chip.label) === -1) {
+          friendLabelsByObjectApiName[objectApiName].push(chip.label);
+        }
+      });
+    });
+    return friendLabelsByObjectApiName;
+  }
+  function buildChipEmoji(emoji) {
+    const emojiElement = createElement("span", "treeChipEmoji", emoji);
+    emojiElement.setAttribute("aria-hidden", "true");
+    return emojiElement;
+  }
+  function drawFriendChips(treeObjectState) {
+    const slotElement = treeObjectState.friendSlotElement;
+    if (!slotElement) {
+      return;
+    }
+    slotElement.textContent = "";
+    treeObjectState.friendChipElementsByOwnerState = /* @__PURE__ */ new Map();
+    const chips = listFriendChips(treeObjectState);
+    treeObjectState.friendSearchText = chips.map(function(chip) {
+      return chip.label;
+    }).join("\\n").toLowerCase();
+    chips.forEach(function(chip) {
+      const description = "Friend " + chip.friendNumber + " of " + chip.parentLabel;
+      const chipElement = chip.ownerState ? createButton("secondary", "treeFriendChip", "", "compact") : createElement("span", "treeFriendChip muted");
+      chipElement.appendChild(buildChipEmoji(RECIPE_COCKPIT_FRIEND_EMOJI));
+      chipElement.appendChild(createElement("span", "treeFriendLabel", chip.label));
+      if (chip.ownerState) {
+        const ownerState = chip.ownerState;
+        chipElement.setAttribute("aria-label", chip.label + ", friend " + chip.friendNumber + " of " + chip.parentLabel + ": go to " + ownerState.object.objectApiName);
+        chipElement.setAttribute("title", description + ". Go to " + ownerState.object.objectApiName + ", which holds " + chip.parentLabel);
+        chipElement.addEventListener("click", function() {
+          closeNicknameMenu(false);
+          revealTreeObjectRow(treeObjectState.treeState, ownerState, null, ownerState.nicknameChipElement || ownerState.toggleElement);
+        });
+        treeObjectState.friendChipElementsByOwnerState.set(ownerState, chipElement);
+      } else {
+        chipElement.setAttribute("title", description + ", which no one row of this recipe holds by nickname");
+      }
+      slotElement.appendChild(chipElement);
+    });
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/navigation/TreecipesSearch.ts
+  var TREECIPES_SEARCH_KINDS = [
+    { kind: "treecipe", label: "treecipe" },
+    { kind: "object", label: "object" },
+    { kind: "field", label: "field" },
+    { kind: "recordType", label: "record type" }
+  ];
+  function buildTreecipesSearchIndex() {
+    return treeStates.map(function(treeState) {
+      const tree = treeState.tree;
+      const entries = [{ kind: "treecipe", text: displayTitleOf(tree) + (tree.folderName && tree.customName ? " · " + tree.folderName : ""), haystack: (displayTitleOf(tree) + "\\n" + (tree.folderName || "")).toLowerCase() }];
+      const indexedObjectApiNames = /* @__PURE__ */ Object.create(null);
+      const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(treeState);
+      treeState.objectStates.forEach(function(treeObjectState) {
+        const object = treeObjectState.object;
+        if (treeObjectState.isIteration || indexedObjectApiNames[object.objectApiName] === true) {
+          return;
+        }
+        indexedObjectApiNames[object.objectApiName] = true;
+        const friendLabels = hasOwnKey(friendLabelsByObjectApiName, object.objectApiName) ? friendLabelsByObjectApiName[object.objectApiName] : [];
+        entries.push({
+          kind: "object",
+          objectApiName: object.objectApiName,
+          text: object.objectApiName + (friendLabels.length > 0 ? " · " + friendLabels.join(", ") : ""),
+          haystack: [object.objectApiName].concat(friendLabels).join("\\n").toLowerCase()
+        });
+        object.fields.forEach(function(field) {
+          const fieldLabel = typeof field.fieldLabel === "string" ? field.fieldLabel : "";
+          entries.push({
+            kind: "field",
+            objectApiName: object.objectApiName,
+            fieldApiName: field.fieldApiName,
+            text: object.objectApiName + "." + field.fieldApiName + (fieldLabel ? " · " + fieldLabel : ""),
+            haystack: (field.fieldApiName + "\\n" + fieldLabel).toLowerCase(),
+            // "Account.Name", AS THE RESULT ROW WRITES IT; MATCHED ONLY BY A QUERY WITH A DOT, SO AN OBJECT'S NAME DOES NOT LIST EVERY FIELD
+            qualifiedHaystack: (object.objectApiName + "." + field.fieldApiName).toLowerCase()
+          });
+        });
+        (Array.isArray(object.recordTypes) ? object.recordTypes : []).forEach(function(recordType) {
+          const developerName = recordType && typeof recordType === "object" ? recordType.developerName : void 0;
+          if (typeof developerName !== "string") {
+            return;
+          }
+          entries.push({ kind: "recordType", objectApiName: object.objectApiName, text: object.objectApiName + " · " + developerName, haystack: developerName.toLowerCase() });
+        });
+      });
+      return { treeState, entries };
+    });
+  }
+  function buildTreecipesSearch() {
+    const searchElement = createElement("div", "treecipesSearch");
+    const fieldElement = createElement("div", "tabSearchField");
+    const inputElement = createElement("input", "treecipesSearchInput");
+    const iconElement = buildSearchIconElement();
+    iconElement.addEventListener("click", function() {
+      if (typeof inputElement.focus === "function") {
+        inputElement.focus();
+      }
+    });
+    inputElement.setAttribute("type", "search");
+    inputElement.setAttribute("placeholder", RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER);
+    inputElement.setAttribute("aria-label", RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER);
+    inputElement.value = treecipesSearchText;
+    inputElement.addEventListener("input", function() {
+      treecipesSearchText = String(inputElement.value || "");
+      applyTreecipesSearch();
+      savePanelPlace();
+    });
+    fieldElement.appendChild(iconElement);
+    fieldElement.appendChild(inputElement);
+    searchElement.appendChild(fieldElement);
+    const search = {
+      element: searchElement,
+      inputElement,
+      matchCountElement: createElement("span", "treecipesSearchCount muted"),
+      resultsElement: createElement("div", "treecipesSearchResults hidden")
+    };
+    treecipesSearch = search;
+    search.resultsElement.setAttribute("role", "list");
+    search.resultsElement.setAttribute("aria-label", "Search results");
+    searchElement.appendChild(search.matchCountElement);
+    return search;
+  }
+  function applyTreecipesSearch() {
+    const search = treecipesSearch;
+    if (!search) {
+      applyFavoritesFilter();
+      return;
+    }
+    const searchQuery = treecipesSearchText.trim().toLowerCase();
+    const isQualifiedQuery = searchQuery.indexOf(".") !== -1;
+    const resultsElement = search.resultsElement;
+    resultsElement.textContent = "";
+    if (!searchQuery) {
+      treecipesMatchedTreeKeys = null;
+      search.matchCountElement.textContent = "";
+      resultsElement.classList.add("hidden");
+      applyFavoritesFilter();
+      return;
+    }
+    if (treecipesSearchIndex === null) {
+      treecipesSearchIndex = buildTreecipesSearchIndex();
+    }
+    const matchedTreeKeys = /* @__PURE__ */ Object.create(null);
+    treecipesMatchedTreeKeys = matchedTreeKeys;
+    let matchedTreeCount = 0;
+    let drawnResultCount = 0;
+    let hiddenResultCount = 0;
+    treecipesSearchIndex.forEach(function(indexedTree) {
+      if (isHiddenByFavorites(indexedTree.treeState)) {
+        return;
+      }
+      const hitsByKind = /* @__PURE__ */ Object.create(null);
+      let treeHitCount = 0;
+      indexedTree.entries.forEach(function(entry) {
+        if (entry.haystack.indexOf(searchQuery) === -1 && !(isQualifiedQuery && entry.qualifiedHaystack && entry.qualifiedHaystack.indexOf(searchQuery) !== -1)) {
+          return;
+        }
+        (hitsByKind[entry.kind] = hitsByKind[entry.kind] || []).push(entry);
+        treeHitCount++;
+      });
+      if (treeHitCount === 0) {
+        return;
+      }
+      matchedTreeKeys[indexedTree.treeState.tree.treeKey] = true;
+      matchedTreeCount++;
+      if (drawnResultCount >= RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT) {
+        hiddenResultCount += treeHitCount;
+        return;
+      }
+      const groupElement = createElement("div", "treecipesResultGroup");
+      groupElement.setAttribute("role", "listitem");
+      groupElement.appendChild(createElement("div", "treecipesResultTree", displayTitleOf(indexedTree.treeState.tree)));
+      TREECIPES_SEARCH_KINDS.forEach(function(searchKind) {
+        (hitsByKind[searchKind.kind] || []).forEach(function(entry) {
+          if (drawnResultCount >= RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT) {
+            hiddenResultCount++;
+            return;
+          }
+          groupElement.appendChild(buildTreecipesResult(indexedTree.treeState, entry, searchKind.label));
+          drawnResultCount++;
+        });
+      });
+      resultsElement.appendChild(groupElement);
+    });
+    if (hiddenResultCount > 0) {
+      resultsElement.appendChild(createElement("div", "treecipesResultMore muted", hiddenResultCount + RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX));
+    }
+    if (matchedTreeCount === 0) {
+      resultsElement.appendChild(createElement("div", "treecipesResultNone muted", RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH));
+    }
+    const pickableCount = treeStates.filter(function(treeState) {
+      return !isHiddenByFavorites(treeState);
+    }).length;
+    search.matchCountElement.textContent = matchedTreeCount > 0 ? matchedTreeCount + " of " + pluralize(pickableCount, "treecipe", "treecipes") : "no matches";
+    resultsElement.classList.remove("hidden");
+    applyFavoritesFilter();
+  }
+  function buildTreecipesResult(treeState, entry, kindLabel) {
+    const resultElement = createButton("link", "treecipesResult");
+    resultElement.appendChild(createElement("span", "treecipesResultKind muted", kindLabel));
+    resultElement.appendChild(createElement("span", "treecipesResultText", entry.text));
+    resultElement.setAttribute("aria-label", kindLabel + " " + entry.text + " in " + displayTitleOf(treeState.tree));
+    resultElement.addEventListener("click", function() {
+      openTreecipesResult(treeState, entry);
+    });
+    return resultElement;
+  }
+  function openTreecipesResult(treeState, entry) {
+    chooseTree(treeState, true);
+    selectTreeTab(treeState, "treecipe", false);
+    if (entry.kind === "recordType") {
+      applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: "treecipe", recordTypes: { objectApiName: entry.objectApiName } });
+      savePanelPlace();
+      return;
+    }
+    let scrollTarget = treeState.element;
+    if (entry.kind === "object" || entry.kind === "field") {
+      const treeObjectState = treeState.objectStates.find(function(candidateState) {
+        return !candidateState.isIteration && candidateState.object.objectApiName === entry.objectApiName;
+      });
+      if (treeObjectState) {
+        const fieldState = entry.kind === "field" ? treeObjectState.fieldStates.find(function(candidateState) {
+          return candidateState.field.fieldApiName === entry.fieldApiName;
+        }) : null;
+        scrollTarget = openTreeObjectRow(treeState, treeObjectState, fieldState);
+      }
+    }
+    savePanelPlace();
+    if (scrollTarget && typeof scrollTarget.scrollIntoView === "function") {
+      scrollTarget.scrollIntoView({ block: "nearest" });
+    }
+  }
+  function openTreeObjectRow(treeState, treeObjectState, fieldState) {
+    treeObjectState.isExpandedByReader = true;
+    setTreeObjectExpanded(treeObjectState, true, false);
+    if (fieldState && fieldState.rowElement && fieldState.rowElement.classList.contains("hidden")) {
+      const hadObjectFilter = isObjectHidingUnselectedIn(treeObjectState) || treeObjectState.isTodosOnly === true;
+      treeObjectState.isHidingUnselected = false;
+      treeObjectState.isTodosOnly = false;
+      clearStructureFilters(treeState);
+      if (hadObjectFilter) {
+        drawHideUnselectedToggle(treeObjectState);
+        drawObjectTodosToggle(treeObjectState);
+      }
+      setTreeObjectExpanded(treeObjectState, true, false);
+    }
+    return fieldState && fieldState.rowElement ? fieldState.rowElement : treeObjectState.element;
+  }
+  function revealTreeObjectRow(treeStateView, treeObjectStateView, fieldState, focusElement2) {
+    const treeState = asNavigationTreeState(treeStateView);
+    const treeObjectState = asNavigationObjectState(treeObjectStateView);
+    selectTreeTab(treeState, "treecipe", false);
+    const scrollTarget = openTreeObjectRow(treeState, treeObjectState, fieldState);
+    savePanelPlace();
+    if (scrollTarget && typeof scrollTarget.scrollIntoView === "function") {
+      scrollTarget.scrollIntoView({ block: "nearest" });
+    }
+    if (focusElement2 && typeof focusElement2.focus === "function") {
+      focusElement2.focus();
+    }
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/navigation/StructureFilter.ts
+  function clearStructureFilters(treeState) {
+    treeState.searchTexts.treecipe = "";
+    treeState.searchQueries.treecipe = "";
+    treeState.isRecordTypeFieldsOnly = false;
+    treeState.isTodosOnly = false;
+    if (treeState.structureSearch) {
+      treeState.structureSearch.inputElement.value = "";
+    }
+    applyStructureFilter(treeState);
+  }
+  function applyTreeFocus(focusTree) {
+    if (!focusTree) {
+      return;
+    }
+    const treeState = treeStates.find(function(candidateTreeState) {
+      return candidateTreeState.tree.treeKey === focusTree.treeKey;
+    });
+    if (!treeState) {
+      return;
+    }
+    if (isHiddenByFavorites(treeState)) {
+      isFavoritesOnly = false;
+      applyTreecipesSearch();
+    }
+    chooseTree(treeState, false);
+    selectTreeTab(treeState, focusTree.tab);
+    if (focusTree.tab === "troubleshooting" && typeof focusTree.troubleshootingSubTab === "string") {
+      selectTroubleshootingSubTab(treeState, focusTree.troubleshootingSubTab, false);
+      if (focusTree.troubleshootingSubTab === "todos" && focusTree.todosView !== void 0 && RECIPE_COCKPIT_TODOS_VIEWS.indexOf(focusTree.todosView) !== -1) {
+        treeState.todosView = focusTree.todosView;
+        selectTodosView(treeState, focusTree.todosView, false);
+      }
+    }
+    if (!focusTree.recordTypes || typeof focusTree.recordTypes !== "object") {
+      return false;
+    }
+    setRecordTypesExpanded(treeState, true, false);
+    savePanelPlace();
+    const objectApiName = focusTree.recordTypes.objectApiName;
+    const objectState = (treeState.recordTypeObjectStates || []).find(function(candidateState) {
+      return candidateState.object.objectApiName === objectApiName;
+    });
+    if (!objectState || typeof objectState.element.scrollIntoView !== "function") {
+      return false;
+    }
+    if (objectState.element.classList.contains("hidden") && treeState.searchQueries.treecipe) {
+      treeState.searchTexts.treecipe = "";
+      treeState.searchQueries.treecipe = "";
+      if (treeState.structureSearch) {
+        treeState.structureSearch.inputElement.value = "";
+      }
+      applyStructureFilter(treeState);
+      savePanelPlace();
+    }
+    objectState.element.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+  function focusTreeInPlace(focusTree) {
+    if (!focusTree || typeof focusTree !== "object" || typeof focusTree.treeKey !== "string") {
+      return;
+    }
+    const treeKey = focusTree.treeKey;
+    const treeState = treeStates.find(function(candidateTreeState) {
+      return candidateTreeState.tree.treeKey === treeKey;
+    });
+    if (!treeState) {
+      return;
+    }
+    applyTreeFocus(focusTree);
+    savePanelPlace();
+    if (typeof treeState.element.scrollIntoView === "function") {
+      treeState.element.scrollIntoView({ block: "start" });
+    }
+  }
+  function setTreeExpanded(treeState, isExpanded, isAnimated) {
+    if (isExpanded) {
+      ensureTreeBodyBuilt(treeState);
+    }
+    setShownWithMotion(treeState.bodyElement, isExpanded, isAnimated === true);
+    treeState.isExpanded = isExpanded;
+  }
+  function expandMatchesWithinBudget(rowStates, matchCountOf, rowCountOf, setExpanded) {
+    let expandedObjectCount = 0;
+    let expandedRowCount = 0;
+    let isBudgetSpent = false;
+    rowStates.forEach(function(rowState) {
+      if (matchCountOf(rowState) === 0 || isBudgetSpent) {
+        setExpanded(rowState, false);
+        return;
+      }
+      const rowCount = rowCountOf(rowState);
+      const fitsRowBudget = expandedObjectCount === 0 || expandedRowCount + rowCount <= RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET;
+      if (expandedObjectCount >= RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT || !fitsRowBudget) {
+        isBudgetSpent = true;
+        setExpanded(rowState, false);
+        return;
+      }
+      expandedObjectCount++;
+      expandedRowCount += rowCount;
+      setExpanded(rowState, true);
+    });
+  }
+  function applyStructureFilter(treeStateView) {
+    const treeState = asNavigationTreeState(treeStateView);
+    if (!treeState.structureSearch) {
+      return;
+    }
+    drawRecordTypeFieldsToggle(treeState);
+    drawTodosToggle(treeState);
+    treeState.objectStates.forEach(function(treeObjectState) {
+      filterTreeObjectRows(treeState, treeObjectState);
+    });
+    drawStructureMatchCount(treeState);
+    applyRecordTypesFilter(treeState);
+    if (!isStructureFilteredIn(treeState)) {
+      treeState.objectStates.forEach(function(treeObjectState) {
+        setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader);
+      });
+      return;
+    }
+    expandMatchesWithinBudget(
+      treeState.objectStates,
+      function(treeObjectState) {
+        return treeObjectState.matchingFieldCount + (treeObjectState.hasMatchingObjectTodos ? 1 : 0);
+      },
+      function(treeObjectState) {
+        return treeObjectState.fieldStates.length;
+      },
+      setTreeObjectExpanded
+    );
+  }
+  function isStructureFilteredIn(treeState) {
+    return !!treeState.searchQueries.treecipe || isRecordTypeFieldsOnlyIn(treeState) || isTodosOnlyIn(treeState);
+  }
+  function filterTreeObjectRows(treeStateView, treeObjectStateView) {
+    const treeState = asNavigationTreeState(treeStateView);
+    const treeObjectState = asNavigationObjectState(treeObjectStateView);
+    const searchQuery = treeState.searchQueries.treecipe;
+    const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
+    const isObjectTodosOnly = isTodosOnlyIn(treeState) || isObjectTodosOnlyIn(treeObjectState);
+    const isHidingUnselected = isObjectHidingUnselectedIn(treeObjectState);
+    const isObjectFiltered = !!searchQuery || isRecordTypeFieldsOnly || isObjectTodosOnly || isHidingUnselected;
+    const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
+    let objectMatchingFieldCount = 0;
+    let selectedFieldCount = 0;
+    const objectFieldSelection = isHidingUnselected ? findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object)) : null;
+    treeObjectState.fieldStates.forEach(function(fieldState) {
+      const isSelected = !isHidingUnselected || !fieldState.field.lineNumber || !isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
+      if (isSelected) {
+        selectedFieldCount++;
+      }
+      fieldState.isMatch = isSelected && (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null) && (!isObjectTodosOnly || fieldState.todos.length > 0) && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
+      if (fieldState.isMatch) {
+        objectMatchingFieldCount++;
+      }
+      applyTreeFieldVisibility(fieldState);
+    });
+    const objectFieldCount = treeObjectState.fieldStates.length;
+    const hasMatchingObjectTodos = isObjectTodosOnly && !isRecordTypeFieldsOnly && isObjectNameMatch && treeObjectState.objectTodos.length > 0;
+    treeObjectState.matchingFieldCount = objectMatchingFieldCount;
+    treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
+    treeObjectState.isFilteredByStructure = isObjectFiltered;
+    if (!isObjectFiltered || isObjectNameMatch && !isRecordTypeFieldsOnly && !isObjectTodosOnly && !isHidingUnselected) {
+      treeObjectState.countElement.textContent = pluralize(objectFieldCount, "field", "fields");
+    } else if (isObjectTodosOnly && treeObjectState.todoCount === 0) {
+      treeObjectState.countElement.textContent = "no TODOs";
+    } else if (isObjectTodosOnly && !searchQuery && !isRecordTypeFieldsOnly) {
+      treeObjectState.countElement.textContent = pluralize(treeObjectState.todoCount, "TODO", "TODOs");
+    } else if (objectMatchingFieldCount > 0) {
+      treeObjectState.countElement.textContent = objectMatchingFieldCount + " of " + pluralize(objectFieldCount, "field", "fields");
+    } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
+      treeObjectState.countElement.textContent = "no record type fields";
+    } else if (hasMatchingObjectTodos) {
+      treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, "TODO", "TODOs") + " on the object";
+    } else if (isHidingUnselected && selectedFieldCount === 0) {
+      treeObjectState.countElement.textContent = "no selected fields";
+    } else {
+      treeObjectState.countElement.textContent = "no matching fields";
+    }
+  }
+  function drawStructureMatchCount(treeStateView) {
+    const treeState = asNavigationTreeState(treeStateView);
+    let totalFieldCount = 0;
+    let matchingFieldCount = 0;
+    let isAnyObjectFiltered = false;
+    treeState.objectStates.forEach(function(treeObjectState) {
+      totalFieldCount += treeObjectState.fieldStates.length;
+      matchingFieldCount += treeObjectState.matchingFieldCount;
+      if (treeObjectState.isFilteredByStructure) {
+        isAnyObjectFiltered = true;
+      }
+    });
+    treeState.structureSearch.matchCountElement.textContent = !isAnyObjectFiltered ? pluralize(totalFieldCount, "field", "fields") : matchingFieldCount > 0 ? matchingFieldCount + " of " + pluralize(totalFieldCount, "field", "fields") : "no matches";
+  }
+  function buildTreeObjectKey(treeKey, objectApiName) {
+    return treeKey + "\\n" + objectApiName;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/TodosToggles.ts
+  function todoCountOf(treeState) {
+    if (typeof treeState.todoCount !== "number") {
+      treeState.todoCount = treeState.objectStates.reduce(function(todoCount, treeObjectState) {
+        return todoCount + treeObjectState.todoCount;
+      }, 0);
+    }
+    return treeState.todoCount;
+  }
+  function isTodosOnlyIn(treeState) {
+    return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
+  }
+  function appendTodosToggle(treeState, tileElement) {
+    const rowElement = createElement("div", "treecipeFilterRow");
+    tileElement.appendChild(rowElement);
+    const todoCount = todoCountOf(treeState);
+    const checkElement = createElement("span", "treeTodosCheck");
+    const toggleElement = createButton("check", "treeFieldInclude treeTodosToggle");
+    const labelElement = createElement("span", "treeTodosLabel", todoCount > 0 ? RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + todoCount + ")" : RECIPE_COCKPIT_TODOS_ONLY_LABEL);
+    toggleElement.setAttribute("role", "checkbox");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
+    if (todoCount > 0) {
+      const title = "Show only the fields and objects with a TODO comment in the recipe (" + pluralize(todoCount, "TODO", "TODOs") + ")";
+      const toggleTodosOnly = function() {
+        if (toggleElement.disabled) {
+          return;
+        }
+        treeState.isTodosOnly = !treeState.isTodosOnly;
+        applyStructureFilter(treeState);
+        savePanelPlace();
+      };
+      toggleElement.setAttribute("title", title);
+      labelElement.setAttribute("title", title);
+      toggleElement.addEventListener("click", toggleTodosOnly);
+      labelElement.addEventListener("click", toggleTodosOnly);
+    } else {
+      toggleElement.disabled = true;
+      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_TODOS_NOTE);
+      checkElement.classList.add("disabled");
+    }
+    treeState.todosToggleElement = toggleElement;
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    rowElement.appendChild(checkElement);
+    if (todoCount === 0) {
+      rowElement.appendChild(createElement("span", "treeTodosNote muted", RECIPE_COCKPIT_NO_TODOS_NOTE));
+    }
+    drawTodosToggle(treeState);
+  }
+  function drawTodosToggle(treeState) {
+    const toggleElement = treeState.todosToggleElement;
+    if (!toggleElement) {
+      return;
+    }
+    const isChecked = isTodosOnlyIn(treeState);
+    toggleElement.textContent = isChecked ? "✓" : "";
+    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
+  }
+  function buildTodoListElement(recipeFilePath, todos) {
+    const listElement = createElement("div", "treeTodos");
+    todos.forEach(function(todo) {
+      const todoElement = createElement("div", "treeTodo");
+      todoElement.appendChild(typeof todo.text === "string" ? createElement("span", "treeTodoText", todo.text) : createElement("span", "treeTodoText muted", RECIPE_COCKPIT_TODO_IN_VALUE_LABEL + " (line " + todo.lineNumber + ")"));
+      if (recipeFilePath && todo.lineNumber) {
+        todoElement.appendChild(buildSourceLink("treeTodoSource", "↗ yml", recipeFilePath, todo.lineNumber));
+      }
+      listElement.appendChild(todoElement);
+    });
+    return listElement;
+  }
+  function isObjectTodosOnlyIn(treeObjectState) {
+    return treeObjectState.isTodosOnly === true && treeObjectState.todoCount > 0;
+  }
+  function buildObjectTodosToggle(treeObjectState) {
+    const objectApiName = treeObjectState.object.objectApiName;
+    const checkElement = createElement("span", "treeFieldSelectAllCheck treeObjectTodosCheck");
+    const toggleElement = createButton("check", "treeObjectTodosToggle");
+    const labelText = treeObjectState.todoCount > 0 ? RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + treeObjectState.todoCount + ")" : RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL;
+    const labelElement = createElement("span", "treeObjectTodosLabel", labelText);
+    toggleElement.setAttribute("role", "checkbox");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + objectApiName + ")");
+    if (treeObjectState.todoCount > 0) {
+      const title = "Show only the fields of " + objectApiName + " with a TODO comment in the recipe (" + pluralize(treeObjectState.todoCount, "TODO", "TODOs") + ")";
+      const toggleTodosOnly = function() {
+        if (toggleElement.disabled) {
+          return;
+        }
+        treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
+        if (treeObjectState.treeState.structureSearch) {
+          filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+          drawStructureMatchCount(treeObjectState.treeState);
+        }
+        drawObjectTodosToggle(treeObjectState);
+        savePanelPlace();
+      };
+      toggleElement.setAttribute("title", title);
+      labelElement.setAttribute("title", title);
+      toggleElement.addEventListener("click", toggleTodosOnly);
+      labelElement.addEventListener("click", toggleTodosOnly);
+    } else {
+      toggleElement.disabled = true;
+      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
+      labelElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
+      checkElement.classList.add("disabled");
+    }
+    treeObjectState.todosToggleElement = toggleElement;
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    drawObjectTodosToggle(treeObjectState);
+    return checkElement;
+  }
+  function drawObjectTodosToggle(treeObjectState) {
+    const toggleElement = treeObjectState.todosToggleElement;
+    if (!toggleElement) {
+      return;
+    }
+    const isChecked = isObjectTodosOnlyIn(treeObjectState);
+    toggleElement.textContent = isChecked ? "✓" : "";
+    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRow.ts
@@ -4122,910 +5002,236 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     includeElement.setAttribute("aria-label", fieldApiName + ": " + title);
   }
 
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/TreeInsert.ts
-  function buildTreeInsertElement(treeState) {
-    const controlsElement = createElement("div", "treeInsertControls");
-    const insert = {
-      buttonElement: createButton("primary", "treeInsert", RECIPE_COCKPIT_INSERT_ACTION_LABEL),
-      reasonElement: createElement("span", "treeInsertReason muted"),
-      reasonLinkElement: createButton("link", "treeInsertReasonLink hidden", ""),
-      reasonLink: null
-    };
-    insert.buttonElement.addEventListener("click", function() {
-      const treeKey = treeState.tree.treeKey;
-      if (isTreeRunning(treeKey) || renderedSequence === null) {
-        return;
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/LookupWiring.ts
+  var lookupWiringIndexByTree = /* @__PURE__ */ new WeakMap();
+  var addableParentIndexByTree = /* @__PURE__ */ new WeakMap();
+  var emptyLookupIndexByTree = /* @__PURE__ */ new WeakMap();
+  function appendAddFriendControls(treeKey, object, objectHeaderElement) {
+    const friendObjectApiNames = object.iteration && object.iteration.insertableFriendObjectApiNames || [];
+    if (friendObjectApiNames.length === 0) {
+      return;
+    }
+    const addFriendElement = createButton("secondary", "treeAddFriend", RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL);
+    const addFriendsElement = createElement("div", "treeAddFriends hidden");
+    addFriendElement.setAttribute("title", "Add one of the friends of " + object.objectApiName + " under " + object.nickname);
+    addFriendElement.setAttribute("aria-label", "Add friend under " + object.nickname);
+    addFriendElement.setAttribute("aria-expanded", "false");
+    addFriendElement.addEventListener("click", function() {
+      const isOpening = addFriendsElement.classList.contains("hidden");
+      if (isOpening) {
+        addFriendsElement.classList.remove("hidden");
+      } else {
+        addFriendsElement.classList.add("hidden");
       }
-      const insertReason = findTreeInsertReason(treeState);
-      if (insertReason !== "" && insertReason !== RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON) {
-        return;
-      }
-      setInsertRunning(treeKey);
-      const insertMessage = { command: "insertTree", treeKey };
-      const recordTypeSelection = buildRecordTypeSelection();
-      if (Object.keys(recordTypeSelection).length > 0 || isRecordTypeSelectionRemembered && recordTypeObjects.length > 0) {
-        insertMessage.recordTypeSelection = recordTypeSelection;
-        if (isRecordTypeSelectionRemembered) {
-          insertMessage.isRemembered = true;
+      addFriendElement.setAttribute("aria-expanded", isOpening ? "true" : "false");
+    });
+    addFriendsElement.appendChild(createElement("span", "muted", "Add under " + object.nickname + ":"));
+    friendObjectApiNames.forEach(function(friendObjectApiName) {
+      const choiceElement = createButton("secondary", "treeAddFriendChoice", "+ " + friendObjectApiName);
+      choiceElement.setAttribute("aria-label", "Add " + friendObjectApiName + " under " + object.nickname);
+      choiceElement.addEventListener("click", function() {
+        if (isAddFriendRunning) {
+          return;
         }
-      }
-      vscodeApi.postMessage(insertMessage);
-    });
-    insert.reasonLinkElement.addEventListener("click", function() {
-      if (insert.reasonLink) {
-        followInsertReasonLink(treeState, insert.reasonLink);
-      }
-    });
-    controlsElement.appendChild(insert.buttonElement);
-    if (treeState.resetSelectionElement) {
-      controlsElement.appendChild(treeState.resetSelectionElement);
-    }
-    controlsElement.appendChild(insert.reasonElement);
-    controlsElement.appendChild(insert.reasonLinkElement);
-    treeState.insert = insert;
-    drawTreeInsert(treeState);
-    return controlsElement;
-  }
-  function isTreeRunning(treeKey) {
-    return insertRunningTreeKey === treeKey;
-  }
-  function listTreeInsertObjectApiNames(treeState) {
-    const exclusionsByObjectApiName = indexObjectExclusions(treeState.tree);
-    return treeState.objectStates.filter(function(treeObjectState) {
-      return !treeObjectState.isIteration && !hasOwnKey(exclusionsByObjectApiName, treeObjectState.object.objectApiName);
-    }).map(function(treeObjectState) {
-      return treeObjectState.object.objectApiName;
-    });
-  }
-  function findTreeInsertReason(treeState) {
-    return findTreeInsertBlock(treeState).reason;
-  }
-  function findTreeInsertBlock(treeState) {
-    const blockedBy = function(reason) {
-      return { reason, readiness: null };
-    };
-    if (isDataOrgChecking) {
-      return blockedBy(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON);
-    }
-    if (insertRunningDatasetFolderName !== null) {
-      return blockedBy(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON);
-    }
-    if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) {
-      return blockedBy("Another tree is being inserted.");
-    }
-    if (isScratchOrgRunning) {
-      return blockedBy("A scratch org is being set up.");
-    }
-    if (isPermissionSetAssignRunning) {
-      return blockedBy("Permission sets are being assigned.");
-    }
-    if (isMetadataDeployRunning) {
-      return blockedBy("Metadata is being deployed.");
-    }
-    const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
-    if (insertObjectApiNames.length === 0) {
-      return blockedBy("Every object of this tree is excluded.");
-    }
-    if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) {
-      return blockedBy(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON);
-    }
-    if (dataOrgSelectionFailureMessage) {
-      return blockedBy(dataOrgSelectionFailureMessage);
-    }
-    for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
-      const objectApiName = insertObjectApiNames[objectIndex];
-      const treeObjectKey = buildTreeObjectKey(treeState.tree.treeKey, objectApiName);
-      const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey] : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName] : null;
-      if (!readiness) {
-        return blockedBy("checking whether this tree can be inserted…");
-      }
-      if (readiness.disabledReason) {
-        return { reason: readiness.disabledReason, readiness };
-      }
-    }
-    return blockedBy("");
-  }
-  function findInsertReasonLink(treeState, readiness) {
-    if (!readiness || typeof readiness.disabledReasonCode !== "string") {
-      return null;
-    }
-    if (hasOwnKey(RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS, readiness.disabledReasonCode)) {
-      if (!treeState.tree.folderName) {
-        return null;
-      }
-      const troubleshootingLink = RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS[readiness.disabledReasonCode];
-      return { kind: "troubleshooting", subTab: troubleshootingLink.subTab, label: troubleshootingLink.label };
-    }
-    if (readiness.disabledReasonCode !== "requiredFieldUnticked" || typeof readiness.disabledReasonFieldApiName !== "string") {
-      return null;
-    }
-    const objectApiName = readiness.objectApiName;
-    const lowerFieldApiName = readiness.disabledReasonFieldApiName.toLowerCase();
-    const findField = function(treeObjectState2) {
-      return treeObjectState2.object.fields.find(function(candidateField) {
-        return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName;
-      });
-    };
-    const occurrenceStates = treeState.objectStates.filter(function(candidateState) {
-      return candidateState.object.objectApiName === objectApiName && !!findField(candidateState);
-    });
-    const untickingState = occurrenceStates.find(function(candidateState) {
-      const objectFieldSelection = findObjectFieldSelection(candidateState.tree, objectApiName, occurrenceNicknameOf(candidateState.object));
-      const field2 = findField(candidateState);
-      return !!objectFieldSelection && !!field2 && isTreeFieldUnticked(objectFieldSelection, field2.fieldApiName);
-    });
-    const treeObjectState = untickingState || occurrenceStates.find(function(candidateState) {
-      return !candidateState.isIteration;
-    }) || occurrenceStates[0];
-    const field = treeObjectState ? findField(treeObjectState) : void 0;
-    if (!treeObjectState || !field) {
-      return null;
-    }
-    const fieldApiName = field.fieldApiName;
-    return { kind: "field", objectState: treeObjectState, fieldApiName, label: RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + "." + fieldApiName };
-  }
-  function followInsertReasonLink(treeState, reasonLink) {
-    if (reasonLink.kind === "troubleshooting") {
-      applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: "troubleshooting", troubleshootingSubTab: reasonLink.subTab });
-      savePanelPlace();
-      const actionCard = reasonLink.subTab === "fields" ? (treeState.deployCards || {}).fields : treeState.permissionSetCard;
-      if (!actionCard) {
-        return;
-      }
-      if (typeof actionCard.buttonElement.scrollIntoView === "function") {
-        actionCard.buttonElement.scrollIntoView({ block: "nearest" });
-      }
-      const subTabState = (treeState.troubleshootingSubTabStates || []).find(function(candidateState) {
-        return candidateState.subTab === reasonLink.subTab;
-      });
-      const focusElement3 = actionCard.buttonElement.disabled && subTabState ? subTabState.tabElement : actionCard.buttonElement;
-      focusElement3.focus();
-      return;
-    }
-    const treeObjectState = reasonLink.objectState;
-    const fieldState = treeObjectState.fieldStates.find(function(candidateState) {
-      return candidateState.field.fieldApiName === reasonLink.fieldApiName;
-    }) || null;
-    revealTreeObjectRow(treeState, treeObjectState, fieldState, null);
-    const focusElement2 = fieldState && (fieldState.includeElement || fieldState.rowElement);
-    if (focusElement2 && typeof focusElement2.focus === "function") {
-      focusElement2.focus();
-    }
-  }
-  function drawTreeInsert(treeState) {
-    const insert = treeState.insert;
-    if (!insert) {
-      return;
-    }
-    const tree = treeState.tree;
-    const insertBlock = findTreeInsertBlock(treeState);
-    const insertReason = insertBlock.reason;
-    const isOrgToChoose = insertReason === RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON;
-    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : "";
-    const actionLabel = RECIPE_COCKPIT_INSERT_ACTION_LABEL + (insertReason === "" && orgLabel ? " into " + orgLabel : "");
-    insert.buttonElement.disabled = isTreeRunning(tree.treeKey) || insertReason !== "" && !isOrgToChoose;
-    insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : actionLabel;
-    insert.buttonElement.setAttribute("aria-label", actionLabel + " for " + displayTitleOf(tree) + " (" + tree.runFakerRecipeFileName + ")");
-    insert.buttonElement.setAttribute("title", isOrgToChoose ? "Choose the org to insert into, then generate this tree with its selection and counts from " + tree.runFakerRecipeFileName + " and insert it, parents first" : "Generate this tree with its selection and counts from " + tree.runFakerRecipeFileName + ", then insert it into the chosen org, parents first");
-    insert.reasonElement.textContent = insertReason === "" ? "" : isOrgToChoose ? RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE : RECIPE_COCKPIT_CANNOT_INSERT_PREFIX + insertReason;
-    insert.reasonLink = findInsertReasonLink(treeState, insertBlock.readiness);
-    setTextShown(insert.reasonLinkElement, insert.reasonLink ? insert.reasonLink.label : "");
-  }
-  function drawTreeInserts() {
-    treeStates.forEach(drawTreeInsert);
-    drawDatasetInserts();
-    treeStates.forEach(drawTreePermissionSet);
-    drawTreeQueryButtons();
-  }
-  function setInsertRunning(runningTreeKey, runningDatasetFolderName) {
-    insertRunningTreeKey = runningTreeKey;
-    insertRunningDatasetFolderName = runningTreeKey !== null && typeof runningDatasetFolderName === "string" ? runningDatasetFolderName : null;
-    drawTreeInserts();
-    drawDataOrgViews();
-    drawRecordTypeChoices();
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/DataOrgListing.ts
-  function renderScratchOrgState(hostMessage) {
-    isScratchOrgRunning = !!hostMessage.isRunning;
-    isOrgAuthorizeRunning = isScratchOrgRunning && hostMessage.isAuthorizing === true;
-    drawDataOrgViews();
-    drawTreeInserts();
-  }
-  function renderDataOrgReadiness(dataOrgReadiness) {
-    if (renderedSequence === null || dataOrgReadiness.renderSequence !== renderedSequence || dataOrgReadiness.requestSequence !== dataOrgRequestSequence) {
-      return;
-    }
-    dataOrgReadiness.objects.forEach(function(readiness) {
-      dataOrgReadinessByObject[readiness.objectApiName] = readiness;
-    });
-    (dataOrgReadiness.createTargets || []).forEach(function(readiness) {
-      dataOrgReadinessByTreeObjectKey[buildTreeObjectKey(readiness.treeKey, readiness.objectApiName)] = readiness;
-    });
-    if (!isDataOrgStatusFailure) {
-      setDataOrgStatus("", false);
-    }
-    drawTreeInserts();
-  }
-  function setDataOrgStatus(statusText, isFailure) {
-    dataOrgStatusText = statusText;
-    isDataOrgStatusFailure = !!isFailure;
-    drawDataOrgViews();
-  }
-  function requestDataOrgs() {
-    if (renderedSequence === null || dataOrgRequestedSequence === renderedSequence || isScratchOrgRunning) {
-      return;
-    }
-    if (!isDataOrgPickerInUse) {
-      isDataOrgPickerInUse = true;
-      savePanelPlace();
-    }
-    holdDataOrgPickerBeforeCheck();
-    dataOrgRequestedSequence = renderedSequence;
-    isDataOrgLoadShown = false;
-    isDataOrgSelectShown = false;
-    startDataOrgCheck();
-    setDataOrgStatus(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, false);
-    drawTreeInserts();
-    dataOrgUnansweredListingCount++;
-    vscodeApi.postMessage({ command: "loadDataOrgs" });
-  }
-  function renderDataOrgList(dataOrgList) {
-    if (renderedSequence === null || dataOrgList.renderSequence !== renderedSequence) {
-      return;
-    }
-    dataOrgPickerBeforeCheck = null;
-    dataOrgUnansweredListingCount = 0;
-    isDataOrgLoadShown = false;
-    isDataOrgChecking = false;
-    isDataOrgPickerInUse = true;
-    clearDataOrgSelection();
-    isDataOrgRefreshShown = true;
-    dataOrgHiddenNoteText = [dataOrgList.forgottenOrgNotice || "", dataOrgList.hiddenOrgNote || ""].filter(Boolean).join(" ");
-    dataOrgLabels = Array.isArray(dataOrgList.orgLabels) ? dataOrgList.orgLabels.slice() : [];
-    isDataOrgSelectShown = true;
-    if (dataOrgLabels.length === 0) {
-      setDataOrgStatus(dataOrgList.noOrgsMessage, true);
-      return;
-    }
-    dataOrgSelectedIndex = dataOrgList.selectedOrgIndex === null ? null : dataOrgList.selectedOrgIndex;
-    isDataOrgSelectShown = true;
-    setDataOrgStatus(dataOrgList.selectedOrgIndex === null ? "Choose an org to insert into." : "", false);
-    drawTreeInserts();
-  }
-  function clearDataOrgSelection() {
-    if (dataOrgRequestSequence !== null) {
-      dataOrgClearedRequestSequence = Math.max(dataOrgClearedRequestSequence === null ? 0 : dataOrgClearedRequestSequence, dataOrgRequestSequence);
-    }
-    dataOrgRequestSequence = null;
-    dataOrgSelectedIndex = null;
-    dataOrgSelectionFailureMessage = "";
-    dataOrgReadinessByObject = /* @__PURE__ */ Object.create(null);
-    dataOrgReadinessByTreeObjectKey = /* @__PURE__ */ Object.create(null);
-    dataOrgTypeLabel = null;
-    drawDataOrgViews();
-    drawTreeInserts();
-  }
-  function showDataOrgConnectionCheck() {
-    holdDataOrgPickerBeforeCheck();
-    isDataOrgSelectShown = false;
-    dataOrgHiddenNoteText = "";
-    startDataOrgCheck();
-    clearDataOrgSelection();
-    setDataOrgStatus(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, false);
-  }
-  function holdDataOrgPickerBeforeCheck() {
-    if (isDataOrgChecking && dataOrgPickerBeforeCheck) {
-      return;
-    }
-    dataOrgPickerBeforeCheck = {
-      labels: dataOrgLabels,
-      isLoadShown: isDataOrgLoadShown,
-      isSelectShown: isDataOrgSelectShown,
-      isRefreshShown: isDataOrgRefreshShown,
-      hiddenNoteText: dataOrgHiddenNoteText,
-      requestedSequence: dataOrgRequestedSequence,
-      requestSequence: dataOrgRequestSequence,
-      clearedRequestSequence: dataOrgClearedRequestSequence,
-      selectedIndex: dataOrgSelectedIndex,
-      selectionFailureMessage: dataOrgSelectionFailureMessage,
-      readinessByObject: dataOrgReadinessByObject,
-      readinessByTreeObjectKey: dataOrgReadinessByTreeObjectKey,
-      typeLabel: dataOrgTypeLabel
-    };
-  }
-  function renderDataOrgListingRefused(refusal) {
-    if (renderedSequence === null || refusal.renderSequence !== renderedSequence) {
-      return;
-    }
-    if (typeof refusal.message !== "string" || !refusal.message) {
-      return;
-    }
-    dataOrgUnansweredListingCount = Math.max(0, dataOrgUnansweredListingCount - 1);
-    if (dataOrgUnansweredListingCount > 0) {
-      return;
-    }
-    const pickerBeforeCheck = dataOrgPickerBeforeCheck;
-    dataOrgPickerBeforeCheck = null;
-    if (pickerBeforeCheck) {
-      isDataOrgChecking = false;
-      dataOrgCheckingOptionLabels = [];
-      dataOrgLabels = pickerBeforeCheck.labels;
-      isDataOrgLoadShown = pickerBeforeCheck.isLoadShown;
-      isDataOrgSelectShown = pickerBeforeCheck.isSelectShown;
-      isDataOrgRefreshShown = pickerBeforeCheck.isRefreshShown;
-      dataOrgHiddenNoteText = pickerBeforeCheck.hiddenNoteText;
-      dataOrgRequestedSequence = pickerBeforeCheck.requestedSequence;
-      dataOrgRequestSequence = pickerBeforeCheck.requestSequence;
-      dataOrgClearedRequestSequence = pickerBeforeCheck.clearedRequestSequence;
-      dataOrgSelectedIndex = pickerBeforeCheck.selectedIndex;
-      dataOrgSelectionFailureMessage = pickerBeforeCheck.selectionFailureMessage;
-      dataOrgReadinessByObject = pickerBeforeCheck.readinessByObject;
-      dataOrgReadinessByTreeObjectKey = pickerBeforeCheck.readinessByTreeObjectKey;
-      dataOrgTypeLabel = pickerBeforeCheck.typeLabel;
-    }
-    if (dataOrgSelectionFailureMessage) {
-      setDataOrgStatus(dataOrgSelectionFailureMessage + " " + refusal.message, true);
-    } else {
-      setDataOrgStatus(refusal.message, false);
-    }
-    drawTreeInserts();
-  }
-  function startDataOrgCheck() {
-    isDataOrgChecking = true;
-    isDataOrgRefreshShown = true;
-    dataOrgCheckingOptionLabels = [RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER];
-  }
-  function renderDataOrgProvisional(dataOrgProvisional) {
-    if (renderedSequence === null || dataOrgProvisional.renderSequence !== renderedSequence || !isDataOrgChecking) {
-      return;
-    }
-    if (typeof dataOrgProvisional.orgLabel !== "string" || !dataOrgProvisional.orgLabel) {
-      return;
-    }
-    if (dataOrgProvisionalRequestSequence !== null && dataOrgProvisional.requestSequence < dataOrgProvisionalRequestSequence) {
-      return;
-    }
-    dataOrgProvisionalRequestSequence = dataOrgProvisional.requestSequence;
-    dataOrgCheckingOptionLabels = [dataOrgProvisional.orgLabel];
-    drawDataOrgViews();
-  }
-  function renderDataOrgSelection(dataOrgSelection) {
-    if (renderedSequence === null || dataOrgSelection.renderSequence !== renderedSequence) {
-      return;
-    }
-    if (dataOrgRequestSequence !== null && dataOrgSelection.requestSequence < dataOrgRequestSequence) {
-      return;
-    }
-    if (dataOrgClearedRequestSequence !== null && dataOrgSelection.requestSequence <= dataOrgClearedRequestSequence) {
-      return;
-    }
-    if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
-      dataOrgRequestSequence = dataOrgSelection.requestSequence;
-      dataOrgReadinessByObject = /* @__PURE__ */ Object.create(null);
-      dataOrgReadinessByTreeObjectKey = /* @__PURE__ */ Object.create(null);
-      dataOrgSelectionFailureMessage = "";
-      setDataOrgStatus("Checking " + dataOrgSelection.orgLabel + "…", false);
-    }
-    if (dataOrgSelection.failureMessage) {
-      dataOrgSelectionFailureMessage = dataOrgSelection.failureMessage;
-      setDataOrgStatus(dataOrgSelection.failureMessage, true);
-    }
-    dataOrgSelectedIndex = dataOrgSelection.orgIndex;
-    dataOrgTypeLabel = dataOrgSelection.orgTypeLabel || "checking…";
-    isDataOrgRefreshShown = true;
-    drawDataOrgViews();
-    drawTreeInserts();
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/DataOrgView.ts
-  function buildDataOrgView(hasOrgAddingButtons) {
-    const viewElement = createElement("div", "dataOrgView");
-    const pickerElement = createElement("span", "dataOrgControls");
-    const dataOrgView = {
-      element: viewElement,
-      loadElement: createButton("primary", "dataOrgLoad", "Choose org…"),
-      selectElement: createElement("select", "dataOrgSelect hidden"),
-      spinnerElement: createElement("span", "dataOrgSpinner hidden"),
-      typeElement: createElement("span", "dataOrgType hidden"),
-      openOrgElement: createButton("secondary", "dataOrgOpen hidden", RECIPE_COCKPIT_OPEN_ORG_LABEL),
-      refreshElement: createButton("secondary", "dataOrgRefresh hidden"),
-      newScratchElement: createButton("primary", "dataOrgNewScratch", RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL),
-      authorizeElement: createButton("primary", "dataOrgAuthorize", RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL),
-      hiddenNoteElement: createElement("div", "dataOrgHiddenNote muted hidden"),
-      statusElement: createElement("div", "dataOrgStatus muted hidden"),
-      drawnLabels: null
-    };
-    dataOrgView.loadElement.setAttribute("title", "List the connected sandbox and scratch orgs the generated data can go to");
-    dataOrgView.loadElement.addEventListener("click", function() {
-      requestDataOrgs();
-    });
-    dataOrgView.selectElement.setAttribute("aria-label", "Salesforce org the generated data goes to");
-    dataOrgView.selectElement.addEventListener("change", function() {
-      const selectedValue = String(dataOrgView.selectElement.value || "");
-      if (isDataOrgChecking || !/^[0-9]+$/.test(selectedValue)) {
-        return;
-      }
-      vscodeApi.postMessage({ command: "selectDataOrg", orgIndex: Number(selectedValue) });
-    });
-    dataOrgView.spinnerElement.setAttribute("aria-hidden", "true");
-    const refreshIconElement = createElement("span", "dataOrgRefreshIcon", "⟳");
-    refreshIconElement.setAttribute("aria-hidden", "true");
-    dataOrgView.refreshElement.appendChild(refreshIconElement);
-    dataOrgView.refreshElement.appendChild(createElement("span", "dataOrgRefreshLabel", RECIPE_COCKPIT_REFRESH_ORGS_LABEL));
-    dataOrgView.refreshElement.setAttribute("title", "Check the org connections again");
-    dataOrgView.refreshElement.setAttribute("aria-label", RECIPE_COCKPIT_REFRESH_ORGS_LABEL + ": check the org connections again");
-    dataOrgView.refreshElement.addEventListener("click", function() {
-      showDataOrgConnectionCheck();
-      dataOrgUnansweredListingCount++;
-      vscodeApi.postMessage({ command: "refreshDataOrgs" });
-    });
-    dataOrgView.openOrgElement.setAttribute("title", "Log in to the selected org in your browser");
-    dataOrgView.openOrgElement.addEventListener("click", function() {
-      if (isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || dataOrgSelectedIndex === null) {
-        return;
-      }
-      isOrgOpenRunning = true;
-      drawDataOrgViews();
-      vscodeApi.postMessage({ command: "openDataOrg", orgIndex: dataOrgSelectedIndex });
-    });
-    dataOrgView.newScratchElement.setAttribute("title", "Choose a Dev Hub, name the new scratch org, create it through the Dev Hub and select it. Nothing is deployed to it.");
-    dataOrgView.newScratchElement.addEventListener("click", function() {
-      if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) {
-        return;
-      }
-      isDataOrgPickerInUse = true;
-      isScratchOrgRunning = true;
-      drawDataOrgViews();
-      drawTreeInserts();
-      vscodeApi.postMessage({ command: "createScratchOrg" });
-    });
-    dataOrgView.authorizeElement.setAttribute("title", RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP);
-    dataOrgView.authorizeElement.addEventListener("click", function() {
-      if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) {
-        return;
-      }
-      isDataOrgPickerInUse = true;
-      isScratchOrgRunning = true;
-      isOrgAuthorizeRunning = true;
-      drawDataOrgViews();
-      drawTreeInserts();
-      vscodeApi.postMessage({ command: "authorizeOrg" });
-    });
-    pickerElement.appendChild(dataOrgView.loadElement);
-    pickerElement.appendChild(dataOrgView.selectElement);
-    pickerElement.appendChild(dataOrgView.spinnerElement);
-    pickerElement.appendChild(dataOrgView.typeElement);
-    pickerElement.appendChild(dataOrgView.openOrgElement);
-    pickerElement.appendChild(dataOrgView.refreshElement);
-    if (hasOrgAddingButtons !== false) {
-      pickerElement.appendChild(dataOrgView.newScratchElement);
-      pickerElement.appendChild(dataOrgView.authorizeElement);
-    }
-    viewElement.appendChild(pickerElement);
-    viewElement.appendChild(dataOrgView.hiddenNoteElement);
-    viewElement.appendChild(dataOrgView.statusElement);
-    dataOrgViews.push(dataOrgView);
-    drawDataOrgView(dataOrgView);
-    return dataOrgView;
-  }
-  function drawDataOrgView(dataOrgView) {
-    const optionLabels = isDataOrgChecking ? dataOrgCheckingOptionLabels : dataOrgLabels;
-    if (dataOrgView.drawnLabels !== optionLabels) {
-      dataOrgView.selectElement.textContent = "";
-      if (isDataOrgChecking || dataOrgLabels && dataOrgLabels.length === 0) {
-        const onlyOptionElement = createElement("option", "", isDataOrgChecking ? dataOrgCheckingOptionLabels[0] : RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER);
-        onlyOptionElement.value = "";
-        dataOrgView.selectElement.appendChild(onlyOptionElement);
-      } else if (dataOrgLabels && dataOrgLabels.length > 0) {
-        const placeholderElement = createElement("option", "", "Choose org…");
-        placeholderElement.value = "";
-        dataOrgView.selectElement.appendChild(placeholderElement);
-        dataOrgLabels.forEach(function(orgLabel, orgIndex) {
-          const optionElement = createElement("option", "", orgLabel);
-          optionElement.value = String(orgIndex);
-          dataOrgView.selectElement.appendChild(optionElement);
+        setAddFriendRunning(true);
+        vscodeApi.postMessage({
+          command: "addIterationFriend",
+          treeKey,
+          objectApiName: object.objectApiName,
+          objectNickname: object.nickname,
+          friendObjectApiName
         });
-      }
-      dataOrgView.drawnLabels = optionLabels;
-    }
-    dataOrgView.selectElement.value = isDataOrgChecking || dataOrgSelectedIndex === null ? "" : String(dataOrgSelectedIndex);
-    setShown(dataOrgView.loadElement, isDataOrgLoadShown);
-    setShown(dataOrgView.selectElement, isDataOrgSelectShown || isDataOrgChecking);
-    setShown(dataOrgView.spinnerElement, isDataOrgChecking);
-    setShown(dataOrgView.refreshElement, isDataOrgRefreshShown);
-    dataOrgView.typeElement.textContent = dataOrgTypeLabel || "";
-    setShown(dataOrgView.typeElement, dataOrgTypeLabel !== null);
-    dataOrgView.hiddenNoteElement.textContent = dataOrgHiddenNoteText;
-    setShown(dataOrgView.hiddenNoteElement, !!dataOrgHiddenNoteText);
-    dataOrgView.statusElement.textContent = dataOrgStatusText;
-    setShown(dataOrgView.statusElement, !!dataOrgStatusText);
-    if (isDataOrgStatusFailure) {
-      dataOrgView.statusElement.classList.add("failed");
-    } else {
-      dataOrgView.statusElement.classList.remove("failed");
-    }
-    dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
-    dataOrgView.newScratchElement.textContent = isScratchOrgRunning && !isOrgAuthorizeRunning ? "Setting up scratch org…" : RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL;
-    dataOrgView.authorizeElement.disabled = dataOrgView.newScratchElement.disabled;
-    dataOrgView.authorizeElement.textContent = isOrgAuthorizeRunning ? RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL : RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL;
-    dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-    dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-    dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-    setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
-    dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-    dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? "Opening…" : RECIPE_COCKPIT_OPEN_ORG_LABEL;
-  }
-  function drawDataOrgViews() {
-    dataOrgViews.forEach(drawDataOrgView);
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingActions.ts
-  function buildDeployAction(treeState, deployKind) {
-    const actionCard = buildActionCard(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND[deployKind], "troubleshootingDeploy troubleshootingDeploy-" + deployKind, RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind]);
-    const buttonElement = actionCard.buttonElement;
-    actionCard.detailElement.classList.add("troubleshootingSummary");
-    setTextShown(actionCard.detailElement, "Reading this project…");
-    buttonElement.addEventListener("click", function() {
-      if (buttonElement.disabled || renderedSequence === null) {
-        return;
-      }
-      isMetadataDeployRunning = true;
-      metadataDeployRunningKey = treeState.tree.treeKey + "\\n" + deployKind;
-      drawTreeInserts();
-      drawDataOrgViews();
-      const deployMessage = { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: treeState.tree.treeKey };
-      if (dataOrgSelectedIndex !== null) {
-        deployMessage.orgIndex = dataOrgSelectedIndex;
-      }
-      vscodeApi.postMessage(deployMessage);
-    });
-    treeState.deployCards[deployKind] = actionCard;
-    return actionCard;
-  }
-  function describeDeploySummary(summary, deployKind) {
-    if (!summary) {
-      return { text: "Reading this project…", emptyReason: "Reading this project…" };
-    }
-    if (summary.failureMessage) {
-      return { text: summary.failureMessage, emptyReason: summary.failureMessage };
-    }
-    if (deployKind === "permissionSet") {
-      return {
-        text: pluralize(summary.permissionSetCount, "permission set", "permission sets") + " in this project grant access to this tree.",
-        emptyReason: summary.permissionSetCount === 0 ? "No permission set in this project grants access to this tree. Generate permission set… writes one." : ""
-      };
-    }
-    if (deployKind === "fields") {
-      const notes = [];
-      if (summary.standardFieldCount > 0) {
-        notes.push(pluralize(summary.standardFieldCount, "standard field", "standard fields") + " never deployed");
-      }
-      if (summary.unreadableFieldCount > 0) {
-        notes.push(pluralize(summary.unreadableFieldCount, "custom field", "custom fields") + " with no readable source file");
-      }
-      const missingObjectCount = (summary.missingCustomObjectCount || 0) + (summary.unreadableCustomObjectCount || 0);
-      if (missingObjectCount > 0) {
-        notes.push(pluralize(missingObjectCount, "custom object", "custom objects") + " with no readable .object-meta.xml");
-      }
-      return {
-        text: pluralize(summary.customFieldCount, "CustomField", "CustomField") + (summary.customObjectCount > 0 ? " and " + pluralize(summary.customObjectCount, "CustomObject", "CustomObject") : "") + (notes.length > 0 ? "; " + notes.join("; ") : "") + ".",
-        emptyReason: summary.customFieldCount === 0 ? "This tree has no custom field whose source file this project holds." : ""
-      };
-    }
-    if (deployKind === "globalValueSets") {
-      return {
-        text: pluralize(summary.globalValueSetCount, "GlobalValueSet", "GlobalValueSet") + (summary.missingGlobalValueSetCount > 0 ? "; " + pluralize(summary.missingGlobalValueSetCount, "named value set", "named value sets") + " this project does not hold" : "") + ".",
-        emptyReason: summary.globalValueSetCount === 0 ? "No field of this tree names a global value set this project holds." : ""
-      };
-    }
-    return {
-      text: pluralize(summary.recordTypeCount, "RecordType", "RecordType") + ".",
-      emptyReason: summary.recordTypeCount === 0 ? "No object of this tree has a record type in this project." : ""
-    };
-  }
-  function buildRetrieveAction(treeState, retrieveKind) {
-    const className = retrieveKind === "validationRules" ? "treeRetrieveValidationRules" : "troubleshootingRetrieve troubleshootingRetrieve-" + retrieveKind;
-    const actionCard = buildActionCard(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND[retrieveKind], className, RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind]);
-    const retrieveButtonElement = actionCard.buttonElement;
-    retrieveButtonElement.addEventListener("click", function() {
-      if (retrieveButtonElement.disabled || renderedSequence === null) {
-        return;
-      }
-      isMetadataRetrieveRunning = true;
-      metadataRetrieveRunningKey = treeState.tree.treeKey + "\\n" + retrieveKind;
-      drawTreeInserts();
-      drawDataOrgViews();
-      vscodeApi.postMessage({ command: RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[retrieveKind], treeKey: treeState.tree.treeKey });
-    });
-    treeState.retrieveCards[retrieveKind] = actionCard;
-    return actionCard;
-  }
-  function describeRetrieveSummary(treeState, retrieveKind) {
-    const summary = treeState.troubleshootingSummary;
-    if (retrieveKind === "validationRules") {
-      return { text: "", emptyReason: "" };
-    }
-    if (retrieveKind === "recordTypes") {
-      return {
-        text: pluralize(treeState.tree.objects.length, "object", "objects") + ", each asked for every record type the org holds.",
-        emptyReason: treeState.tree.objects.length === 0 ? "This tree has no object." : ""
-      };
-    }
-    if (!summary) {
-      return { text: "Reading this project…", emptyReason: "Reading this project…" };
-    }
-    if (summary.failureMessage) {
-      const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, "Nothing can be retrieved: ");
-      return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
-    }
-    if (retrieveKind === "fields") {
-      const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
-      return {
-        text: pluralize(fieldCount, "custom field", "custom fields") + "; " + summary.customFieldCount + " with a source file here.",
-        emptyReason: fieldCount === 0 ? "This tree has no custom field to retrieve." : ""
-      };
-    }
-    const valueSetCount = summary.globalValueSetCount + summary.missingGlobalValueSetCount;
-    return {
-      text: pluralize(valueSetCount, "named value set", "named value sets") + "; " + summary.globalValueSetCount + " held here.",
-      emptyReason: valueSetCount === 0 ? "No field of this tree names a global value set." : ""
-    };
-  }
-  function buildAssignPermissionSetCard(treeState) {
-    const actionCard = buildActionCard("assignPermissionSets", "treePermissionSets", RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL);
-    const buttonElement = actionCard.buttonElement;
-    buttonElement.setAttribute("title", RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
-    buttonElement.addEventListener("click", function() {
-      if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) {
-        return;
-      }
-      isPermissionSetAssignRunning = true;
-      drawTreeInserts();
-      drawDataOrgViews();
-      const permissionSetMessage = { command: "assignTreePermissionSets", treeKey: treeState.tree.treeKey };
-      if (dataOrgSelectedIndex !== null) {
-        permissionSetMessage.orgIndex = dataOrgSelectedIndex;
-      }
-      vscodeApi.postMessage(permissionSetMessage);
-    });
-    treeState.permissionSetCard = actionCard;
-    return actionCard;
-  }
-  function buildGeneratePermissionSetCard(treeState) {
-    const actionCard = buildActionCard("generatePermissionSet", "treeGeneratePermissionSet", RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL);
-    const generateButtonElement = actionCard.buttonElement;
-    generateButtonElement.addEventListener("click", function() {
-      if (generateButtonElement.disabled || renderedSequence === null) {
-        return;
-      }
-      vscodeApi.postMessage({ command: "generateTreePermissionSet", treeKey: treeState.tree.treeKey });
-    });
-    treeState.generatePermissionSetCard = actionCard;
-    return actionCard;
-  }
-  function drawTreePermissionSet(treeState) {
-    const permissionSetCard = treeState.permissionSetCard;
-    if (permissionSetCard) {
-      const assignReason = isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : insertRunningTreeKey !== null ? describeRunningInsert() : isScratchOrgRunning ? "A scratch org is being set up." : "";
-      drawActionCardState(permissionSetCard, assignReason, RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
-    }
-    const generateCard = treeState.generatePermissionSetCard;
-    if (generateCard) {
-      const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? "Every object of this tree is excluded, so there is nothing to grant." : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : "";
-      drawActionCardState(generateCard, generateReason, "Write a permission set granting Create and Read on this tree's objects and access to its fields into this project's permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.");
-    }
-    const retrieveCards = treeState.retrieveCards || {};
-    Object.keys(retrieveCards).forEach(function(retrieveKind) {
-      const retrieveCard = retrieveCards[retrieveKind];
-      const described = describeRetrieveSummary(treeState, retrieveKind);
-      const busyReason = isMetadataRetrieveRunning ? "Metadata is being retrieved." : insertRunningTreeKey !== null ? describeRunningInsert() : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : "";
-      const title = metadataRetrieveRunningKey === treeState.tree.treeKey + "\\n" + retrieveKind ? "Retrieving…" : RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind];
-      setTextShown(retrieveCard.detailElement, described.text);
-      if (retrieveCard.titleElement.textContent !== title) {
-        retrieveCard.titleElement.textContent = title;
-      }
-      drawActionCardState(retrieveCard, described.emptyReason || busyReason, retrieveKind === "validationRules" ? "Retrieve the validation rules of this tree's objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them." : "Retrieve these components of this tree from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; run Generate Treecipe afterwards.");
-    });
-    const deployCards = treeState.deployCards || {};
-    Object.keys(deployCards).forEach(function(deployKind) {
-      const deployCard = deployCards[deployKind];
-      const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
-      const busyReason = isMetadataDeployRunning ? "Metadata is being deployed." : insertRunningTreeKey !== null ? describeRunningInsert() : isScratchOrgRunning ? "A scratch org is being set up." : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataRetrieveRunning ? "Metadata is being retrieved." : "";
-      const deployReason = described.emptyReason || busyReason;
-      const title = metadataDeployRunningKey === treeState.tree.treeKey + "\\n" + deployKind ? "Deploying…" : RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind];
-      setTextShown(deployCard.detailElement, described.text);
-      if (deployCard.titleElement.textContent !== title) {
-        deployCard.titleElement.textContent = title;
-      }
-      drawActionCardState(deployCard, deployReason, "Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.");
-    });
-    if (treeState.troubleshootingSubTabStates) {
-      applyTroubleshootingFilter(treeState, "actions");
-    }
-  }
-  function renderPermissionSetAssignState(hostMessage) {
-    isPermissionSetAssignRunning = !!hostMessage.isRunning;
-    drawDataOrgViews();
-    drawTreeInserts();
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingHistory.ts
-  function buildTroubleshootingHistory(treeState, subTabState) {
-    subTabState.noun = ["step", "steps"];
-    subTabState.historyRows = [];
-    treeState.historySubTabState = subTabState;
-    if (!treeState.historySort) {
-      treeState.historySort = readHistorySort(null);
-    }
-    const historyListElement = createElement("div", "troubleshootingHistory");
-    treeState.historyListElement = historyListElement;
-    historyListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_HISTORY_LOADING_NOTE));
-    subTabState.listElement.appendChild(historyListElement);
-  }
-  function readHistorySort(savedSort) {
-    if (savedSort && typeof savedSort === "object") {
-      const { column, isDescending } = savedSort;
-      if (RECIPE_COCKPIT_HISTORY_SORT_COLUMNS.indexOf(column) !== -1 && typeof isDescending === "boolean") {
-        return { column, isDescending };
-      }
-    }
-    return { column: "time", isDescending: true };
-  }
-  function requestTroubleshootingHistory(treeState) {
-    if (renderedSequence === null || treeState.isHistoryRequested || !treeState.historyListElement) {
-      return;
-    }
-    treeState.isHistoryRequested = true;
-    vscodeApi.postMessage({ command: "loadTroubleshootingHistory", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
-  }
-  function renderTroubleshootingHistory(historyMessage) {
-    if (renderedSequence === null || historyMessage.renderSequence !== renderedSequence) {
-      return;
-    }
-    const treeState = findTreeState(historyMessage.treeKey);
-    if (!treeState || !treeState.historyListElement) {
-      return;
-    }
-    treeState.historyMessage = historyMessage;
-    drawTroubleshootingHistory(treeState);
-    vscodeApi.postMessage({ command: "troubleshootingHistoryRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence });
-  }
-  function historyStatusOf(row) {
-    return hasOwnKey(RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY, row.status) ? RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY[row.status] : { emoji: "", label: String(row.status) };
-  }
-  function historySortValue(treeState, row, column) {
-    if (column === "time") {
-      return Number(row.timeMs) || 0;
-    }
-    if (column === "step") {
-      return String(row.stepLabel).toLowerCase();
-    }
-    if (column === "org") {
-      return typeof row.orgLabel === "string" ? row.orgLabel.toLowerCase() : "";
-    }
-    if (column === "outcome") {
-      return historyStatusOf(row).label.toLowerCase();
-    }
-    return versionLabelOf(treeState, typeof row.runFolderName === "string" ? row.runFolderName : null).toLowerCase();
-  }
-  function sortHistoryRowStates(treeState, rowStates) {
-    const sort = treeState.historySort;
-    return rowStates.slice().sort(function(first, second) {
-      const firstValue = historySortValue(treeState, first.row, sort.column);
-      const secondValue = historySortValue(treeState, second.row, sort.column);
-      const order = firstValue < secondValue ? -1 : firstValue > secondValue ? 1 : 0;
-      if (order !== 0) {
-        return sort.isDescending ? -order : order;
-      }
-      return (Number(second.row.timeMs) || 0) - (Number(first.row.timeMs) || 0);
-    });
-  }
-  function drawTroubleshootingHistory(treeState) {
-    const historyMessage = treeState.historyMessage;
-    const subTabState = treeState.historySubTabState;
-    const listElement = treeState.historyListElement;
-    const rows = Array.isArray(historyMessage.rows) ? historyMessage.rows : [];
-    const historyRows = [];
-    listElement.textContent = "";
-    subTabState.historyRows = historyRows;
-    if (rows.length === 0) {
-      listElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_HISTORY_EMPTY_NOTE));
-      applyTroubleshootingFilter(treeState, "history");
-      return;
-    }
-    const rowTable = buildRowTable({
-      className: "historyTable",
-      columnClassName: "history",
-      columns: RECIPE_COCKPIT_HISTORY_COLUMNS,
-      sortColumns: RECIPE_COCKPIT_HISTORY_SORT_COLUMNS,
-      sort: treeState.historySort,
-      onSort: function(column) {
-        sortTroubleshootingHistory(treeState, column);
-      }
-    });
-    treeState.historySortButtons = rowTable.sortButtons;
-    rows.forEach(function(row) {
-      historyRows.push(buildHistoryRow(treeState, historyMessage, row));
-    });
-    sortHistoryRowStates(treeState, historyRows).forEach(function(rowState) {
-      rowTable.bodyElement.appendChild(rowState.element);
-    });
-    listElement.appendChild(rowTable.wrapElement);
-    treeState.historyBodyElement = rowTable.bodyElement;
-    if (historyMessage.hiddenRowCount > 0) {
-      listElement.appendChild(createElement("div", "historyHiddenNote muted", pluralize(historyMessage.hiddenRowCount, "older step is", "older steps are") + " not shown."));
-    }
-    applyTroubleshootingFilter(treeState, "history");
-  }
-  function buildHistoryRow(treeState, historyMessage, row) {
-    const rowElement = createElement("tr", "historyRow historyRow-" + String(row.status));
-    const statusDisplay = historyStatusOf(row);
-    const runLabel = versionLabelOf(treeState, typeof row.runFolderName === "string" ? row.runFolderName : null);
-    const files = Array.isArray(row.files) ? row.files : [];
-    const timeCell = createElement("td", "historyTime", String(row.timeLabel));
-    if (typeof row.finishedAtLabel === "string") {
-      timeCell.setAttribute("title", "Ended " + row.finishedAtLabel);
-    }
-    const orgCell = createElement("td", "historyOrg", typeof row.orgLabel === "string" ? row.orgLabel : "");
-    if (typeof row.orgUsername === "string") {
-      orgCell.setAttribute("title", row.orgUsername);
-    }
-    const outcomeCell = createElement("td", "historyOutcome");
-    const statusElement = createElement("span", "historyStatus historyStatus-" + String(row.status));
-    const emojiElement = createElement("span", "historyStatusEmoji", statusDisplay.emoji);
-    emojiElement.setAttribute("aria-hidden", "true");
-    statusElement.appendChild(emojiElement);
-    statusElement.appendChild(createElement("span", "historyStatusLabel", statusDisplay.label));
-    outcomeCell.appendChild(statusElement);
-    const detailParts = [];
-    if (typeof row.succeededCount === "number") {
-      detailParts.push(row.succeededCount + " succeeded");
-    }
-    if (typeof row.failedCount === "number") {
-      detailParts.push(row.failedCount + " failed");
-    }
-    if (typeof row.detail === "string") {
-      detailParts.push(row.detail);
-    }
-    if (row.status === "unrecorded") {
-      detailParts.push(RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE);
-    }
-    if (row.status === "unreadable") {
-      detailParts.push(RECIPE_COCKPIT_HISTORY_UNREADABLE_NOTE);
-    }
-    const detailText = detailParts.join(" · ");
-    if (detailText) {
-      outcomeCell.appendChild(createElement("span", "historyDetail muted", detailText));
-    }
-    const filesCell = createElement("td", "historyFiles");
-    files.forEach(function(file) {
-      const fileButton = createButton("link", "historyFile", String(file.fileName));
-      fileButton.addEventListener("click", function() {
-        vscodeApi.postMessage({ command: "openTroubleshootingHistoryFile", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, historySequence: historyMessage.historySequence, fileIndex: file.fileIndex });
       });
-      filesCell.appendChild(fileButton);
+      choiceElement.disabled = isAddFriendRunning;
+      addFriendButtonElements.push(choiceElement);
+      addFriendsElement.appendChild(choiceElement);
     });
-    rowElement.appendChild(timeCell);
-    rowElement.appendChild(createElement("td", "historyStep", String(row.stepLabel)));
-    rowElement.appendChild(orgCell);
-    rowElement.appendChild(outcomeCell);
-    rowElement.appendChild(createElement("td", "historyRun", runLabel));
-    rowElement.appendChild(filesCell);
-    const searchTexts = [String(row.timeLabel), String(row.stepLabel), statusDisplay.label, runLabel, detailText].concat(typeof row.orgLabel === "string" ? [row.orgLabel] : []).concat(typeof row.orgUsername === "string" ? [row.orgUsername] : []).concat(files.map(function(file) {
-      return String(file.fileName);
-    }));
-    return { row, element: rowElement, isShown: true, searchText: searchTexts.join("\\n").toLowerCase() };
+    addFriendButtonElements.push(addFriendElement);
+    objectHeaderElement.appendChild(addFriendElement);
+    objectHeaderElement.appendChild(addFriendsElement);
+    addFriendElement.disabled = isAddFriendRunning;
   }
-  function sortTroubleshootingHistory(treeState, column) {
-    const currentSort = treeState.historySort;
-    treeState.historySort = currentSort.column === column ? { column, isDescending: !currentSort.isDescending } : { column, isDescending: column === "time" };
-    drawTroubleshootingHistory(treeState);
-    const sortButton = treeState.historySortButtons && treeState.historySortButtons[column];
-    if (sortButton && typeof sortButton.focus === "function") {
-      sortButton.focus();
+  function setAddFriendRunning(isRunning) {
+    isAddFriendRunning = isRunning;
+    addFriendButtonElements.forEach(function(buttonElement) {
+      buttonElement.disabled = isRunning;
+    });
+  }
+  function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
+    return objectApiName + "\\n" + (objectNickname || "") + "\\n" + fieldApiName;
+  }
+  function findLookupWiring(tree, object, fieldApiName) {
+    if (!tree.lookupWirings || tree.lookupWirings.length === 0) {
+      return null;
     }
-    savePanelPlace();
+    let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
+    if (!lookupWiringIndex) {
+      lookupWiringIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = lookupWiringIndex;
+      tree.lookupWirings.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      lookupWiringIndexByTree.set(tree, lookupWiringIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
+  }
+  function buildWireLookupElement(tree, wiring) {
+    const wireElement = createButton("secondary", "treeWireLookup", RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL);
+    const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? " (" + wiring.objectNickname + ")" : "") + "." + wiring.fieldApiName;
+    wireElement.setAttribute("title", wiring.candidateNicknames.length === 1 ? "Point this lookup at " + wiring.candidateNicknames[0] + " in the recipe file, after a confirmation" : "Choose which of " + wiring.candidateNicknames.join(", ") + " this lookup points at in the recipe file");
+    wireElement.setAttribute("aria-label", "Wire " + fieldLabel);
+    wireElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      const wireMessage = { command: "wireLookup", treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
+      if (wiring.objectNickname) {
+        wireMessage.objectNickname = wiring.objectNickname;
+      }
+      vscodeApi.postMessage(wireMessage);
+    });
+    wireElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(wireElement);
+    return wireElement;
+  }
+  function findAddableParent(tree, object, fieldApiName) {
+    if (!tree.addableParents || tree.addableParents.length === 0) {
+      return null;
+    }
+    let addableParentIndex = addableParentIndexByTree.get(tree);
+    if (!addableParentIndex) {
+      addableParentIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = addableParentIndex;
+      tree.addableParents.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      addableParentIndexByTree.set(tree, addableParentIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
+  }
+  function findEmptyLookup(tree, object, fieldApiName) {
+    if (!tree.emptyLookups || tree.emptyLookups.length === 0) {
+      return null;
+    }
+    let emptyLookupIndex = emptyLookupIndexByTree.get(tree);
+    if (!emptyLookupIndex) {
+      emptyLookupIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = emptyLookupIndex;
+      tree.emptyLookups.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      emptyLookupIndexByTree.set(tree, emptyLookupIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(emptyLookupIndex, key) ? emptyLookupIndex[key] : null;
+  }
+  function buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup) {
+    const tree = treeObjectState.tree;
+    const addition = findAddableParent(tree, treeObjectState.object, emptyLookup.fieldApiName);
+    const fieldLabel = emptyLookup.objectApiName + (emptyLookup.objectNickname ? " (" + emptyLookup.objectNickname + ")" : "") + "." + emptyLookup.fieldApiName;
+    const decisionElement = createElement("span", "treeLookupDecision");
+    const createParentElement = createButton("secondary", "treeAddParentObject", RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX);
+    const useOrgRecordElement = createButton("secondary", "treeUseOrgRecord", RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX);
+    const postDecision = function(command) {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      const decisionMessage = { command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
+      if (emptyLookup.objectNickname) {
+        decisionMessage.objectNickname = emptyLookup.objectNickname;
+      }
+      vscodeApi.postMessage(decisionMessage);
+    };
+    createParentElement.setAttribute("aria-label", "Create " + emptyLookup.parentObjectApiName + " in the recipe for " + fieldLabel);
+    createParentElement.addEventListener("click", function() {
+      if (createParentElement.disabled || !addition) {
+        return;
+      }
+      postDecision("addParentObject");
+    });
+    useOrgRecordElement.setAttribute("aria-label", "Use an existing " + emptyLookup.parentObjectApiName + " record from an org for " + fieldLabel);
+    useOrgRecordElement.addEventListener("click", function() {
+      if (useOrgRecordElement.disabled) {
+        return;
+      }
+      postDecision("useOrgRecordForLookup");
+    });
+    decisionElement.appendChild(createParentElement);
+    decisionElement.appendChild(useOrgRecordElement);
+    const decision = {
+      element: decisionElement,
+      createParentElement,
+      useOrgRecordElement,
+      emptyLookup,
+      createReason: addition ? "" : describeCreateParentRefusal(emptyLookup),
+      useReason: emptyLookup.orgRecordRefusal || ""
+    };
+    fieldState.lookupDecision = decision;
+    lookupDecisions.push(decision);
+    drawLookupDecisionButtons(decision);
+    return decisionElement;
+  }
+  function drawFieldRowLookupDecision(treeObjectState, fieldState) {
+    const decision = fieldState.lookupDecision;
+    if (!decision) {
+      return;
+    }
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const fieldApiName = fieldState.field.fieldApiName;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
+    const isParentExcluded = lockReason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
+    if (isParentExcluded) {
+      decision.element.classList.add("hidden");
+    } else {
+      decision.element.classList.remove("hidden");
+    }
+    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON : "";
+    drawLookupDecisionButtons(decision);
+  }
+  function describeCreateParentRefusal(emptyLookup) {
+    const template = emptyLookup.createRefusalReason !== void 0 && hasOwnKey(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason) ? RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason] : "the recipe cannot add {parent}";
+    return template.split("{parent}").join(emptyLookup.parentObjectApiName).split("{object}").join(emptyLookup.objectApiName);
+  }
+  function drawLookupDecisionButtons(decision) {
+    const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
+    const useReason = decision.useReason || decision.selectionReason || "";
+    decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
+    decision.createParentElement.setAttribute("title", decision.createReason ? "Cannot be created: " + decision.createReason : "Add a " + parentObjectApiName + " block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation");
+    decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
+    decision.useOrgRecordElement.setAttribute("title", useReason ? "Cannot use an org record: " + useReason : "Choose an org, then search " + parentObjectApiName + " or enter a record Id; the Id is written into the recipe file after a confirmation");
+  }
+  function buildWireAllLookupsElement(tree) {
+    const singleCandidateCount = (tree.lookupWirings || []).filter(function(wiring) {
+      return wiring.candidateNicknames.length === 1;
+    }).length;
+    if (singleCandidateCount === 0) {
+      return null;
+    }
+    const wireAllElement = createButton("secondary", "treeWireAllLookups", RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL + " (" + singleCandidateCount + ")");
+    wireAllElement.setAttribute("title", "Point every TODO lookup of this tree that has exactly one record to choose from at that record's nickname, in the recipe file, after a confirmation that lists them");
+    wireAllElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      vscodeApi.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
+    });
+    wireAllElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(wireAllElement);
+    return wireAllElement;
+  }
+  function setWireLookupRunning(isRunning) {
+    isWireLookupRunning = isRunning;
+    wireLookupButtonElements.forEach(function(buttonElement) {
+      buttonElement.disabled = isRunning;
+    });
+    lookupDecisions.forEach(drawLookupDecisionButtons);
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingTodos.ts
@@ -5622,6 +5828,1152 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   }
   function describeRunningInsert() {
     return insertRunningDatasetFolderName !== null ? RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON : "A tree is being inserted.";
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingActions.ts
+  function buildDeployAction(treeState, deployKind) {
+    const actionCard = buildActionCard(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND[deployKind], "troubleshootingDeploy troubleshootingDeploy-" + deployKind, RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind]);
+    const buttonElement = actionCard.buttonElement;
+    actionCard.detailElement.classList.add("troubleshootingSummary");
+    setTextShown(actionCard.detailElement, "Reading this project…");
+    buttonElement.addEventListener("click", function() {
+      if (buttonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      isMetadataDeployRunning = true;
+      metadataDeployRunningKey = treeState.tree.treeKey + "\\n" + deployKind;
+      drawTreeInserts();
+      drawDataOrgViews();
+      const deployMessage = { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: treeState.tree.treeKey };
+      if (dataOrgSelectedIndex !== null) {
+        deployMessage.orgIndex = dataOrgSelectedIndex;
+      }
+      vscodeApi.postMessage(deployMessage);
+    });
+    treeState.deployCards[deployKind] = actionCard;
+    return actionCard;
+  }
+  function describeDeploySummary(summary, deployKind) {
+    if (!summary) {
+      return { text: "Reading this project…", emptyReason: "Reading this project…" };
+    }
+    if (summary.failureMessage) {
+      return { text: summary.failureMessage, emptyReason: summary.failureMessage };
+    }
+    if (deployKind === "permissionSet") {
+      return {
+        text: pluralize(summary.permissionSetCount, "permission set", "permission sets") + " in this project grant access to this tree.",
+        emptyReason: summary.permissionSetCount === 0 ? "No permission set in this project grants access to this tree. Generate permission set… writes one." : ""
+      };
+    }
+    if (deployKind === "fields") {
+      const notes = [];
+      if (summary.standardFieldCount > 0) {
+        notes.push(pluralize(summary.standardFieldCount, "standard field", "standard fields") + " never deployed");
+      }
+      if (summary.unreadableFieldCount > 0) {
+        notes.push(pluralize(summary.unreadableFieldCount, "custom field", "custom fields") + " with no readable source file");
+      }
+      const missingObjectCount = (summary.missingCustomObjectCount || 0) + (summary.unreadableCustomObjectCount || 0);
+      if (missingObjectCount > 0) {
+        notes.push(pluralize(missingObjectCount, "custom object", "custom objects") + " with no readable .object-meta.xml");
+      }
+      return {
+        text: pluralize(summary.customFieldCount, "CustomField", "CustomField") + (summary.customObjectCount > 0 ? " and " + pluralize(summary.customObjectCount, "CustomObject", "CustomObject") : "") + (notes.length > 0 ? "; " + notes.join("; ") : "") + ".",
+        emptyReason: summary.customFieldCount === 0 ? "This tree has no custom field whose source file this project holds." : ""
+      };
+    }
+    if (deployKind === "globalValueSets") {
+      return {
+        text: pluralize(summary.globalValueSetCount, "GlobalValueSet", "GlobalValueSet") + (summary.missingGlobalValueSetCount > 0 ? "; " + pluralize(summary.missingGlobalValueSetCount, "named value set", "named value sets") + " this project does not hold" : "") + ".",
+        emptyReason: summary.globalValueSetCount === 0 ? "No field of this tree names a global value set this project holds." : ""
+      };
+    }
+    return {
+      text: pluralize(summary.recordTypeCount, "RecordType", "RecordType") + ".",
+      emptyReason: summary.recordTypeCount === 0 ? "No object of this tree has a record type in this project." : ""
+    };
+  }
+  function buildRetrieveAction(treeState, retrieveKind) {
+    const className = retrieveKind === "validationRules" ? "treeRetrieveValidationRules" : "troubleshootingRetrieve troubleshootingRetrieve-" + retrieveKind;
+    const actionCard = buildActionCard(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND[retrieveKind], className, RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind]);
+    const retrieveButtonElement = actionCard.buttonElement;
+    retrieveButtonElement.addEventListener("click", function() {
+      if (retrieveButtonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      isMetadataRetrieveRunning = true;
+      metadataRetrieveRunningKey = treeState.tree.treeKey + "\\n" + retrieveKind;
+      drawTreeInserts();
+      drawDataOrgViews();
+      vscodeApi.postMessage({ command: RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[retrieveKind], treeKey: treeState.tree.treeKey });
+    });
+    treeState.retrieveCards[retrieveKind] = actionCard;
+    return actionCard;
+  }
+  function describeRetrieveSummary(treeState, retrieveKind) {
+    const summary = treeState.troubleshootingSummary;
+    if (retrieveKind === "validationRules") {
+      return { text: "", emptyReason: "" };
+    }
+    if (retrieveKind === "recordTypes") {
+      return {
+        text: pluralize(treeState.tree.objects.length, "object", "objects") + ", each asked for every record type the org holds.",
+        emptyReason: treeState.tree.objects.length === 0 ? "This tree has no object." : ""
+      };
+    }
+    if (!summary) {
+      return { text: "Reading this project…", emptyReason: "Reading this project…" };
+    }
+    if (summary.failureMessage) {
+      const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, "Nothing can be retrieved: ");
+      return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
+    }
+    if (retrieveKind === "fields") {
+      const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
+      return {
+        text: pluralize(fieldCount, "custom field", "custom fields") + "; " + summary.customFieldCount + " with a source file here.",
+        emptyReason: fieldCount === 0 ? "This tree has no custom field to retrieve." : ""
+      };
+    }
+    const valueSetCount = summary.globalValueSetCount + summary.missingGlobalValueSetCount;
+    return {
+      text: pluralize(valueSetCount, "named value set", "named value sets") + "; " + summary.globalValueSetCount + " held here.",
+      emptyReason: valueSetCount === 0 ? "No field of this tree names a global value set." : ""
+    };
+  }
+  function buildAssignPermissionSetCard(treeState) {
+    const actionCard = buildActionCard("assignPermissionSets", "treePermissionSets", RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL);
+    const buttonElement = actionCard.buttonElement;
+    buttonElement.setAttribute("title", RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
+    buttonElement.addEventListener("click", function() {
+      if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) {
+        return;
+      }
+      isPermissionSetAssignRunning = true;
+      drawTreeInserts();
+      drawDataOrgViews();
+      const permissionSetMessage = { command: "assignTreePermissionSets", treeKey: treeState.tree.treeKey };
+      if (dataOrgSelectedIndex !== null) {
+        permissionSetMessage.orgIndex = dataOrgSelectedIndex;
+      }
+      vscodeApi.postMessage(permissionSetMessage);
+    });
+    treeState.permissionSetCard = actionCard;
+    return actionCard;
+  }
+  function buildGeneratePermissionSetCard(treeState) {
+    const actionCard = buildActionCard("generatePermissionSet", "treeGeneratePermissionSet", RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL);
+    const generateButtonElement = actionCard.buttonElement;
+    generateButtonElement.addEventListener("click", function() {
+      if (generateButtonElement.disabled || renderedSequence === null) {
+        return;
+      }
+      vscodeApi.postMessage({ command: "generateTreePermissionSet", treeKey: treeState.tree.treeKey });
+    });
+    treeState.generatePermissionSetCard = actionCard;
+    return actionCard;
+  }
+  function drawTreePermissionSet(treeState) {
+    const permissionSetCard = treeState.permissionSetCard;
+    if (permissionSetCard) {
+      const assignReason = isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : insertRunningTreeKey !== null ? describeRunningInsert() : isScratchOrgRunning ? "A scratch org is being set up." : "";
+      drawActionCardState(permissionSetCard, assignReason, RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
+    }
+    const generateCard = treeState.generatePermissionSetCard;
+    if (generateCard) {
+      const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? "Every object of this tree is excluded, so there is nothing to grant." : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : "";
+      drawActionCardState(generateCard, generateReason, "Write a permission set granting Create and Read on this tree's objects and access to its fields into this project's permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.");
+    }
+    const retrieveCards = treeState.retrieveCards || {};
+    Object.keys(retrieveCards).forEach(function(retrieveKind) {
+      const retrieveCard = retrieveCards[retrieveKind];
+      const described = describeRetrieveSummary(treeState, retrieveKind);
+      const busyReason = isMetadataRetrieveRunning ? "Metadata is being retrieved." : insertRunningTreeKey !== null ? describeRunningInsert() : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataDeployRunning ? "Metadata is being deployed." : "";
+      const title = metadataRetrieveRunningKey === treeState.tree.treeKey + "\\n" + retrieveKind ? "Retrieving…" : RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind];
+      setTextShown(retrieveCard.detailElement, described.text);
+      if (retrieveCard.titleElement.textContent !== title) {
+        retrieveCard.titleElement.textContent = title;
+      }
+      drawActionCardState(retrieveCard, described.emptyReason || busyReason, retrieveKind === "validationRules" ? "Retrieve the validation rules of this tree's objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them." : "Retrieve these components of this tree from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; run Generate Treecipe afterwards.");
+    });
+    const deployCards = treeState.deployCards || {};
+    Object.keys(deployCards).forEach(function(deployKind) {
+      const deployCard = deployCards[deployKind];
+      const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
+      const busyReason = isMetadataDeployRunning ? "Metadata is being deployed." : insertRunningTreeKey !== null ? describeRunningInsert() : isScratchOrgRunning ? "A scratch org is being set up." : isPermissionSetAssignRunning ? "Permission sets are being assigned." : isMetadataRetrieveRunning ? "Metadata is being retrieved." : "";
+      const deployReason = described.emptyReason || busyReason;
+      const title = metadataDeployRunningKey === treeState.tree.treeKey + "\\n" + deployKind ? "Deploying…" : RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind];
+      setTextShown(deployCard.detailElement, described.text);
+      if (deployCard.titleElement.textContent !== title) {
+        deployCard.titleElement.textContent = title;
+      }
+      drawActionCardState(deployCard, deployReason, "Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.");
+    });
+    if (treeState.troubleshootingSubTabStates) {
+      applyTroubleshootingFilter(treeState, "actions");
+    }
+  }
+  function renderPermissionSetAssignState(hostMessage) {
+    isPermissionSetAssignRunning = !!hostMessage.isRunning;
+    drawDataOrgViews();
+    drawTreeInserts();
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/TreeInsert.ts
+  function buildTreeInsertElement(treeState) {
+    const controlsElement = createElement("div", "treeInsertControls");
+    const insert = {
+      buttonElement: createButton("primary", "treeInsert", RECIPE_COCKPIT_INSERT_ACTION_LABEL),
+      reasonElement: createElement("span", "treeInsertReason muted"),
+      reasonLinkElement: createButton("link", "treeInsertReasonLink hidden", ""),
+      reasonLink: null
+    };
+    insert.buttonElement.addEventListener("click", function() {
+      const treeKey = treeState.tree.treeKey;
+      if (isTreeRunning(treeKey) || renderedSequence === null) {
+        return;
+      }
+      const insertReason = findTreeInsertReason(treeState);
+      if (insertReason !== "" && insertReason !== RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON) {
+        return;
+      }
+      setInsertRunning(treeKey);
+      const insertMessage = { command: "insertTree", treeKey };
+      const recordTypeSelection = buildRecordTypeSelection();
+      if (Object.keys(recordTypeSelection).length > 0 || isRecordTypeSelectionRemembered && recordTypeObjects.length > 0) {
+        insertMessage.recordTypeSelection = recordTypeSelection;
+        if (isRecordTypeSelectionRemembered) {
+          insertMessage.isRemembered = true;
+        }
+      }
+      vscodeApi.postMessage(insertMessage);
+    });
+    insert.reasonLinkElement.addEventListener("click", function() {
+      if (insert.reasonLink) {
+        followInsertReasonLink(treeState, insert.reasonLink);
+      }
+    });
+    controlsElement.appendChild(insert.buttonElement);
+    if (treeState.resetSelectionElement) {
+      controlsElement.appendChild(treeState.resetSelectionElement);
+    }
+    controlsElement.appendChild(insert.reasonElement);
+    controlsElement.appendChild(insert.reasonLinkElement);
+    treeState.insert = insert;
+    drawTreeInsert(treeState);
+    return controlsElement;
+  }
+  function isTreeRunning(treeKey) {
+    return insertRunningTreeKey === treeKey;
+  }
+  function listTreeInsertObjectApiNames(treeState) {
+    const exclusionsByObjectApiName = indexObjectExclusions(treeState.tree);
+    return treeState.objectStates.filter(function(treeObjectState) {
+      return !treeObjectState.isIteration && !hasOwnKey(exclusionsByObjectApiName, treeObjectState.object.objectApiName);
+    }).map(function(treeObjectState) {
+      return treeObjectState.object.objectApiName;
+    });
+  }
+  function findTreeInsertReason(treeState) {
+    return findTreeInsertBlock(treeState).reason;
+  }
+  function findTreeInsertBlock(treeState) {
+    const blockedBy = function(reason) {
+      return { reason, readiness: null };
+    };
+    if (isDataOrgChecking) {
+      return blockedBy(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON);
+    }
+    if (insertRunningDatasetFolderName !== null) {
+      return blockedBy(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON);
+    }
+    if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) {
+      return blockedBy("Another tree is being inserted.");
+    }
+    if (isScratchOrgRunning) {
+      return blockedBy("A scratch org is being set up.");
+    }
+    if (isPermissionSetAssignRunning) {
+      return blockedBy("Permission sets are being assigned.");
+    }
+    if (isMetadataDeployRunning) {
+      return blockedBy("Metadata is being deployed.");
+    }
+    const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
+    if (insertObjectApiNames.length === 0) {
+      return blockedBy("Every object of this tree is excluded.");
+    }
+    if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) {
+      return blockedBy(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON);
+    }
+    if (dataOrgSelectionFailureMessage) {
+      return blockedBy(dataOrgSelectionFailureMessage);
+    }
+    for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
+      const objectApiName = insertObjectApiNames[objectIndex];
+      const treeObjectKey = buildTreeObjectKey(treeState.tree.treeKey, objectApiName);
+      const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey] : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName] : null;
+      if (!readiness) {
+        return blockedBy("checking whether this tree can be inserted…");
+      }
+      if (readiness.disabledReason) {
+        return { reason: readiness.disabledReason, readiness };
+      }
+    }
+    return blockedBy("");
+  }
+  function findInsertReasonLink(treeState, readiness) {
+    if (!readiness || typeof readiness.disabledReasonCode !== "string") {
+      return null;
+    }
+    if (hasOwnKey(RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS, readiness.disabledReasonCode)) {
+      if (!treeState.tree.folderName) {
+        return null;
+      }
+      const troubleshootingLink = RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS[readiness.disabledReasonCode];
+      return { kind: "troubleshooting", subTab: troubleshootingLink.subTab, label: troubleshootingLink.label };
+    }
+    if (readiness.disabledReasonCode !== "requiredFieldUnticked" || typeof readiness.disabledReasonFieldApiName !== "string") {
+      return null;
+    }
+    const objectApiName = readiness.objectApiName;
+    const lowerFieldApiName = readiness.disabledReasonFieldApiName.toLowerCase();
+    const findField = function(treeObjectState2) {
+      return treeObjectState2.object.fields.find(function(candidateField) {
+        return candidateField.fieldApiName.toLowerCase() === lowerFieldApiName;
+      });
+    };
+    const occurrenceStates = treeState.objectStates.filter(function(candidateState) {
+      return candidateState.object.objectApiName === objectApiName && !!findField(candidateState);
+    });
+    const untickingState = occurrenceStates.find(function(candidateState) {
+      const objectFieldSelection = findObjectFieldSelection(candidateState.tree, objectApiName, occurrenceNicknameOf(candidateState.object));
+      const field2 = findField(candidateState);
+      return !!objectFieldSelection && !!field2 && isTreeFieldUnticked(objectFieldSelection, field2.fieldApiName);
+    });
+    const treeObjectState = untickingState || occurrenceStates.find(function(candidateState) {
+      return !candidateState.isIteration;
+    }) || occurrenceStates[0];
+    const field = treeObjectState ? findField(treeObjectState) : void 0;
+    if (!treeObjectState || !field) {
+      return null;
+    }
+    const fieldApiName = field.fieldApiName;
+    return { kind: "field", objectState: treeObjectState, fieldApiName, label: RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX + objectApiName + "." + fieldApiName };
+  }
+  function followInsertReasonLink(treeState, reasonLink) {
+    if (reasonLink.kind === "troubleshooting") {
+      applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: "troubleshooting", troubleshootingSubTab: reasonLink.subTab });
+      savePanelPlace();
+      const actionCard = reasonLink.subTab === "fields" ? (treeState.deployCards || {}).fields : treeState.permissionSetCard;
+      if (!actionCard) {
+        return;
+      }
+      if (typeof actionCard.buttonElement.scrollIntoView === "function") {
+        actionCard.buttonElement.scrollIntoView({ block: "nearest" });
+      }
+      const subTabState = (treeState.troubleshootingSubTabStates || []).find(function(candidateState) {
+        return candidateState.subTab === reasonLink.subTab;
+      });
+      const focusElement3 = actionCard.buttonElement.disabled && subTabState ? subTabState.tabElement : actionCard.buttonElement;
+      focusElement3.focus();
+      return;
+    }
+    const treeObjectState = reasonLink.objectState;
+    const fieldState = treeObjectState.fieldStates.find(function(candidateState) {
+      return candidateState.field.fieldApiName === reasonLink.fieldApiName;
+    }) || null;
+    revealTreeObjectRow(treeState, treeObjectState, fieldState, null);
+    const focusElement2 = fieldState && (fieldState.includeElement || fieldState.rowElement);
+    if (focusElement2 && typeof focusElement2.focus === "function") {
+      focusElement2.focus();
+    }
+  }
+  function drawTreeInsert(treeState) {
+    const insert = treeState.insert;
+    if (!insert) {
+      return;
+    }
+    const tree = treeState.tree;
+    const insertBlock = findTreeInsertBlock(treeState);
+    const insertReason = insertBlock.reason;
+    const isOrgToChoose = insertReason === RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON;
+    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : "";
+    const actionLabel = RECIPE_COCKPIT_INSERT_ACTION_LABEL + (insertReason === "" && orgLabel ? " into " + orgLabel : "");
+    insert.buttonElement.disabled = isTreeRunning(tree.treeKey) || insertReason !== "" && !isOrgToChoose;
+    insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : actionLabel;
+    insert.buttonElement.setAttribute("aria-label", actionLabel + " for " + displayTitleOf(tree) + " (" + tree.runFakerRecipeFileName + ")");
+    insert.buttonElement.setAttribute("title", isOrgToChoose ? "Choose the org to insert into, then generate this tree with its selection and counts from " + tree.runFakerRecipeFileName + " and insert it, parents first" : "Generate this tree with its selection and counts from " + tree.runFakerRecipeFileName + ", then insert it into the chosen org, parents first");
+    insert.reasonElement.textContent = insertReason === "" ? "" : isOrgToChoose ? RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE : RECIPE_COCKPIT_CANNOT_INSERT_PREFIX + insertReason;
+    insert.reasonLink = findInsertReasonLink(treeState, insertBlock.readiness);
+    setTextShown(insert.reasonLinkElement, insert.reasonLink ? insert.reasonLink.label : "");
+  }
+  function drawTreeInserts() {
+    treeStates.forEach(drawTreeInsert);
+    drawDatasetInserts();
+    treeStates.forEach(drawTreePermissionSet);
+    drawTreeQueryButtons();
+  }
+  function setInsertRunning(runningTreeKey, runningDatasetFolderName) {
+    insertRunningTreeKey = runningTreeKey;
+    insertRunningDatasetFolderName = runningTreeKey !== null && typeof runningDatasetFolderName === "string" ? runningDatasetFolderName : null;
+    drawTreeInserts();
+    drawDataOrgViews();
+    drawRecordTypeChoices();
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/DataOrgView.ts
+  function buildDataOrgView(hasOrgAddingButtons) {
+    const viewElement = createElement("div", "dataOrgView");
+    const pickerElement = createElement("span", "dataOrgControls");
+    const dataOrgView = {
+      element: viewElement,
+      loadElement: createButton("primary", "dataOrgLoad", "Choose org…"),
+      selectElement: createElement("select", "dataOrgSelect hidden"),
+      spinnerElement: createElement("span", "dataOrgSpinner hidden"),
+      typeElement: createElement("span", "dataOrgType hidden"),
+      openOrgElement: createButton("secondary", "dataOrgOpen hidden", RECIPE_COCKPIT_OPEN_ORG_LABEL),
+      refreshElement: createButton("secondary", "dataOrgRefresh hidden"),
+      newScratchElement: createButton("primary", "dataOrgNewScratch", RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL),
+      authorizeElement: createButton("primary", "dataOrgAuthorize", RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL),
+      hiddenNoteElement: createElement("div", "dataOrgHiddenNote muted hidden"),
+      statusElement: createElement("div", "dataOrgStatus muted hidden"),
+      drawnLabels: null
+    };
+    dataOrgView.loadElement.setAttribute("title", "List the connected sandbox and scratch orgs the generated data can go to");
+    dataOrgView.loadElement.addEventListener("click", function() {
+      requestDataOrgs();
+    });
+    dataOrgView.selectElement.setAttribute("aria-label", "Salesforce org the generated data goes to");
+    dataOrgView.selectElement.addEventListener("change", function() {
+      const selectedValue = String(dataOrgView.selectElement.value || "");
+      if (isDataOrgChecking || !/^[0-9]+$/.test(selectedValue)) {
+        return;
+      }
+      vscodeApi.postMessage({ command: "selectDataOrg", orgIndex: Number(selectedValue) });
+    });
+    dataOrgView.spinnerElement.setAttribute("aria-hidden", "true");
+    const refreshIconElement = createElement("span", "dataOrgRefreshIcon", "⟳");
+    refreshIconElement.setAttribute("aria-hidden", "true");
+    dataOrgView.refreshElement.appendChild(refreshIconElement);
+    dataOrgView.refreshElement.appendChild(createElement("span", "dataOrgRefreshLabel", RECIPE_COCKPIT_REFRESH_ORGS_LABEL));
+    dataOrgView.refreshElement.setAttribute("title", "Check the org connections again");
+    dataOrgView.refreshElement.setAttribute("aria-label", RECIPE_COCKPIT_REFRESH_ORGS_LABEL + ": check the org connections again");
+    dataOrgView.refreshElement.addEventListener("click", function() {
+      showDataOrgConnectionCheck();
+      dataOrgUnansweredListingCount++;
+      vscodeApi.postMessage({ command: "refreshDataOrgs" });
+    });
+    dataOrgView.openOrgElement.setAttribute("title", "Log in to the selected org in your browser");
+    dataOrgView.openOrgElement.addEventListener("click", function() {
+      if (isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || dataOrgSelectedIndex === null) {
+        return;
+      }
+      isOrgOpenRunning = true;
+      drawDataOrgViews();
+      vscodeApi.postMessage({ command: "openDataOrg", orgIndex: dataOrgSelectedIndex });
+    });
+    dataOrgView.newScratchElement.setAttribute("title", "Choose a Dev Hub, name the new scratch org, create it through the Dev Hub and select it. Nothing is deployed to it.");
+    dataOrgView.newScratchElement.addEventListener("click", function() {
+      if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) {
+        return;
+      }
+      isDataOrgPickerInUse = true;
+      isScratchOrgRunning = true;
+      drawDataOrgViews();
+      drawTreeInserts();
+      vscodeApi.postMessage({ command: "createScratchOrg" });
+    });
+    dataOrgView.authorizeElement.setAttribute("title", RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP);
+    dataOrgView.authorizeElement.addEventListener("click", function() {
+      if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) {
+        return;
+      }
+      isDataOrgPickerInUse = true;
+      isScratchOrgRunning = true;
+      isOrgAuthorizeRunning = true;
+      drawDataOrgViews();
+      drawTreeInserts();
+      vscodeApi.postMessage({ command: "authorizeOrg" });
+    });
+    pickerElement.appendChild(dataOrgView.loadElement);
+    pickerElement.appendChild(dataOrgView.selectElement);
+    pickerElement.appendChild(dataOrgView.spinnerElement);
+    pickerElement.appendChild(dataOrgView.typeElement);
+    pickerElement.appendChild(dataOrgView.openOrgElement);
+    pickerElement.appendChild(dataOrgView.refreshElement);
+    if (hasOrgAddingButtons !== false) {
+      pickerElement.appendChild(dataOrgView.newScratchElement);
+      pickerElement.appendChild(dataOrgView.authorizeElement);
+    }
+    viewElement.appendChild(pickerElement);
+    viewElement.appendChild(dataOrgView.hiddenNoteElement);
+    viewElement.appendChild(dataOrgView.statusElement);
+    dataOrgViews.push(dataOrgView);
+    drawDataOrgView(dataOrgView);
+    return dataOrgView;
+  }
+  function drawDataOrgView(dataOrgView) {
+    const optionLabels = isDataOrgChecking ? dataOrgCheckingOptionLabels : dataOrgLabels;
+    if (dataOrgView.drawnLabels !== optionLabels) {
+      dataOrgView.selectElement.textContent = "";
+      if (isDataOrgChecking || dataOrgLabels && dataOrgLabels.length === 0) {
+        const onlyOptionElement = createElement("option", "", isDataOrgChecking ? dataOrgCheckingOptionLabels[0] : RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER);
+        onlyOptionElement.value = "";
+        dataOrgView.selectElement.appendChild(onlyOptionElement);
+      } else if (dataOrgLabels && dataOrgLabels.length > 0) {
+        const placeholderElement = createElement("option", "", "Choose org…");
+        placeholderElement.value = "";
+        dataOrgView.selectElement.appendChild(placeholderElement);
+        dataOrgLabels.forEach(function(orgLabel, orgIndex) {
+          const optionElement = createElement("option", "", orgLabel);
+          optionElement.value = String(orgIndex);
+          dataOrgView.selectElement.appendChild(optionElement);
+        });
+      }
+      dataOrgView.drawnLabels = optionLabels;
+    }
+    dataOrgView.selectElement.value = isDataOrgChecking || dataOrgSelectedIndex === null ? "" : String(dataOrgSelectedIndex);
+    setShown(dataOrgView.loadElement, isDataOrgLoadShown);
+    setShown(dataOrgView.selectElement, isDataOrgSelectShown || isDataOrgChecking);
+    setShown(dataOrgView.spinnerElement, isDataOrgChecking);
+    setShown(dataOrgView.refreshElement, isDataOrgRefreshShown);
+    dataOrgView.typeElement.textContent = dataOrgTypeLabel || "";
+    setShown(dataOrgView.typeElement, dataOrgTypeLabel !== null);
+    dataOrgView.hiddenNoteElement.textContent = dataOrgHiddenNoteText;
+    setShown(dataOrgView.hiddenNoteElement, !!dataOrgHiddenNoteText);
+    dataOrgView.statusElement.textContent = dataOrgStatusText;
+    setShown(dataOrgView.statusElement, !!dataOrgStatusText);
+    if (isDataOrgStatusFailure) {
+      dataOrgView.statusElement.classList.add("failed");
+    } else {
+      dataOrgView.statusElement.classList.remove("failed");
+    }
+    dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
+    dataOrgView.newScratchElement.textContent = isScratchOrgRunning && !isOrgAuthorizeRunning ? "Setting up scratch org…" : RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL;
+    dataOrgView.authorizeElement.disabled = dataOrgView.newScratchElement.disabled;
+    dataOrgView.authorizeElement.textContent = isOrgAuthorizeRunning ? RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL : RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL;
+    dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+    dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+    dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+    setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
+    dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+    dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? "Opening…" : RECIPE_COCKPIT_OPEN_ORG_LABEL;
+  }
+  function drawDataOrgViews() {
+    dataOrgViews.forEach(drawDataOrgView);
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/DataOrgListing.ts
+  function renderScratchOrgState(hostMessage) {
+    isScratchOrgRunning = !!hostMessage.isRunning;
+    isOrgAuthorizeRunning = isScratchOrgRunning && hostMessage.isAuthorizing === true;
+    drawDataOrgViews();
+    drawTreeInserts();
+  }
+  function renderDataOrgReadiness(dataOrgReadiness) {
+    if (renderedSequence === null || dataOrgReadiness.renderSequence !== renderedSequence || dataOrgReadiness.requestSequence !== dataOrgRequestSequence) {
+      return;
+    }
+    dataOrgReadiness.objects.forEach(function(readiness) {
+      dataOrgReadinessByObject[readiness.objectApiName] = readiness;
+    });
+    (dataOrgReadiness.createTargets || []).forEach(function(readiness) {
+      dataOrgReadinessByTreeObjectKey[buildTreeObjectKey(readiness.treeKey, readiness.objectApiName)] = readiness;
+    });
+    if (!isDataOrgStatusFailure) {
+      setDataOrgStatus("", false);
+    }
+    drawTreeInserts();
+  }
+  function setDataOrgStatus(statusText, isFailure) {
+    dataOrgStatusText = statusText;
+    isDataOrgStatusFailure = !!isFailure;
+    drawDataOrgViews();
+  }
+  function requestDataOrgs() {
+    if (renderedSequence === null || dataOrgRequestedSequence === renderedSequence || isScratchOrgRunning) {
+      return;
+    }
+    if (!isDataOrgPickerInUse) {
+      isDataOrgPickerInUse = true;
+      savePanelPlace();
+    }
+    holdDataOrgPickerBeforeCheck();
+    dataOrgRequestedSequence = renderedSequence;
+    isDataOrgLoadShown = false;
+    isDataOrgSelectShown = false;
+    startDataOrgCheck();
+    setDataOrgStatus(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, false);
+    drawTreeInserts();
+    dataOrgUnansweredListingCount++;
+    vscodeApi.postMessage({ command: "loadDataOrgs" });
+  }
+  function renderDataOrgList(dataOrgList) {
+    if (renderedSequence === null || dataOrgList.renderSequence !== renderedSequence) {
+      return;
+    }
+    dataOrgPickerBeforeCheck = null;
+    dataOrgUnansweredListingCount = 0;
+    isDataOrgLoadShown = false;
+    isDataOrgChecking = false;
+    isDataOrgPickerInUse = true;
+    clearDataOrgSelection();
+    isDataOrgRefreshShown = true;
+    dataOrgHiddenNoteText = [dataOrgList.forgottenOrgNotice || "", dataOrgList.hiddenOrgNote || ""].filter(Boolean).join(" ");
+    dataOrgLabels = Array.isArray(dataOrgList.orgLabels) ? dataOrgList.orgLabels.slice() : [];
+    isDataOrgSelectShown = true;
+    if (dataOrgLabels.length === 0) {
+      setDataOrgStatus(dataOrgList.noOrgsMessage, true);
+      return;
+    }
+    dataOrgSelectedIndex = dataOrgList.selectedOrgIndex === null ? null : dataOrgList.selectedOrgIndex;
+    isDataOrgSelectShown = true;
+    setDataOrgStatus(dataOrgList.selectedOrgIndex === null ? "Choose an org to insert into." : "", false);
+    drawTreeInserts();
+  }
+  function clearDataOrgSelection() {
+    if (dataOrgRequestSequence !== null) {
+      dataOrgClearedRequestSequence = Math.max(dataOrgClearedRequestSequence === null ? 0 : dataOrgClearedRequestSequence, dataOrgRequestSequence);
+    }
+    dataOrgRequestSequence = null;
+    dataOrgSelectedIndex = null;
+    dataOrgSelectionFailureMessage = "";
+    dataOrgReadinessByObject = /* @__PURE__ */ Object.create(null);
+    dataOrgReadinessByTreeObjectKey = /* @__PURE__ */ Object.create(null);
+    dataOrgTypeLabel = null;
+    drawDataOrgViews();
+    drawTreeInserts();
+  }
+  function showDataOrgConnectionCheck() {
+    holdDataOrgPickerBeforeCheck();
+    isDataOrgSelectShown = false;
+    dataOrgHiddenNoteText = "";
+    startDataOrgCheck();
+    clearDataOrgSelection();
+    setDataOrgStatus(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, false);
+  }
+  function holdDataOrgPickerBeforeCheck() {
+    if (isDataOrgChecking && dataOrgPickerBeforeCheck) {
+      return;
+    }
+    dataOrgPickerBeforeCheck = {
+      labels: dataOrgLabels,
+      isLoadShown: isDataOrgLoadShown,
+      isSelectShown: isDataOrgSelectShown,
+      isRefreshShown: isDataOrgRefreshShown,
+      hiddenNoteText: dataOrgHiddenNoteText,
+      requestedSequence: dataOrgRequestedSequence,
+      requestSequence: dataOrgRequestSequence,
+      clearedRequestSequence: dataOrgClearedRequestSequence,
+      selectedIndex: dataOrgSelectedIndex,
+      selectionFailureMessage: dataOrgSelectionFailureMessage,
+      readinessByObject: dataOrgReadinessByObject,
+      readinessByTreeObjectKey: dataOrgReadinessByTreeObjectKey,
+      typeLabel: dataOrgTypeLabel
+    };
+  }
+  function renderDataOrgListingRefused(refusal) {
+    if (renderedSequence === null || refusal.renderSequence !== renderedSequence) {
+      return;
+    }
+    if (typeof refusal.message !== "string" || !refusal.message) {
+      return;
+    }
+    dataOrgUnansweredListingCount = Math.max(0, dataOrgUnansweredListingCount - 1);
+    if (dataOrgUnansweredListingCount > 0) {
+      return;
+    }
+    const pickerBeforeCheck = dataOrgPickerBeforeCheck;
+    dataOrgPickerBeforeCheck = null;
+    if (pickerBeforeCheck) {
+      isDataOrgChecking = false;
+      dataOrgCheckingOptionLabels = [];
+      dataOrgLabels = pickerBeforeCheck.labels;
+      isDataOrgLoadShown = pickerBeforeCheck.isLoadShown;
+      isDataOrgSelectShown = pickerBeforeCheck.isSelectShown;
+      isDataOrgRefreshShown = pickerBeforeCheck.isRefreshShown;
+      dataOrgHiddenNoteText = pickerBeforeCheck.hiddenNoteText;
+      dataOrgRequestedSequence = pickerBeforeCheck.requestedSequence;
+      dataOrgRequestSequence = pickerBeforeCheck.requestSequence;
+      dataOrgClearedRequestSequence = pickerBeforeCheck.clearedRequestSequence;
+      dataOrgSelectedIndex = pickerBeforeCheck.selectedIndex;
+      dataOrgSelectionFailureMessage = pickerBeforeCheck.selectionFailureMessage;
+      dataOrgReadinessByObject = pickerBeforeCheck.readinessByObject;
+      dataOrgReadinessByTreeObjectKey = pickerBeforeCheck.readinessByTreeObjectKey;
+      dataOrgTypeLabel = pickerBeforeCheck.typeLabel;
+    }
+    if (dataOrgSelectionFailureMessage) {
+      setDataOrgStatus(dataOrgSelectionFailureMessage + " " + refusal.message, true);
+    } else {
+      setDataOrgStatus(refusal.message, false);
+    }
+    drawTreeInserts();
+  }
+  function startDataOrgCheck() {
+    isDataOrgChecking = true;
+    isDataOrgRefreshShown = true;
+    dataOrgCheckingOptionLabels = [RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER];
+  }
+  function renderDataOrgProvisional(dataOrgProvisional) {
+    if (renderedSequence === null || dataOrgProvisional.renderSequence !== renderedSequence || !isDataOrgChecking) {
+      return;
+    }
+    if (typeof dataOrgProvisional.orgLabel !== "string" || !dataOrgProvisional.orgLabel) {
+      return;
+    }
+    if (dataOrgProvisionalRequestSequence !== null && dataOrgProvisional.requestSequence < dataOrgProvisionalRequestSequence) {
+      return;
+    }
+    dataOrgProvisionalRequestSequence = dataOrgProvisional.requestSequence;
+    dataOrgCheckingOptionLabels = [dataOrgProvisional.orgLabel];
+    drawDataOrgViews();
+  }
+  function renderDataOrgSelection(dataOrgSelection) {
+    if (renderedSequence === null || dataOrgSelection.renderSequence !== renderedSequence) {
+      return;
+    }
+    if (dataOrgRequestSequence !== null && dataOrgSelection.requestSequence < dataOrgRequestSequence) {
+      return;
+    }
+    if (dataOrgClearedRequestSequence !== null && dataOrgSelection.requestSequence <= dataOrgClearedRequestSequence) {
+      return;
+    }
+    if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
+      dataOrgRequestSequence = dataOrgSelection.requestSequence;
+      dataOrgReadinessByObject = /* @__PURE__ */ Object.create(null);
+      dataOrgReadinessByTreeObjectKey = /* @__PURE__ */ Object.create(null);
+      dataOrgSelectionFailureMessage = "";
+      setDataOrgStatus("Checking " + dataOrgSelection.orgLabel + "…", false);
+    }
+    if (dataOrgSelection.failureMessage) {
+      dataOrgSelectionFailureMessage = dataOrgSelection.failureMessage;
+      setDataOrgStatus(dataOrgSelection.failureMessage, true);
+    }
+    dataOrgSelectedIndex = dataOrgSelection.orgIndex;
+    dataOrgTypeLabel = dataOrgSelection.orgTypeLabel || "checking…";
+    isDataOrgRefreshShown = true;
+    drawDataOrgViews();
+    drawTreeInserts();
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/navigation/TreePicker.ts
+  var treePickerObjectsListElement = null;
+  var treePickerObjectsToggleElement = null;
+  var treePickerObjectsResizeObserver = null;
+  var isTreePickerObjectsMeasureScheduled = false;
+  function describeTreeDifferences(tree) {
+    const countOf = function(candidateList) {
+      return Array.isArray(candidateList) ? candidateList.length : 0;
+    };
+    const describe = function(count, singular, plural) {
+      return count + " " + (count === 1 ? singular : plural);
+    };
+    const exclusions = tree.objectSelection && Array.isArray(tree.objectSelection.exclusions) ? tree.objectSelection.exclusions : [];
+    const excludedObjectApiNames = toStringSet(exclusions.map(function(exclusion) {
+      return exclusion.objectApiName;
+    }));
+    const isGenerated = function(entry) {
+      return !!entry && !hasString(excludedObjectApiNames, entry.objectApiName);
+    };
+    const generatedEntries = function(candidateList) {
+      return Array.isArray(candidateList) ? candidateList.filter(isGenerated) : [];
+    };
+    const untickedFieldCount = generatedEntries(tree.fieldSelection && tree.fieldSelection.objects).reduce(function(total, objectFieldSelection) {
+      return total + countOf(objectFieldSelection.excludedFieldApiNames);
+    }, 0);
+    const rulesOffCount = generatedEntries(tree.validationRulesOff).length;
+    const differences = [
+      [exclusions.length, "object excluded", "objects excluded"],
+      [untickedFieldCount, "field unticked", "fields unticked"],
+      [generatedEntries(tree.objectCounts).length, "count changed", "counts changed"],
+      [rulesOffCount, "field without its rules", "fields without their rules"]
+    ];
+    return differences.filter(function(difference) {
+      return difference[0] > 0;
+    }).map(function(difference) {
+      return describe(difference[0], difference[1], difference[2]);
+    });
+  }
+  function renderFavoritesToggle(containerElement) {
+    const favoritesElement = createElement("span", "favoritesControls");
+    const toggleElement = createButton("primary", "favoritesToggle");
+    favoritesToggleElement = toggleElement;
+    toggleElement.setAttribute("title", "Show only the trees marked as favorites");
+    toggleElement.addEventListener("click", function() {
+      isFavoritesOnly = !isFavoritesOnly;
+      applyTreecipesSearch();
+      savePanelPlace();
+    });
+    const countElement = createElement("span", "favoritesCount muted hidden");
+    favoritesCountElement = countElement;
+    favoritesElement.appendChild(toggleElement);
+    favoritesElement.appendChild(countElement);
+    containerElement.appendChild(favoritesElement);
+  }
+  function displayTitleOf(tree) {
+    const namedTree = tree;
+    return namedTree.customName || namedTree.title;
+  }
+  function isHiddenByFavorites(treeState) {
+    return isFavoritesOnly && favoritesToggleElement !== null && treeState.tree.isFavorite !== true;
+  }
+  function applyFavoritesFilter(isAnimated) {
+    const shownCount = treeStates.filter(function(treeState) {
+      return !isHiddenByFavorites(treeState);
+    }).length;
+    applyTreePicker(isAnimated);
+    if (favoritesToggleElement) {
+      favoritesToggleElement.textContent = (isFavoritesOnly ? RECIPE_COCKPIT_FAVORITE_TREE_LABEL : RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL) + " " + RECIPE_COCKPIT_FAVORITES_ONLY_LABEL;
+      favoritesToggleElement.setAttribute("aria-pressed", isFavoritesOnly ? "true" : "false");
+    }
+    if (favoritesCountElement) {
+      favoritesCountElement.textContent = shownCount + " of " + pluralize(treeStates.length, "tree", "trees");
+      if (isFavoritesOnly) {
+        favoritesCountElement.classList.remove("hidden");
+      } else {
+        favoritesCountElement.classList.add("hidden");
+      }
+    }
+    if (noFavoritesElement) {
+      if (isFavoritesOnly && favoritesToggleElement !== null && shownCount === 0) {
+        noFavoritesElement.classList.remove("hidden");
+      } else {
+        noFavoritesElement.classList.add("hidden");
+      }
+    }
+  }
+  function treePickerLabelOf(treeState) {
+    return (treeState.tree.isFavorite === true ? RECIPE_COCKPIT_FAVORITE_TREE_LABEL + " " : "") + displayTitleOf(treeState.tree);
+  }
+  function applyTreePicker(isAnimated) {
+    const pickerElement = treePickerElement;
+    if (!pickerElement) {
+      return;
+    }
+    const pickableTreeStates = treeStates.filter(function(treeState) {
+      return !isHiddenByFavorites(treeState);
+    });
+    const chosenTreeState = findTreeState(selectedTreeKey);
+    const shownTreeState = chosenTreeState && !isHiddenByFavorites(chosenTreeState) ? chosenTreeState : pickableTreeStates[0] || null;
+    if (shownTreeState) {
+      selectedTreeKey = shownTreeState.tree.treeKey;
+    }
+    const matchedTreeKeys = treecipesMatchedTreeKeys;
+    const listedTreeStates = matchedTreeKeys === null ? pickableTreeStates : pickableTreeStates.filter(function(treeState) {
+      return hasString(matchedTreeKeys, treeState.tree.treeKey);
+    });
+    const isShownUnlisted = !!shownTreeState && listedTreeStates.indexOf(shownTreeState) === -1;
+    const pickedTreeStates = isShownUnlisted && shownTreeState ? [shownTreeState].concat(listedTreeStates) : listedTreeStates;
+    treePickerTreeStates = pickedTreeStates;
+    pickerElement.textContent = "";
+    pickedTreeStates.forEach(function(treeState, optionIndex) {
+      const label = treePickerLabelOf(treeState) + (isShownUnlisted && optionIndex === 0 ? RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX : "");
+      const optionElement = createElement("option", "", label);
+      optionElement.value = String(optionIndex);
+      optionElement.selected = treeState === shownTreeState;
+      pickerElement.appendChild(optionElement);
+    });
+    pickerElement.value = shownTreeState ? String(pickedTreeStates.indexOf(shownTreeState)) : "";
+    pickerElement.disabled = listedTreeStates.length === 0;
+    treeStates.forEach(function(treeState) {
+      const isHidden = treeState.element.classList.contains("hidden");
+      if (treeState === shownTreeState) {
+        if (isHidden) {
+          setShownWithMotion(treeState.element, true, isAnimated === true);
+        }
+      } else if (!isHidden) {
+        setShownWithMotion(treeState.element, false, false);
+      }
+    });
+    if (shownTreeState && !shownTreeState.isExpanded) {
+      setTreeExpanded(shownTreeState, true);
+    }
+    if (shownTreeState !== treePickerShownTreeState) {
+      treePickerShownTreeState = shownTreeState;
+      isTreePickerObjectsExpanded = false;
+      drawTreePickerObjects();
+    }
+  }
+  function drawTreePickerObjects() {
+    const objectsElement = treePickerObjectsElement;
+    if (!objectsElement) {
+      return;
+    }
+    releaseTreePickerObjectsList();
+    objectsElement.textContent = "";
+    const shownTreeState = treePickerShownTreeState;
+    if (!shownTreeState) {
+      objectsElement.classList.add("hidden");
+      return;
+    }
+    objectsElement.classList.remove("hidden");
+    const listedObjectApiNames = /* @__PURE__ */ Object.create(null);
+    const objectApiNames = [];
+    shownTreeState.tree.objects.forEach(function(treeObject) {
+      if (treeObject.iterationNickname || listedObjectApiNames[treeObject.objectApiName] === true) {
+        return;
+      }
+      listedObjectApiNames[treeObject.objectApiName] = true;
+      objectApiNames.push(treeObject.objectApiName);
+    });
+    objectsElement.appendChild(createElement("span", "treePickerObjectsLabel", RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL));
+    const listElement = createElement("span", isTreePickerObjectsExpanded ? "treePickerObjectsList expanded" : "treePickerObjectsList");
+    listElement.setAttribute("id", "treePickerObjectsList");
+    objectsElement.appendChild(listElement);
+    treePickerObjectsListElement = listElement;
+    if (objectApiNames.length === 0) {
+      listElement.appendChild(createElement("span", "treePickerNoObjects muted", RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS));
+      return;
+    }
+    const exclusionsByObjectApiName = indexObjectExclusions(shownTreeState.tree);
+    const impactsByObjectApiName = indexObjectImpacts(shownTreeState.tree);
+    const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(shownTreeState);
+    objectApiNames.forEach(function(objectApiName, objectIndex) {
+      if (objectIndex > 0) {
+        listElement.appendChild(createElement("span", "treePickerObjectSeparator muted", RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR));
+      }
+      const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
+      const suffix = !exclusion ? hasOwnKey(impactsByObjectApiName, objectApiName) ? RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX : "" : exclusion.kind === "autoExcluded" ? RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX : exclusion.kind === "noFieldsSelected" ? RECIPE_COCKPIT_TREE_PICKER_NO_FIELDS_SELECTED_SUFFIX : RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX;
+      const friendLabels = hasOwnKey(friendLabelsByObjectApiName, objectApiName) ? friendLabelsByObjectApiName[objectApiName] : [];
+      const friendText = friendLabels.length > 0 ? " (" + friendLabels.join(", ") + ")" : "";
+      listElement.appendChild(createElement("span", exclusion ? "treePickerObject excluded" : "treePickerObject", objectApiName + friendText + suffix));
+    });
+    objectsElement.appendChild(createElement("span", "treePickerObjectsCount muted", " · " + pluralize(objectApiNames.length, "object", "objects")));
+    const toggleElement = createButton("secondary", "treePickerObjectsToggle hidden", RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL, "compact");
+    toggleElement.setAttribute("aria-controls", "treePickerObjectsList");
+    toggleElement.addEventListener("click", function() {
+      isTreePickerObjectsExpanded = !isTreePickerObjectsExpanded;
+      if (isTreePickerObjectsExpanded) {
+        listElement.classList.add("expanded");
+      } else {
+        listElement.classList.remove("expanded");
+      }
+      drawTreePickerObjectsToggle();
+    });
+    objectsElement.appendChild(toggleElement);
+    treePickerObjectsToggleElement = toggleElement;
+    if (typeof window.ResizeObserver === "function") {
+      treePickerObjectsResizeObserver = treePickerObjectsResizeObserver || new window.ResizeObserver(scheduleTreePickerObjectsToggle);
+      treePickerObjectsResizeObserver.observe(listElement);
+    } else {
+      drawTreePickerObjectsToggle();
+    }
+  }
+  function releaseTreePickerObjectsList() {
+    if (treePickerObjectsResizeObserver) {
+      treePickerObjectsResizeObserver.disconnect();
+    }
+    treePickerObjectsListElement = null;
+    treePickerObjectsToggleElement = null;
+  }
+  function scheduleTreePickerObjectsToggle() {
+    if (isTreePickerObjectsMeasureScheduled) {
+      return;
+    }
+    if (typeof window.requestAnimationFrame !== "function") {
+      drawTreePickerObjectsToggle();
+      return;
+    }
+    isTreePickerObjectsMeasureScheduled = true;
+    window.requestAnimationFrame(function() {
+      isTreePickerObjectsMeasureScheduled = false;
+      drawTreePickerObjectsToggle();
+    });
+  }
+  function drawTreePickerObjectsToggle() {
+    if (!treePickerObjectsToggleElement || !treePickerObjectsListElement) {
+      return;
+    }
+    treePickerObjectsToggleElement.textContent = isTreePickerObjectsExpanded ? RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS : RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL;
+    treePickerObjectsToggleElement.setAttribute("aria-expanded", isTreePickerObjectsExpanded ? "true" : "false");
+    const isCut = treePickerObjectsListElement.scrollWidth > treePickerObjectsListElement.clientWidth;
+    if (isTreePickerObjectsExpanded || isCut) {
+      treePickerObjectsToggleElement.classList.remove("hidden");
+    } else {
+      treePickerObjectsToggleElement.classList.add("hidden");
+    }
+  }
+  function chooseTree(treeState, isByReader) {
+    if (isHiddenByFavorites(treeState)) {
+      isFavoritesOnly = false;
+    }
+    selectedTreeKey = treeState.tree.treeKey;
+    applyFavoritesFilter(isByReader);
+    if (isByReader && treeState.selectedTab === "treecipe" && renderedSequence !== null && !isRestoringPlace) {
+      requestDataOrgs();
+    }
+  }
+  function buildTreePicker(trees) {
+    const pickerElement = createElement("div", "treePicker");
+    const labelElement = createElement("label", "treePickerLabel", RECIPE_COCKPIT_TREECIPE_PICKER_LABEL);
+    const treePickerSelectElement = createElement("select", "treePickerSelect");
+    treePickerElement = treePickerSelectElement;
+    treePickerSelectElement.setAttribute("id", "treePickerSelect");
+    treePickerSelectElement.setAttribute("aria-label", RECIPE_COCKPIT_TREECIPE_PICKER_LABEL);
+    labelElement.setAttribute("for", "treePickerSelect");
+    treePickerSelectElement.addEventListener("change", function() {
+      const optionIndex = /^[0-9]+$/.test(String(treePickerSelectElement.value)) ? Number(treePickerSelectElement.value) : -1;
+      const treeState = treePickerTreeStates[optionIndex];
+      if (!treeState) {
+        return;
+      }
+      chooseTree(treeState, true);
+      savePanelPlace();
+    });
+    pickerElement.appendChild(labelElement);
+    pickerElement.appendChild(treePickerSelectElement);
+    if (trees.some(function(tree) {
+      return !!tree.folderName;
+    })) {
+      renderFavoritesToggle(pickerElement);
+    }
+    return pickerElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelBuilders.ts
+  var ACTION_CARDS = { ...RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS, ...RECIPE_COCKPIT_STANDALONE_ACTION_CARDS };
+  var actionCardCount = 0;
+  function buildActionCard(action, className, title) {
+    const card = Object.prototype.hasOwnProperty.call(ACTION_CARDS, action) ? ACTION_CARDS[action] : void 0;
+    if (!card || typeof RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb] !== "string") {
+      throw new Error("Unknown action: " + action);
+    }
+    actionCardCount++;
+    const buttonElement = createButton("card", "actionCard " + className);
+    const headingElement = createElement("span", "actionCardHeading");
+    const emojiElement = createElement("span", "actionCardEmoji", RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb]);
+    const titleElement = createElement("span", "actionCardTitle", title);
+    const whyElement = createElement("span", "actionCardWhy", card.why);
+    const detailElement = createElement("span", "actionCardDetail muted hidden");
+    const reasonElement = createElement("span", "actionCardReason hidden");
+    emojiElement.setAttribute("aria-hidden", "true");
+    titleElement.setAttribute("id", "actionCardTitle" + actionCardCount);
+    whyElement.setAttribute("id", "actionCardWhy" + actionCardCount);
+    detailElement.setAttribute("id", "actionCardDetail" + actionCardCount);
+    reasonElement.setAttribute("id", "actionCardReason" + actionCardCount);
+    buttonElement.setAttribute("aria-labelledby", "actionCardTitle" + actionCardCount);
+    buttonElement.setAttribute("aria-describedby", ["actionCardWhy", "actionCardDetail", "actionCardReason"].map(function(idPrefix) {
+      return idPrefix + actionCardCount;
+    }).join(" "));
+    headingElement.appendChild(emojiElement);
+    headingElement.appendChild(titleElement);
+    buttonElement.appendChild(headingElement);
+    buttonElement.appendChild(whyElement);
+    buttonElement.appendChild(detailElement);
+    buttonElement.appendChild(reasonElement);
+    return { action, buttonElement, titleElement, detailElement, reasonElement };
+  }
+  function buildRowTable(tableOptions) {
+    const wrapElement = createElement("div", "sdtRowTableWrap " + tableOptions.className + "Wrap");
+    const tableElement = createElement("table", "sdtRowTable " + tableOptions.className);
+    const headElement = createElement("thead", "");
+    const headRowElement = createElement("tr", "");
+    const bodyElement = createElement("tbody", "");
+    const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
+    const sortButtons = /* @__PURE__ */ Object.create(null);
+    const columnClassName = typeof tableOptions.columnClassName === "string" ? tableOptions.columnClassName : "";
+    tableOptions.columns.forEach(function(column) {
+      const headerElement = createElement("th", columnClassName ? columnClassName + "Header " + columnClassName + "Header-" + column.key : "");
+      headerElement.setAttribute("scope", "col");
+      if (!tableOptions.sort || sortColumns.indexOf(column.key) === -1) {
+        headerElement.textContent = column.label;
+      } else {
+        const isSorted = tableOptions.sort.column === column.key;
+        const sortArrow = isSorted ? tableOptions.sort.isDescending ? " ↓" : " ↑" : "";
+        headerElement.setAttribute("aria-sort", isSorted ? tableOptions.sort.isDescending ? "descending" : "ascending" : "none");
+        const sortButton = createButton("link", columnClassName + "Sort " + columnClassName + "Sort-" + column.key, column.label + sortArrow);
+        sortButton.addEventListener("click", function() {
+          if (tableOptions.onSort) {
+            tableOptions.onSort(column.key);
+          }
+        });
+        sortButtons[column.key] = sortButton;
+        headerElement.appendChild(sortButton);
+      }
+      headRowElement.appendChild(headerElement);
+    });
+    headElement.appendChild(headRowElement);
+    tableElement.appendChild(headElement);
+    tableElement.appendChild(bodyElement);
+    wrapElement.appendChild(tableElement);
+    return { wrapElement, bodyElement, sortButtons };
+  }
+  function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
+    const searchElement = createElement("div", "tabSearch");
+    const fieldElement = createElement("div", "tabSearchField");
+    const inputElement = createElement("input", "tabSearchInput");
+    const matchCountElement = createElement("span", "tabMatchCount muted");
+    const iconElement = buildSearchIconElement();
+    iconElement.addEventListener("click", function() {
+      if (typeof inputElement.focus === "function") {
+        inputElement.focus();
+      }
+    });
+    inputElement.setAttribute("type", "search");
+    inputElement.setAttribute("placeholder", placeholderText);
+    inputElement.setAttribute("aria-label", placeholderText + " (" + displayTitleOf(treeState.tree) + ")");
+    inputElement.value = treeState.searchTexts[tabName];
+    inputElement.addEventListener("input", function() {
+      treeState.searchTexts[tabName] = String(inputElement.value || "");
+      treeState.searchQueries[tabName] = treeState.searchTexts[tabName].trim().toLowerCase();
+      applySearch(treeState);
+      savePanelPlace();
+    });
+    fieldElement.appendChild(iconElement);
+    fieldElement.appendChild(inputElement);
+    searchElement.appendChild(fieldElement);
+    searchElement.appendChild(matchCountElement);
+    return { element: searchElement, inputElement, matchCountElement };
+  }
+  function buildSearchIconElement() {
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", "tabSearchIcon");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_SEARCH_GLYPH_PATH);
+    glyphElement.appendChild(pathElement);
+    return glyphElement;
+  }
+  function buildToggleElement(className) {
+    const toggleElement = createButton("secondary", "chevronToggle " + className);
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", "toggleGlyph");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+    glyphElement.appendChild(pathElement);
+    toggleElement.appendChild(glyphElement);
+    return toggleElement;
+  }
+  function buildTreeGlyph(treeObjectState) {
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", "treeGlyph");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
+    pathElement.setAttribute("transform", RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM);
+    glyphElement.appendChild(pathElement);
+    treeObjectState.glyphPathElement = pathElement;
+    return glyphElement;
+  }
+  function buildPencilGlyph(size) {
+    const glyphElement = document.createElementNS(SVG_NAMESPACE, "svg");
+    const pathElement = document.createElementNS(SVG_NAMESPACE, "path");
+    glyphElement.setAttribute("class", size === "large" ? "fixedValueGlyph fixedValueGlyph-large" : "fixedValueGlyph");
+    glyphElement.setAttribute("viewBox", RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX);
+    glyphElement.setAttribute("aria-hidden", "true");
+    glyphElement.setAttribute("focusable", "false");
+    pathElement.setAttribute("d", RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
+    glyphElement.appendChild(pathElement);
+    return glyphElement;
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterLoadAndUpdate.ts
@@ -7355,11 +8707,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     });
     applyDatasetsFilter(treeState);
   }
-  function applyRowSearch(rowStates, searchQuery, search, singular, plural, isFavoritesOnly) {
+  function applyRowSearch(rowStates, searchQuery, search, singular, plural, isFavoritesOnly2) {
     let matchingRowCount = 0;
-    const isFiltered = !!searchQuery || !!isFavoritesOnly;
+    const isFiltered = !!searchQuery || !!isFavoritesOnly2;
     rowStates.forEach(function(rowState) {
-      const isMatch = (!searchQuery || rowState.searchText.indexOf(searchQuery) !== -1) && (!isFavoritesOnly || rowState.dataset.isFavorite === true);
+      const isMatch = (!searchQuery || rowState.searchText.indexOf(searchQuery) !== -1) && (!isFavoritesOnly2 || rowState.dataset.isFavorite === true);
       if (isMatch) {
         matchingRowCount++;
         rowState.element.classList.remove("hidden");
@@ -7484,106 +8836,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
       applyDatasetsFilter(treeState);
     });
     vscodeApi.postMessage({ command: "partialRendered", renderSequence: renderedSequence, updateSequence: lastInsertMessage.updateSequence });
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/RecordTypeFieldsToggle.ts
-  function hasRecordTypeObjects(treeState) {
-    if (typeof treeState.hasRecordTypeObjects !== "boolean") {
-      treeState.hasRecordTypeObjects = treeState.objectStates.some(function(treeObjectState) {
-        return treeObjectState.hasRecordTypes;
-      });
-    }
-    return treeState.hasRecordTypeObjects;
-  }
-  function isRecordTypeFieldsOnlyIn(treeState) {
-    return treeState.isRecordTypeFieldsOnly === true && hasRecordTypeObjects(treeState);
-  }
-  function appendRecordTypeFieldsToggle(treeState, tileElement) {
-    const rowElement = createElement("div", "treecipeFilterRow");
-    tileElement.appendChild(rowElement);
-    const checkElement = createElement("span", "treeRecordTypeFieldsCheck");
-    const toggleElement = createButton("check", "treeFieldInclude treeRecordTypeFieldsToggle");
-    const labelElement = createElement("span", "treeRecordTypeFieldsLabel", RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL);
-    toggleElement.setAttribute("role", "checkbox");
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
-    if (hasRecordTypeObjects(treeState)) {
-      const title = "Show only the picklist fields a record type restricts";
-      const toggleRecordTypeFieldsOnly = function() {
-        if (toggleElement.disabled) {
-          return;
-        }
-        treeState.isRecordTypeFieldsOnly = !treeState.isRecordTypeFieldsOnly;
-        applyStructureFilter(treeState);
-        savePanelPlace();
-      };
-      toggleElement.setAttribute("title", title);
-      labelElement.setAttribute("title", title);
-      toggleElement.addEventListener("click", toggleRecordTypeFieldsOnly);
-      labelElement.addEventListener("click", toggleRecordTypeFieldsOnly);
-    } else {
-      toggleElement.disabled = true;
-      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE);
-      checkElement.classList.add("disabled");
-    }
-    treeState.recordTypeFieldsToggleElement = toggleElement;
-    checkElement.appendChild(toggleElement);
-    checkElement.appendChild(labelElement);
-    rowElement.appendChild(checkElement);
-    if (!hasRecordTypeObjects(treeState)) {
-      rowElement.appendChild(createElement("span", "treeRecordTypeFieldsNote muted", RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE));
-    }
-    drawRecordTypeFieldsToggle(treeState);
-  }
-  function drawRecordTypeFieldsToggle(treeState) {
-    const toggleElement = treeState.recordTypeFieldsToggleElement;
-    if (!toggleElement) {
-      return;
-    }
-    const isChecked = isRecordTypeFieldsOnlyIn(treeState);
-    toggleElement.textContent = isChecked ? "✓" : "";
-    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
-  }
-  function isRecordLike(candidate) {
-    return !!candidate && typeof candidate === "object" && !Array.isArray(candidate);
-  }
-  function indexRecordTypeFields(objects) {
-    const recordTypeFieldsIndex = /* @__PURE__ */ Object.create(null);
-    objects.forEach(function(object) {
-      if (!isRecordLike(object) || typeof object.objectApiName !== "string" || object.objectApiName === "__proto__") {
-        return;
-      }
-      if (!Array.isArray(object.recordTypes) || object.recordTypes.length < 2) {
-        return;
-      }
-      const listedFieldApiNames = /* @__PURE__ */ Object.create(null);
-      (Array.isArray(object.fields) ? object.fields : []).forEach(function(field) {
-        if (isRecordLike(field) && typeof field.fieldApiName === "string") {
-          listedFieldApiNames[field.fieldApiName] = true;
-        }
-      });
-      const developerNamesByFieldApiName = /* @__PURE__ */ Object.create(null);
-      object.recordTypes.forEach(function(recordType) {
-        if (!isRecordLike(recordType) || typeof recordType.developerName !== "string" || !Array.isArray(recordType.impacts)) {
-          return;
-        }
-        const developerName = recordType.developerName;
-        recordType.impacts.forEach(function(impact) {
-          if (!isRecordLike(impact)) {
-            return;
-          }
-          const fieldApiName = impact.fieldApiName;
-          if (typeof fieldApiName !== "string" || fieldApiName === "__proto__" || listedFieldApiNames[fieldApiName] !== true) {
-            return;
-          }
-          const developerNames = developerNamesByFieldApiName[fieldApiName] || (developerNamesByFieldApiName[fieldApiName] = []);
-          if (developerNames.indexOf(developerName) === -1) {
-            developerNames.push(developerName);
-          }
-        });
-      });
-      recordTypeFieldsIndex[object.objectApiName] = developerNamesByFieldApiName;
-    });
-    return recordTypeFieldsIndex;
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();

@@ -70,6 +70,7 @@ export interface IParentLookup {
 export interface IFieldRowTreeObject {
     objectApiName: string;
     parentLookups: IParentLookup[];
+    iterationNickname?: string;
 }
 
 export interface IFieldValidationRules {
