@@ -11,6 +11,7 @@ import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { buildObjectTodosToggle } from '../recordTypes/TodosToggles';
 import { drawFieldRowSelection, drawNoFieldsSelected, findFieldLockingExclusion, findObjectExclusion, findObjectFieldSelection, isTreeFieldUnticked, occurrenceNicknameOf } from './SelectionCascade';
 import type { FieldRowsPanelMessage, FieldScopeCheckedState, IFieldRowObjectState, IFieldRowTreeState, IHideUnselectedState } from './FieldRowTypes';
+import { drawStructureMatchCount, filterTreeObjectRows } from '../navigation/StructureFilter';
 
 /*
     An object's field scope boxes and its own filter (#410, #477, #483): "All fields", "Standard
@@ -21,8 +22,6 @@ import type { FieldRowsPanelMessage, FieldScopeCheckedState, IFieldRowObjectStat
 declare const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void };
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
-declare function filterTreeObjectRows(treeState: IFieldRowTreeState, treeObjectState: IFieldRowObjectState): void;
-declare function drawStructureMatchCount(treeState: IFieldRowTreeState): void;
 
 type FieldScopeCheckedStateKey = 'selectAllCheckedState' | 'selectStandardCheckedState';
 

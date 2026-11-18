@@ -48,16 +48,16 @@ import { hasOwnKey } from '../RecipeCockpitOwnKey';
 import { indexTreeLookupFields } from '../treecipe/fieldRows/FieldRowFixedValue';
 import { formatParentLookups } from '../treecipe/fieldRows/FieldRow';
 import { RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES } from '../../RecipeCockpitFieldRowsConstants';
+import { displayTitleOf } from '../treecipe/navigation/TreePicker';
+import { expandMatchesWithinBudget } from '../treecipe/navigation/StructureFilter';
 
 /*
     The Treecipe Adapter tab (#415, #443, #641): its two steps, the objects and field rows of step 2,
     the summary and the filter. These names are the panel script's own, read when a function runs.
 */
-declare function displayTitleOf(tree: unknown): string;
 declare function savePanelPlace(): void;
 declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
 declare function pluralize(count: number, singular: string, plural: string): string;
-declare function expandMatchesWithinBudget<GroupState>(groupStates: GroupState[], matchCountOf: (groupState: GroupState) => number, rowCountOf: (groupState: GroupState) => number, setExpanded: (groupState: GroupState, isExpanded: boolean) => void): void;
 // THE TREECIPE TAB'S FIXED-VALUE RULES, WHICH ITS SLICE (#643) MOVES
 // RecipeCockpitTreeUpdaterQuery.ts HOLDS THE LIMIT BESIDE ITS CHECK AND IMPORTS OTHER HOST FILES, SO THE SHELL PASSES THE NUMBER IN
 declare const UPDATER_WHERE_MAX_LENGTH: number;

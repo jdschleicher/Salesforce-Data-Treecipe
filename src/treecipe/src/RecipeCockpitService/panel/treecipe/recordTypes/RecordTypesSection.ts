@@ -9,6 +9,7 @@ import {
 } from '../../../RecipeCockpitRecordTypesConstants';
 import type { RecipeCockpitRecordTypeImpactKind } from '../../../RecipeCockpitRecordTypesConstants';
 import { IRecordType, IRecordTypeObject, IRecordTypeRowState, IRecordTypesTreeState } from './RecordTypeTypes';
+import { displayTitleOf } from '../navigation/TreePicker';
 
 /*
     The Record types section of the Treecipe tab (#321, the #195 tab before it), opened by the
@@ -30,7 +31,6 @@ declare const recordTypeRowStates: IRecordTypeRowState[];
 declare const recordTypeRememberElements: HTMLButtonElement[];
 declare let isRecordTypeSelectionRemembered: boolean;
 declare const insertRunningTreeKey: string | null;
-declare function displayTitleOf(tree: unknown): string;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
 

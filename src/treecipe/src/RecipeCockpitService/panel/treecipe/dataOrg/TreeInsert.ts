@@ -18,6 +18,9 @@ import { drawDataOrgViews } from './DataOrgView';
 import { IDataOrgReadiness, IDataOrgTreeState, IInsertTree, IInsertTreeObjectState, InsertReasonLink, ITreeInsertBlock, ITreeInsertView } from './DataOrgTypes';
 import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { findObjectFieldSelection, indexObjectExclusions, isTreeFieldUnticked, occurrenceNicknameOf } from '../fieldRows/SelectionCascade';
+import { displayTitleOf } from '../navigation/TreePicker';
+import { applyTreeFocus, buildTreeObjectKey } from '../navigation/StructureFilter';
+import { revealTreeObjectRow } from '../navigation/TreecipesSearch';
 
 /*
     A tree's one insert button (#255, #375) and why it cannot run (#539). The host decides each
@@ -41,12 +44,8 @@ declare const recordTypeObjects: unknown[];
 declare const isRecordTypeSelectionRemembered: boolean;
 declare let insertRunningTreeKey: string | null;
 declare let insertRunningDatasetFolderName: string | null;
-declare function displayTitleOf(tree: unknown): string;
 declare function setTextShown(element: HTMLElement, text: string): void;
 declare function savePanelPlace(): void;
-declare function buildTreeObjectKey(treeKey: string, objectApiName: string): string;
-declare function applyTreeFocus(focusTree: { treeKey: string; tab: string; troubleshootingSubTab: string }): void;
-declare function revealTreeObjectRow(treeState: IDataOrgTreeState, treeObjectState: IInsertTreeObjectState, fieldState: unknown, focusElement: null): void;
 
 // WHAT THE CLICK POSTS: THE TREE'S KEY, AND THE RECORD TYPES TICKED UNDER Manage record types (#623) WHEN THEY DIFFER OR ARE REMEMBERED
 interface IInsertTreeMessage {

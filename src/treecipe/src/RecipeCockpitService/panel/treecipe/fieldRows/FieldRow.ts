@@ -15,6 +15,9 @@ import { buildFieldValidationRuleElement, buildValidationRuleNotAppliedElement, 
 import { drawObjectFieldSelection } from './FieldScope';
 import { drawObjectSelection } from './SelectionCascade';
 import type { FieldRowsPanelMessage, IFieldRowField, IFieldRowFieldState, IFieldRowObjectState, IFieldRowTreeObject, IFieldRowTreeState, IObjectSelectionMessage, ISelectionTree } from './FieldRowTypes';
+import { drawTreePickerObjects } from '../navigation/TreePicker';
+import { drawStructureMatchCount } from '../navigation/StructureFilter';
+import { buildNicknameBackLink, findReferencedOwnerState } from '../navigation/Nicknames';
 
 /*
     One field row of the Treecipe tab (#220, #262, #320, #325, #398, #421, #560) and the card-wide
@@ -29,11 +32,7 @@ declare const treePickerShownTreeState: unknown;
 declare let fieldSearchTexts: Map<IFieldRowField, string>;
 declare function savePanelPlace(): void;
 declare function drawHelpSummary(): void;
-declare function drawTreePickerObjects(): void;
-declare function drawStructureMatchCount(treeState: IFieldRowTreeState): void;
 declare function findTreeState(treeKey: unknown): ( IFieldRowTreeState & IDataOrgTreeState & ITroubleshootingTreeState ) | null;
-declare function findReferencedOwnerState(treeObjectState: IFieldRowObjectState, fieldState: IFieldRowFieldState): object | null;
-declare function buildNicknameBackLink(treeState: IFieldRowTreeState, ownerState: object, fieldHeaderElement: HTMLElement): HTMLElement;
 declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
 
 /*

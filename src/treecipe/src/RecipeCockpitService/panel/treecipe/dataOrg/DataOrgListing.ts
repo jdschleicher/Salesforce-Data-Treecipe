@@ -11,6 +11,7 @@ import {
     IScratchOrgStateMessage
 } from './DataOrgTypes';
 import { drawTreeInserts } from './TreeInsert';
+import { buildTreeObjectKey } from '../navigation/StructureFilter';
 
 /*
     Target Org Manager's org list and connection check (#255, #305, #537): what the host's listing,
@@ -43,7 +44,6 @@ declare let dataOrgPickerBeforeCheck: IDataOrgPickerBeforeCheck | null;
 declare let dataOrgUnansweredListingCount: number;
 declare let isScratchOrgRunning: boolean;
 declare let isOrgAuthorizeRunning: boolean;
-declare function buildTreeObjectKey(treeKey: string, objectApiName: string): string;
 declare function savePanelPlace(): void;
 
 export function renderScratchOrgState(hostMessage: IScratchOrgStateMessage): void {

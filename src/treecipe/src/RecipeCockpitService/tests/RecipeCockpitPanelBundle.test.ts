@@ -21,6 +21,7 @@ import * as RecipeCockpitTroubleshootingConstants from '../RecipeCockpitTroubles
 import * as RecipeCockpitTreecipeFieldEditorConstants from '../RecipeCockpitTreecipeFieldEditorConstants';
 import * as RecipeCockpitDataOrgConstants from '../RecipeCockpitDataOrgConstants';
 import * as RecipeCockpitFieldRowsConstants from '../RecipeCockpitFieldRowsConstants';
+import * as RecipeCockpitNavigationConstants from '../RecipeCockpitNavigationConstants';
 import * as RecipeCockpitOrgAuthorizeModule from '../RecipeCockpitOrgAuthorize';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
 
@@ -99,12 +100,11 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             Array.from(fs.readFileSync(panelModulePath, 'utf8').matchAll(/^declare (?:const|let|function) ([A-Za-z_$][\w$]*)/gm), match => ({ panelModule: path.basename(panelModulePath), ambientName: match[1] })));
 
         expect(panelModulePaths.map(panelModulePath => path.basename(panelModulePath))).toEqual(expect.arrayContaining(['TroubleshootingTab.ts', 'TroubleshootingHistory.ts']));
-        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning', 'isTreeQueryRunning', 'QUERY_MAX_LENGTH',
+        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning', 'isTreeQueryRunning', 'QUERY_MAX_LENGTH',
             'updaterLoadRunningTreeKey', 'updaterRunKind', 'adapterChildPreparingKey', 'UPDATER_WHERE_MAX_LENGTH', 'answeredDatasetCounts', 'buildNameEditor', 'isDataOrgChecking',
             'pendingPicklistValueElements', 'isAddFriendRunning', 'isWireLookupRunning', 'lookupDecisions',
-            'dataOrgViews', 'dataOrgPickerBeforeCheck', 'dataOrgUnansweredListingCount', 'insertRunningTreeKey', 'isOrgAuthorizeRunning', 'revealTreeObjectRow', 'buildTreeObjectKey',
-            'recordTypeChoices', 'recordTypeRowStates', 'isRecordTypeSelectionRemembered', 'applyStructureFilter', 'filterTreeObjectRows',
-            'fieldSearchTexts', 'drawRecordCount', 'findReferencedOwnerState', 'buildNicknameBackLink', 'treePickerShownTreeState']));
+            'dataOrgViews', 'dataOrgPickerBeforeCheck', 'dataOrgUnansweredListingCount', 'insertRunningTreeKey', 'isOrgAuthorizeRunning', 'recordTypeChoices', 'recordTypeRowStates', 'isRecordTypeSelectionRemembered', 'fieldSearchTexts', 'drawRecordCount', 'treePickerShownTreeState',
+            'isFavoritesOnly', 'selectedTreeKey', 'treecipesSearchText', 'openNicknameMenu', 'YAML_NON_STRING_NICKNAME_PATTERN', 'ensureTreeBodyBuilt', 'hasString']));
         ambientNames.forEach(ambient =>
             expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
                 .toEqual({ ...ambient, isDeclared: true }));
@@ -112,7 +112,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
     });
 
     // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639, #640, #641, #642, #652, #653, #654)
-    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section, field editor and Target Org Manager, field rows and selection cascade included (#639, #640, #641, #642, #652, #653, #654, #655)', () => {
+    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section, field editor and Target Org Manager, field rows and selection cascade and navigation included (#639, #640, #641, #642, #652, #653, #654, #655, #656)', () => {
 
         const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
         const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
@@ -145,15 +145,23 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'hasSwitchableValidationRules', 'isValidationRuleOff', 'findValidationRuleLockReason', 'drawFieldRowValidationRule', 'buildFieldValidationRuleElement', 'buildValidationRuleNotAppliedElement', 'buildFieldFixedValueElement',
             'drawObjectFieldSelection', 'buildSelectAllFieldsElement', 'buildFieldScopeCheck', 'isStandardFieldApiName', 'drawSelectAllFields', 'drawFieldScopeCheck',
             'countUnselectedFields', 'describeExcludedObjectFields', 'readHideUnselectedState', 'findHideUnselectedReason', 'isObjectHidingUnselectedIn', 'buildHideUnselectedToggle', 'drawHideUnselectedToggle', 'refreshHideUnselectedFields',
-            'drawFieldSelection', 'hasTreeSelection', 'drawResetSelection', 'renderObjectSelection', 'buildFieldIncludeElement', 'buildTreeFieldRow', 'applyTreeFieldVisibility']));
+            'drawFieldSelection', 'hasTreeSelection', 'drawResetSelection', 'renderObjectSelection', 'buildFieldIncludeElement', 'buildTreeFieldRow', 'applyTreeFieldVisibility',
+            'describeTreeDifferences', 'renderFavoritesToggle', 'displayTitleOf', 'isHiddenByFavorites', 'applyFavoritesFilter', 'treePickerLabelOf', 'applyTreePicker', 'drawTreePickerObjects',
+            'releaseTreePickerObjectsList', 'scheduleTreePickerObjectsToggle', 'drawTreePickerObjectsToggle', 'chooseTree', 'buildTreePicker', 'buildTreecipesSearchIndex', 'buildTreecipesSearch', 'applyTreecipesSearch',
+            'buildTreecipesResult', 'openTreecipesResult', 'openTreeObjectRow', 'revealTreeObjectRow', 'nicknameOfObject', 'isReferenceableNickname', 'readReferencedNickname', 'nicknameKeyOf',
+            'ensureNicknameIndex', 'findReferencedOwnerState', 'listNicknameUsages', 'drawObjectNickname', 'describeMenuObject', 'describeExclusion', 'describeNicknameUsage', 'openNicknameMenuOf',
+            'openReferenceMenu', 'closeNicknameMenu', 'chooseNicknameUsage', 'handleNicknameMenuKey', 'isElementWithin', 'findDescendantWithClass', 'buildNicknameBackLink', 'readNestingParent',
+            'drawFriendsButton', 'openFriendsMenuOf', 'ensureFriendIndex', 'listFriendChips', 'listFriendsOf', 'listFriendLabelsByObjectApiName', 'buildChipEmoji', 'drawFriendChips',
+            'clearStructureFilters', 'expandMatchesWithinBudget', 'applyStructureFilter', 'isStructureFilteredIn', 'filterTreeObjectRows', 'drawStructureMatchCount', 'buildTreeObjectKey', 'applyTreeFocus',
+            'focusTreeInPlace', 'setTreeExpanded']));
         expect(bundleFunctionNames.filter(functionName => scriptFunctionNames.has(functionName))).toEqual([]);
 
     });
 
-    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654, #655)
-    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager and the field rows, as the same value (#639, #640, #641, #642, #652, #653, #654, #655)', () => {
+    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654, #655, #656)
+    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows and navigation, as the same value (#639, #640, #641, #642, #652, #653, #654, #655, #656)', () => {
 
-        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants };
+        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants, ...RecipeCockpitNavigationConstants };
         const constantNames = Object.keys(tabConstants);
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
 
@@ -163,7 +171,8 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH', 'RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES', 'RECIPE_COCKPIT_PICKLIST_RESET_LABEL', 'RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS', 'RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL',
             'RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON', 'RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS', 'RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL',
             'RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL', 'RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE',
-            'RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON', 'RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES', 'RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL', 'RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX']));
+            'RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON', 'RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES', 'RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL', 'RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX',
+            'RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET', 'RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL', 'RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER', 'RECIPE_COCKPIT_FRIENDS_MENU_HINT']));
         constantNames.forEach(constantName =>
             expect({ constantName, isSameValue: serviceExports[constantName] === tabConstants[constantName] })
                 .toEqual({ constantName, isSameValue: true }));

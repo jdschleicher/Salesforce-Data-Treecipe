@@ -60,3 +60,8 @@ export { hasOwnKey } from './RecipeCockpitOwnKey';
 export { buildIncludeElement, drawObjectSelection, findObjectFieldSelection, indexObjectExclusions, indexObjectImpacts, isSameOccurrence, isTreeFieldUnticked, occurrenceNicknameOf } from './treecipe/fieldRows/SelectionCascade';
 export { buildSelectAllFieldsElement, drawHideUnselectedToggle, drawObjectFieldSelection, findHideUnselectedReason, isObjectHidingUnselectedIn } from './treecipe/fieldRows/FieldScope';
 export { applyTreeFieldVisibility, buildTreeFieldRow, drawResetSelection, formatParentLookups, isFieldTextMatch, renderObjectSelection } from './treecipe/fieldRows/FieldRow';
+export { applyStructureFilter, applyTreeFocus, drawStructureMatchCount, focusTreeInPlace } from './treecipe/navigation/StructureFilter';
+export { buildTreePicker, describeTreeDifferences, displayTitleOf, drawTreePickerObjectsToggle, releaseTreePickerObjectsList } from './treecipe/navigation/TreePicker';
+export { applyTreecipesSearch, buildTreecipesSearch } from './treecipe/navigation/TreecipesSearch';
+export { closeNicknameMenu, drawObjectNickname, isElementWithin, nicknameOfObject, readNestingParent } from './treecipe/navigation/Nicknames';
+export { drawFriendChips } from './treecipe/navigation/Friends';

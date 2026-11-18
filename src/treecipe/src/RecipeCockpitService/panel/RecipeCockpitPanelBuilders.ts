@@ -13,13 +13,13 @@ import {
     RecipeCockpitTroubleshootingAction,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
 } from '../RecipeCockpitPanelConstants';
+import { displayTitleOf } from './treecipe/navigation/TreePicker';
 
 /*
     The Recipe Cockpit's shared panel builders (#638): action cards, the one column table, a tab's
     search box, the chevron toggle and the glyphs. Every tab draws with them. Bundled into the
     cockpit's script; the two names below are the script's own, read when a search box is typed in.
 */
-declare function displayTitleOf(tree: unknown): string;
 declare function savePanelPlace(): void;
 
 type RecipeCockpitCardAction = RecipeCockpitTroubleshootingAction | RecipeCockpitStandaloneAction;
