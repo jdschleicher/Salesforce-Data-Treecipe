@@ -8,6 +8,8 @@ import {
 } from '../../../RecipeCockpitTreecipeFieldEditorConstants';
 import type { FieldEditorPanelMessage, IFieldEditResultMessage, ISetFieldFixedValueMessage, ITreeFieldState, ITreeObjectState, ITreeState, ITreecipeField, ITreecipeObject, ITreecipeTree } from './FieldEditorTypes';
 import { renderPicklistChoiceResult } from './PicklistTiles';
+import { drawFieldRowFixedValue, findEditorStartValue, findFixedValue, isExpressionValue, isLookupField } from '../fieldRows/FieldRowFixedValue';
+import { occurrenceNicknameOf } from '../fieldRows/SelectionCascade';
 
 /*
     The Treecipe tab's inline field editor (#337, #356, #653). These names are the panel script's
@@ -16,12 +18,6 @@ import { renderPicklistChoiceResult } from './PicklistTiles';
 declare const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void };
 declare const renderedSequence: number | null;
 declare function findTreeState(treeKey: unknown): ITreeState | null;
-declare function drawFieldRowFixedValue(treeObjectState: ITreeObjectState, fieldState: ITreeFieldState): void;
-declare function isLookupField(tree: ITreecipeTree, objectApiName: string, field: ITreecipeField): boolean;
-declare function findFixedValue(tree: ITreecipeTree, objectApiName: string, fieldApiName: string, nickname: string): string | null;
-declare function occurrenceNicknameOf(object: ITreecipeObject): string;
-declare function findEditorStartValue(tree: ITreecipeTree, object: ITreecipeObject, field: ITreecipeField): string;
-declare function isExpressionValue(value: unknown): boolean;
 
 /*
     A field's inline editor (#337, one box since #356) under the row, with Save, Clear and

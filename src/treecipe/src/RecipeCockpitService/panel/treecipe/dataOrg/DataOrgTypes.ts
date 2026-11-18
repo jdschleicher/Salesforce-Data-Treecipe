@@ -124,7 +124,7 @@ export interface IInsertTree {
 }
 
 export interface IInsertTreeObjectState {
-    tree?: IInsertTree;
+    tree: IInsertTree;
     isIteration?: boolean;
     object: { objectApiName: string; nickname?: string; fields: IInsertTreeField[] };
     fieldStates: IInsertTreeFieldState[];

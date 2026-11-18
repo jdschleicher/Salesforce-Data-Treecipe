@@ -16,6 +16,7 @@ import type {
     ITreeState,
     PicklistValuesCallback
 } from './FieldEditorTypes';
+import { findFixedValueLockReason } from '../fieldRows/FieldRowFixedValue';
 
 /*
     A picklist's value tiles (#465, #653). These names are the panel script's own, read when a
@@ -25,7 +26,6 @@ declare const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void }
 declare const renderedSequence: number | null;
 declare const pendingPicklistValueElements: Record<string, PicklistValuesCallback[]>;
 declare function findTreeState(treeKey: unknown): ITreeState | null;
-declare function findFixedValueLockReason(treeObjectState: ITreeObjectState, fieldState: ITreeFieldState): string;
 declare function savePanelPlace(): void;
 
 interface IPicklistTileState {

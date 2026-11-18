@@ -1,5 +1,26 @@
 # Change Log
 
+## [3.202.8] - The Treecipe tab's field rows and the object/field selection cascade are checked TypeScript modules (#655, slice 3e-4 of #565)
+
+Nothing a user sees changes. Every exclude-objects, exclude-fields, object selection, occurrence, field box, no-fields-selected, Hide unselected, standard-field, validation rule, fixed value and recipe filter suite passes with no expectation changed. So do the Treecipe tab and Generate and insert journeys and the rendered baselines.
+
+- **What moved out of the template-literal script.** 55 functions are now in `RecipeCockpitService/panel/treecipe/fieldRows/`, type checked by `npm run compile`. They include the cascade that decides which lookups an excluded object disables:
+  - `SelectionCascade.ts`: the host's exclusions, auto-exclusions and impacts drawn onto a card, the tree icon, the field selection index and a field's box.
+  - `FieldRowFixedValue.ts`: a field's pencil, its badge, why it is disabled, and the value the editor starts from.
+  - `FieldRowValidationRule.ts`: a field's validation rule box and the note naming rules that were not applied.
+  - `FieldScope.ts`: "All fields", "Standard fields" and "Hide unselected".
+  - `FieldRow.ts`: `buildTreeFieldRow`, the field search text, Reset Selections and the host's selection answer.
+  - The script lost 1,171 lines, from 5,168 to 3,997.
+- **`hasOwnKey` is one shared module**, `panel/RecipeCockpitOwnKey.ts`. The 12 earlier modules that declared it import it instead.
+- **19 entry points and `hasOwnKey` join the bridge**, because the tree card, search and place restore still call them.
+- **`fieldSearchTexts` stays the script's variable**, because a new model empties it, so the modules declare it with `declare let`. The per-selection and per-card indexes belong to the modules.
+- **20 constants** moved into `RecipeCockpitFieldRowsConstants.ts`, which imports nothing; `RecipeCockpitService.ts` re-exports them. None of the 24 constants these functions read is injected into the string any more. The field editor, the lookup wiring and the Treecipe Adapter import the lock reasons and badges they declared before.
+- **Unchanged.** The host's selection rules (`RecipeCockpitObjectSelection.ts`), the re-check before any write, and every allow-list refusal.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` now:
+  - names the 55 functions and `hasOwnKey` among those that must not be defined again in the string;
+  - checks the new modules' declared names;
+  - checks that the service re-exports the new constants as the same values.
+
 ## [3.202.7] - Target Org Manager and the tree insert are checked TypeScript modules (#654, slice 3e-3 of #565)
 
 Nothing a user sees changes. Every org picker, scratch org, Authorize org, Open in browser and tree insert suite passes with no expectation changed, and so do the Generate and insert, Authorize org and first-journey suites and the rendered baselines.

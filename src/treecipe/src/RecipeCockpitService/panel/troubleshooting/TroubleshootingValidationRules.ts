@@ -12,6 +12,7 @@ import {
 } from '../../RecipeCockpitTroubleshootingConstants';
 import { applyTroubleshootingFilter, buildTroubleshootingGroupCard, drawTroubleshootingGroupExpanded } from './TroubleshootingTab';
 import { ITroubleshootingSubTabState, ITroubleshootingTreeState, IValidationRule, IValidationRuleEntry, IValidationRuleGroupState, IValidationRulesMessage } from './TroubleshootingTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     The Validation Rules sub-tab (#327, #560, #639): per tree object, each rule the project holds and
@@ -21,7 +22,6 @@ import { ITroubleshootingSubTabState, ITroubleshootingTreeState, IValidationRule
 declare const vscodeApi: { postMessage(message: unknown): void };
 declare const renderedSequence: number | null;
 declare function findTreeState(treeKey: unknown): ITroubleshootingTreeState | null;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 
 type ValidationRuleStatus = keyof typeof RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS;

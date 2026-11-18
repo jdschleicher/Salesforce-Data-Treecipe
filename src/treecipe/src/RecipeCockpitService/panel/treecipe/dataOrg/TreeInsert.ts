@@ -16,6 +16,8 @@ import { ITroubleshootingTreeState } from '../../troubleshooting/Troubleshooting
 import { buildRecordTypeSelection, drawRecordTypeChoices } from '../recordTypes/RecordTypesSection';
 import { drawDataOrgViews } from './DataOrgView';
 import { IDataOrgReadiness, IDataOrgTreeState, IInsertTree, IInsertTreeObjectState, InsertReasonLink, ITreeInsertBlock, ITreeInsertView } from './DataOrgTypes';
+import { hasOwnKey } from '../../RecipeCockpitOwnKey';
+import { findObjectFieldSelection, indexObjectExclusions, isTreeFieldUnticked, occurrenceNicknameOf } from '../fieldRows/SelectionCascade';
 
 /*
     A tree's one insert button (#255, #375) and why it cannot run (#539). The host decides each
@@ -39,15 +41,10 @@ declare const recordTypeObjects: unknown[];
 declare const isRecordTypeSelectionRemembered: boolean;
 declare let insertRunningTreeKey: string | null;
 declare let insertRunningDatasetFolderName: string | null;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function displayTitleOf(tree: unknown): string;
 declare function setTextShown(element: HTMLElement, text: string): void;
 declare function savePanelPlace(): void;
 declare function buildTreeObjectKey(treeKey: string, objectApiName: string): string;
-declare function indexObjectExclusions(tree: IInsertTree): Record<string, unknown>;
-declare function findObjectFieldSelection(tree: IInsertTree | undefined, objectApiName: string, nickname: string): object | null;
-declare function occurrenceNicknameOf(object: { nickname?: string }): string;
-declare function isTreeFieldUnticked(objectFieldSelection: object | null, fieldApiName: string): boolean;
 declare function applyTreeFocus(focusTree: { treeKey: string; tab: string; troubleshootingSubTab: string }): void;
 declare function revealTreeObjectRow(treeState: IDataOrgTreeState, treeObjectState: IInsertTreeObjectState, fieldState: unknown, focusElement: null): void;
 

@@ -113,6 +113,28 @@ import {
 } from './RecipeCockpitTreecipeFieldEditorConstants';
 import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTreecipeFieldEditorConstants';
 import {
+    RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
+    RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
+    RECIPE_COCKPIT_EXPRESSION_OPENER,
+    RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
+    RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES,
+    RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
+    RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL,
+    RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
+    RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX,
+    RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
+    RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL,
+    RECIPE_COCKPIT_STANDARD_FIELDS_LABEL,
+    RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE,
+    RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
+    RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX
+} from './RecipeCockpitFieldRowsConstants';
+import {
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
@@ -397,6 +419,29 @@ export {
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 };
 export { RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL, RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP };
+// THE FIELD ROWS' WORDS LIVE IN A FILE THEIR PANEL MODULES IMPORT (#655); THE HOST'S NAMES STAY
+export {
+    RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
+    RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
+    RECIPE_COCKPIT_EXPRESSION_OPENER,
+    RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
+    RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES,
+    RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
+    RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL,
+    RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
+    RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX,
+    RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
+    RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL,
+    RECIPE_COCKPIT_STANDARD_FIELDS_LABEL,
+    RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE,
+    RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
+    RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX
+};
 
 // THE ADAPTER'S PANEL WORDS LIVE IN A FILE ITS PANEL MODULES IMPORT (#641); THE HOST'S NAMES STAY
 export {
@@ -719,35 +764,14 @@ export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS = 2;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
 
 // WHY A FIELD'S CHECKBOX IS DISABLED (#220); EACH IS THE HOST'S ANSWER, WHICH THE PANEL DRAWS
-export const RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = 'parent excluded';
 export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections depend on it';
 export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
 // AN OBJECT WITH NO FIELD TICKED IS NOT GENERATED (#611, REVERSING #220'S RECORDS WITH NO FIELDS SET): THE ROW SAYS THIS IN PLACE OF ITS CONTROLS
 export const RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE = 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED';
-export const RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = 'All fields';
-// THE OBJECT'S "Standard fields" BOX (#477): EVERY FIELD WHOSE API NAME DOES NOT END IN THE CUSTOM SUFFIX
-export const RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = 'Standard fields';
-export const RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX = '__c';
-export const RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = 'standard';
-// THE OBJECT'S OWN "Hide unselected" FILTER (#483), BESIDE ITS "All fields" BOX
-export const RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = 'Hide unselected';
-export const RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = 'Every field of this object is ticked, so there is nothing to hide.';
 // THE INSERT CONFIRMATION'S SECTION OF WHAT THE CARD LEAVES OUT, ONE OBJECT AT A TIME (#483)
 export const RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE = 'Left out, per object';
 export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset Selections';
 
-/*
-    Why a field's fixed-value pin is disabled (#262). The panel draws the same rule from what the
-    model already carries, and the host re-derives it before it writes, so the reasons are shared.
-    A lock of #220 (RecordTypeId, a controlling field, a parent-excluded lookup) gives its own reason.
-*/
-export const RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON = 'object excluded';
-export const RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = 'unticked';
-export const RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = 'the record type is chosen by name';
-export const RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = 'depends on ';
-export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
-// A VALUE THAT STARTS WITH THIS IS SAVED AS AN EDITED FAKER EXPRESSION (#356), ANYTHING ELSE AS A LITERAL
-export const RECIPE_COCKPIT_EXPRESSION_OPENER = '${{';
 // WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
 // A PIN WRITES THE RECIPE FILE (#342): HOW AN INLINE EDIT ENDS WHEN THAT WRITE DOES NOT HAPPEN
 export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recipe file was not changed.';
@@ -755,7 +779,6 @@ export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recip
 export const RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX = 'is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id.';
 export const RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL = 'Enter a record Id';
 export const RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL = 'Use this record';
-export const RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = 'org record · ';
 export const RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL = 'Not saved: another change to this recipe file is still being written. Try again once it finishes.';
 export const RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL = 'Write to recipe';
 export const RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL = 'Put back';
@@ -771,7 +794,6 @@ export const RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION = 1;
 // WHAT THE INLINE NAME EDITOR (#551) SAYS UNDER ITS BOX WHEN workspaceState WOULD NOT TAKE THE NAME; THE WARNING SAYS WHY
 export const RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL = 'The name could not be saved, so it was not changed.';
 
-export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 /*
     A friend chip (#411) and a row's nickname (#380) each start with an emoji (#432), hidden from a
     screen reader: the chip is named by its words, and a nickname is the text beside it.
@@ -787,14 +809,6 @@ export const RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT = 'Click to go to a child 
 export const RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT = 'Click to go to the parent reference';
 // A PARENT ROW'S 👥 N LIST (#492) LEADS TO THE FRIEND ROWS NESTED UNDER OR POINTING TO IT
 export const RECIPE_COCKPIT_FRIENDS_MENU_HINT = 'Click to go to a friend';
-export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
-/*
-    A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
-    applied shape the field, unticked to generate the value it had before them. One box covers every
-    rule on the field. A field whose rules were all not applied draws a muted note instead.
-*/
-export const RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON = 'an edit replaces it';
-export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applied';
 /*
     Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
     than swapping. A body the reader opens fades in once it is built; one the reader closes carries
@@ -807,7 +821,6 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applie
 export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = COCKPIT_MOTION_REVEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = COCKPIT_MOTION_CONCEAL_MILLISECONDS;
 export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
-export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
 export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: the ticked values are what the field already generates.';
 export const RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL = 'Nothing to reset: the field has no edit, so it already generates what Generate Treecipe wrote.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
@@ -2658,8 +2671,6 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
 export const RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT = 'That run file no longer exists in this workspace.';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_INSERT_LABEL = 'Insert';
 export const RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT = 'That file no longer exists in this workspace.';
-// A RULE'S FILE LINK (#560): ON A FIELD ROW IT NAMES THE RULE, SINCE A FIELD CAN HAVE SEVERAL; A LIST ROW ALREADY DOES
-export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = '↗ ';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX = 'The validation rule file was not found for';
 export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_ADVICE = 'It may have been moved, renamed, replaced by a link, claimed by a second file or left the workspace. Re-open the Recipe Cockpit to load the project as it is now.';
 
@@ -22906,7 +22917,10 @@ ${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}
         isRecordTypeFieldsOnlyIn, appendRecordTypeFieldsToggle, drawRecordTypeFieldsToggle, indexRecordTypeFields,
         isTodosOnlyIn, appendTodosToggle, drawTodosToggle, buildTodoListElement, isObjectTodosOnlyIn, buildObjectTodosToggle, drawObjectTodosToggle,
         listRecordTypeObjects, buildRecordTypesSection, appendUnavailableRecordTypesButton, setRecordTypesExpanded, applyRecordTypesFilter,
-        buildRecordTypeSelection, drawRecordTypeChoices
+        buildRecordTypeSelection, drawRecordTypeChoices,
+        hasOwnKey, buildIncludeElement, drawObjectSelection, indexObjectExclusions, indexObjectImpacts, findObjectFieldSelection, occurrenceNicknameOf, isSameOccurrence, isTreeFieldUnticked,
+        buildSelectAllFieldsElement, drawObjectFieldSelection, drawHideUnselectedToggle, findHideUnselectedReason, isObjectHidingUnselectedIn,
+        buildTreeFieldRow, applyTreeFieldVisibility, drawResetSelection, formatParentLookups, isFieldTextMatch, renderObjectSelection
     } = recipeCockpitPanelModules;
 ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const OBJECT_REFRESH_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_REFRESH_LABEL)};
@@ -22923,7 +22937,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
     const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
-    const ORG_RECORD_BADGE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
@@ -22966,8 +22979,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const TREE_NAME_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
-    const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
-    const PICKLIST_RESET_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_RESET_LABEL)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
     const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
@@ -22981,34 +22992,13 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     const HELP_BACKEND_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HELP_BACKEND_NOTE)};
     const HELP_SECTIONS = ${JSON.stringify(RECIPE_COCKPIT_HELP_SECTIONS)};
     const TREE_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX)};
-    const TREE_LINKED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH)};
-    const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
-    const TREE_IMPACTED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH)};
-    const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const CHILD_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT)};
     const PARENT_REFERENCE_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT)};
     const FRIENDS_MENU_HINT = ${JSON.stringify(RECIPE_COCKPIT_FRIENDS_MENU_HINT)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
-    const FIXED_VALUE_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL)};
-    const EDITED_EXPRESSION_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL)};
-    const EXPRESSION_OPENER = ${JSON.stringify(RECIPE_COCKPIT_EXPRESSION_OPENER)};
-    const FIXED_VALUE_OBJECT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON)};
-    const FIXED_VALUE_UNTICKED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON)};
-    const FIXED_VALUE_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON)};
-    const FIXED_VALUE_DEPENDENT_REASON_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX)};
-    const FIXED_VALUE_LOOKUP_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES)};
-    const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
-    const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
-    const VALIDATION_RULE_SOURCE_LINK_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX)};
     const NO_FIELDS_SELECTED_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE)};
-    const SELECT_ALL_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL)};
-    const STANDARD_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_LABEL)};
-    const CUSTOM_FIELD_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX)};
-    const STANDARD_FIELDS_SCOPE = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE)};
-    const HIDE_UNSELECTED_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL)};
-    const NO_UNSELECTED_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
 
     let treeStates = [];
@@ -24548,29 +24538,8 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
 
     }
 
-    /*
-        One lowercased haystack per FIELD, shared by every occurrence of its object a card draws, so
-        the faker expression that dominates it is lowercased and held once. The type is matched
-        separately, as the type with its size the row draws, because a match has to be on screen.
-    */
+    // ONE LOWERCASED HAYSTACK PER FIELD (searchTextOf, #655), EMPTIED FOR EVERY MODEL
     let fieldSearchTexts = new Map();
-
-    function searchTextOf(field) {
-
-        let fieldSearchText = fieldSearchTexts.get(field);
-
-        if (fieldSearchText === undefined) {
-            fieldSearchText = [field.fieldApiName, field.fieldLabel, field.controllingField, field.recipeValue].join('\\n').toLowerCase();
-            fieldSearchTexts.set(field, fieldSearchText);
-        }
-
-        return fieldSearchText;
-
-    }
-
-    function isFieldTextMatch(fieldState, searchQuery) {
-        return searchTextOf(fieldState.field).indexOf(searchQuery) !== -1 || fieldState.typeSearchText.indexOf(searchQuery) !== -1;
-    }
 
     // THE FIELDS EACH OBJECT'S RECORD TYPES RESTRICT (#320), INDEXED BY indexRecordTypeFields FOR EVERY MODEL
     let recordTypeFieldsByObjectApiName = Object.create(null);
@@ -24594,1135 +24563,6 @@ ${RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STATE_SCRIPT}
     // DATA SET COUNT ROWS WAITING ON THE HOST, AND THE ANSWERS ALREADY HAD -- KEYED BY FOLDER NAMES FROM DISK, SO NO PROTOTYPE
     let pendingDatasetCountElements = Object.create(null);
     let answeredDatasetCounts = Object.create(null);
-
-    // A SELF-LOOKUP NAMES ONLY ITS FIELD: "(ParentId)" SAYS WHAT "(ParentId → Account)" SAYS ON Account, WITHOUT THE REPEAT
-    // A LOOKUP TO AN EXCLUDED PARENT IS SAID SO, AND IS LEFT OUT OF WHAT IS GENERATED (#219)
-    function formatParentLookups(treeObject, disabledFieldApiNames) {
-
-        if (!treeObject.parentLookups || treeObject.parentLookups.length === 0) { return ''; }
-
-        return '(' + treeObject.parentLookups.map(function (parentLookup) {
-            if (parentLookup.parentObjectApiName === treeObject.objectApiName) { return parentLookup.fieldApiName; }
-            const lookupText = parentLookup.fieldApiName + ' → ' + parentLookup.parentObjectApiName;
-            return disabledFieldApiNames && disabledFieldApiNames.indexOf(parentLookup.fieldApiName) !== -1 ? lookupText + ' · parent excluded' : lookupText;
-        }).join(', ') + ')';
-
-    }
-
-    function buildIncludeElement(treeObjectState, treeKey) {
-
-        const includeElement = createButton('icon', 'treeObjectInclude');
-        const object = treeObjectState.object;
-
-        treeObjectState.glyphElement = buildTreeGlyph(treeObjectState);
-        treeObjectState.includeElement = includeElement;
-        includeElement.appendChild(treeObjectState.glyphElement);
-        includeElement.addEventListener('click', function () {
-            if (includeElement.disabled) { return; }
-            const message = { command: 'setObjectIncluded', treeKey: treeKey, objectApiName: object.objectApiName, included: !treeObjectState.isIncluded };
-            if (object.nickname) { message.nickname = object.nickname; }
-            vscodeApi.postMessage(message);
-        });
-
-    }
-
-    // KEYED BY OBJECT NAMES FROM DISK, SO NO PROTOTYPE: AN OBJECT NAMED __proto__ IS A KEY LIKE ANY OTHER
-    // ONE INDEX PER SELECTION THE HOST POSTED, SO EVERY CREATE ROW OF A CARD READS THE SAME ONE
-    const exclusionIndexesBySelection = new WeakMap();
-
-    function indexObjectExclusions(tree) {
-
-        const objectSelection = tree.objectSelection;
-        if (!objectSelection || typeof objectSelection !== 'object') { return Object.create(null); }
-        if (exclusionIndexesBySelection.has(objectSelection)) { return exclusionIndexesBySelection.get(objectSelection); }
-
-        const exclusionsByObjectApiName = Object.create(null);
-        const exclusions = Array.isArray(objectSelection.exclusions) ? objectSelection.exclusions : [];
-
-        exclusions.forEach(function (exclusion) { exclusionsByObjectApiName[exclusion.objectApiName] = exclusion; });
-        exclusionIndexesBySelection.set(objectSelection, exclusionsByObjectApiName);
-
-        return exclusionsByObjectApiName;
-
-    }
-
-    /*
-        #449: an object the cascade kept INCLUDED whose lookup to an excluded parent is disabled --
-        the host's disabledLookups, read here and drawn, never decided. A self-lookup is never one,
-        and an object the selection excludes is drawn as excluded instead. Parents and fields are
-        listed once each, sorted with "<".
-    */
-    const impactIndexesBySelection = new WeakMap();
-
-    function indexObjectImpacts(tree) {
-
-        const objectSelection = tree.objectSelection;
-        if (!objectSelection || typeof objectSelection !== 'object') { return Object.create(null); }
-        if (impactIndexesBySelection.has(objectSelection)) { return impactIndexesBySelection.get(objectSelection); }
-
-        const exclusionsByObjectApiName = indexObjectExclusions(tree);
-        const impactsByObjectApiName = Object.create(null);
-        // ONLY OBJECTS THE CARD DRAWS, SO THE HEADER'S COUNT AND THE ROWS NEVER DISAGREE
-        const drawnObjectApiNames = Object.create(null);
-        ( Array.isArray(tree.objects) ? tree.objects : [] ).forEach(function (treeObject) {
-            if (treeObject && typeof treeObject.objectApiName === 'string') { drawnObjectApiNames[treeObject.objectApiName] = true; }
-        });
-        const disabledLookups = Array.isArray(objectSelection.disabledLookups) ? objectSelection.disabledLookups : [];
-        const compareNames = function (left, right) { return left < right ? -1 : left > right ? 1 : 0; };
-
-        disabledLookups.forEach(function (disabledLookup) {
-            if (!disabledLookup || typeof disabledLookup !== 'object') { return; }
-            const objectApiName = disabledLookup.objectApiName;
-            const parentObjectApiName = disabledLookup.parentObjectApiName;
-            const fieldApiName = disabledLookup.fieldApiName;
-            if (typeof objectApiName !== 'string' || typeof parentObjectApiName !== 'string' || typeof fieldApiName !== 'string') { return; }
-            if (objectApiName === parentObjectApiName || hasOwnKey(exclusionsByObjectApiName, objectApiName) || !hasOwnKey(drawnObjectApiNames, objectApiName)) { return; }
-            if (!hasOwnKey(impactsByObjectApiName, objectApiName)) {
-                impactsByObjectApiName[objectApiName] = { parentObjectApiNames: [], fieldApiNames: [] };
-            }
-            const impact = impactsByObjectApiName[objectApiName];
-            if (impact.parentObjectApiNames.indexOf(parentObjectApiName) === -1) { impact.parentObjectApiNames.push(parentObjectApiName); }
-            if (impact.fieldApiNames.indexOf(fieldApiName) === -1) { impact.fieldApiNames.push(fieldApiName); }
-        });
-
-        Object.keys(impactsByObjectApiName).forEach(function (objectApiName) {
-            impactsByObjectApiName[objectApiName].parentObjectApiNames.sort(compareNames);
-            impactsByObjectApiName[objectApiName].fieldApiNames.sort(compareNames);
-        });
-        impactIndexesBySelection.set(objectSelection, impactsByObjectApiName);
-
-        return impactsByObjectApiName;
-
-    }
-
-    function describeObjectImpact(impact) {
-
-        const parentText = impact.parentObjectApiNames.length === 1 ? 'parent ' + impact.parentObjectApiNames[0] : 'parents ' + impact.parentObjectApiNames.join(', ');
-        return parentText + ' excluded';
-
-    }
-
-    function findObjectExclusion(tree, objectApiName) {
-
-        const exclusionsByObjectApiName = indexObjectExclusions(tree);
-
-        return Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
-
-    }
-
-    // AN OBJECT LEFT OUT FOR HAVING NO FIELD TICKED (#611) KEEPS ITS BOXES: TICKING ONE IS HOW IT COMES BACK
-    function findFieldLockingExclusion(tree, objectApiName) {
-        const exclusion = findObjectExclusion(tree, objectApiName);
-        return exclusion && exclusion.kind !== 'noFieldsSelected' ? exclusion : null;
-    }
-
-    // EVERYTHING AFTER THE OBJECT'S NAME GIVES WAY TO ONE RED MESSAGE; THE ▸ STAYS, SO A FIELD CAN BE TICKED AGAIN
-    function drawNoFieldsSelected(treeObjectState, isNoFieldsSelected) {
-        treeObjectState.headerDetailElements.forEach(function (detailElement) {
-            if (isNoFieldsSelected) { detailElement.classList.add('noFieldsSelectedHidden'); } else { detailElement.classList.remove('noFieldsSelectedHidden'); }
-        });
-        if (isNoFieldsSelected) { treeObjectState.noFieldsSelectedElement.classList.remove('hidden'); } else { treeObjectState.noFieldsSelectedElement.classList.add('hidden'); }
-        if (isNoFieldsSelected) { treeObjectState.element.classList.add('noFieldsSelected'); } else { treeObjectState.element.classList.remove('noFieldsSelected'); }
-    }
-
-    function formatTreeCount(treeState) {
-
-        const objectSelection = treeState.tree.objectSelection;
-        const objectText = objectSelection
-            ? objectSelection.includedObjectCount + ' of ' + pluralize(objectSelection.objectCount, 'object', 'objects')
-            : pluralize(treeState.countedObjectCount, 'object', 'objects');
-
-        const impactedObjectCount = Object.keys(indexObjectImpacts(treeState.tree)).length;
-        const impactedText = impactedObjectCount > 0 ? ' · ' + impactedObjectCount + ' impacted' : '';
-
-        return objectText + impactedText + ' · ' + pluralize(treeState.countedFieldCount, 'field', 'fields');
-
-    }
-
-    /*
-        The host's cascade drawn onto one card: each row's icon, overlay and label, the lookups of
-        an included object that point at an excluded parent, and the header's count. The state is
-        never colour alone -- the icon's SHAPE, aria-pressed, the title and the label all say it.
-    */
-    function drawObjectSelection(treeState) {
-
-        const tree = treeState.tree;
-        const disabledLookups = tree.objectSelection && Array.isArray(tree.objectSelection.disabledLookups) ? tree.objectSelection.disabledLookups : [];
-        const exclusionsByObjectApiName = indexObjectExclusions(tree);
-        const impactsByObjectApiName = indexObjectImpacts(tree);
-        // INDEXED ONCE PER DRAW: A PER-ROW SCAN OF THE LISTS WAS OVER A SECOND AT 11,000 ROWS
-        const disabledFieldApiNamesByObjectApiName = Object.create(null);
-        disabledLookups.forEach(function (disabledLookup) {
-            if (!disabledLookup || typeof disabledLookup !== 'object' || typeof disabledLookup.objectApiName !== 'string' || typeof disabledLookup.fieldApiName !== 'string') { return; }
-            if (!Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, disabledLookup.objectApiName)) {
-                disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName] = [];
-            }
-            disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName].push(disabledLookup.fieldApiName);
-        });
-
-        treeState.objectStates.forEach(function (treeObjectState) {
-
-            const objectApiName = treeObjectState.object.objectApiName;
-            const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
-            const isAutoExcluded = !!exclusion && exclusion.kind === 'autoExcluded';
-            const isNoFieldsSelected = !!exclusion && exclusion.kind === 'noFieldsSelected';
-            const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
-            const excludedParent = isAutoExcluded ? findObjectExclusion(tree, exclusion.excludedParentObjectApiName) : null;
-            const excludedParentState = excludedParent && excludedParent.kind === 'noFieldsSelected' ? ' has no fields selected' : ' excluded';
-
-            // A ROW WITH NO FIELD TICKED IS NOT DIMMED: ITS RED MESSAGE IS WHAT THE READER MUST SEE (#611)
-            if (exclusion && !isNoFieldsSelected) { treeObjectState.element.classList.add('excluded'); } else { treeObjectState.element.classList.remove('excluded'); }
-
-            treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact)
-                : !exclusion ? ''
-                : isAutoExcluded ? 'auto-excluded — parent ' + exclusion.excludedParentObjectApiName + excludedParentState
-                : isNoFieldsSelected ? 'not generated — ' + objectApiName + ' has no fields selected'
-                : 'excluded';
-            if (exclusion || impact) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
-
-            const disabledFieldApiNames = Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, objectApiName)
-                ? disabledFieldApiNamesByObjectApiName[objectApiName]
-                : [];
-            treeObjectState.lookupsElement.textContent = formatParentLookups(treeObjectState.treeObject, disabledFieldApiNames);
-            if (treeObjectState.lookupsElement.textContent) { treeObjectState.lookupsElement.classList.remove('hidden'); } else { treeObjectState.lookupsElement.classList.add('hidden'); }
-
-            // AN EXCLUDED OBJECT IS NOT GENERATED, SO ITS COUNT CANNOT BE CHANGED; RE-INCLUDED, ITS STORED COUNT COMES BACK
-            if (treeObjectState.countButtonElement) { drawRecordCount(treeObjectState, !!exclusion); }
-
-            if (!treeObjectState.includeElement) { return; }
-
-            const includeElement = treeObjectState.includeElement;
-            const glyphKind = exclusion ? exclusion.kind : impact ? 'impacted' : 'included';
-            const isRefused = !!treeObjectState.object.hasIndistinctOccurrences;
-
-            treeObjectState.isIncluded = !exclusion;
-            treeObjectState.glyphElement.setAttribute('class', 'treeGlyph ' + glyphKind);
-            treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : impact ? TREE_IMPACTED_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
-            includeElement.setAttribute('aria-pressed', exclusion ? 'false' : 'true');
-            includeElement.disabled = isAutoExcluded || isNoFieldsSelected || isRefused;
-
-            const title = isRefused ? objectApiName + ' is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded'
-                : isNoFieldsSelected ? 'No fields selected, so no records will be generated. Tick a field to include it'
-                : isAutoExcluded ? 'Excluded because parent ' + exclusion.excludedParentObjectApiName + ( excludedParent && excludedParent.kind === 'noFieldsSelected' ? ' has no fields selected' : ' is excluded' )
-                : exclusion ? 'Excluded — click to include'
-                : impact ? 'Included — ' + describeObjectImpact(impact) + ', so ' + impact.fieldApiNames.join(', ') + ( impact.fieldApiNames.length === 1 ? ' is' : ' are' ) + ' left out. Click to exclude'
-                : 'Included — click to exclude';
-            includeElement.setAttribute('title', title);
-            includeElement.setAttribute('aria-label', objectApiName + ': ' + title);
-
-        });
-
-        if (treeState.countElement) { treeState.countElement.textContent = formatTreeCount(treeState); }
-
-        drawFieldSelection(treeState);
-        drawResetSelection(treeState);
-
-    }
-
-    // ONE INDEX PER FIELD SELECTION THE HOST POSTED; EVERY MAP IS KEYED BY NAMES FROM DISK, SO NONE HAS A PROTOTYPE
-    const fieldSelectionIndexesBySelection = new WeakMap();
-
-    function indexFieldSelection(tree) {
-
-        const fieldSelection = tree.fieldSelection;
-        if (!fieldSelection || typeof fieldSelection !== 'object' || !Array.isArray(fieldSelection.objects)) { return Object.create(null); }
-        if (fieldSelectionIndexesBySelection.has(fieldSelection)) { return fieldSelectionIndexesBySelection.get(fieldSelection); }
-
-        const selectionsByObjectApiName = Object.create(null);
-
-        fieldSelection.objects.forEach(function (objectFieldSelection) {
-            const excludedFieldApiNames = Object.create(null);
-            const lockReasonsByFieldApiName = Object.create(null);
-            ( Array.isArray(objectFieldSelection.excludedFieldApiNames) ? objectFieldSelection.excludedFieldApiNames : [] )
-                .forEach(function (fieldApiName) { excludedFieldApiNames[fieldApiName] = true; });
-            ( Array.isArray(objectFieldSelection.lockedFields) ? objectFieldSelection.lockedFields : [] )
-                .forEach(function (lockedField) { lockReasonsByFieldApiName[lockedField.fieldApiName] = String(lockedField.reason); });
-            selectionsByObjectApiName[objectFieldSelection.objectApiName + '\\n' + ( objectFieldSelection.nickname || '' )] = {
-                excludedFieldApiNames: excludedFieldApiNames,
-                lockReasonsByFieldApiName: lockReasonsByFieldApiName,
-                excludedFieldCount: Object.keys(excludedFieldApiNames).length,
-                isEveryFieldExcluded: objectFieldSelection.isEveryFieldExcluded === true
-            };
-        });
-
-        fieldSelectionIndexesBySelection.set(fieldSelection, selectionsByObjectApiName);
-
-        return selectionsByObjectApiName;
-
-    }
-
-    // ONE OCCURRENCE'S SELECTION (#467): THE HOST KEYS EVERY OCCURRENCE OF AN OBJECT WITH iterations BY ITS NICKNAME
-    function findObjectFieldSelection(tree, objectApiName, nickname) {
-
-        const selectionsByObjectApiName = indexFieldSelection(tree);
-        const selectionKey = objectApiName + '\\n' + ( nickname || '' );
-
-        return Object.prototype.hasOwnProperty.call(selectionsByObjectApiName, selectionKey) ? selectionsByObjectApiName[selectionKey] : null;
-
-    }
-
-    /*
-        The occurrence a row's own settings are kept for (#467), the host's readOccurrenceNickname:
-        every occurrence of an object with iterations has its nickname, an object written once none.
-    */
-    function occurrenceNicknameOf(object) {
-        return object.iteration || ( Array.isArray(object.iterations) && object.iterations.length > 0 ) ? ( object.nickname || '' ) : '';
-    }
-
-    function isSameOccurrence(candidate, objectApiName, nickname) {
-        return candidate.objectApiName === objectApiName && ( candidate.nickname || '' ) === ( nickname || '' );
-    }
-
-    function hasOwnKey(record, key) {
-        return !!record && Object.prototype.hasOwnProperty.call(record, key);
-    }
-
-    // A FIELD'S BOX READS UNTICKED WHEN THE READER UNTICKED IT OR AN EXCLUDED PARENT CUT IT (#220); "Hide unselected" (#483) READS THE SAME
-    function isTreeFieldUnticked(objectFieldSelection, fieldApiName) {
-        if (!objectFieldSelection) { return false; }
-        const lockReason = hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
-        return lockReason === FIELD_PARENT_EXCLUDED_REASON || hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
-    }
-
-    /*
-        One field row's checkbox, dimming and note (#220), all drawn from the host's answer. The
-        state is never colour alone: the box's mark, aria-checked, the title and the note all say it.
-    */
-    function drawFieldRowSelection(treeObjectState, fieldState) {
-
-        if (!fieldState.rowElement) { return; }
-
-        const tree = treeObjectState.tree;
-        const objectApiName = treeObjectState.object.objectApiName;
-        const fieldApiName = fieldState.field.fieldApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const isObjectExcluded = !!findFieldLockingExclusion(tree, objectApiName);
-        const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
-        const isExcluded = isTreeFieldUnticked(objectFieldSelection, fieldApiName);
-
-        if (isExcluded) { fieldState.rowElement.classList.add('fieldExcluded'); } else { fieldState.rowElement.classList.remove('fieldExcluded'); }
-
-        if (fieldState.noteElement) {
-            fieldState.noteElement.textContent = lockReason;
-            if (fieldState.noteElement.textContent) { fieldState.noteElement.classList.remove('hidden'); } else { fieldState.noteElement.classList.add('hidden'); }
-        }
-
-        drawFieldRowFixedValue(treeObjectState, fieldState);
-        drawFieldRowValidationRule(treeObjectState, fieldState);
-        drawFieldRowLookupDecision(treeObjectState, fieldState);
-
-        const includeElement = fieldState.includeElement;
-        if (!includeElement) { return; }
-
-        fieldState.isIncluded = !isExcluded;
-        includeElement.textContent = isExcluded ? '' : '✓';
-        includeElement.setAttribute('aria-checked', isExcluded ? 'false' : 'true');
-        includeElement.disabled = isObjectExcluded || !!lockReason;
-
-        const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName)
-            : lockReason ? 'Cannot be unticked: ' + lockReason
-            : isExcluded ? 'Unticked — click to generate this field'
-            : 'Ticked — click to leave this field out';
-        includeElement.setAttribute('title', title);
-        includeElement.setAttribute('aria-label', fieldApiName + ': ' + title);
-
-    }
-
-    // THE VALUE THE HOST SAYS THIS CARD GENERATES THE FIELD WITH (#262), OR null
-    function findFixedValue(tree, objectApiName, fieldApiName, nickname) {
-
-        const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
-        const fixedValue = fixedValues.find(function (candidate) { return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName; });
-
-        return fixedValue ? String(fixedValue.value) : null;
-
-    }
-
-    // EVERY LOOKUP OF A CARD, ONCE PER CARD: A ROW ASKS ON EVERY REDRAW, AND SCANNING THE TREE PER ROW WAS O(ROWS x OBJECTS)
-    const lookupFieldIndexesByTree = new WeakMap();
-
-    function indexTreeLookupFields(tree) {
-
-        if (lookupFieldIndexesByTree.has(tree)) { return lookupFieldIndexesByTree.get(tree); }
-
-        const lookupFieldKeys = Object.create(null);
-        tree.objects.forEach(function (treeObject) {
-            treeObject.parentLookups.forEach(function (parentLookup) { lookupFieldKeys[treeObject.objectApiName + '\\n' + parentLookup.fieldApiName] = true; });
-        });
-        lookupFieldIndexesByTree.set(tree, lookupFieldKeys);
-
-        return lookupFieldKeys;
-
-    }
-
-    // THE HOST'S isLookupField: A LOOKUP'S PENCIL (#627) TAKES A RECORD Id
-    function isLookupField(tree, objectApiName, field) {
-        return FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1 || hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\\n' + field.fieldApiName);
-    }
-
-    /*
-        Why a field's pin is disabled (#262): the host's own rule (findFixedValueLockReason), drawn
-        from the model the panel already holds. The host re-derives it before it writes anything.
-    */
-    function findFixedValueLockReason(treeObjectState, fieldState) {
-
-        const tree = treeObjectState.tree;
-        const objectApiName = treeObjectState.object.objectApiName;
-        const field = fieldState.field;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-
-        if (findObjectExclusion(tree, objectApiName)) { return FIXED_VALUE_OBJECT_EXCLUDED_REASON; }
-        if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, field.fieldApiName)) { return objectFieldSelection.lockReasonsByFieldApiName[field.fieldApiName]; }
-        if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, field.fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
-        if (field.fieldApiName === 'RecordTypeId') { return FIXED_VALUE_RECORD_TYPE_REASON; }
-
-        if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
-
-        return '';
-
-    }
-
-    // THE ORG A LOOKUP'S PINNED Id CAME FROM (#421), AS THE HOST SAYS; null FOR ANY OTHER FIXED VALUE
-    function findFixedValueOrgRecord(tree, objectApiName, fieldApiName, nickname) {
-        const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
-        const fixedValue = fixedValues.find(function (candidate) { return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName; });
-        return fixedValue && fixedValue.orgRecord ? fixedValue.orgRecord : null;
-    }
-
-    function isExpressionValue(value) {
-        return typeof value === 'string' && value.indexOf(EXPRESSION_OPENER) === 0;
-    }
-
-    // A DOUBLE-QUOTED "\${{ ... }}" (A VALIDATION RULE'S, OR AN EARLIER EDIT'S) STARTS THE EDITOR AS THE EXPRESSION IT HOLDS
-    function unquoteExpressionLine(valueLine) {
-        if (valueLine.length < 2 || valueLine.charAt(0) !== '"' || valueLine.charAt(valueLine.length - 1) !== '"') { return valueLine; }
-        try {
-            const unquoted = JSON.parse(valueLine);
-            return isExpressionValue(unquoted) ? unquoted : valueLine;
-        } catch (parseError) {
-            return valueLine;
-        }
-    }
-
-    /*
-        The value the editor starts from (#356): what the field holds now -- an edit the host says the
-        card generates with, else the first "\${{ ... }}" line of its recipe value (a picklist's
-        record type variants follow it as comments), else that value's first line.
-    */
-    function findEditorStartValue(tree, object, field) {
-
-        const fixedValue = findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object));
-        if (fixedValue !== null) { return fixedValue; }
-
-        const valueLines = String(field.recipeValue || '').split('\\n').map(function (valueLine) { return unquoteExpressionLine(valueLine.trim()); });
-        const expressionLine = valueLines.find(function (valueLine) { return isExpressionValue(valueLine); });
-        if (expressionLine !== undefined) { return expressionLine; }
-
-        return valueLines.find(function (valueLine) { return valueLine !== '' && valueLine !== '|'; }) || '';
-
-    }
-
-    // AN EDIT TAKES THE EXPRESSION'S PLACE ON THE ROW, WRITTEN WITH textContent, AND THE PENCIL SAYS SO BY SHAPE, aria-pressed AND TITLE
-    function drawFieldRowFixedValue(treeObjectState, fieldState) {
-
-        const objectApiName = treeObjectState.object.objectApiName;
-        const fieldApiName = fieldState.field.fieldApiName;
-        const nickname = occurrenceNicknameOf(treeObjectState.object);
-        const fixedValue = findFixedValue(treeObjectState.tree, objectApiName, fieldApiName, nickname);
-        const isFixed = fixedValue !== null;
-        const orgRecord = isFixed ? findFixedValueOrgRecord(treeObjectState.tree, objectApiName, fieldApiName, nickname) : null;
-
-        if (fieldState.fixedValueElement) {
-            fieldState.fixedValueElement.textContent = isFixed ? fixedValue : '';
-            if (isFixed) { fieldState.fixedValueElement.classList.remove('hidden'); } else { fieldState.fixedValueElement.classList.add('hidden'); }
-        }
-        if (fieldState.fixedValueBadgeElement) {
-            fieldState.fixedValueBadgeElement.textContent = orgRecord ? ORG_RECORD_BADGE_PREFIX + orgRecord.orgLabel
-                : isFixed && isExpressionValue(fixedValue) ? EDITED_EXPRESSION_BADGE_LABEL : FIXED_VALUE_BADGE_LABEL;
-            // AN ORG RECORD IS NOT GENERATED DATA (#421): THE BADGE AND ITS TOOLTIP SAY WHOSE RECORD IT IS
-            if (orgRecord) {
-                fieldState.fixedValueBadgeElement.classList.add('orgRecordBadge');
-                fieldState.fixedValueBadgeElement.setAttribute('title', 'An existing ' + orgRecord.parentObjectApiName + ' record of ' + orgRecord.orgLabel + ', not generated data. The Id exists only in that org; the insert checks it exists in the org it inserts into.');
-            } else {
-                fieldState.fixedValueBadgeElement.classList.remove('orgRecordBadge');
-                fieldState.fixedValueBadgeElement.removeAttribute('title');
-            }
-            if (isFixed) { fieldState.fixedValueBadgeElement.classList.remove('hidden'); } else { fieldState.fixedValueBadgeElement.classList.add('hidden'); }
-        }
-        if (fieldState.expressionElement) {
-            if (isFixed) { fieldState.expressionElement.classList.add('hidden'); } else { fieldState.expressionElement.classList.remove('hidden'); }
-        }
-        const buttonElement = fieldState.fixedValueButtonElement;
-        if (!buttonElement) { return; }
-
-        const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
-        buttonElement.disabled = !!lockReason;
-        buttonElement.setAttribute('aria-pressed', isFixed ? 'true' : 'false');
-        buttonElement.setAttribute('aria-expanded', fieldState.editorEdit === 'fixedValue' ? 'true' : 'false');
-        if (buttonElement.disabled && fieldState.editorEdit === 'fixedValue') { closeFieldEditor(fieldState); }
-
-        const title = lockReason ? 'Cannot be edited: ' + lockReason
-            : orgRecord ? 'Existing ' + orgRecord.parentObjectApiName + ' record of ' + orgRecord.orgLabel + ' — click to change or clear it'
-            : isFixed ? ( isExpressionValue(fixedValue) ? 'Edited expression' : 'Fixed value' ) + ' — click to change or clear it'
-            : isLookupField(treeObjectState.tree, treeObjectState.object.objectApiName, fieldState.field) ? 'Give the lookup the Id of an existing record'
-            : 'Edit the faker expression, or give the field a fixed value';
-        buttonElement.setAttribute('title', title);
-        buttonElement.setAttribute('aria-label', fieldApiName + ': ' + title);
-
-    }
-
-    function hasSwitchableValidationRules(field) {
-        return !!field.lineNumber && !!field.validationRules && Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0;
-    }
-
-    // WHETHER THE HOST SAYS THIS CARD GENERATES THE FIELD WITHOUT ITS VALIDATION RULES (#325)
-    function isValidationRuleOff(tree, objectApiName, fieldApiName, nickname) {
-        const validationRulesOff = Array.isArray(tree.validationRulesOff) ? tree.validationRulesOff : [];
-        return validationRulesOff.some(function (candidate) { return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName; });
-    }
-
-    /*
-        Why a field's validation-rule box is disabled (#325): the host's own rule
-        (findValidationRuleLockReason) drawn from the model the panel holds -- a field generation
-        leaves out, or writes a fixed value for, has nothing the rules would shape.
-    */
-    function findValidationRuleLockReason(treeObjectState, fieldState) {
-
-        const tree = treeObjectState.tree;
-        const objectApiName = treeObjectState.object.objectApiName;
-        const fieldApiName = fieldState.field.fieldApiName;
-        const nickname = occurrenceNicknameOf(treeObjectState.object);
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, nickname);
-
-        if (findObjectExclusion(tree, objectApiName)) { return FIXED_VALUE_OBJECT_EXCLUDED_REASON; }
-        if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) && objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] === FIELD_PARENT_EXCLUDED_REASON) { return FIELD_PARENT_EXCLUDED_REASON; }
-        if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
-        if (findFixedValue(tree, objectApiName, fieldApiName, nickname) !== null) { return VALIDATION_RULE_FIXED_VALUE_REASON; }
-
-        return '';
-
-    }
-
-    /*
-        A field's validation-rule box (#325), drawn from the host's answer: ticked while the rules
-        shape the field, and the row's expression is what the rules wrote; unticked, it is what the
-        field generated before them. The state is never colour alone: the mark, aria-checked and the
-        title all say it, and the title names the rules.
-    */
-    function drawFieldRowValidationRule(treeObjectState, fieldState) {
-
-        const field = fieldState.field;
-        const buttonElement = fieldState.validationRuleElement;
-        if (!buttonElement) { return; }
-
-        const objectApiName = treeObjectState.object.objectApiName;
-        const lockReason = findValidationRuleLockReason(treeObjectState, fieldState);
-        const isApplied = !lockReason && !isValidationRuleOff(treeObjectState.tree, objectApiName, field.fieldApiName, occurrenceNicknameOf(treeObjectState.object));
-        const ruleNames = field.validationRules.appliedRuleNames.join(', ');
-
-        fieldState.isValidationRuleApplied = isApplied;
-        buttonElement.textContent = isApplied ? '✓' : '';
-        buttonElement.setAttribute('aria-checked', isApplied ? 'true' : 'false');
-        buttonElement.disabled = !!lockReason;
-
-        const title = lockReason ? 'Validation rules ' + ruleNames + ' cannot be switched: ' + lockReason
-            : isApplied ? 'Validation rules applied: ' + ruleNames + ' — untick to generate without them'
-            : 'Validation rules not applied: ' + ruleNames + ' — tick to apply them';
-        buttonElement.setAttribute('title', title);
-        buttonElement.setAttribute('aria-label', field.fieldApiName + ': ' + title);
-
-        if (fieldState.expressionElement && typeof field.validationRules.unconstrainedExpression === 'string') {
-            fieldState.expressionElement.textContent = isApplied || lockReason ? field.recipeValue : field.validationRules.unconstrainedExpression;
-        }
-
-    }
-
-    // A FIELD'S VALIDATION-RULE BOX (#325): A click posts NAMES and the state asked for; the host decides, and may ask first
-    function buildFieldValidationRuleElement(treeObjectState, fieldState) {
-
-        const controlElement = createElement('span', 'validationRuleControl');
-        const buttonElement = createButton('check', 'treeFieldInclude treeFieldValidationRule');
-        const object = treeObjectState.object;
-
-        controlElement.appendChild(createElement('span', 'muted', 'rules'));
-        buttonElement.setAttribute('role', 'checkbox');
-        buttonElement.addEventListener('click', function () {
-            if (buttonElement.disabled) { return; }
-            const message = {
-                command: 'setFieldValidationRuleApplied',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                fieldApiName: fieldState.field.fieldApiName,
-                applied: !fieldState.isValidationRuleApplied
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            vscodeApi.postMessage(message);
-        });
-        controlElement.appendChild(buttonElement);
-        fieldState.validationRuleElement = buttonElement;
-
-        return controlElement;
-
-    }
-
-    // A FIELD WHOSE RULES WERE ALL NOT APPLIED (#325) NAMES THEM, AND WHY IN ITS TITLE, IN TEXT ONLY
-    function buildValidationRuleNotAppliedElement(field) {
-
-        const notAppliedRules = field.validationRules.notAppliedRules;
-        const noteElement = createElement('span', 'validationRuleNotApplied muted', VALIDATION_RULE_NOT_APPLIED_LABEL + ': ' + notAppliedRules.map(function (notAppliedRule) { return notAppliedRule.ruleName; }).join(', '));
-        noteElement.setAttribute('title', notAppliedRules.map(function (notAppliedRule) { return notAppliedRule.ruleName + (notAppliedRule.reason ? ' — ' + notAppliedRule.reason : ''); }).join('\\n'));
-
-        return noteElement;
-
-    }
-
-    /*
-        A field's edit button (#356): a real button, keyboard operable, its glyph built node by node
-        like the chain link. A click opens its inline editor (#337) under the row.
-    */
-    function buildFieldFixedValueElement(treeObjectState, fieldState) {
-
-        const buttonElement = createButton('icon', 'treeFieldFixedValue');
-        buttonElement.appendChild(buildPencilGlyph('default'));
-
-        buttonElement.addEventListener('click', function () {
-            if (buttonElement.disabled) { return; }
-            toggleFieldEditor(treeObjectState, fieldState, 'fixedValue');
-        });
-        fieldState.fixedValueButtonElement = buttonElement;
-
-        return buttonElement;
-
-    }
-
-    // ONE OBJECT'S WARNING, THEN EVERY ROW IT HAS BUILT
-    function drawObjectFieldSelection(treeObjectState) {
-
-        const tree = treeObjectState.tree;
-        const objectApiName = treeObjectState.object.objectApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const exclusion = findObjectExclusion(tree, objectApiName);
-        const isEveryFieldUnticked = !!objectFieldSelection && !!objectFieldSelection.isEveryFieldExcluded;
-        // THE HOST LEAVES THE OBJECT OUT AS noFieldsSelected; AN ITERATION IS NO PART OF THE CASCADE, SO ITS OWN FIELDS DECIDE
-        const isNoFieldsSelected = exclusion ? exclusion.kind === 'noFieldsSelected' && ( !treeObjectState.isIteration || isEveryFieldUnticked ) : isEveryFieldUnticked;
-
-        drawNoFieldsSelected(treeObjectState, isNoFieldsSelected);
-
-        if (treeObjectState.isBodyBuilt) {
-            treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
-            drawSelectAllFields(treeObjectState);
-        }
-
-        return refreshHideUnselectedFields(treeObjectState);
-
-    }
-
-    /*
-        The object's "All fields" box (#410): ticked when every field the reader can untick is ticked,
-        unticked when none is, mixed otherwise. A locked field is left out of that count, so after
-        "untick all" the box reads unticked while RecordTypeId and the like stay ticked. A click posts
-        setAllFieldsIncluded with NAMES only; which fields it touches is the host's decision.
-    */
-    function buildSelectAllFieldsElement(treeObjectState, hasSelectableFields) {
-
-        const rowElement = createElement('div', 'treeFieldSelectAllRow');
-        treeObjectState.selectAllRowElement = rowElement;
-
-        if (hasSelectableFields) {
-            const selectAll = buildFieldScopeCheck(treeObjectState, 'treeFieldInclude treeFieldSelectAll', 'treeFieldSelectAllLabel', SELECT_ALL_FIELDS_LABEL, undefined, 'selectAllCheckedState');
-            treeObjectState.selectAllCheckElement = selectAll.checkElement;
-            treeObjectState.selectAllElement = selectAll.toggleElement;
-            rowElement.appendChild(selectAll.checkElement);
-            // "Standard fields" (#477): THE SAME BOX OVER THE FIELDS WHOSE API NAME DOES NOT END IN __c
-            const selectStandard = buildFieldScopeCheck(treeObjectState, 'treeFieldSelectStandard', 'treeFieldSelectStandardLabel', STANDARD_FIELDS_LABEL, STANDARD_FIELDS_SCOPE, 'selectStandardCheckedState');
-            treeObjectState.selectStandardCheckElement = selectStandard.checkElement;
-            treeObjectState.selectStandardElement = selectStandard.toggleElement;
-            rowElement.appendChild(selectStandard.checkElement);
-            rowElement.appendChild(buildHideUnselectedToggle(treeObjectState));
-        }
-
-        rowElement.appendChild(buildObjectTodosToggle(treeObjectState));
-
-        return rowElement;
-
-    }
-
-    function buildFieldScopeCheck(treeObjectState, toggleClassName, labelClassName, labelText, fieldScope, checkedStateKey) {
-
-        const object = treeObjectState.object;
-        const checkElement = createElement('span', 'treeFieldSelectAllCheck');
-        const toggleElement = createButton('check', toggleClassName);
-        const labelElement = createElement('span', labelClassName, labelText);
-        toggleElement.setAttribute('role', 'checkbox');
-
-        const toggleFields = function () {
-            if (toggleElement.disabled) { return; }
-            const message = {
-                command: 'setAllFieldsIncluded',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                included: treeObjectState[checkedStateKey] !== 'true'
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            if (fieldScope) { message.fieldScope = fieldScope; }
-            vscodeApi.postMessage(message);
-        };
-        toggleElement.addEventListener('click', toggleFields);
-        labelElement.addEventListener('click', toggleFields);
-
-        checkElement.appendChild(toggleElement);
-        checkElement.appendChild(labelElement);
-
-        return { checkElement: checkElement, toggleElement: toggleElement };
-
-    }
-
-    function isStandardFieldApiName(fieldApiName) {
-        const lowerCaseName = fieldApiName.toLowerCase();
-        return lowerCaseName.slice(lowerCaseName.length - CUSTOM_FIELD_SUFFIX.length) !== CUSTOM_FIELD_SUFFIX;
-    }
-
-    function drawSelectAllFields(treeObjectState) {
-
-        if (!treeObjectState.selectAllElement) { return; }
-
-        const tree = treeObjectState.tree;
-        const objectApiName = treeObjectState.object.objectApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        const isObjectExcluded = !!findFieldLockingExclusion(tree, objectApiName);
-        const counts = { all: { untickable: 0, ticked: 0 }, standard: { untickable: 0, ticked: 0 } };
-
-        treeObjectState.fieldStates.forEach(function (fieldState) {
-            const fieldApiName = fieldState.field.fieldApiName;
-            if (!fieldState.field.lineNumber) { return; }
-            if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName)) { return; }
-            const isTicked = !objectFieldSelection || !hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
-            counts.all.untickable++;
-            if (isTicked) { counts.all.ticked++; }
-            if (isStandardFieldApiName(fieldApiName)) {
-                counts.standard.untickable++;
-                if (isTicked) { counts.standard.ticked++; }
-            }
-        });
-
-        treeObjectState.selectAllCheckedState = drawFieldScopeCheck(treeObjectState.selectAllElement, treeObjectState.selectAllCheckElement, counts.all, isObjectExcluded, objectApiName, SELECT_ALL_FIELDS_LABEL, 'field', 'fields');
-        treeObjectState.selectStandardCheckedState = drawFieldScopeCheck(treeObjectState.selectStandardElement, treeObjectState.selectStandardCheckElement, counts.standard, isObjectExcluded, objectApiName, STANDARD_FIELDS_LABEL, 'standard field', 'standard fields');
-
-    }
-
-    /*
-        A field box over a set of fields (#410, #477): ticked when every field of the set the reader can
-        untick is ticked, unticked when none is, mixed otherwise. Hidden when the set has no field the
-        reader can untick, and never toggled here: only the host's answer redraws it.
-    */
-    function drawFieldScopeCheck(toggleElement, checkElement, count, isObjectExcluded, objectApiName, labelText, singular, plural) {
-
-        if (count.untickable === 0) {
-            checkElement.classList.add('hidden');
-            return null;
-        }
-        checkElement.classList.remove('hidden');
-
-        const checkedState = count.ticked === count.untickable ? 'true' : count.ticked === 0 ? 'false' : 'mixed';
-        toggleElement.textContent = checkedState === 'true' ? '✓' : checkedState === 'mixed' ? '−' : '';
-        toggleElement.setAttribute('aria-checked', checkedState);
-        toggleElement.disabled = isObjectExcluded;
-        if (isObjectExcluded) { checkElement.classList.add('disabled'); } else { checkElement.classList.remove('disabled'); }
-
-        const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName)
-            : checkedState === 'true' ? 'Every ' + singular + ' ticked — click to leave every ' + singular + ' out that can be unticked'
-            : checkedState === 'mixed' ? count.ticked + ' of ' + count.untickable + ' ' + plural + ' ticked — click to tick every ' + singular
-            : 'No ' + singular + ' ticked — click to tick every ' + singular;
-        toggleElement.setAttribute('title', title);
-        toggleElement.setAttribute('aria-label', labelText + ' of ' + objectApiName + ': ' + title);
-
-        return checkedState;
-
-    }
-
-    /*
-        The object's own "Hide unselected" (#483): hides THIS object's rows whose box is unticked, the
-        ones an excluded parent cut included, with the search and every "TODOs only". Panel-only: it
-        posts nothing, and only the host's answer unticks a field, so a row hides once that answer is
-        drawn. With nothing unticked, or the object excluded, it is off and disabled.
-    */
-    function countUnselectedFields(treeObjectState) {
-
-        if (!treeObjectState.canSelectFields) { return 0; }
-
-        const objectFieldSelection = findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object));
-        if (!objectFieldSelection) { return 0; }
-
-        return treeObjectState.fieldStates.filter(function (fieldState) {
-            return !!fieldState.field.lineNumber && isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
-        }).length;
-
-    }
-
-    function describeExcludedObjectFields(objectApiName) {
-        return objectApiName + ' is excluded, so its fields are read-only';
-    }
-
-    // THE REASON IT IS OFF, OR '' WITH HOW MANY ROWS IT HIDES: ONE COUNT PER DRAW
-    function readHideUnselectedState(treeObjectState) {
-        if (findFieldLockingExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return { reason: describeExcludedObjectFields(treeObjectState.object.objectApiName), unselectedCount: 0 }; }
-        const unselectedCount = countUnselectedFields(treeObjectState);
-        return { reason: unselectedCount === 0 ? NO_UNSELECTED_FIELDS_NOTE : '', unselectedCount: unselectedCount };
-    }
-
-    function findHideUnselectedReason(treeObjectState) {
-        return readHideUnselectedState(treeObjectState).reason;
-    }
-
-    function isObjectHidingUnselectedIn(treeObjectState) {
-        return treeObjectState.isHidingUnselected === true;
-    }
-
-    function buildHideUnselectedToggle(treeObjectState) {
-
-        const objectApiName = treeObjectState.object.objectApiName;
-        const checkElement = createElement('span', 'treeFieldSelectAllCheck treeHideUnselectedCheck');
-        const toggleElement = createButton('check', 'treeHideUnselectedToggle');
-        const labelElement = createElement('span', 'treeHideUnselectedLabel', HIDE_UNSELECTED_FIELDS_LABEL);
-        toggleElement.setAttribute('role', 'checkbox');
-        toggleElement.setAttribute('aria-label', HIDE_UNSELECTED_FIELDS_LABEL + ' (' + objectApiName + ')');
-
-        const toggleHideUnselected = function () {
-            if (toggleElement.disabled) { return; }
-            treeObjectState.isHidingUnselected = !treeObjectState.isHidingUnselected;
-            if (treeObjectState.treeState.structureSearch) {
-                filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
-                drawStructureMatchCount(treeObjectState.treeState);
-            }
-            drawHideUnselectedToggle(treeObjectState);
-            savePanelPlace();
-        };
-        toggleElement.addEventListener('click', toggleHideUnselected);
-        labelElement.addEventListener('click', toggleHideUnselected);
-
-        treeObjectState.hideUnselectedCheckElement = checkElement;
-        treeObjectState.hideUnselectedLabelElement = labelElement;
-        treeObjectState.hideUnselectedToggleElement = toggleElement;
-        checkElement.appendChild(toggleElement);
-        checkElement.appendChild(labelElement);
-        drawHideUnselectedToggle(treeObjectState);
-
-        return checkElement;
-
-    }
-
-    function drawHideUnselectedToggle(treeObjectState, hideUnselectedState) {
-
-        const toggleElement = treeObjectState.hideUnselectedToggleElement;
-        if (!toggleElement) { return; }
-
-        const state = hideUnselectedState || readHideUnselectedState(treeObjectState);
-        const reason = state.reason;
-        const unselectedCount = state.unselectedCount;
-        const isChecked = isObjectHidingUnselectedIn(treeObjectState);
-        const title = reason || ( isChecked
-            ? 'Hiding ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName + ' — click to show them'
-            : 'Hide the ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName );
-
-        toggleElement.textContent = isChecked ? '✓' : '';
-        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
-        toggleElement.disabled = !!reason;
-        toggleElement.setAttribute('title', title);
-        treeObjectState.hideUnselectedLabelElement.setAttribute('title', title);
-        if (reason) { treeObjectState.hideUnselectedCheckElement.classList.add('disabled'); } else { treeObjectState.hideUnselectedCheckElement.classList.remove('disabled'); }
-
-    }
-
-    /*
-        After the host's answer: a filter with nothing left to hide turns itself off, so the next
-        untick shows its row until the reader asks again. True when the object's rows were filtered
-        again, so the caller redraws the tab's count once.
-    */
-    function refreshHideUnselectedFields(treeObjectState) {
-
-        const wasHiding = isObjectHidingUnselectedIn(treeObjectState);
-        if (!wasHiding && !treeObjectState.hideUnselectedToggleElement) { return false; }
-
-        const hideUnselectedState = readHideUnselectedState(treeObjectState);
-        if (wasHiding && hideUnselectedState.reason) {
-            treeObjectState.isHidingUnselected = false;
-            // A SAVED KEY WOULD TURN IT BACK ON AT THE NEXT RESTORE, OVER ROWS THE READER SAW SHOWN
-            savePanelPlace();
-        }
-        drawHideUnselectedToggle(treeObjectState, hideUnselectedState);
-
-        if (!wasHiding || !treeObjectState.treeState || !treeObjectState.treeState.structureSearch) { return false; }
-
-        filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
-        return true;
-
-    }
-
-    function drawFieldSelection(treeState) {
-        let isAnyObjectRefiltered = false;
-        treeState.objectStates.forEach(function (treeObjectState) {
-            if (drawObjectFieldSelection(treeObjectState)) { isAnyObjectRefiltered = true; }
-        });
-        // ONE COUNT FOR THE TAB, HOWEVER MANY OBJECTS HIDE THEIR UNSELECTED FIELDS
-        if (isAnyObjectRefiltered) { drawStructureMatchCount(treeState); }
-    }
-
-    function hasTreeSelection(tree) {
-        return !!tree.objectSelection
-            || ( Array.isArray(tree.objectCounts) && tree.objectCounts.length > 0 )
-            || ( Array.isArray(tree.validationRulesOff) && tree.validationRulesOff.length > 0 )
-            || ( !!tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) && tree.fieldSelection.objects.some(function (objectFieldSelection) {
-                return Array.isArray(objectFieldSelection.excludedFieldApiNames) && objectFieldSelection.excludedFieldApiNames.length > 0;
-            }) );
-    }
-
-    // SHOWN ONLY WHILE THE CARD LEAVES SOMETHING OUT; THE HOST ASKS BEFORE IT CLEARS ANYTHING
-    function drawResetSelection(treeState) {
-
-        if (!treeState.resetSelectionElement) { return; }
-
-        if (hasTreeSelection(treeState.tree)) { treeState.resetSelectionElement.classList.remove('hidden'); } else { treeState.resetSelectionElement.classList.add('hidden'); }
-
-    }
-
-    // ONLY FOR THE MODEL ON SCREEN: A NEWER ONE WAS BUILT FROM THE SELECTION THIS UPDATE REPORTS
-    function renderObjectSelection(objectSelectionMessage) {
-
-        if (renderedSequence === null || objectSelectionMessage.renderSequence !== renderedSequence) { return; }
-
-        const treeState = findTreeState(objectSelectionMessage.treeKey);
-        if (!treeState) { return; }
-
-        treeState.tree.objectSelection = objectSelectionMessage.objectSelection || undefined;
-        treeState.tree.fieldSelection = objectSelectionMessage.fieldSelection || undefined;
-        treeState.tree.objectCounts = objectSelectionMessage.objectCounts || undefined;
-        treeState.tree.fixedValues = objectSelectionMessage.fixedValues || undefined;
-        treeState.tree.validationRulesOff = objectSelectionMessage.validationRulesOff || undefined;
-        drawObjectSelection(treeState);
-        drawTreeInsert(treeState);
-        drawTreePermissionSet(treeState);
-        drawHelpSummary();
-        if (treeState === treePickerShownTreeState) { drawTreePickerObjects(); }
-
-        // WHAT THE TROUBLESHOOTING TAB COUNTS LEAVES OUT EXCLUDED OBJECTS AND UNTICKED FIELDS (#346)
-        if (treeState.selectedTab === 'troubleshooting') { requestTroubleshootingSummary(treeState); }
-
-    }
-
-    /*
-        A field's checkbox (#220): a real button with role="checkbox", keyboard operable. A click posts
-        NAMES only; the host decides whether the field may be unticked and posts the card back.
-    */
-    function buildFieldIncludeElement(treeObjectState, fieldState) {
-
-        const includeElement = createButton('check', 'treeFieldInclude');
-        const object = treeObjectState.object;
-
-        includeElement.setAttribute('role', 'checkbox');
-        includeElement.addEventListener('click', function () {
-            if (includeElement.disabled) { return; }
-            const message = {
-                command: 'setFieldIncluded',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                fieldApiName: fieldState.field.fieldApiName,
-                included: !fieldState.isIncluded
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            vscodeApi.postMessage(message);
-        });
-        fieldState.includeElement = includeElement;
-
-        return includeElement;
-
-    }
-
-    function buildTreeFieldRow(treeObjectState, fieldState) {
-
-        const field = fieldState.field;
-        const fieldRowElement = createElement('div', 'treeField');
-        const fieldHeaderElement = createElement('div', 'treeFieldHeader');
-
-        // ONLY A FIELD WITH A LINE IN THE RECIPE: THAT LINE IS WHAT THE FILTERED COPY LEAVES OUT
-        if (treeObjectState.canSelectFields && field.lineNumber) {
-            fieldHeaderElement.appendChild(buildFieldIncludeElement(treeObjectState, fieldState));
-            fieldHeaderElement.appendChild(buildFieldFixedValueElement(treeObjectState, fieldState));
-        }
-
-        fieldHeaderElement.appendChild(createElement('span', 'treeFieldName', field.fieldApiName));
-
-        const referencedOwnerState = findReferencedOwnerState(treeObjectState, fieldState);
-        if (referencedOwnerState) {
-            fieldHeaderElement.appendChild(buildNicknameBackLink(treeObjectState.treeState, referencedOwnerState, fieldHeaderElement));
-        }
-
-        if (field.fieldTypeWithSize || field.fieldType) {
-            fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
-        }
-
-        // THE RECORD TYPES THAT RESTRICT THIS FIELD (#320), AS TEXT, WHETHER OR NOT THE CHECK IS ON
-        if (fieldState.recordTypeDeveloperNames) {
-            const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(', ');
-            const recordTypeChipElement = createElement('span', 'recordTypeChip', recordTypeNamesText);
-            recordTypeChipElement.setAttribute('title', 'Restricted by ' + (fieldState.recordTypeDeveloperNames.length === 1 ? 'record type ' : 'record types ') + recordTypeNamesText);
-            fieldHeaderElement.appendChild(recordTypeChipElement);
-        }
-
-        const lookupWiring = field.lineNumber ? findLookupWiring(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
-        if (lookupWiring) {
-            fieldHeaderElement.appendChild(buildWireLookupElement(treeObjectState.tree, lookupWiring));
-        }
-
-        const emptyLookup = field.lineNumber ? findEmptyLookup(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
-        if (emptyLookup) {
-            fieldHeaderElement.appendChild(buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup));
-        }
-
-        if (field.controllingField) {
-            fieldHeaderElement.appendChild(createElement('span', 'controllingField muted', 'controlled by ' + field.controllingField));
-        }
-
-        if (field.isOnlyInRecipeFile) {
-            fieldHeaderElement.appendChild(createElement('span', 'recipeFileOnly muted', 'read from the recipe file'));
-        }
-
-        fieldState.fixedValueBadgeElement = createElement('span', 'fixedValueBadge hidden', FIXED_VALUE_BADGE_LABEL);
-        fieldHeaderElement.appendChild(fieldState.fixedValueBadgeElement);
-
-
-        fieldState.noteElement = createElement('span', 'treeFieldNote muted hidden');
-        fieldHeaderElement.appendChild(fieldState.noteElement);
-
-        if (treeObjectState.object.recipeFilePath && field.lineNumber) {
-            fieldHeaderElement.appendChild(buildSourceLink('treeFieldSource', '↗ yml', treeObjectState.object.recipeFilePath, field.lineNumber));
-        }
-
-        // AT THE END OF THE ROW (#325): A BOX FOR A FIELD ITS RULES SHAPE, OR A NOTE NAMING RULES THAT COULD NOT BE APPLIED
-        if (treeObjectState.canSelectFields && hasSwitchableValidationRules(field)) {
-            fieldHeaderElement.appendChild(buildFieldValidationRuleElement(treeObjectState, fieldState));
-        } else if (field.validationRules && Array.isArray(field.validationRules.notAppliedRules) && field.validationRules.notAppliedRules.length > 0
-                    && !( Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0 )) {
-            fieldHeaderElement.appendChild(buildValidationRuleNotAppliedElement(field));
-        }
-
-        // ONE LINK PER RULE WHOSE FILE THE HOST FOUND (#560), APPLIED OR NOT, AFTER THE BOX OR NOTE
-        if (field.validationRules && Array.isArray(field.validationRules.sourceRuleNames)) {
-            field.validationRules.sourceRuleNames.forEach(function (ruleName) {
-                fieldHeaderElement.appendChild(buildValidationRuleSourceLink('treeFieldRuleSource', VALIDATION_RULE_SOURCE_LINK_PREFIX + String(ruleName), treeObjectState.object.objectApiName, String(ruleName)));
-            });
-        }
-
-        fieldRowElement.appendChild(fieldHeaderElement);
-
-        if (fieldState.todos.length > 0) {
-            fieldRowElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, fieldState.todos));
-        }
-
-        // THE SEARCH BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW
-        if (field.recipeValue) {
-            const expressionRowElement = createElement('div', 'expressionRow');
-            fieldState.expressionElement = createElement('pre', 'expression', field.recipeValue);
-            expressionRowElement.appendChild(fieldState.expressionElement);
-            fieldRowElement.appendChild(expressionRowElement);
-        }
-
-        fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
-        fieldRowElement.appendChild(fieldState.fixedValueElement);
-
-        // A PICKLIST'S EDIT VALUES SITS UNDER ITS FAKER VALUE, NOT IN THE HEADER, SO NO ROW KEEPS A SLOT FOR IT (#398, #465)
-        let setPicklistExpanded = null;
-
-        if (field.isPicklist) {
-
-            const picklistSectionElement = createElement('div', 'picklistSection');
-            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_EDIT_VALUES_LABEL);
-            const editorElement = createElement('div', 'picklistValues picklistEditor hidden');
-            const fieldLabel = treeObjectState.object.objectApiName + '.' + field.fieldApiName;
-            const closeButtonElement = createButton('icon', 'picklistEditorClose', '×');
-            const editorBodyElement = createElement('div', 'picklistEditorBody');
-            const editorHeaderElement = createElement('div', 'picklistEditorHeader');
-
-            editorElement.setAttribute('role', 'group');
-            editorElement.setAttribute('aria-label', 'Edit values of ' + fieldLabel);
-            closeButtonElement.setAttribute('aria-label', 'Close the values of ' + field.fieldApiName);
-            closeButtonElement.setAttribute('title', 'Close without saving');
-            editorHeaderElement.appendChild(createElement('span', 'fieldEditorHint muted', 'Tick the values ' + field.fieldApiName + ' generates. Save writes them into the recipe file; ' + PICKLIST_RESET_LABEL + ' puts back the lines the field had.'));
-            editorHeaderElement.appendChild(closeButtonElement);
-            editorElement.appendChild(editorHeaderElement);
-            editorElement.appendChild(editorBodyElement);
-
-            setPicklistExpanded = function (isExpanding, isAnimated) {
-                const wasExpanded = !editorElement.classList.contains('hidden');
-                editorBodyElement.textContent = '';
-                fieldState.picklistRefusalElement = null;
-                fieldState.endPicklistSave = null;
-                if (isExpanding) {
-                    editorBodyElement.appendChild(createElement('div', 'picklistLoading muted', 'Loading values…'));
-                    requestPicklistValues(treeObjectState.tree.treeKey, treeObjectState.object.objectApiName, treeObjectState.object.nickname, field.fieldApiName, function (picklistValuesMessage) {
-                        if (editorElement.classList.contains('hidden')) { return; }
-                        drawPicklistValueEditor(treeObjectState, fieldState, editorBodyElement, picklistValuesMessage, function () {
-                            setPicklistExpanded(false, true);
-                            savePanelPlace();
-                        });
-                    });
-                }
-                setShownWithMotion(editorElement, isExpanding, isAnimated);
-                fieldState.isPicklistExpanded = isExpanding;
-                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
-                // WHILE THE TILES ARE OPEN THE ONLY WAYS OUT ARE SAVE OR CANCEL (#495); × AND ESCAPE STAY FOR THE LOAD
-                if (isExpanding) { picklistToggleElement.classList.add('hidden'); } else { picklistToggleElement.classList.remove('hidden'); }
-                if (isExpanding && isAnimated && typeof closeButtonElement.focus === 'function') { closeButtonElement.focus(); }
-                if (!isExpanding && wasExpanded && typeof picklistToggleElement.focus === 'function') { picklistToggleElement.focus(); }
-            };
-            fieldState.setPicklistExpanded = setPicklistExpanded;
-
-            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
-            picklistToggleElement.setAttribute('aria-label', PICKLIST_EDIT_VALUES_LABEL + ' of ' + field.fieldApiName);
-            picklistToggleElement.setAttribute('aria-expanded', 'false');
-            // IT IS HIDDEN WHILE THE TILES ARE OPEN (#495), SO A CLICK ONLY EVER OPENS THEM
-            picklistToggleElement.addEventListener('click', function () {
-                if (!editorElement.classList.contains('hidden')) { return; }
-                setPicklistExpanded(true, true);
-                savePanelPlace();
-            });
-            closeButtonElement.addEventListener('click', function (event) {
-                event.stopPropagation();
-                setPicklistExpanded(false, true);
-                savePanelPlace();
-            });
-            editorElement.addEventListener('keydown', function (event) {
-                if (event.key !== 'Escape') { return; }
-                event.stopPropagation();
-                setPicklistExpanded(false, true);
-                savePanelPlace();
-            });
-
-            picklistSectionElement.appendChild(picklistToggleElement);
-            picklistSectionElement.appendChild(editorElement);
-            fieldRowElement.appendChild(picklistSectionElement);
-            fieldState.picklistSectionElement = picklistSectionElement;
-
-        }
-
-        // A ROW BUILT FROM A RESTORED PLACE OPENS ONLY ONCE IT IS WHOLE: OPENED EARLIER, ITS VALUES WERE
-        // APPENDED BEFORE ITS HEADER AND DREW ABOVE THE FIELD NAME (#277). IT STILL ASKS THE HOST AGAIN
-        if (setPicklistExpanded && fieldState.isPicklistExpanded) { setPicklistExpanded(true); }
-
-        return fieldRowElement;
-
-    }
-
-    function applyTreeFieldVisibility(fieldState) {
-
-        if (!fieldState.rowElement) { return; }
-
-        if (fieldState.isMatch) {
-            fieldState.rowElement.classList.remove('hidden');
-        } else {
-            fieldState.rowElement.classList.add('hidden');
-        }
-
-    }
 
     function setTreeObjectExpanded(treeObjectState, isExpanded, isAnimated) {
 

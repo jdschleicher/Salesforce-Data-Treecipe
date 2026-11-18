@@ -16,6 +16,7 @@ import {
 import { buildPencilGlyph } from '../RecipeCockpitPanelBuilders';
 import { buildDatasetJourneyToggle, setDatasetJourneyExpanded } from './DatasetJourney';
 import { IDataset, IDatasetRecordCount, IDatasetRecordCountsMessage, IDatasetRecordTypes, IDatasetRowState, IDatasetsTreeState, INameEditor } from './DatasetTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     One row of the Previously Used Data Sets tab (#226, #312, #469, #621, #642): its name and star,
@@ -36,7 +37,6 @@ declare const isMetadataDeployRunning: boolean;
 // THE SCRIPT EMPTIES BOTH FOR EVERY NEW MODEL, SO THEY ARE READ FROM IT AT EACH CALL
 declare let pendingDatasetCountElements: Record<string, HTMLElement[]>;
 declare let answeredDatasetCounts: Record<string, IDatasetRecordCountsMessage>;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 // THE TREECIPE TAB AND THE HISTORY SUB-TAB USE THESE TOO, SO THEY MOVE WITH THE TREECIPE TAB (#643)
 declare function versionLabelOf(treeState: IDatasetsTreeState, runFolderName: string | null): string;

@@ -13,6 +13,7 @@ import {
 import { buildRowTable } from '../RecipeCockpitPanelBuilders';
 import { applyTroubleshootingFilter } from './TroubleshootingTab';
 import { IHistoryFile, IHistoryRow, IHistoryRowState, IHistorySort, ITroubleshootingHistoryMessage, ITroubleshootingSubTabState, ITroubleshootingTreeState } from './TroubleshootingTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     The History sub-tab (#485, #639). These names are the panel script's own, read when a function runs.
@@ -20,7 +21,6 @@ import { IHistoryFile, IHistoryRow, IHistoryRowState, IHistorySort, ITroubleshoo
 declare const vscodeApi: { postMessage(message: unknown): void };
 declare const renderedSequence: number | null;
 declare function findTreeState(treeKey: unknown): ITroubleshootingTreeState | null;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
 declare function versionLabelOf(treeState: ITroubleshootingTreeState, runFolderName: string | null): string;

@@ -1,3 +1,4 @@
+import type { IFixedValue } from '../treecipe/fieldRows/FieldRowTypes';
 import type { IActionCardView, ITabSearchView } from '../RecipeCockpitPanelBuilders';
 
 /*
@@ -21,7 +22,7 @@ export interface IAdapterTreeObject {
 // WHAT findFixedValue AND THE FIELD EDITOR READ; A NEW CHILD'S BLOCK (#447) BUILDS ONE WITH NO OBJECTS
 export interface IAdapterTreeKey {
     treeKey: string;
-    fixedValues?: unknown;
+    fixedValues?: IFixedValue[];
 }
 
 export interface IAdapterTree extends IAdapterTreeKey {

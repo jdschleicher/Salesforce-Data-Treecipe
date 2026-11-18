@@ -27,6 +27,8 @@ import type {
     IUpdaterFieldTreeState,
     IUpdaterObjectState
 } from './AdapterTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { findObjectExclusion } from '../treecipe/fieldRows/SelectionCascade';
 
 /*
     "Add to data set" (#447, #641): a custom child object only the org holds, added under the loaded
@@ -41,8 +43,6 @@ declare let updaterLoadRunningTreeKey: string | null;
 declare let updaterRunKind: string;
 declare let adapterChildPreparingKey: string;
 declare function findTreeState(treeKey: unknown): IAdapterTreeState | null;
-declare function findObjectExclusion(tree: IAdapterTree, objectApiName: string): unknown;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 
 export function isAdapterChildOf(adapterChild: IAdapterChild | null, parentObjectApiName: string, childObject: IAdapterNewChildObject | null): boolean {

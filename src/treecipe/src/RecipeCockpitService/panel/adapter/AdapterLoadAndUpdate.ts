@@ -34,6 +34,7 @@ import type {
     IUpdaterSnapshotsMessage,
     IUpdaterValuesMessage
 } from './AdapterTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     The Treecipe Adapter's runs on records (#416 … #419, #641): load, generate values, update and
@@ -47,7 +48,6 @@ declare let updaterLoadRunningTreeKey: string | null;
 declare let updaterRunKind: string;
 declare let updaterRestoringSnapshotName: string;
 declare function findTreeState(treeKey: unknown): IAdapterTreeState | null;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function setTextShown(element: HTMLElement, text: string): void;
 declare function drawActionCardState(actionCard: IActionCardView, reason: string, title: string): void;
