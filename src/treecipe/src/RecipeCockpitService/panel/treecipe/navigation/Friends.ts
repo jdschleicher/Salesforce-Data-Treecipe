@@ -8,7 +8,7 @@ import type { IFriend, IFriendChip, IFriendIndex, INavigationObjectState, INavig
 /*
     Friend rows (#411, #492): the chips naming the parents a friend row is nested under or points
     to, numbered the same on every row, and a parent row's 👥 N list of its friends. The open list
-    is the panel script's let, declare let here, shared with the nickname lists.
+    is the panel script's let, shared with the nickname lists; this module only reads it.
 */
 declare const openNicknameMenu: IOpenReferenceMenu | null;
 declare function pluralize(count: number, singular: string, plural: string): string;

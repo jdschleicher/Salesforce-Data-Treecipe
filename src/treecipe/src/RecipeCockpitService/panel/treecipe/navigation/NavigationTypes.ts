@@ -167,7 +167,7 @@ export interface IOpenReferenceMenu {
     openerOf: () => HTMLElement | null;
 }
 
-// WHERE A RELOAD OR A FAILED INSERT'S LINK ASKS THE PANEL TO RE-OPEN; THE HOST'S, READ AS UNTRUSTED
+// WHERE A RELOAD OR A FAILED INSERT'S LINK ASKS THE PANEL TO RE-OPEN; THE HOST'S MESSAGE, OF WHICH ONLY treeKey IS CHECKED, AS BEFORE THE MOVE
 export interface IFocusTree {
     treeKey: string;
     tab: string;
