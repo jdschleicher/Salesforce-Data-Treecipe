@@ -4,19 +4,16 @@ import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from '../../RecipeCockpitTreeci
 import { buildPencilGlyph } from '../RecipeCockpitPanelBuilders';
 import { buildFieldEditorInput, describeFixedValueForm } from '../treecipe/fieldEditor/FieldEditor';
 import type { IAdapterField, IAdapterObjectName, IAdapterTreeKey, IUpdaterFieldObjectState, IUpdaterFieldRowState, IUpdaterFieldTreeState } from './AdapterTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { findFixedValue, isExpressionValue, unquoteExpressionLine } from '../treecipe/fieldRows/FieldRowFixedValue';
+import { occurrenceNicknameOf } from '../treecipe/fieldRows/SelectionCascade';
+import { RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL } from '../../RecipeCockpitFieldRowsConstants';
 
 /*
     The Treecipe Adapter's field editor (#417, #641). These names are the panel script's own, read
     when a function runs. The editor shares no editor code with the Treecipe tab's (openFieldEditor):
     it imports that tab's input and form hint (#653), and calls its expression helpers, still the script's.
 */
-declare function hasOwnKey(record: object, key: unknown): boolean;
-declare function findFixedValue(tree: IAdapterTreeKey, objectApiName: string, fieldApiName: string, nickname: string): string | null;
-declare function occurrenceNicknameOf(object: IAdapterObjectName): string;
-declare function isExpressionValue(value: unknown): boolean;
-declare function unquoteExpressionLine(valueLine: string): string;
-declare const FIXED_VALUE_BADGE_LABEL: string;
-declare const EDITED_EXPRESSION_BADGE_LABEL: string;
 
 /*
     The Updater's own editor (#417): the Treecipe tab's inline editor's parts -- one input, its
@@ -168,7 +165,7 @@ export function drawUpdaterFieldEdit(treeState: IUpdaterFieldTreeState, updaterO
     }
     if (fieldState.expressionRowElement) { setShown(fieldState.expressionRowElement, !isEdited); }
     if (fieldState.editBadgeElement) {
-        fieldState.editBadgeElement.textContent = !isEdited ? '' : isExpressionValue(editedValue) ? EDITED_EXPRESSION_BADGE_LABEL : FIXED_VALUE_BADGE_LABEL;
+        fieldState.editBadgeElement.textContent = !isEdited ? '' : isExpressionValue(editedValue) ? RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL : RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL;
         setShown(fieldState.editBadgeElement, isEdited);
     }
     if (fieldState.editButtonElement) {

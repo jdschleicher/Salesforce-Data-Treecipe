@@ -28,6 +28,7 @@ import type {
     IAdapterTreeState,
     IUpdaterObjectState
 } from './AdapterTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     The Treecipe Adapter's "Retrieve latest metadata" (#445), "Apply retrieved files to project",
@@ -41,7 +42,6 @@ declare const treeStates: IAdapterTreeState[];
 declare let updaterLoadRunningTreeKey: string | null;
 declare let updaterRunKind: string;
 declare function findTreeState(treeKey: unknown): IAdapterTreeState | null;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 
 /*

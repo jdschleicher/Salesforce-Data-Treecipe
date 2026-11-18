@@ -10,6 +10,9 @@ import {
     RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL
 } from '../../../RecipeCockpitTreecipeFieldEditorConstants';
 import type { FieldEditorPanelMessage, IAddableParent, IEmptyLookup, ILookupDecision, ILookupDecisionMessage, ILookupWiring, ITreeFieldState, ITreeObjectState, ITreecipeObject, ITreecipeTree } from './FieldEditorTypes';
+import { hasOwnKey } from '../../RecipeCockpitOwnKey';
+import { findObjectExclusion, findObjectFieldSelection, occurrenceNicknameOf } from '../fieldRows/SelectionCascade';
+import { RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON, RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON, RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON } from '../../../RecipeCockpitFieldRowsConstants';
 
 /*
     A lookup row's "Wire to…", an empty lookup's two decisions, "Wire TODO lookups" and a self-lookup
@@ -23,13 +26,6 @@ declare let addFriendButtonElements: HTMLButtonElement[];
 declare let isWireLookupRunning: boolean;
 declare let wireLookupButtonElements: HTMLButtonElement[];
 declare let lookupDecisions: ILookupDecision[];
-declare const FIELD_PARENT_EXCLUDED_REASON: string;
-declare const FIXED_VALUE_OBJECT_EXCLUDED_REASON: string;
-declare const FIXED_VALUE_UNTICKED_REASON: string;
-declare function hasOwnKey(record: object, key: unknown): boolean;
-declare function occurrenceNicknameOf(object: ITreecipeObject): string;
-declare function findObjectExclusion(tree: ITreecipeTree, objectApiName: string): unknown;
-declare function findObjectFieldSelection(tree: ITreecipeTree, objectApiName: string, nickname: string): { lockReasonsByFieldApiName: Record<string, string>; excludedFieldApiNames: Record<string, unknown> } | null;
 
 // EACH CARD'S lookupWirings BY OBJECT, OCCURRENCE AND FIELD, BUILT ONCE PER CARD RATHER THAN SCANNED PER ROW
 const lookupWiringIndexByTree = new WeakMap<ITreecipeTree, Record<string, ILookupWiring>>();
@@ -256,12 +252,12 @@ export function drawFieldRowLookupDecision(treeObjectState: ITreeObjectState, fi
     const fieldApiName = fieldState.field.fieldApiName;
     const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
     const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
-    const isParentExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
+    const isParentExcluded = lockReason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
 
     if (isParentExcluded) { decision.element.classList.add('hidden'); } else { decision.element.classList.remove('hidden'); }
 
-    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? FIXED_VALUE_OBJECT_EXCLUDED_REASON
-        : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? FIXED_VALUE_UNTICKED_REASON
+    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON
+        : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON
         : '';
     drawLookupDecisionButtons(decision);
 

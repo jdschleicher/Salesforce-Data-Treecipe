@@ -44,22 +44,21 @@ import type {
     IUpdaterFieldTreeState,
     IUpdaterObjectState
 } from './AdapterTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { indexTreeLookupFields } from '../treecipe/fieldRows/FieldRowFixedValue';
+import { formatParentLookups } from '../treecipe/fieldRows/FieldRow';
+import { RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES } from '../../RecipeCockpitFieldRowsConstants';
 
 /*
     The Treecipe Adapter tab (#415, #443, #641): its two steps, the objects and field rows of step 2,
     the summary and the filter. These names are the panel script's own, read when a function runs.
 */
-declare function hasOwnKey(record: object, key: unknown): boolean;
-declare function indexTreeLookupFields(tree: IAdapterTree): Record<string, true>;
 declare function displayTitleOf(tree: unknown): string;
 declare function savePanelPlace(): void;
 declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
-declare function formatParentLookups(treeObject: IAdapterTreeObject, disabledFieldApiNames?: string[]): string;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function expandMatchesWithinBudget<GroupState>(groupStates: GroupState[], matchCountOf: (groupState: GroupState) => number, rowCountOf: (groupState: GroupState) => number, setExpanded: (groupState: GroupState, isExpanded: boolean) => void): void;
 // THE TREECIPE TAB'S FIXED-VALUE RULES, WHICH ITS SLICE (#643) MOVES
-declare const FIXED_VALUE_LOOKUP_FIELD_TYPES: string[];
-declare const FIXED_VALUE_DEPENDENT_REASON_PREFIX: string;
 // RecipeCockpitTreeUpdaterQuery.ts HOLDS THE LIMIT BESIDE ITS CHECK AND IMPORTS OTHER HOST FILES, SO THE SHELL PASSES THE NUMBER IN
 declare const UPDATER_WHERE_MAX_LENGTH: number;
 
@@ -79,8 +78,8 @@ function findUpdaterFieldLockReason(tree: IAdapterTree, objectApiName: string, f
     if (field.fieldApiName === 'RecordTypeId') { return RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON; }
 
     const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\n' + field.fieldApiName);
-    if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) { return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON; }
-    if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
+    if (isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) { return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON; }
+    if (field.controllingField) { return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
     if (RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) { return RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON; }
 
     return '';

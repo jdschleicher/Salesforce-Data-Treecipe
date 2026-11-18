@@ -12,6 +12,7 @@ import {
 import type { RunHistoryRowStatus } from '../../RecipeCockpitTroubleshootingConstants';
 import { buildRowTable, buildToggleElement } from '../RecipeCockpitPanelBuilders';
 import { DatasetJourneySortColumn, IDatasetJourneyEntry, IDatasetJourneyFile, IDatasetJourneyMessage, IDatasetJourneySort, IDatasetRowState, IDatasetsTreeState } from './DatasetTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     A data set's insert journey (#471): a ▸ on every row. A row never inserted opens to "No
@@ -23,7 +24,6 @@ import { DatasetJourneySortColumn, IDatasetJourneyEntry, IDatasetJourneyFile, ID
 declare const vscodeApi: { postMessage(message: unknown): void };
 declare const renderedSequence: number | null;
 declare const treeStates: IDatasetsTreeState[];
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
 

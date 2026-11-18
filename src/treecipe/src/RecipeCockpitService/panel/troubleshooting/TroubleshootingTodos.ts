@@ -33,6 +33,7 @@ import {
     ITroubleshootingTree,
     ITroubleshootingTreeState
 } from './TroubleshootingTypes';
+import { hasOwnKey } from '../RecipeCockpitOwnKey';
 
 /*
     The TODO's sub-tab (#365, #391, #639): the open TODOs of the card's recipe, one group per object
@@ -46,7 +47,6 @@ declare const wireLookupButtonElements: HTMLButtonElement[];
 declare const REFERENCE_ID_REQUIRED_TODO_TEXT: string;
 declare function pluralize(count: number, singular: string, plural: string): string;
 declare function savePanelPlace(): void;
-declare function hasOwnKey(record: object, key: unknown): boolean;
 declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
 
 /*

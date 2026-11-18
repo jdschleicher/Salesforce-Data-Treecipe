@@ -20,6 +20,7 @@ import * as RecipeCockpitAdapterConstants from '../RecipeCockpitAdapterConstants
 import * as RecipeCockpitTroubleshootingConstants from '../RecipeCockpitTroubleshootingConstants';
 import * as RecipeCockpitTreecipeFieldEditorConstants from '../RecipeCockpitTreecipeFieldEditorConstants';
 import * as RecipeCockpitDataOrgConstants from '../RecipeCockpitDataOrgConstants';
+import * as RecipeCockpitFieldRowsConstants from '../RecipeCockpitFieldRowsConstants';
 import * as RecipeCockpitOrgAuthorizeModule from '../RecipeCockpitOrgAuthorize';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
 
@@ -99,10 +100,11 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
         expect(panelModulePaths.map(panelModulePath => path.basename(panelModulePath))).toEqual(expect.arrayContaining(['TroubleshootingTab.ts', 'TroubleshootingHistory.ts']));
         expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['displayTitleOf', 'savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning', 'isTreeQueryRunning', 'QUERY_MAX_LENGTH',
-            'updaterLoadRunningTreeKey', 'updaterRunKind', 'adapterChildPreparingKey', 'UPDATER_WHERE_MAX_LENGTH', 'isExpressionValue', 'answeredDatasetCounts', 'buildNameEditor', 'isDataOrgChecking',
-            'isLookupField', 'findEditorStartValue', 'findFixedValueLockReason', 'pendingPicklistValueElements', 'isAddFriendRunning', 'isWireLookupRunning', 'lookupDecisions', 'FIELD_PARENT_EXCLUDED_REASON',
+            'updaterLoadRunningTreeKey', 'updaterRunKind', 'adapterChildPreparingKey', 'UPDATER_WHERE_MAX_LENGTH', 'answeredDatasetCounts', 'buildNameEditor', 'isDataOrgChecking',
+            'pendingPicklistValueElements', 'isAddFriendRunning', 'isWireLookupRunning', 'lookupDecisions',
             'dataOrgViews', 'dataOrgPickerBeforeCheck', 'dataOrgUnansweredListingCount', 'insertRunningTreeKey', 'isOrgAuthorizeRunning', 'revealTreeObjectRow', 'buildTreeObjectKey',
-            'recordTypeChoices', 'recordTypeRowStates', 'isRecordTypeSelectionRemembered', 'applyStructureFilter', 'filterTreeObjectRows']));
+            'recordTypeChoices', 'recordTypeRowStates', 'isRecordTypeSelectionRemembered', 'applyStructureFilter', 'filterTreeObjectRows',
+            'fieldSearchTexts', 'drawRecordCount', 'findReferencedOwnerState', 'buildNicknameBackLink', 'treePickerShownTreeState']));
         ambientNames.forEach(ambient =>
             expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
                 .toEqual({ ...ambient, isDeclared: true }));
@@ -110,7 +112,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
     });
 
     // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639, #640, #641, #642, #652, #653, #654)
-    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section, field editor and Target Org Manager included (#639, #640, #641, #642, #652, #653, #654)', () => {
+    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section, field editor and Target Org Manager, field rows and selection cascade included (#639, #640, #641, #642, #652, #653, #654, #655)', () => {
 
         const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
         const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
@@ -135,15 +137,23 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'todoCountOf', 'isTodosOnlyIn', 'appendTodosToggle', 'drawTodosToggle', 'buildTodoListElement', 'isObjectTodosOnlyIn', 'buildObjectTodosToggle', 'drawObjectTodosToggle',
             'listRecordTypeObjects', 'describeRecordTypeImpacts', 'buildRecordTypesSection', 'appendUnavailableRecordTypesButton', 'setRecordTypesExpanded', 'recordTypeObjectSearchText',
             'drawRecordTypesSummary', 'buildRecordTypesRows', 'applyRecordTypesFilter', 'toggleRecordTypeChoice', 'toggleRecordTypeSelectionRemembered', 'isSameChoice',
-            'buildRecordTypeSelection', 'drawRecordTypeChoices']));
+            'buildRecordTypeSelection', 'drawRecordTypeChoices',
+            'hasOwnKey', 'searchTextOf', 'isFieldTextMatch', 'formatParentLookups', 'buildIncludeElement',
+            'indexObjectExclusions', 'indexObjectImpacts', 'describeObjectImpact', 'findObjectExclusion', 'findFieldLockingExclusion', 'drawNoFieldsSelected', 'formatTreeCount',
+            'drawObjectSelection', 'indexFieldSelection', 'findObjectFieldSelection', 'occurrenceNicknameOf', 'isSameOccurrence', 'isTreeFieldUnticked', 'drawFieldRowSelection',
+            'findFixedValue', 'indexTreeLookupFields', 'isLookupField', 'findFixedValueLockReason', 'findFixedValueOrgRecord', 'isExpressionValue', 'unquoteExpressionLine', 'findEditorStartValue', 'drawFieldRowFixedValue',
+            'hasSwitchableValidationRules', 'isValidationRuleOff', 'findValidationRuleLockReason', 'drawFieldRowValidationRule', 'buildFieldValidationRuleElement', 'buildValidationRuleNotAppliedElement', 'buildFieldFixedValueElement',
+            'drawObjectFieldSelection', 'buildSelectAllFieldsElement', 'buildFieldScopeCheck', 'isStandardFieldApiName', 'drawSelectAllFields', 'drawFieldScopeCheck',
+            'countUnselectedFields', 'describeExcludedObjectFields', 'readHideUnselectedState', 'findHideUnselectedReason', 'isObjectHidingUnselectedIn', 'buildHideUnselectedToggle', 'drawHideUnselectedToggle', 'refreshHideUnselectedFields',
+            'drawFieldSelection', 'hasTreeSelection', 'drawResetSelection', 'renderObjectSelection', 'buildFieldIncludeElement', 'buildTreeFieldRow', 'applyTreeFieldVisibility']));
         expect(bundleFunctionNames.filter(functionName => scriptFunctionNames.has(functionName))).toEqual([]);
 
     });
 
-    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654)
-    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor and Target Org Manager, as the same value (#639, #640, #641, #642, #652, #653, #654)', () => {
+    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654, #655)
+    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager and the field rows, as the same value (#639, #640, #641, #642, #652, #653, #654, #655)', () => {
 
-        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants };
+        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants };
         const constantNames = Object.keys(tabConstants);
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
 
@@ -152,7 +162,8 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY', 'RECIPE_COCKPIT_FAVORITE_TREE_LABEL',
             'RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH', 'RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES', 'RECIPE_COCKPIT_PICKLIST_RESET_LABEL', 'RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS', 'RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL',
             'RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON', 'RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS', 'RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL',
-            'RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL', 'RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE']));
+            'RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL', 'RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE',
+            'RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON', 'RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES', 'RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL', 'RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX']));
         constantNames.forEach(constantName =>
             expect({ constantName, isSameValue: serviceExports[constantName] === tabConstants[constantName] })
                 .toEqual({ constantName, isSameValue: true }));

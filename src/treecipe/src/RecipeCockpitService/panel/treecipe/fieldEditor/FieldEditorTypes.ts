@@ -1,4 +1,5 @@
 import type { RecipeCockpitCreateParentRefusalReason } from '../../../RecipeCockpitTreecipeFieldEditorConstants';
+import type { IFieldRowTreeObject, ISelectionTree } from '../fieldRows/FieldRowTypes';
 
 /*
     The shapes the Treecipe tab's field editor, picklist tiles and lookup wiring work on (#653). A
@@ -11,6 +12,8 @@ export interface ITreecipeField {
     fieldApiName: string;
     fieldType: string;
     fieldTypeWithSize?: string;
+    controllingField?: string;
+    recipeValue?: string;
     isPicklist?: boolean;
     lineNumber?: number;
     todos?: unknown[];
@@ -45,8 +48,9 @@ export interface IEmptyLookup {
     orgRecordRefusal?: string;
 }
 
-export interface ITreecipeTree {
+export interface ITreecipeTree extends ISelectionTree {
     treeKey: string;
+    objects: IFieldRowTreeObject[];
     lookupWirings?: ILookupWiring[];
     addableParents?: IAddableParent[];
     emptyLookups?: IEmptyLookup[];

@@ -30,9 +30,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     appendUnavailableRecordTypesButton: () => appendUnavailableRecordTypesButton,
     applyDatasetsFilter: () => applyDatasetsFilter,
     applyRecordTypesFilter: () => applyRecordTypesFilter,
+    applyTreeFieldVisibility: () => applyTreeFieldVisibility,
     buildActionCard: () => buildActionCard,
     buildDataOrgView: () => buildDataOrgView,
     buildDatasetsTab: () => buildDatasetsTab,
+    buildIncludeElement: () => buildIncludeElement,
     buildLookupDecisionElement: () => buildLookupDecisionElement,
     buildObjectTodosToggle: () => buildObjectTodosToggle,
     buildPencilGlyph: () => buildPencilGlyph,
@@ -41,9 +43,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     buildRecordTypesSection: () => buildRecordTypesSection,
     buildRowTable: () => buildRowTable,
     buildSearchIconElement: () => buildSearchIconElement,
+    buildSelectAllFieldsElement: () => buildSelectAllFieldsElement,
     buildTabSearch: () => buildTabSearch,
     buildTodoListElement: () => buildTodoListElement,
     buildToggleElement: () => buildToggleElement,
+    buildTreeFieldRow: () => buildTreeFieldRow,
     buildTreeFieldState: () => buildTreeFieldState,
     buildTreeGlyph: () => buildTreeGlyph,
     buildTreeInsertElement: () => buildTreeInsertElement,
@@ -63,10 +67,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     drawDataOrgViews: () => drawDataOrgViews,
     drawDatasetInserts: () => drawDatasetInserts,
     drawFieldRowLookupDecision: () => drawFieldRowLookupDecision,
+    drawHideUnselectedToggle: () => drawHideUnselectedToggle,
+    drawObjectFieldSelection: () => drawObjectFieldSelection,
+    drawObjectSelection: () => drawObjectSelection,
     drawObjectTodosToggle: () => drawObjectTodosToggle,
     drawPicklistValueEditor: () => drawPicklistValueEditor,
     drawRecordTypeChoices: () => drawRecordTypeChoices,
     drawRecordTypeFieldsToggle: () => drawRecordTypeFieldsToggle,
+    drawResetSelection: () => drawResetSelection,
     drawTodosToggle: () => drawTodosToggle,
     drawToggle: () => drawToggle,
     drawTreeInsert: () => drawTreeInsert,
@@ -75,13 +83,24 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     drawTreeQueryButtons: () => drawTreeQueryButtons,
     drawUpdaterLoadButtons: () => drawUpdaterLoadButtons,
     findEmptyLookup: () => findEmptyLookup,
+    findHideUnselectedReason: () => findHideUnselectedReason,
     findLookupWiring: () => findLookupWiring,
+    findObjectFieldSelection: () => findObjectFieldSelection,
+    formatParentLookups: () => formatParentLookups,
+    hasOwnKey: () => hasOwnKey,
+    indexObjectExclusions: () => indexObjectExclusions,
+    indexObjectImpacts: () => indexObjectImpacts,
     indexRecordTypeFields: () => indexRecordTypeFields,
+    isFieldTextMatch: () => isFieldTextMatch,
     isMotionReduced: () => isMotionReduced,
+    isObjectHidingUnselectedIn: () => isObjectHidingUnselectedIn,
     isObjectTodosOnlyIn: () => isObjectTodosOnlyIn,
     isRecordTypeFieldsOnlyIn: () => isRecordTypeFieldsOnlyIn,
+    isSameOccurrence: () => isSameOccurrence,
     isTodosOnlyIn: () => isTodosOnlyIn,
+    isTreeFieldUnticked: () => isTreeFieldUnticked,
     listRecordTypeObjects: () => listRecordTypeObjects,
+    occurrenceNicknameOf: () => occurrenceNicknameOf,
     readHistorySort: () => readHistorySort,
     renderAdapterChildBlock: () => renderAdapterChildBlock,
     renderAdapterChildPreview: () => renderAdapterChildPreview,
@@ -98,6 +117,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     renderDatasetPreferences: () => renderDatasetPreferences,
     renderDatasetRecordCounts: () => renderDatasetRecordCounts,
     renderFieldEditResult: () => renderFieldEditResult,
+    renderObjectSelection: () => renderObjectSelection,
     renderPermissionSetAssignState: () => renderPermissionSetAssignState,
     renderPicklistValues: () => renderPicklistValues,
     renderScratchOrgState: () => renderScratchOrgState,
@@ -582,6 +602,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   var RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = "0 0 24 24";
   var RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = "rotate(45 12 12)";
   var RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = "M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z";
+  var RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = "M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5";
+  var RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH = "M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M14.75 3.5 V6";
   var RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = "M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5";
   var RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = "M8.5 5 L15.5 12 L8.5 19";
   var RECIPE_COCKPIT_SEARCH_GLYPH_PATH = "M10.5 4 A6.5 6.5 0 1 1 10.5 17 A6.5 6.5 0 1 1 10.5 4 Z M15.2 15.2 L20 20";
@@ -947,6 +969,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   var RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE = "Inserted first time, with nothing else needed.";
   var RECIPE_COCKPIT_DATASET_JOURNEY_VIEW_FILE_LABEL = "View file";
   var RECIPE_COCKPIT_INSERT_RUNNING_LABEL = "Inserting…";
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitOwnKey.ts
+  function hasOwnKey(record, key) {
+    return !!record && Object.prototype.hasOwnProperty.call(record, key);
+  }
 
   // src/treecipe/src/RecipeCockpitService/panel/datasets/DatasetJourney.ts
   var datasetJourneyCount = 0;
@@ -2029,6 +2056,2072 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     });
   }
 
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitFieldRowsConstants.ts
+  var RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = "parent excluded";
+  var RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = "All fields";
+  var RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = "Standard fields";
+  var RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX = "__c";
+  var RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = "standard";
+  var RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = "Hide unselected";
+  var RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = "Every field of this object is ticked, so there is nothing to hide.";
+  var RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON = "object excluded";
+  var RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = "unticked";
+  var RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = "the record type is chosen by name";
+  var RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = "depends on ";
+  var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
+  var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
+  var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
+  var RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = "edited";
+  var RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX = "org record · ";
+  var RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = "Edit values";
+  var RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON = "an edit replaces it";
+  var RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = "rule not applied";
+  var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = "↗ ";
+
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitTreecipeFieldEditorConstants.ts
+  var RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ["Number", "Currency", "Percent"];
+  var RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
+  var RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER = "15- or 18-character Salesforce Id";
+  var RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = "Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it, unless the lookup can point at more than one object. Save writes it into the recipe file; Clear puts back the lines the field had.";
+  var RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES = {
+    Latitude: { suffix: "__Latitude__s", limit: 90 },
+    Longitude: { suffix: "__Longitude__s", limit: 180 }
+  };
+  var RECIPE_COCKPIT_PICKLIST_RESET_LABEL = "Reset to generated";
+  var RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = "Tick at least one value to save.";
+  var RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = "This field has an edit that is not a choice of its values. Saving a choice replaces it.";
+  var RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = "+ Add friend";
+  var RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = "Wire to…";
+  var RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX = "Create ";
+  var RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX = " in recipe";
+  var RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX = "Use existing ";
+  var RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX = " from org…";
+  var RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS = {
+    "no-parent-template": "There is no minimum required fields template for {parent}, so it cannot be added to the recipe.",
+    "parent-object-already-exists": 'The recipe already has a "- object: {parent}" block; point this lookup at it with Wire to… or by hand.',
+    "parent-not-inserted-first": "{parent} is not at a lower relationship level than {object}, so the insert would not send it first."
+  };
+  var RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = "Wire TODO lookups";
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/LookupWiring.ts
+  var lookupWiringIndexByTree = /* @__PURE__ */ new WeakMap();
+  var addableParentIndexByTree = /* @__PURE__ */ new WeakMap();
+  var emptyLookupIndexByTree = /* @__PURE__ */ new WeakMap();
+  function appendAddFriendControls(treeKey, object, objectHeaderElement) {
+    const friendObjectApiNames = object.iteration && object.iteration.insertableFriendObjectApiNames || [];
+    if (friendObjectApiNames.length === 0) {
+      return;
+    }
+    const addFriendElement = createButton("secondary", "treeAddFriend", RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL);
+    const addFriendsElement = createElement("div", "treeAddFriends hidden");
+    addFriendElement.setAttribute("title", "Add one of the friends of " + object.objectApiName + " under " + object.nickname);
+    addFriendElement.setAttribute("aria-label", "Add friend under " + object.nickname);
+    addFriendElement.setAttribute("aria-expanded", "false");
+    addFriendElement.addEventListener("click", function() {
+      const isOpening = addFriendsElement.classList.contains("hidden");
+      if (isOpening) {
+        addFriendsElement.classList.remove("hidden");
+      } else {
+        addFriendsElement.classList.add("hidden");
+      }
+      addFriendElement.setAttribute("aria-expanded", isOpening ? "true" : "false");
+    });
+    addFriendsElement.appendChild(createElement("span", "muted", "Add under " + object.nickname + ":"));
+    friendObjectApiNames.forEach(function(friendObjectApiName) {
+      const choiceElement = createButton("secondary", "treeAddFriendChoice", "+ " + friendObjectApiName);
+      choiceElement.setAttribute("aria-label", "Add " + friendObjectApiName + " under " + object.nickname);
+      choiceElement.addEventListener("click", function() {
+        if (isAddFriendRunning) {
+          return;
+        }
+        setAddFriendRunning(true);
+        vscodeApi.postMessage({
+          command: "addIterationFriend",
+          treeKey,
+          objectApiName: object.objectApiName,
+          objectNickname: object.nickname,
+          friendObjectApiName
+        });
+      });
+      choiceElement.disabled = isAddFriendRunning;
+      addFriendButtonElements.push(choiceElement);
+      addFriendsElement.appendChild(choiceElement);
+    });
+    addFriendButtonElements.push(addFriendElement);
+    objectHeaderElement.appendChild(addFriendElement);
+    objectHeaderElement.appendChild(addFriendsElement);
+    addFriendElement.disabled = isAddFriendRunning;
+  }
+  function setAddFriendRunning(isRunning) {
+    isAddFriendRunning = isRunning;
+    addFriendButtonElements.forEach(function(buttonElement) {
+      buttonElement.disabled = isRunning;
+    });
+  }
+  function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
+    return objectApiName + "\\n" + (objectNickname || "") + "\\n" + fieldApiName;
+  }
+  function findLookupWiring(tree, object, fieldApiName) {
+    if (!tree.lookupWirings || tree.lookupWirings.length === 0) {
+      return null;
+    }
+    let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
+    if (!lookupWiringIndex) {
+      lookupWiringIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = lookupWiringIndex;
+      tree.lookupWirings.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      lookupWiringIndexByTree.set(tree, lookupWiringIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
+  }
+  function buildWireLookupElement(tree, wiring) {
+    const wireElement = createButton("secondary", "treeWireLookup", RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL);
+    const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? " (" + wiring.objectNickname + ")" : "") + "." + wiring.fieldApiName;
+    wireElement.setAttribute("title", wiring.candidateNicknames.length === 1 ? "Point this lookup at " + wiring.candidateNicknames[0] + " in the recipe file, after a confirmation" : "Choose which of " + wiring.candidateNicknames.join(", ") + " this lookup points at in the recipe file");
+    wireElement.setAttribute("aria-label", "Wire " + fieldLabel);
+    wireElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      const wireMessage = { command: "wireLookup", treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
+      if (wiring.objectNickname) {
+        wireMessage.objectNickname = wiring.objectNickname;
+      }
+      vscodeApi.postMessage(wireMessage);
+    });
+    wireElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(wireElement);
+    return wireElement;
+  }
+  function findAddableParent(tree, object, fieldApiName) {
+    if (!tree.addableParents || tree.addableParents.length === 0) {
+      return null;
+    }
+    let addableParentIndex = addableParentIndexByTree.get(tree);
+    if (!addableParentIndex) {
+      addableParentIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = addableParentIndex;
+      tree.addableParents.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      addableParentIndexByTree.set(tree, addableParentIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
+  }
+  function findEmptyLookup(tree, object, fieldApiName) {
+    if (!tree.emptyLookups || tree.emptyLookups.length === 0) {
+      return null;
+    }
+    let emptyLookupIndex = emptyLookupIndexByTree.get(tree);
+    if (!emptyLookupIndex) {
+      emptyLookupIndex = /* @__PURE__ */ Object.create(null);
+      const builtIndex = emptyLookupIndex;
+      tree.emptyLookups.forEach(function(entry) {
+        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
+      });
+      emptyLookupIndexByTree.set(tree, emptyLookupIndex);
+    }
+    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+    return Object.prototype.hasOwnProperty.call(emptyLookupIndex, key) ? emptyLookupIndex[key] : null;
+  }
+  function buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup) {
+    const tree = treeObjectState.tree;
+    const addition = findAddableParent(tree, treeObjectState.object, emptyLookup.fieldApiName);
+    const fieldLabel = emptyLookup.objectApiName + (emptyLookup.objectNickname ? " (" + emptyLookup.objectNickname + ")" : "") + "." + emptyLookup.fieldApiName;
+    const decisionElement = createElement("span", "treeLookupDecision");
+    const createParentElement = createButton("secondary", "treeAddParentObject", RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX);
+    const useOrgRecordElement = createButton("secondary", "treeUseOrgRecord", RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX);
+    const postDecision = function(command) {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      const decisionMessage = { command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
+      if (emptyLookup.objectNickname) {
+        decisionMessage.objectNickname = emptyLookup.objectNickname;
+      }
+      vscodeApi.postMessage(decisionMessage);
+    };
+    createParentElement.setAttribute("aria-label", "Create " + emptyLookup.parentObjectApiName + " in the recipe for " + fieldLabel);
+    createParentElement.addEventListener("click", function() {
+      if (createParentElement.disabled || !addition) {
+        return;
+      }
+      postDecision("addParentObject");
+    });
+    useOrgRecordElement.setAttribute("aria-label", "Use an existing " + emptyLookup.parentObjectApiName + " record from an org for " + fieldLabel);
+    useOrgRecordElement.addEventListener("click", function() {
+      if (useOrgRecordElement.disabled) {
+        return;
+      }
+      postDecision("useOrgRecordForLookup");
+    });
+    decisionElement.appendChild(createParentElement);
+    decisionElement.appendChild(useOrgRecordElement);
+    const decision = {
+      element: decisionElement,
+      createParentElement,
+      useOrgRecordElement,
+      emptyLookup,
+      createReason: addition ? "" : describeCreateParentRefusal(emptyLookup),
+      useReason: emptyLookup.orgRecordRefusal || ""
+    };
+    fieldState.lookupDecision = decision;
+    lookupDecisions.push(decision);
+    drawLookupDecisionButtons(decision);
+    return decisionElement;
+  }
+  function drawFieldRowLookupDecision(treeObjectState, fieldState) {
+    const decision = fieldState.lookupDecision;
+    if (!decision) {
+      return;
+    }
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const fieldApiName = fieldState.field.fieldApiName;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
+    const isParentExcluded = lockReason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
+    if (isParentExcluded) {
+      decision.element.classList.add("hidden");
+    } else {
+      decision.element.classList.remove("hidden");
+    }
+    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON : "";
+    drawLookupDecisionButtons(decision);
+  }
+  function describeCreateParentRefusal(emptyLookup) {
+    const template = emptyLookup.createRefusalReason !== void 0 && hasOwnKey(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason) ? RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason] : "the recipe cannot add {parent}";
+    return template.split("{parent}").join(emptyLookup.parentObjectApiName).split("{object}").join(emptyLookup.objectApiName);
+  }
+  function drawLookupDecisionButtons(decision) {
+    const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
+    const useReason = decision.useReason || decision.selectionReason || "";
+    decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
+    decision.createParentElement.setAttribute("title", decision.createReason ? "Cannot be created: " + decision.createReason : "Add a " + parentObjectApiName + " block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation");
+    decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
+    decision.useOrgRecordElement.setAttribute("title", useReason ? "Cannot use an org record: " + useReason : "Choose an org, then search " + parentObjectApiName + " or enter a record Id; the Id is written into the recipe file after a confirmation");
+  }
+  function buildWireAllLookupsElement(tree) {
+    const singleCandidateCount = (tree.lookupWirings || []).filter(function(wiring) {
+      return wiring.candidateNicknames.length === 1;
+    }).length;
+    if (singleCandidateCount === 0) {
+      return null;
+    }
+    const wireAllElement = createButton("secondary", "treeWireAllLookups", RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL + " (" + singleCandidateCount + ")");
+    wireAllElement.setAttribute("title", "Point every TODO lookup of this tree that has exactly one record to choose from at that record's nickname, in the recipe file, after a confirmation that lists them");
+    wireAllElement.addEventListener("click", function() {
+      if (isWireLookupRunning) {
+        return;
+      }
+      setWireLookupRunning(true);
+      vscodeApi.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
+    });
+    wireAllElement.disabled = isWireLookupRunning;
+    wireLookupButtonElements.push(wireAllElement);
+    return wireAllElement;
+  }
+  function setWireLookupRunning(isRunning) {
+    isWireLookupRunning = isRunning;
+    wireLookupButtonElements.forEach(function(buttonElement) {
+      buttonElement.disabled = isRunning;
+    });
+    lookupDecisions.forEach(drawLookupDecisionButtons);
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/PicklistTiles.ts
+  function appendPicklistValueList(containerElement, picklistValues) {
+    if (!Array.isArray(picklistValues) || picklistValues.length === 0) {
+      containerElement.appendChild(createElement("div", "picklistEmpty muted", "no values"));
+      return;
+    }
+    picklistValues.forEach(function(picklistValue) {
+      containerElement.appendChild(createElement("div", "picklistValue", String(picklistValue)));
+    });
+  }
+  function buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname) {
+    return String(objectApiName) + "\\n" + String(fieldApiName) + "\\n" + String(treeKey) + "\\n" + String(nickname || "");
+  }
+  function requestPicklistValues(treeKey, objectApiName, nickname, fieldApiName, onValues) {
+    const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname);
+    if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
+      pendingPicklistValueElements[picklistKey] = [];
+    }
+    pendingPicklistValueElements[picklistKey].push(onValues);
+    const message = { command: "loadPicklistValues", objectApiName, fieldApiName, treeKey };
+    if (nickname) {
+      message.nickname = nickname;
+    }
+    vscodeApi.postMessage(message);
+  }
+  function renderPicklistValues(picklistValuesMessage) {
+    if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== "string") {
+      return;
+    }
+    const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey, picklistValuesMessage.nickname);
+    if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
+      return;
+    }
+    const onValuesCallbacks = pendingPicklistValueElements[picklistKey];
+    delete pendingPicklistValueElements[picklistKey];
+    onValuesCallbacks.forEach(function(onValues) {
+      onValues(picklistValuesMessage);
+    });
+  }
+  function findPicklistChoiceLockReason(treeObjectState, fieldState) {
+    if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) {
+      return "Values can be chosen only on a card with its own recipe file.";
+    }
+    const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
+    return lockReason ? "Cannot be edited: " + lockReason : "";
+  }
+  function drawPicklistValueEditor(treeObjectState, fieldState, editorElement, picklistValuesMessage, closeEditor) {
+    const field = fieldState.field;
+    const object = treeObjectState.object;
+    const lockReason = findPicklistChoiceLockReason(treeObjectState, fieldState);
+    const picklistValues = Array.isArray(picklistValuesMessage.picklistValues) ? picklistValuesMessage.picklistValues : [];
+    const startValues = Array.isArray(picklistValuesMessage.chosenPicklistValues) ? picklistValuesMessage.chosenPicklistValues : picklistValues;
+    const tileStates = [];
+    editorElement.textContent = "";
+    if (picklistValues.length === 0) {
+      editorElement.appendChild(createElement("div", "picklistEmpty muted", "no values"));
+    }
+    if (picklistValuesMessage.isOtherEdit && !lockReason) {
+      editorElement.appendChild(createElement("div", "picklistEditorNote muted", RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE));
+    }
+    const reasonElement = createElement("div", "picklistEditorReason muted hidden");
+    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
+    refusalElement.setAttribute("role", "alert");
+    const saveElement = createButton("primary", "picklistEditorSave", "Save", "compact");
+    const cancelElement = createButton("secondary", "picklistEditorCancel", "Cancel", "compact");
+    const resetElement = picklistValuesMessage.isEdited ? createButton("secondary", "picklistEditorReset", RECIPE_COCKPIT_PICKLIST_RESET_LABEL, "compact") : null;
+    let isSaving = false;
+    const drawChoice = function() {
+      const chosenCount = tileStates.filter(function(tileState) {
+        return tileState.isChosen;
+      }).length;
+      const isChanged = !!picklistValuesMessage.isOtherEdit || tileStates.some(function(tileState) {
+        return tileState.isChosen !== tileState.isStartChosen;
+      });
+      const reason = lockReason || (picklistValues.length > 0 && chosenCount === 0 ? RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON : "");
+      saveElement.disabled = isSaving || !!reason || picklistValues.length === 0 || !isChanged;
+      if (resetElement) {
+        resetElement.disabled = isSaving || !!lockReason;
+      }
+      reasonElement.textContent = reason;
+      if (reason) {
+        reasonElement.classList.remove("hidden");
+      } else {
+        reasonElement.classList.add("hidden");
+      }
+    };
+    if (picklistValues.length > 0) {
+      const tilesElement = createElement("div", "picklistTiles");
+      tilesElement.setAttribute("role", "group");
+      tilesElement.setAttribute("aria-label", "Values of " + object.objectApiName + "." + field.fieldApiName);
+      picklistValues.forEach(function(picklistValue) {
+        const isStartChosen = startValues.indexOf(picklistValue) !== -1;
+        const tileElement = createElement("div", "picklistTile");
+        const checkElement = createButton("check", "picklistTileCheck");
+        const valueElement = createElement("span", "picklistValue", String(picklistValue));
+        const tileState = { value: picklistValue, isChosen: isStartChosen, isStartChosen, tileElement, checkElement };
+        checkElement.setAttribute("role", "checkbox");
+        checkElement.setAttribute("aria-label", String(picklistValue));
+        checkElement.disabled = !!lockReason;
+        tileElement.appendChild(checkElement);
+        tileElement.appendChild(valueElement);
+        tileElement.addEventListener("click", function() {
+          if (lockReason) {
+            return;
+          }
+          tileState.isChosen = !tileState.isChosen;
+          drawTile(tileState);
+          drawChoice();
+        });
+        drawTile(tileState);
+        tileStates.push(tileState);
+        tilesElement.appendChild(tileElement);
+      });
+      editorElement.appendChild(tilesElement);
+    }
+    const recordTypeSections = Array.isArray(picklistValuesMessage.recordTypePicklistValues) ? picklistValuesMessage.recordTypePicklistValues : [];
+    recordTypeSections.forEach(function(recordTypeSection) {
+      const { recordTypeDeveloperName, picklistValues: recordTypePicklistValues } = recordTypeSection;
+      editorElement.appendChild(createElement("div", "recordTypeHeading", "Record type: " + String(recordTypeDeveloperName)));
+      appendPicklistValueList(editorElement, recordTypePicklistValues);
+    });
+    saveElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      if (saveElement.disabled) {
+        return;
+      }
+      const message = {
+        command: "setPicklistValueChoice",
+        treeKey: treeObjectState.tree.treeKey,
+        objectApiName: object.objectApiName,
+        fieldApiName: field.fieldApiName,
+        picklistValues: tileStates.filter(function(tileState) {
+          return tileState.isChosen;
+        }).map(function(tileState) {
+          return tileState.value;
+        })
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      refusalElement.textContent = "";
+      refusalElement.classList.add("hidden");
+      isSaving = true;
+      drawChoice();
+      fieldState.isPicklistExpanded = false;
+      savePanelPlace();
+      vscodeApi.postMessage(message);
+    });
+    if (resetElement) {
+      resetElement.setAttribute("title", "Put back the lines " + field.fieldApiName + " had before it was edited, after a confirmation");
+      resetElement.addEventListener("click", function(event) {
+        event.stopPropagation();
+        if (resetElement.disabled) {
+          return;
+        }
+        const message = {
+          command: "resetPicklistValueChoice",
+          treeKey: treeObjectState.tree.treeKey,
+          objectApiName: object.objectApiName,
+          fieldApiName: field.fieldApiName
+        };
+        if (object.nickname) {
+          message.nickname = object.nickname;
+        }
+        refusalElement.textContent = "";
+        refusalElement.classList.add("hidden");
+        isSaving = true;
+        drawChoice();
+        fieldState.isPicklistExpanded = false;
+        savePanelPlace();
+        vscodeApi.postMessage(message);
+      });
+    }
+    cancelElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      closeEditor();
+    });
+    const actionsElement = createElement("div", "fieldEditorActions");
+    actionsElement.appendChild(saveElement);
+    if (resetElement) {
+      actionsElement.appendChild(resetElement);
+    }
+    actionsElement.appendChild(cancelElement);
+    editorElement.appendChild(reasonElement);
+    editorElement.appendChild(refusalElement);
+    editorElement.appendChild(actionsElement);
+    fieldState.picklistRefusalElement = refusalElement;
+    fieldState.endPicklistSave = function() {
+      isSaving = false;
+      drawChoice();
+    };
+    drawChoice();
+  }
+  function drawTile(tileState) {
+    tileState.checkElement.setAttribute("aria-checked", tileState.isChosen ? "true" : "false");
+    tileState.checkElement.textContent = tileState.isChosen ? "✓" : "";
+    if (tileState.isChosen) {
+      tileState.tileElement.classList.add("chosen");
+    } else {
+      tileState.tileElement.classList.remove("chosen");
+    }
+  }
+  function renderPicklistChoiceResult(fieldEditResultMessage) {
+    const treeState = findTreeState(fieldEditResultMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) {
+        return;
+      }
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || !fieldState.setPicklistExpanded || !fieldState.picklistRefusalElement) {
+          return;
+        }
+        if (typeof fieldEditResultMessage.refusal === "string") {
+          fieldState.picklistRefusalElement.textContent = fieldEditResultMessage.refusal;
+          fieldState.picklistRefusalElement.classList.remove("hidden");
+          if (fieldState.endPicklistSave) {
+            fieldState.endPicklistSave();
+          }
+          fieldState.isPicklistExpanded = true;
+          savePanelPlace();
+          return;
+        }
+        fieldState.setPicklistExpanded(false);
+      });
+    });
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/FieldEditor.ts
+  function toggleFieldEditor(treeObjectState, fieldState, edit) {
+    const isSameEditOpen = fieldState.editorEdit === edit;
+    closeFieldEditor(fieldState);
+    if (!isSameEditOpen) {
+      openFieldEditor(treeObjectState, fieldState, edit);
+    }
+    drawFieldRowFixedValue(treeObjectState, fieldState);
+  }
+  function closeFieldEditor(fieldState) {
+    if (!fieldState.editorElement || !fieldState.editorEdit) {
+      return;
+    }
+    const openerElement = fieldState.fixedValueButtonElement;
+    fieldState.editorElement.textContent = "";
+    fieldState.editorElement.classList.add("hidden");
+    fieldState.editorEdit = "";
+    fieldState.editorRefusalElement = null;
+    if (openerElement) {
+      openerElement.setAttribute("aria-expanded", "false");
+      if (!openerElement.disabled && typeof openerElement.focus === "function") {
+        openerElement.focus();
+      }
+    }
+  }
+  function describeFixedValueForm(field) {
+    if (field.fieldType === "Checkbox") {
+      return "Type true or false.";
+    }
+    if (field.fieldType === "Date") {
+      return "Type a date as YYYY-MM-DD, such as 2026-01-31.";
+    }
+    if (field.fieldType === "DateTime") {
+      return "Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.";
+    }
+    if (RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
+      return "Type a plain number, such as 42, -7 or 3.25.";
+    }
+    const geolocationComponent = field.fieldType === "Text" ? Object.keys(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES).find(function(componentKey) {
+      return field.fieldApiName.endsWith(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[componentKey].suffix);
+    }) : void 0;
+    if (geolocationComponent !== void 0) {
+      const limit = RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[geolocationComponent].limit;
+      return "Type a " + geolocationComponent.toLowerCase() + " from -" + limit + " to " + limit + ".";
+    }
+    if (field.fieldType === "MultiselectPicklist") {
+      return "Type values this picklist declares, separated by ;.";
+    }
+    if (field.isPicklist) {
+      return "Type a value this picklist declares.";
+    }
+    return "Type the text every record gets.";
+  }
+  function buildFieldEditorInput(maxLength, value, ariaLabel, placeholder) {
+    const inputElement = createElement("input", "fieldEditorInput");
+    inputElement.setAttribute("type", "text");
+    inputElement.setAttribute("maxlength", String(maxLength));
+    inputElement.setAttribute("aria-label", ariaLabel);
+    if (placeholder) {
+      inputElement.setAttribute("placeholder", placeholder);
+    }
+    inputElement.value = value;
+    return inputElement;
+  }
+  function openFieldEditor(treeObjectState, fieldState, edit) {
+    if (!fieldState.rowElement) {
+      return;
+    }
+    const field = fieldState.field;
+    const tree = treeObjectState.tree;
+    const object = treeObjectState.object;
+    const fieldLabel = object.objectApiName + "." + field.fieldApiName;
+    if (!fieldState.editorElement) {
+      fieldState.editorElement = createElement("div", "fieldEditor hidden");
+      fieldState.editorElement.setAttribute("role", "group");
+      fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
+    }
+    const editorElement = fieldState.editorElement;
+    const inputsElement = createElement("div", "fieldEditorInputs");
+    const isLookup = isLookupField(tree, object.objectApiName, field);
+    editorElement.setAttribute("aria-label", "Edit " + fieldLabel);
+    const valueElement = isLookup ? buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object)) || "", "Record Id for " + fieldLabel, RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER) : buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), "Value or faker expression for " + fieldLabel, "");
+    inputsElement.appendChild(valueElement);
+    const collectTypedValue = function(isClearing) {
+      const typedValue = String(valueElement.value);
+      return isClearing ? "" : isLookup || isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue;
+    };
+    const describeEdit = function() {
+      if (isLookup) {
+        return RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT;
+      }
+      return (isExpressionValue(String(valueElement.value).trim()) ? "Saved as a faker expression: one \${{ ... }} on one line. Change its arguments, or call another faker method." : "Saved as a fixed value. " + describeFixedValueForm(field) + " Start with \${{ to save a faker expression instead.") + " Save writes it into the recipe file; Clear puts back the lines the field had.";
+    };
+    const hintElement = createElement("div", "fieldEditorHint muted", describeEdit());
+    valueElement.addEventListener("input", function() {
+      hintElement.textContent = describeEdit();
+    });
+    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
+    refusalElement.setAttribute("role", "alert");
+    const post = function(isClearing) {
+      const message = {
+        command: "setFieldFixedValue",
+        treeKey: tree.treeKey,
+        objectApiName: object.objectApiName,
+        fieldApiName: field.fieldApiName,
+        value: collectTypedValue(isClearing)
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      refusalElement.textContent = "";
+      refusalElement.classList.add("hidden");
+      vscodeApi.postMessage(message);
+    };
+    const actionsElement = createElement("div", "fieldEditorActions");
+    const saveElement = createButton("primary", "fieldEditorSave", "Save", "compact");
+    const clearElement = createButton("secondary", "fieldEditorClear", "Clear", "compact");
+    const cancelElement = createButton("secondary", "fieldEditorCancel", "Cancel", "compact");
+    saveElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      post(false);
+    });
+    clearElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      post(true);
+    });
+    cancelElement.addEventListener("click", function(event) {
+      event.stopPropagation();
+      toggleFieldEditor(treeObjectState, fieldState, edit);
+    });
+    actionsElement.appendChild(saveElement);
+    actionsElement.appendChild(clearElement);
+    actionsElement.appendChild(cancelElement);
+    valueElement.addEventListener("keydown", function(event) {
+      if (event.isComposing) {
+        return;
+      }
+      if (event.key === "Enter") {
+        event.stopPropagation();
+        post(false);
+      }
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        toggleFieldEditor(treeObjectState, fieldState, edit);
+      }
+    });
+    editorElement.textContent = "";
+    editorElement.appendChild(inputsElement);
+    editorElement.appendChild(hintElement);
+    editorElement.appendChild(refusalElement);
+    editorElement.appendChild(actionsElement);
+    editorElement.classList.remove("hidden");
+    fieldState.editorEdit = edit;
+    fieldState.editorRefusalElement = refusalElement;
+    if (typeof valueElement.focus === "function") {
+      valueElement.focus();
+    }
+  }
+  function renderFieldEditResult(fieldEditResultMessage) {
+    if (renderedSequence === null || fieldEditResultMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    if (fieldEditResultMessage.edit === "picklistValues") {
+      renderPicklistChoiceResult(fieldEditResultMessage);
+      return;
+    }
+    const treeState = findTreeState(fieldEditResultMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) {
+        return;
+      }
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || fieldState.editorEdit !== fieldEditResultMessage.edit) {
+          return;
+        }
+        if (typeof fieldEditResultMessage.refusal === "string" && fieldState.editorRefusalElement) {
+          fieldState.editorRefusalElement.textContent = fieldEditResultMessage.refusal;
+          fieldState.editorRefusalElement.classList.remove("hidden");
+          return;
+        }
+        toggleFieldEditor(treeObjectState, fieldState, fieldState.editorEdit);
+      });
+    });
+  }
+  function buildTreeFieldState(field) {
+    return {
+      field,
+      typeSearchText: String(field.fieldTypeWithSize || field.fieldType || "").toLowerCase(),
+      isMatch: true,
+      rowElement: null,
+      isPicklistExpanded: false,
+      includeElement: null,
+      noteElement: null,
+      isIncluded: true,
+      fixedValueButtonElement: null,
+      fixedValueBadgeElement: null,
+      fixedValueElement: null,
+      expressionElement: null,
+      picklistSectionElement: null,
+      validationRuleElement: null,
+      isValidationRuleApplied: true,
+      recordTypeDeveloperNames: null,
+      todos: Array.isArray(field.todos) ? field.todos : [],
+      editorElement: null,
+      editorEdit: "",
+      editorRefusalElement: null,
+      setPicklistExpanded: null,
+      picklistRefusalElement: null,
+      endPicklistSave: null
+    };
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRowFixedValue.ts
+  function findFixedValue(tree, objectApiName, fieldApiName, nickname) {
+    const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
+    const fixedValue = fixedValues.find(function(candidate) {
+      return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName;
+    });
+    return fixedValue ? String(fixedValue.value) : null;
+  }
+  var lookupFieldIndexesByTree = /* @__PURE__ */ new WeakMap();
+  function indexTreeLookupFields(tree) {
+    const indexedLookupFields = lookupFieldIndexesByTree.get(tree);
+    if (indexedLookupFields) {
+      return indexedLookupFields;
+    }
+    const lookupFieldKeys = /* @__PURE__ */ Object.create(null);
+    tree.objects.forEach(function(treeObject) {
+      treeObject.parentLookups.forEach(function(parentLookup) {
+        lookupFieldKeys[treeObject.objectApiName + "\\n" + parentLookup.fieldApiName] = true;
+      });
+    });
+    lookupFieldIndexesByTree.set(tree, lookupFieldKeys);
+    return lookupFieldKeys;
+  }
+  function isLookupField(tree, objectApiName, field) {
+    return RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1 || hasOwnKey(indexTreeLookupFields(tree), objectApiName + "\\n" + field.fieldApiName);
+  }
+  function findFixedValueLockReason(treeObjectState, fieldState) {
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const field = fieldState.field;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    if (findObjectExclusion(tree, objectApiName)) {
+      return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
+    }
+    if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, field.fieldApiName)) {
+      return objectFieldSelection.lockReasonsByFieldApiName[field.fieldApiName];
+    }
+    if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, field.fieldApiName)) {
+      return RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON;
+    }
+    if (field.fieldApiName === "RecordTypeId") {
+      return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON;
+    }
+    if (field.controllingField) {
+      return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;
+    }
+    return "";
+  }
+  function findFixedValueOrgRecord(tree, objectApiName, fieldApiName, nickname) {
+    const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
+    const fixedValue = fixedValues.find(function(candidate) {
+      return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName;
+    });
+    return fixedValue && fixedValue.orgRecord ? fixedValue.orgRecord : null;
+  }
+  function isExpressionValue(value) {
+    return typeof value === "string" && value.indexOf(RECIPE_COCKPIT_EXPRESSION_OPENER) === 0;
+  }
+  function unquoteExpressionLine(valueLine) {
+    if (valueLine.length < 2 || valueLine.charAt(0) !== '"' || valueLine.charAt(valueLine.length - 1) !== '"') {
+      return valueLine;
+    }
+    try {
+      const unquoted = JSON.parse(valueLine);
+      return isExpressionValue(unquoted) ? unquoted : valueLine;
+    } catch (parseError) {
+      return valueLine;
+    }
+  }
+  function findEditorStartValue(tree, object, field) {
+    const fixedValue = findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object));
+    if (fixedValue !== null) {
+      return fixedValue;
+    }
+    const valueLines = String(field.recipeValue || "").split("\\n").map(function(valueLine) {
+      return unquoteExpressionLine(valueLine.trim());
+    });
+    const expressionLine = valueLines.find(function(valueLine) {
+      return isExpressionValue(valueLine);
+    });
+    if (expressionLine !== void 0) {
+      return expressionLine;
+    }
+    return valueLines.find(function(valueLine) {
+      return valueLine !== "" && valueLine !== "|";
+    }) || "";
+  }
+  function drawFieldRowFixedValue(treeObjectState, fieldState) {
+    const objectApiName = treeObjectState.object.objectApiName;
+    const fieldApiName = fieldState.field.fieldApiName;
+    const nickname = occurrenceNicknameOf(treeObjectState.object);
+    const fixedValue = findFixedValue(treeObjectState.tree, objectApiName, fieldApiName, nickname);
+    const isFixed = fixedValue !== null;
+    const orgRecord = isFixed ? findFixedValueOrgRecord(treeObjectState.tree, objectApiName, fieldApiName, nickname) : null;
+    if (fieldState.fixedValueElement) {
+      fieldState.fixedValueElement.textContent = isFixed ? fixedValue : "";
+      if (isFixed) {
+        fieldState.fixedValueElement.classList.remove("hidden");
+      } else {
+        fieldState.fixedValueElement.classList.add("hidden");
+      }
+    }
+    if (fieldState.fixedValueBadgeElement) {
+      fieldState.fixedValueBadgeElement.textContent = orgRecord ? RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX + orgRecord.orgLabel : isFixed && isExpressionValue(fixedValue) ? RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL : RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL;
+      if (orgRecord) {
+        fieldState.fixedValueBadgeElement.classList.add("orgRecordBadge");
+        fieldState.fixedValueBadgeElement.setAttribute("title", "An existing " + orgRecord.parentObjectApiName + " record of " + orgRecord.orgLabel + ", not generated data. The Id exists only in that org; the insert checks it exists in the org it inserts into.");
+      } else {
+        fieldState.fixedValueBadgeElement.classList.remove("orgRecordBadge");
+        fieldState.fixedValueBadgeElement.removeAttribute("title");
+      }
+      if (isFixed) {
+        fieldState.fixedValueBadgeElement.classList.remove("hidden");
+      } else {
+        fieldState.fixedValueBadgeElement.classList.add("hidden");
+      }
+    }
+    if (fieldState.expressionElement) {
+      if (isFixed) {
+        fieldState.expressionElement.classList.add("hidden");
+      } else {
+        fieldState.expressionElement.classList.remove("hidden");
+      }
+    }
+    const buttonElement = fieldState.fixedValueButtonElement;
+    if (!buttonElement) {
+      return;
+    }
+    const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
+    buttonElement.disabled = !!lockReason;
+    buttonElement.setAttribute("aria-pressed", isFixed ? "true" : "false");
+    buttonElement.setAttribute("aria-expanded", fieldState.editorEdit === "fixedValue" ? "true" : "false");
+    if (buttonElement.disabled && fieldState.editorEdit === "fixedValue") {
+      closeFieldEditor(fieldState);
+    }
+    const title = lockReason ? "Cannot be edited: " + lockReason : orgRecord ? "Existing " + orgRecord.parentObjectApiName + " record of " + orgRecord.orgLabel + " — click to change or clear it" : isFixed ? (isExpressionValue(fixedValue) ? "Edited expression" : "Fixed value") + " — click to change or clear it" : isLookupField(treeObjectState.tree, treeObjectState.object.objectApiName, fieldState.field) ? "Give the lookup the Id of an existing record" : "Edit the faker expression, or give the field a fixed value";
+    buttonElement.setAttribute("title", title);
+    buttonElement.setAttribute("aria-label", fieldApiName + ": " + title);
+  }
+  function buildFieldFixedValueElement(treeObjectState, fieldState) {
+    const buttonElement = createButton("icon", "treeFieldFixedValue");
+    buttonElement.appendChild(buildPencilGlyph("default"));
+    buttonElement.addEventListener("click", function() {
+      if (buttonElement.disabled) {
+        return;
+      }
+      toggleFieldEditor(treeObjectState, fieldState, "fixedValue");
+    });
+    fieldState.fixedValueButtonElement = buttonElement;
+    return buttonElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRowValidationRule.ts
+  function hasSwitchableValidationRules(field) {
+    return !!field.lineNumber && !!field.validationRules && Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0;
+  }
+  function isValidationRuleOff(tree, objectApiName, fieldApiName, nickname) {
+    const validationRulesOff = Array.isArray(tree.validationRulesOff) ? tree.validationRulesOff : [];
+    return validationRulesOff.some(function(candidate) {
+      return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName;
+    });
+  }
+  function findValidationRuleLockReason(treeObjectState, fieldState) {
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const fieldApiName = fieldState.field.fieldApiName;
+    const nickname = occurrenceNicknameOf(treeObjectState.object);
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, nickname);
+    if (findObjectExclusion(tree, objectApiName)) {
+      return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
+    }
+    if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) && objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON) {
+      return RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON;
+    }
+    if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName)) {
+      return RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON;
+    }
+    if (findFixedValue(tree, objectApiName, fieldApiName, nickname) !== null) {
+      return RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON;
+    }
+    return "";
+  }
+  function drawFieldRowValidationRule(treeObjectState, fieldState) {
+    const field = fieldState.field;
+    const buttonElement = fieldState.validationRuleElement;
+    if (!buttonElement) {
+      return;
+    }
+    const validationRules = field.validationRules;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const lockReason = findValidationRuleLockReason(treeObjectState, fieldState);
+    const isApplied = !lockReason && !isValidationRuleOff(treeObjectState.tree, objectApiName, field.fieldApiName, occurrenceNicknameOf(treeObjectState.object));
+    const ruleNames = validationRules.appliedRuleNames.join(", ");
+    fieldState.isValidationRuleApplied = isApplied;
+    buttonElement.textContent = isApplied ? "✓" : "";
+    buttonElement.setAttribute("aria-checked", isApplied ? "true" : "false");
+    buttonElement.disabled = !!lockReason;
+    const title = lockReason ? "Validation rules " + ruleNames + " cannot be switched: " + lockReason : isApplied ? "Validation rules applied: " + ruleNames + " — untick to generate without them" : "Validation rules not applied: " + ruleNames + " — tick to apply them";
+    buttonElement.setAttribute("title", title);
+    buttonElement.setAttribute("aria-label", field.fieldApiName + ": " + title);
+    if (fieldState.expressionElement && typeof validationRules.unconstrainedExpression === "string") {
+      fieldState.expressionElement.textContent = isApplied || lockReason ? field.recipeValue : validationRules.unconstrainedExpression;
+    }
+  }
+  function buildFieldValidationRuleElement(treeObjectState, fieldState) {
+    const controlElement = createElement("span", "validationRuleControl");
+    const buttonElement = createButton("check", "treeFieldInclude treeFieldValidationRule");
+    const object = treeObjectState.object;
+    controlElement.appendChild(createElement("span", "muted", "rules"));
+    buttonElement.setAttribute("role", "checkbox");
+    buttonElement.addEventListener("click", function() {
+      if (buttonElement.disabled) {
+        return;
+      }
+      const message = {
+        command: "setFieldValidationRuleApplied",
+        treeKey: treeObjectState.tree.treeKey,
+        objectApiName: object.objectApiName,
+        fieldApiName: fieldState.field.fieldApiName,
+        applied: !fieldState.isValidationRuleApplied
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      vscodeApi.postMessage(message);
+    });
+    controlElement.appendChild(buttonElement);
+    fieldState.validationRuleElement = buttonElement;
+    return controlElement;
+  }
+  function buildValidationRuleNotAppliedElement(field) {
+    const notAppliedRules = field.validationRules.notAppliedRules;
+    const noteElement = createElement("span", "validationRuleNotApplied muted", RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL + ": " + notAppliedRules.map(function(notAppliedRule) {
+      return notAppliedRule.ruleName;
+    }).join(", "));
+    noteElement.setAttribute("title", notAppliedRules.map(function(notAppliedRule) {
+      return notAppliedRule.ruleName + (notAppliedRule.reason ? " — " + notAppliedRule.reason : "");
+    }).join("\\n"));
+    return noteElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingValidationRules.ts
+  function buildTroubleshootingValidationRules(treeState, subTabState) {
+    subTabState.noun = ["rule", "rules"];
+    subTabState.ruleGroups = [];
+    treeState.validationRuleSubTabState = subTabState;
+    const validationRuleListElement = createElement("div", "validationRuleList troubleshootingGroupCards");
+    treeState.validationRuleListElement = validationRuleListElement;
+    validationRuleListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE));
+    subTabState.listElement.appendChild(validationRuleListElement);
+  }
+  function requestTreeValidationRules(treeState) {
+    if (renderedSequence === null || treeState.isValidationRulesRequested || !treeState.validationRuleListElement) {
+      return;
+    }
+    treeState.isValidationRulesRequested = true;
+    vscodeApi.postMessage({ command: "loadValidationRules", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+  }
+  function buildValidationRuleSearchText(objectApiName, entry) {
+    const texts = [objectApiName, entry.ruleName, entry.statusLabel, entry.activeLabel, entry.messageText, entry.fieldsText].concat(entry.reasonTexts);
+    if (entry.isFormulaExpanded) {
+      texts.push(entry.rule.formula);
+    }
+    return texts.join("\\n").toLowerCase();
+  }
+  function renderTreeValidationRules(rulesMessage) {
+    if (renderedSequence === null || rulesMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(rulesMessage.treeKey);
+    if (!treeState || !treeState.validationRuleListElement) {
+      return;
+    }
+    const listElement = treeState.validationRuleListElement;
+    const subTabState = treeState.validationRuleSubTabState;
+    const ruleGroups = [];
+    listElement.textContent = "";
+    subTabState.ruleGroups = ruleGroups;
+    if (rulesMessage.failureMessage) {
+      treeState.isValidationRulesRequested = false;
+      listElement.appendChild(createElement("div", "treeEmpty muted", String(rulesMessage.failureMessage)));
+      applyTroubleshootingFilter(treeState, "validationRules");
+      return;
+    }
+    const objects = Array.isArray(rulesMessage.objects) ? rulesMessage.objects : [];
+    const openableRuleKeys = /* @__PURE__ */ Object.create(null);
+    (Array.isArray(rulesMessage.openableRules) ? rulesMessage.openableRules : []).forEach(function(openableRule) {
+      openableRuleKeys[String(openableRule.objectApiName) + "\\n" + String(openableRule.ruleName)] = true;
+    });
+    const hasLocalRules = objects.some(function(object) {
+      return Array.isArray(object.rules) && object.rules.some(function(rule) {
+        return !rule.isFileMissing;
+      }) || object.unreadRuleCount > 0;
+    });
+    if (!hasLocalRules) {
+      listElement.appendChild(createElement("div", "validationRuleNoLocalRules muted", RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE));
+    }
+    objects.forEach(function(object) {
+      const rules = Array.isArray(object.rules) ? object.rules : [];
+      const objectApiName = String(object.objectApiName);
+      const groupState = {
+        objectApiName,
+        element: null,
+        toggleElement: null,
+        countElement: createElement("span", "validationRuleCount muted"),
+        bodyElement: createElement("div", "validationRuleRows hidden"),
+        entries: rules.map(function(rule) {
+          const entry = buildValidationRuleEntryState(objectApiName, rule);
+          entry.isSourceOpenable = !rule.isFileMissing && hasOwnKey(openableRuleKeys, objectApiName + "\\n" + entry.ruleName);
+          return entry;
+        }),
+        matchingCount: 0,
+        isBuilt: false,
+        isExpanded: false,
+        isShown: true
+      };
+      const groupCard = buildTroubleshootingGroupCard("validationRules", "validationRuleObject", "validationRuleToggle", objectApiName, "validationRuleObjectName", groupState.countElement, null, groupState.entries.length > 0);
+      const groupElement = groupCard.element;
+      groupState.element = groupElement;
+      const statusDetail = describeValidationRuleStatuses(groupState.entries);
+      if (statusDetail) {
+        groupCard.headerElement.appendChild(createElement("span", "validationRuleDetail muted", statusDetail));
+      }
+      if (groupState.entries.length > 0) {
+        groupState.toggleElement = groupCard.headerElement;
+        groupState.toggleElement.addEventListener("click", function() {
+          setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
+        });
+      }
+      if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
+        groupElement.appendChild(createElement("div", "validationRuleEmpty muted", RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE));
+      }
+      groupElement.appendChild(groupState.bodyElement);
+      if (object.unreadRuleCount > 0) {
+        groupElement.appendChild(createElement("div", "validationRuleUnread muted", pluralize(object.unreadRuleCount, "more rule file was", "more rule files were") + " not read."));
+      }
+      listElement.appendChild(groupElement);
+      ruleGroups.push(groupState);
+    });
+    applyTroubleshootingFilter(treeState, "validationRules");
+    if (Object.keys(openableRuleKeys).length > 0) {
+      vscodeApi.postMessage({ command: "validationRulesRendered", treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence, listSequence: rulesMessage.listSequence });
+    }
+  }
+  function buildValidationRuleEntryState(objectApiName, rule) {
+    const fieldApiNames = Array.isArray(rule.fieldApiNames) ? rule.fieldApiNames : [];
+    const reasonTexts = (Array.isArray(rule.reasons) ? rule.reasons : []).map(function(reason) {
+      return "Why not applied: " + String(reason);
+    });
+    if (rule.status === "notInRun") {
+      reasonTexts.push(RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE);
+    }
+    if (rule.isFileMissing) {
+      reasonTexts.push(RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE);
+    }
+    const entry = {
+      rule,
+      ruleName: String(rule.ruleName),
+      statusLabel: hasOwnKey(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS, rule.status) ? RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS[rule.status] : String(rule.status),
+      activeLabel: rule.isActive === true ? "active" : rule.isActive === false ? "inactive" : "",
+      messageText: typeof rule.errorMessage === "string" && rule.errorMessage !== "" ? "Error message: " + rule.errorMessage : "",
+      fieldsText: fieldApiNames.length > 0 ? "Constrains: " + fieldApiNames.map(String).join(", ") : RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE,
+      reasonTexts,
+      hasFormula: typeof rule.formula === "string" && rule.formula !== "",
+      isFormulaExpanded: false,
+      formulaElement: null,
+      searchText: "",
+      isMatch: true,
+      isShown: true,
+      element: null
+    };
+    entry.searchText = buildValidationRuleSearchText(objectApiName, entry);
+    return entry;
+  }
+  function setValidationRuleGroupExpanded(treeState, groupState, isExpanded, isAnimated) {
+    if (!groupState.toggleElement) {
+      return;
+    }
+    if (isExpanded && !groupState.isBuilt) {
+      groupState.entries.forEach(function(entry) {
+        const ruleElement = buildValidationRuleRow(treeState, groupState, entry);
+        entry.element = ruleElement;
+        if (!entry.isMatch) {
+          ruleElement.classList.add("hidden");
+        }
+        entry.isShown = entry.isMatch;
+        groupState.bodyElement.appendChild(ruleElement);
+      });
+      groupState.isBuilt = true;
+    }
+    groupState.isExpanded = isExpanded;
+    setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+    drawTroubleshootingGroupExpanded(groupState, isExpanded);
+  }
+  function describeValidationRuleStatuses(entries) {
+    const countsByLabel = /* @__PURE__ */ Object.create(null);
+    const labels = [];
+    Object.keys(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS).forEach(function(status) {
+      labels.push(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS[status]);
+    });
+    entries.forEach(function(entry) {
+      if (!hasOwnKey(countsByLabel, entry.statusLabel)) {
+        countsByLabel[entry.statusLabel] = 0;
+        if (labels.indexOf(entry.statusLabel) === -1) {
+          labels.push(entry.statusLabel);
+        }
+      }
+      countsByLabel[entry.statusLabel]++;
+    });
+    return labels.filter(function(label) {
+      return hasOwnKey(countsByLabel, label);
+    }).map(function(label) {
+      return countsByLabel[label] + " " + label.toLowerCase();
+    }).join(" · ");
+  }
+  function buildValidationRuleRow(treeState, groupState, entry) {
+    const rule = entry.rule;
+    const ruleElement = createElement("div", "validationRule validationRule-" + String(rule.status));
+    const headerElement = createElement("div", "validationRuleHeader");
+    headerElement.appendChild(createElement("span", "validationRuleName", entry.ruleName));
+    headerElement.appendChild(createElement("span", "validationRuleStatus", entry.statusLabel));
+    if (entry.activeLabel) {
+      headerElement.appendChild(createElement("span", "validationRuleActive muted", entry.activeLabel));
+    }
+    if (entry.isSourceOpenable) {
+      headerElement.appendChild(buildValidationRuleSourceLink("validationRuleSource", RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL, groupState.objectApiName, entry.ruleName));
+    }
+    ruleElement.appendChild(headerElement);
+    if (entry.messageText) {
+      ruleElement.appendChild(createElement("div", "validationRuleMessage", entry.messageText));
+    }
+    ruleElement.appendChild(createElement("div", "validationRuleFields muted", entry.fieldsText));
+    entry.reasonTexts.forEach(function(reasonText) {
+      ruleElement.appendChild(createElement("div", "validationRuleReason muted", reasonText));
+    });
+    if (entry.hasFormula) {
+      const toggleElement = createButton("secondary", "validationRuleFormulaToggle", "Show formula", "compact");
+      toggleElement.setAttribute("aria-expanded", "false");
+      toggleElement.addEventListener("click", function() {
+        if (!entry.formulaElement) {
+          entry.formulaElement = createElement("div", "validationRuleFormula hidden", rule.formula);
+          ruleElement.appendChild(entry.formulaElement);
+        }
+        entry.isFormulaExpanded = !entry.isFormulaExpanded;
+        entry.searchText = buildValidationRuleSearchText(groupState.objectApiName, entry);
+        toggleElement.textContent = entry.isFormulaExpanded ? "Hide formula" : "Show formula";
+        toggleElement.setAttribute("aria-expanded", entry.isFormulaExpanded ? "true" : "false");
+        setShownWithMotion(entry.formulaElement, entry.isFormulaExpanded, true);
+        applyTroubleshootingFilter(treeState, "validationRules");
+      });
+      ruleElement.appendChild(toggleElement);
+    }
+    return ruleElement;
+  }
+  function buildValidationRuleSourceLink(className, labelText, objectApiName, ruleName) {
+    const sourceLinkElement = createButton("link", className + " sourceLink", labelText);
+    const description = RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX + " " + objectApiName + "." + ruleName;
+    sourceLinkElement.setAttribute("title", description);
+    sourceLinkElement.setAttribute("aria-label", description);
+    sourceLinkElement.addEventListener("click", function() {
+      vscodeApi.postMessage({ command: "openValidationRuleSource", objectApiName, ruleName });
+    });
+    return sourceLinkElement;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/TodosToggles.ts
+  function todoCountOf(treeState) {
+    if (typeof treeState.todoCount !== "number") {
+      treeState.todoCount = treeState.objectStates.reduce(function(todoCount, treeObjectState) {
+        return todoCount + treeObjectState.todoCount;
+      }, 0);
+    }
+    return treeState.todoCount;
+  }
+  function isTodosOnlyIn(treeState) {
+    return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
+  }
+  function appendTodosToggle(treeState, tileElement) {
+    const rowElement = createElement("div", "treecipeFilterRow");
+    tileElement.appendChild(rowElement);
+    const todoCount = todoCountOf(treeState);
+    const checkElement = createElement("span", "treeTodosCheck");
+    const toggleElement = createButton("check", "treeFieldInclude treeTodosToggle");
+    const labelElement = createElement("span", "treeTodosLabel", todoCount > 0 ? RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + todoCount + ")" : RECIPE_COCKPIT_TODOS_ONLY_LABEL);
+    toggleElement.setAttribute("role", "checkbox");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
+    if (todoCount > 0) {
+      const title = "Show only the fields and objects with a TODO comment in the recipe (" + pluralize(todoCount, "TODO", "TODOs") + ")";
+      const toggleTodosOnly = function() {
+        if (toggleElement.disabled) {
+          return;
+        }
+        treeState.isTodosOnly = !treeState.isTodosOnly;
+        applyStructureFilter(treeState);
+        savePanelPlace();
+      };
+      toggleElement.setAttribute("title", title);
+      labelElement.setAttribute("title", title);
+      toggleElement.addEventListener("click", toggleTodosOnly);
+      labelElement.addEventListener("click", toggleTodosOnly);
+    } else {
+      toggleElement.disabled = true;
+      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_TODOS_NOTE);
+      checkElement.classList.add("disabled");
+    }
+    treeState.todosToggleElement = toggleElement;
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    rowElement.appendChild(checkElement);
+    if (todoCount === 0) {
+      rowElement.appendChild(createElement("span", "treeTodosNote muted", RECIPE_COCKPIT_NO_TODOS_NOTE));
+    }
+    drawTodosToggle(treeState);
+  }
+  function drawTodosToggle(treeState) {
+    const toggleElement = treeState.todosToggleElement;
+    if (!toggleElement) {
+      return;
+    }
+    const isChecked = isTodosOnlyIn(treeState);
+    toggleElement.textContent = isChecked ? "✓" : "";
+    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
+  }
+  function buildTodoListElement(recipeFilePath, todos) {
+    const listElement = createElement("div", "treeTodos");
+    todos.forEach(function(todo) {
+      const todoElement = createElement("div", "treeTodo");
+      todoElement.appendChild(typeof todo.text === "string" ? createElement("span", "treeTodoText", todo.text) : createElement("span", "treeTodoText muted", RECIPE_COCKPIT_TODO_IN_VALUE_LABEL + " (line " + todo.lineNumber + ")"));
+      if (recipeFilePath && todo.lineNumber) {
+        todoElement.appendChild(buildSourceLink("treeTodoSource", "↗ yml", recipeFilePath, todo.lineNumber));
+      }
+      listElement.appendChild(todoElement);
+    });
+    return listElement;
+  }
+  function isObjectTodosOnlyIn(treeObjectState) {
+    return treeObjectState.isTodosOnly === true && treeObjectState.todoCount > 0;
+  }
+  function buildObjectTodosToggle(treeObjectState) {
+    const objectApiName = treeObjectState.object.objectApiName;
+    const checkElement = createElement("span", "treeFieldSelectAllCheck treeObjectTodosCheck");
+    const toggleElement = createButton("check", "treeObjectTodosToggle");
+    const labelText = treeObjectState.todoCount > 0 ? RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + treeObjectState.todoCount + ")" : RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL;
+    const labelElement = createElement("span", "treeObjectTodosLabel", labelText);
+    toggleElement.setAttribute("role", "checkbox");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + objectApiName + ")");
+    if (treeObjectState.todoCount > 0) {
+      const title = "Show only the fields of " + objectApiName + " with a TODO comment in the recipe (" + pluralize(treeObjectState.todoCount, "TODO", "TODOs") + ")";
+      const toggleTodosOnly = function() {
+        if (toggleElement.disabled) {
+          return;
+        }
+        treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
+        if (treeObjectState.treeState.structureSearch) {
+          filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+          drawStructureMatchCount(treeObjectState.treeState);
+        }
+        drawObjectTodosToggle(treeObjectState);
+        savePanelPlace();
+      };
+      toggleElement.setAttribute("title", title);
+      labelElement.setAttribute("title", title);
+      toggleElement.addEventListener("click", toggleTodosOnly);
+      labelElement.addEventListener("click", toggleTodosOnly);
+    } else {
+      toggleElement.disabled = true;
+      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
+      labelElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
+      checkElement.classList.add("disabled");
+    }
+    treeObjectState.todosToggleElement = toggleElement;
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    drawObjectTodosToggle(treeObjectState);
+    return checkElement;
+  }
+  function drawObjectTodosToggle(treeObjectState) {
+    const toggleElement = treeObjectState.todosToggleElement;
+    if (!toggleElement) {
+      return;
+    }
+    const isChecked = isObjectTodosOnlyIn(treeObjectState);
+    toggleElement.textContent = isChecked ? "✓" : "";
+    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldScope.ts
+  function drawObjectFieldSelection(treeObjectState) {
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    const exclusion = findObjectExclusion(tree, objectApiName);
+    const isEveryFieldUnticked = !!objectFieldSelection && !!objectFieldSelection.isEveryFieldExcluded;
+    const isNoFieldsSelected = exclusion ? exclusion.kind === "noFieldsSelected" && (!treeObjectState.isIteration || isEveryFieldUnticked) : isEveryFieldUnticked;
+    drawNoFieldsSelected(treeObjectState, isNoFieldsSelected);
+    if (treeObjectState.isBodyBuilt) {
+      treeObjectState.fieldStates.forEach(function(fieldState) {
+        drawFieldRowSelection(treeObjectState, fieldState);
+      });
+      drawSelectAllFields(treeObjectState);
+    }
+    return refreshHideUnselectedFields(treeObjectState);
+  }
+  function buildSelectAllFieldsElement(treeObjectState, hasSelectableFields) {
+    const rowElement = createElement("div", "treeFieldSelectAllRow");
+    treeObjectState.selectAllRowElement = rowElement;
+    if (hasSelectableFields) {
+      const selectAll = buildFieldScopeCheck(treeObjectState, "treeFieldInclude treeFieldSelectAll", "treeFieldSelectAllLabel", RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL, void 0, "selectAllCheckedState");
+      treeObjectState.selectAllCheckElement = selectAll.checkElement;
+      treeObjectState.selectAllElement = selectAll.toggleElement;
+      rowElement.appendChild(selectAll.checkElement);
+      const selectStandard = buildFieldScopeCheck(treeObjectState, "treeFieldSelectStandard", "treeFieldSelectStandardLabel", RECIPE_COCKPIT_STANDARD_FIELDS_LABEL, RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE, "selectStandardCheckedState");
+      treeObjectState.selectStandardCheckElement = selectStandard.checkElement;
+      treeObjectState.selectStandardElement = selectStandard.toggleElement;
+      rowElement.appendChild(selectStandard.checkElement);
+      rowElement.appendChild(buildHideUnselectedToggle(treeObjectState));
+    }
+    rowElement.appendChild(buildObjectTodosToggle(treeObjectState));
+    return rowElement;
+  }
+  function buildFieldScopeCheck(treeObjectState, toggleClassName, labelClassName, labelText, fieldScope, checkedStateKey) {
+    const object = treeObjectState.object;
+    const checkElement = createElement("span", "treeFieldSelectAllCheck");
+    const toggleElement = createButton("check", toggleClassName);
+    const labelElement = createElement("span", labelClassName, labelText);
+    toggleElement.setAttribute("role", "checkbox");
+    const toggleFields = function() {
+      if (toggleElement.disabled) {
+        return;
+      }
+      const message = {
+        command: "setAllFieldsIncluded",
+        treeKey: treeObjectState.tree.treeKey,
+        objectApiName: object.objectApiName,
+        included: treeObjectState[checkedStateKey] !== "true"
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      if (fieldScope) {
+        message.fieldScope = fieldScope;
+      }
+      vscodeApi.postMessage(message);
+    };
+    toggleElement.addEventListener("click", toggleFields);
+    labelElement.addEventListener("click", toggleFields);
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    return { checkElement, toggleElement };
+  }
+  function isStandardFieldApiName(fieldApiName) {
+    const lowerCaseName = fieldApiName.toLowerCase();
+    return lowerCaseName.slice(lowerCaseName.length - RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX.length) !== RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX;
+  }
+  function drawSelectAllFields(treeObjectState) {
+    if (!treeObjectState.selectAllElement) {
+      return;
+    }
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    const isObjectExcluded = !!findFieldLockingExclusion(tree, objectApiName);
+    const counts = { all: { untickable: 0, ticked: 0 }, standard: { untickable: 0, ticked: 0 } };
+    treeObjectState.fieldStates.forEach(function(fieldState) {
+      const fieldApiName = fieldState.field.fieldApiName;
+      if (!fieldState.field.lineNumber) {
+        return;
+      }
+      if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName)) {
+        return;
+      }
+      const isTicked = !objectFieldSelection || !hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
+      counts.all.untickable++;
+      if (isTicked) {
+        counts.all.ticked++;
+      }
+      if (isStandardFieldApiName(fieldApiName)) {
+        counts.standard.untickable++;
+        if (isTicked) {
+          counts.standard.ticked++;
+        }
+      }
+    });
+    treeObjectState.selectAllCheckedState = drawFieldScopeCheck(treeObjectState.selectAllElement, treeObjectState.selectAllCheckElement, counts.all, isObjectExcluded, objectApiName, RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL, "field", "fields");
+    treeObjectState.selectStandardCheckedState = drawFieldScopeCheck(treeObjectState.selectStandardElement, treeObjectState.selectStandardCheckElement, counts.standard, isObjectExcluded, objectApiName, RECIPE_COCKPIT_STANDARD_FIELDS_LABEL, "standard field", "standard fields");
+  }
+  function drawFieldScopeCheck(toggleElement, checkElement, count, isObjectExcluded, objectApiName, labelText, singular, plural) {
+    if (count.untickable === 0) {
+      checkElement.classList.add("hidden");
+      return null;
+    }
+    checkElement.classList.remove("hidden");
+    const checkedState = count.ticked === count.untickable ? "true" : count.ticked === 0 ? "false" : "mixed";
+    toggleElement.textContent = checkedState === "true" ? "✓" : checkedState === "mixed" ? "−" : "";
+    toggleElement.setAttribute("aria-checked", checkedState);
+    toggleElement.disabled = isObjectExcluded;
+    if (isObjectExcluded) {
+      checkElement.classList.add("disabled");
+    } else {
+      checkElement.classList.remove("disabled");
+    }
+    const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName) : checkedState === "true" ? "Every " + singular + " ticked — click to leave every " + singular + " out that can be unticked" : checkedState === "mixed" ? count.ticked + " of " + count.untickable + " " + plural + " ticked — click to tick every " + singular : "No " + singular + " ticked — click to tick every " + singular;
+    toggleElement.setAttribute("title", title);
+    toggleElement.setAttribute("aria-label", labelText + " of " + objectApiName + ": " + title);
+    return checkedState;
+  }
+  function countUnselectedFields(treeObjectState) {
+    if (!treeObjectState.canSelectFields) {
+      return 0;
+    }
+    const objectFieldSelection = findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    if (!objectFieldSelection) {
+      return 0;
+    }
+    return treeObjectState.fieldStates.filter(function(fieldState) {
+      return !!fieldState.field.lineNumber && isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
+    }).length;
+  }
+  function describeExcludedObjectFields(objectApiName) {
+    return objectApiName + " is excluded, so its fields are read-only";
+  }
+  function readHideUnselectedState(treeObjectState) {
+    if (findFieldLockingExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) {
+      return { reason: describeExcludedObjectFields(treeObjectState.object.objectApiName), unselectedCount: 0 };
+    }
+    const unselectedCount = countUnselectedFields(treeObjectState);
+    return { reason: unselectedCount === 0 ? RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE : "", unselectedCount };
+  }
+  function findHideUnselectedReason(treeObjectState) {
+    return readHideUnselectedState(treeObjectState).reason;
+  }
+  function isObjectHidingUnselectedIn(treeObjectState) {
+    return treeObjectState.isHidingUnselected === true;
+  }
+  function buildHideUnselectedToggle(treeObjectState) {
+    const objectApiName = treeObjectState.object.objectApiName;
+    const checkElement = createElement("span", "treeFieldSelectAllCheck treeHideUnselectedCheck");
+    const toggleElement = createButton("check", "treeHideUnselectedToggle");
+    const labelElement = createElement("span", "treeHideUnselectedLabel", RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL);
+    toggleElement.setAttribute("role", "checkbox");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL + " (" + objectApiName + ")");
+    const toggleHideUnselected = function() {
+      if (toggleElement.disabled) {
+        return;
+      }
+      treeObjectState.isHidingUnselected = !treeObjectState.isHidingUnselected;
+      if (treeObjectState.treeState.structureSearch) {
+        filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+        drawStructureMatchCount(treeObjectState.treeState);
+      }
+      drawHideUnselectedToggle(treeObjectState);
+      savePanelPlace();
+    };
+    toggleElement.addEventListener("click", toggleHideUnselected);
+    labelElement.addEventListener("click", toggleHideUnselected);
+    treeObjectState.hideUnselectedCheckElement = checkElement;
+    treeObjectState.hideUnselectedLabelElement = labelElement;
+    treeObjectState.hideUnselectedToggleElement = toggleElement;
+    checkElement.appendChild(toggleElement);
+    checkElement.appendChild(labelElement);
+    drawHideUnselectedToggle(treeObjectState);
+    return checkElement;
+  }
+  function drawHideUnselectedToggle(treeObjectState, hideUnselectedState) {
+    const toggleElement = treeObjectState.hideUnselectedToggleElement;
+    if (!toggleElement) {
+      return;
+    }
+    const state = hideUnselectedState || readHideUnselectedState(treeObjectState);
+    const reason = state.reason;
+    const unselectedCount = state.unselectedCount;
+    const isChecked = isObjectHidingUnselectedIn(treeObjectState);
+    const title = reason || (isChecked ? "Hiding " + pluralize(unselectedCount, "unticked field", "unticked fields") + " of " + treeObjectState.object.objectApiName + " — click to show them" : "Hide the " + pluralize(unselectedCount, "unticked field", "unticked fields") + " of " + treeObjectState.object.objectApiName);
+    toggleElement.textContent = isChecked ? "✓" : "";
+    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
+    toggleElement.disabled = !!reason;
+    toggleElement.setAttribute("title", title);
+    treeObjectState.hideUnselectedLabelElement.setAttribute("title", title);
+    const checkElement = treeObjectState.hideUnselectedCheckElement;
+    if (reason) {
+      checkElement.classList.add("disabled");
+    } else {
+      checkElement.classList.remove("disabled");
+    }
+  }
+  function refreshHideUnselectedFields(treeObjectState) {
+    const wasHiding = isObjectHidingUnselectedIn(treeObjectState);
+    if (!wasHiding && !treeObjectState.hideUnselectedToggleElement) {
+      return false;
+    }
+    const hideUnselectedState = readHideUnselectedState(treeObjectState);
+    if (wasHiding && hideUnselectedState.reason) {
+      treeObjectState.isHidingUnselected = false;
+      savePanelPlace();
+    }
+    drawHideUnselectedToggle(treeObjectState, hideUnselectedState);
+    if (!wasHiding || !treeObjectState.treeState || !treeObjectState.treeState.structureSearch) {
+      return false;
+    }
+    filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+    return true;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRow.ts
+  function searchTextOf(field) {
+    let fieldSearchText = fieldSearchTexts.get(field);
+    if (fieldSearchText === void 0) {
+      fieldSearchText = [field.fieldApiName, field.fieldLabel, field.controllingField, field.recipeValue].join("\\n").toLowerCase();
+      fieldSearchTexts.set(field, fieldSearchText);
+    }
+    return fieldSearchText;
+  }
+  function isFieldTextMatch(fieldState, searchQuery) {
+    return searchTextOf(fieldState.field).indexOf(searchQuery) !== -1 || fieldState.typeSearchText.indexOf(searchQuery) !== -1;
+  }
+  function formatParentLookups(treeObject, disabledFieldApiNames) {
+    if (!treeObject.parentLookups || treeObject.parentLookups.length === 0) {
+      return "";
+    }
+    return "(" + treeObject.parentLookups.map(function(parentLookup) {
+      if (parentLookup.parentObjectApiName === treeObject.objectApiName) {
+        return parentLookup.fieldApiName;
+      }
+      const lookupText = parentLookup.fieldApiName + " → " + parentLookup.parentObjectApiName;
+      return disabledFieldApiNames && disabledFieldApiNames.indexOf(parentLookup.fieldApiName) !== -1 ? lookupText + " · parent excluded" : lookupText;
+    }).join(", ") + ")";
+  }
+  function drawFieldSelection(treeState) {
+    let isAnyObjectRefiltered = false;
+    treeState.objectStates.forEach(function(treeObjectState) {
+      if (drawObjectFieldSelection(treeObjectState)) {
+        isAnyObjectRefiltered = true;
+      }
+    });
+    if (isAnyObjectRefiltered) {
+      drawStructureMatchCount(treeState);
+    }
+  }
+  function hasTreeSelection(tree) {
+    return !!tree.objectSelection || Array.isArray(tree.objectCounts) && tree.objectCounts.length > 0 || Array.isArray(tree.validationRulesOff) && tree.validationRulesOff.length > 0 || !!tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) && tree.fieldSelection.objects.some(function(objectFieldSelection) {
+      return Array.isArray(objectFieldSelection.excludedFieldApiNames) && objectFieldSelection.excludedFieldApiNames.length > 0;
+    });
+  }
+  function drawResetSelection(treeState) {
+    if (!treeState.resetSelectionElement) {
+      return;
+    }
+    if (hasTreeSelection(treeState.tree)) {
+      treeState.resetSelectionElement.classList.remove("hidden");
+    } else {
+      treeState.resetSelectionElement.classList.add("hidden");
+    }
+  }
+  function renderObjectSelection(objectSelectionMessage) {
+    if (renderedSequence === null || objectSelectionMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(objectSelectionMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    treeState.tree.objectSelection = objectSelectionMessage.objectSelection || void 0;
+    treeState.tree.fieldSelection = objectSelectionMessage.fieldSelection || void 0;
+    treeState.tree.objectCounts = objectSelectionMessage.objectCounts || void 0;
+    treeState.tree.fixedValues = objectSelectionMessage.fixedValues || void 0;
+    treeState.tree.validationRulesOff = objectSelectionMessage.validationRulesOff || void 0;
+    drawObjectSelection(treeState);
+    drawTreeInsert(treeState);
+    drawTreePermissionSet(treeState);
+    drawHelpSummary();
+    if (treeState === treePickerShownTreeState) {
+      drawTreePickerObjects();
+    }
+    if (treeState.selectedTab === "troubleshooting") {
+      requestTroubleshootingSummary(treeState);
+    }
+  }
+  function buildFieldIncludeElement(treeObjectState, fieldState) {
+    const includeElement = createButton("check", "treeFieldInclude");
+    const object = treeObjectState.object;
+    includeElement.setAttribute("role", "checkbox");
+    includeElement.addEventListener("click", function() {
+      if (includeElement.disabled) {
+        return;
+      }
+      const message = {
+        command: "setFieldIncluded",
+        treeKey: treeObjectState.tree.treeKey,
+        objectApiName: object.objectApiName,
+        fieldApiName: fieldState.field.fieldApiName,
+        included: !fieldState.isIncluded
+      };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      vscodeApi.postMessage(message);
+    });
+    fieldState.includeElement = includeElement;
+    return includeElement;
+  }
+  function buildTreeFieldRow(treeObjectState, fieldState) {
+    const field = fieldState.field;
+    const fieldRowElement = createElement("div", "treeField");
+    const fieldHeaderElement = createElement("div", "treeFieldHeader");
+    if (treeObjectState.canSelectFields && field.lineNumber) {
+      fieldHeaderElement.appendChild(buildFieldIncludeElement(treeObjectState, fieldState));
+      fieldHeaderElement.appendChild(buildFieldFixedValueElement(treeObjectState, fieldState));
+    }
+    fieldHeaderElement.appendChild(createElement("span", "treeFieldName", field.fieldApiName));
+    const referencedOwnerState = findReferencedOwnerState(treeObjectState, fieldState);
+    if (referencedOwnerState) {
+      fieldHeaderElement.appendChild(buildNicknameBackLink(treeObjectState.treeState, referencedOwnerState, fieldHeaderElement));
+    }
+    if (field.fieldTypeWithSize || field.fieldType) {
+      fieldHeaderElement.appendChild(createElement("span", "fieldType", field.fieldTypeWithSize || field.fieldType));
+    }
+    if (fieldState.recordTypeDeveloperNames) {
+      const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(", ");
+      const recordTypeChipElement = createElement("span", "recordTypeChip", recordTypeNamesText);
+      recordTypeChipElement.setAttribute("title", "Restricted by " + (fieldState.recordTypeDeveloperNames.length === 1 ? "record type " : "record types ") + recordTypeNamesText);
+      fieldHeaderElement.appendChild(recordTypeChipElement);
+    }
+    const lookupWiring = field.lineNumber ? findLookupWiring(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
+    if (lookupWiring) {
+      fieldHeaderElement.appendChild(buildWireLookupElement(treeObjectState.tree, lookupWiring));
+    }
+    const emptyLookup = field.lineNumber ? findEmptyLookup(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
+    if (emptyLookup) {
+      fieldHeaderElement.appendChild(buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup));
+    }
+    if (field.controllingField) {
+      fieldHeaderElement.appendChild(createElement("span", "controllingField muted", "controlled by " + field.controllingField));
+    }
+    if (field.isOnlyInRecipeFile) {
+      fieldHeaderElement.appendChild(createElement("span", "recipeFileOnly muted", "read from the recipe file"));
+    }
+    fieldState.fixedValueBadgeElement = createElement("span", "fixedValueBadge hidden", RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL);
+    fieldHeaderElement.appendChild(fieldState.fixedValueBadgeElement);
+    fieldState.noteElement = createElement("span", "treeFieldNote muted hidden");
+    fieldHeaderElement.appendChild(fieldState.noteElement);
+    if (treeObjectState.object.recipeFilePath && field.lineNumber) {
+      fieldHeaderElement.appendChild(buildSourceLink("treeFieldSource", "↗ yml", treeObjectState.object.recipeFilePath, field.lineNumber));
+    }
+    if (treeObjectState.canSelectFields && hasSwitchableValidationRules(field)) {
+      fieldHeaderElement.appendChild(buildFieldValidationRuleElement(treeObjectState, fieldState));
+    } else if (field.validationRules && Array.isArray(field.validationRules.notAppliedRules) && field.validationRules.notAppliedRules.length > 0 && !(Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0)) {
+      fieldHeaderElement.appendChild(buildValidationRuleNotAppliedElement(field));
+    }
+    if (field.validationRules && Array.isArray(field.validationRules.sourceRuleNames)) {
+      field.validationRules.sourceRuleNames.forEach(function(ruleName) {
+        fieldHeaderElement.appendChild(buildValidationRuleSourceLink("treeFieldRuleSource", RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX + String(ruleName), treeObjectState.object.objectApiName, String(ruleName)));
+      });
+    }
+    fieldRowElement.appendChild(fieldHeaderElement);
+    if (fieldState.todos.length > 0) {
+      fieldRowElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, fieldState.todos));
+    }
+    if (field.recipeValue) {
+      const expressionRowElement = createElement("div", "expressionRow");
+      fieldState.expressionElement = createElement("pre", "expression", field.recipeValue);
+      expressionRowElement.appendChild(fieldState.expressionElement);
+      fieldRowElement.appendChild(expressionRowElement);
+    }
+    fieldState.fixedValueElement = createElement("pre", "fixedValue hidden");
+    fieldRowElement.appendChild(fieldState.fixedValueElement);
+    let setPicklistExpanded = null;
+    if (field.isPicklist) {
+      const picklistSectionElement = createElement("div", "picklistSection");
+      const picklistToggleElement = createButton("secondary", "picklistToggle", RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
+      const editorElement = createElement("div", "picklistValues picklistEditor hidden");
+      const fieldLabel = treeObjectState.object.objectApiName + "." + field.fieldApiName;
+      const closeButtonElement = createButton("icon", "picklistEditorClose", "×");
+      const editorBodyElement = createElement("div", "picklistEditorBody");
+      const editorHeaderElement = createElement("div", "picklistEditorHeader");
+      editorElement.setAttribute("role", "group");
+      editorElement.setAttribute("aria-label", "Edit values of " + fieldLabel);
+      closeButtonElement.setAttribute("aria-label", "Close the values of " + field.fieldApiName);
+      closeButtonElement.setAttribute("title", "Close without saving");
+      editorHeaderElement.appendChild(createElement("span", "fieldEditorHint muted", "Tick the values " + field.fieldApiName + " generates. Save writes them into the recipe file; " + RECIPE_COCKPIT_PICKLIST_RESET_LABEL + " puts back the lines the field had."));
+      editorHeaderElement.appendChild(closeButtonElement);
+      editorElement.appendChild(editorHeaderElement);
+      editorElement.appendChild(editorBodyElement);
+      const setExpanded = function(isExpanding, isAnimated) {
+        const wasExpanded = !editorElement.classList.contains("hidden");
+        editorBodyElement.textContent = "";
+        fieldState.picklistRefusalElement = null;
+        fieldState.endPicklistSave = null;
+        if (isExpanding) {
+          editorBodyElement.appendChild(createElement("div", "picklistLoading muted", "Loading values…"));
+          requestPicklistValues(treeObjectState.tree.treeKey, treeObjectState.object.objectApiName, treeObjectState.object.nickname, field.fieldApiName, function(picklistValuesMessage) {
+            if (editorElement.classList.contains("hidden")) {
+              return;
+            }
+            drawPicklistValueEditor(treeObjectState, fieldState, editorBodyElement, picklistValuesMessage, function() {
+              setExpanded(false, true);
+              savePanelPlace();
+            });
+          });
+        }
+        setShownWithMotion(editorElement, isExpanding, isAnimated === true);
+        fieldState.isPicklistExpanded = isExpanding;
+        picklistToggleElement.setAttribute("aria-expanded", isExpanding ? "true" : "false");
+        if (isExpanding) {
+          picklistToggleElement.classList.add("hidden");
+        } else {
+          picklistToggleElement.classList.remove("hidden");
+        }
+        if (isExpanding && isAnimated && typeof closeButtonElement.focus === "function") {
+          closeButtonElement.focus();
+        }
+        if (!isExpanding && wasExpanded && typeof picklistToggleElement.focus === "function") {
+          picklistToggleElement.focus();
+        }
+      };
+      setPicklistExpanded = setExpanded;
+      fieldState.setPicklistExpanded = setExpanded;
+      picklistToggleElement.setAttribute("aria-label", RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL + " of " + field.fieldApiName);
+      picklistToggleElement.setAttribute("aria-expanded", "false");
+      picklistToggleElement.addEventListener("click", function() {
+        if (!editorElement.classList.contains("hidden")) {
+          return;
+        }
+        setExpanded(true, true);
+        savePanelPlace();
+      });
+      closeButtonElement.addEventListener("click", function(event) {
+        event.stopPropagation();
+        setExpanded(false, true);
+        savePanelPlace();
+      });
+      editorElement.addEventListener("keydown", function(event) {
+        if (event.key !== "Escape") {
+          return;
+        }
+        event.stopPropagation();
+        setExpanded(false, true);
+        savePanelPlace();
+      });
+      picklistSectionElement.appendChild(picklistToggleElement);
+      picklistSectionElement.appendChild(editorElement);
+      fieldRowElement.appendChild(picklistSectionElement);
+      fieldState.picklistSectionElement = picklistSectionElement;
+    }
+    if (setPicklistExpanded && fieldState.isPicklistExpanded) {
+      setPicklistExpanded(true);
+    }
+    return fieldRowElement;
+  }
+  function applyTreeFieldVisibility(fieldState) {
+    if (!fieldState.rowElement) {
+      return;
+    }
+    if (fieldState.isMatch) {
+      fieldState.rowElement.classList.remove("hidden");
+    } else {
+      fieldState.rowElement.classList.add("hidden");
+    }
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/SelectionCascade.ts
+  function buildIncludeElement(treeObjectState, treeKey) {
+    const includeElement = createButton("icon", "treeObjectInclude");
+    const object = treeObjectState.object;
+    treeObjectState.glyphElement = buildTreeGlyph(treeObjectState);
+    treeObjectState.includeElement = includeElement;
+    includeElement.appendChild(treeObjectState.glyphElement);
+    includeElement.addEventListener("click", function() {
+      if (includeElement.disabled) {
+        return;
+      }
+      const message = { command: "setObjectIncluded", treeKey, objectApiName: object.objectApiName, included: !treeObjectState.isIncluded };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      vscodeApi.postMessage(message);
+    });
+  }
+  var exclusionIndexesBySelection = /* @__PURE__ */ new WeakMap();
+  function indexObjectExclusions(tree) {
+    const objectSelection = tree.objectSelection;
+    if (!objectSelection || typeof objectSelection !== "object") {
+      return /* @__PURE__ */ Object.create(null);
+    }
+    const indexedExclusions = exclusionIndexesBySelection.get(objectSelection);
+    if (indexedExclusions) {
+      return indexedExclusions;
+    }
+    const exclusionsByObjectApiName = /* @__PURE__ */ Object.create(null);
+    const exclusions = Array.isArray(objectSelection.exclusions) ? objectSelection.exclusions : [];
+    exclusions.forEach(function(exclusion) {
+      exclusionsByObjectApiName[exclusion.objectApiName] = exclusion;
+    });
+    exclusionIndexesBySelection.set(objectSelection, exclusionsByObjectApiName);
+    return exclusionsByObjectApiName;
+  }
+  var impactIndexesBySelection = /* @__PURE__ */ new WeakMap();
+  function indexObjectImpacts(tree) {
+    const objectSelection = tree.objectSelection;
+    if (!objectSelection || typeof objectSelection !== "object") {
+      return /* @__PURE__ */ Object.create(null);
+    }
+    const indexedImpacts = impactIndexesBySelection.get(objectSelection);
+    if (indexedImpacts) {
+      return indexedImpacts;
+    }
+    const exclusionsByObjectApiName = indexObjectExclusions(tree);
+    const impactsByObjectApiName = /* @__PURE__ */ Object.create(null);
+    const drawnObjectApiNames = /* @__PURE__ */ Object.create(null);
+    (Array.isArray(tree.objects) ? tree.objects : []).forEach(function(treeObject) {
+      const objectApiName = treeObject && typeof treeObject === "object" ? treeObject.objectApiName : void 0;
+      if (typeof objectApiName === "string") {
+        drawnObjectApiNames[objectApiName] = true;
+      }
+    });
+    const disabledLookups = Array.isArray(objectSelection.disabledLookups) ? objectSelection.disabledLookups : [];
+    const compareNames = function(left, right) {
+      return left < right ? -1 : left > right ? 1 : 0;
+    };
+    disabledLookups.forEach(function(disabledLookup) {
+      if (!disabledLookup || typeof disabledLookup !== "object") {
+        return;
+      }
+      const { objectApiName, parentObjectApiName, fieldApiName } = disabledLookup;
+      if (typeof objectApiName !== "string" || typeof parentObjectApiName !== "string" || typeof fieldApiName !== "string") {
+        return;
+      }
+      if (objectApiName === parentObjectApiName || hasOwnKey(exclusionsByObjectApiName, objectApiName) || !hasOwnKey(drawnObjectApiNames, objectApiName)) {
+        return;
+      }
+      if (!hasOwnKey(impactsByObjectApiName, objectApiName)) {
+        impactsByObjectApiName[objectApiName] = { parentObjectApiNames: [], fieldApiNames: [] };
+      }
+      const impact = impactsByObjectApiName[objectApiName];
+      if (impact.parentObjectApiNames.indexOf(parentObjectApiName) === -1) {
+        impact.parentObjectApiNames.push(parentObjectApiName);
+      }
+      if (impact.fieldApiNames.indexOf(fieldApiName) === -1) {
+        impact.fieldApiNames.push(fieldApiName);
+      }
+    });
+    Object.keys(impactsByObjectApiName).forEach(function(objectApiName) {
+      impactsByObjectApiName[objectApiName].parentObjectApiNames.sort(compareNames);
+      impactsByObjectApiName[objectApiName].fieldApiNames.sort(compareNames);
+    });
+    impactIndexesBySelection.set(objectSelection, impactsByObjectApiName);
+    return impactsByObjectApiName;
+  }
+  function describeObjectImpact(impact) {
+    const parentText = impact.parentObjectApiNames.length === 1 ? "parent " + impact.parentObjectApiNames[0] : "parents " + impact.parentObjectApiNames.join(", ");
+    return parentText + " excluded";
+  }
+  function findObjectExclusion(tree, objectApiName) {
+    const exclusionsByObjectApiName = indexObjectExclusions(tree);
+    return Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
+  }
+  function findFieldLockingExclusion(tree, objectApiName) {
+    const exclusion = findObjectExclusion(tree, objectApiName);
+    return exclusion && exclusion.kind !== "noFieldsSelected" ? exclusion : null;
+  }
+  function drawNoFieldsSelected(treeObjectState, isNoFieldsSelected) {
+    treeObjectState.headerDetailElements.forEach(function(detailElement) {
+      if (isNoFieldsSelected) {
+        detailElement.classList.add("noFieldsSelectedHidden");
+      } else {
+        detailElement.classList.remove("noFieldsSelectedHidden");
+      }
+    });
+    if (isNoFieldsSelected) {
+      treeObjectState.noFieldsSelectedElement.classList.remove("hidden");
+    } else {
+      treeObjectState.noFieldsSelectedElement.classList.add("hidden");
+    }
+    if (isNoFieldsSelected) {
+      treeObjectState.element.classList.add("noFieldsSelected");
+    } else {
+      treeObjectState.element.classList.remove("noFieldsSelected");
+    }
+  }
+  function formatTreeCount(treeState) {
+    const objectSelection = treeState.tree.objectSelection;
+    const objectText = objectSelection ? objectSelection.includedObjectCount + " of " + pluralize(objectSelection.objectCount, "object", "objects") : pluralize(treeState.countedObjectCount, "object", "objects");
+    const impactedObjectCount = Object.keys(indexObjectImpacts(treeState.tree)).length;
+    const impactedText = impactedObjectCount > 0 ? " · " + impactedObjectCount + " impacted" : "";
+    return objectText + impactedText + " · " + pluralize(treeState.countedFieldCount, "field", "fields");
+  }
+  function drawObjectSelection(treeState) {
+    const tree = treeState.tree;
+    const disabledLookups = tree.objectSelection && Array.isArray(tree.objectSelection.disabledLookups) ? tree.objectSelection.disabledLookups : [];
+    const exclusionsByObjectApiName = indexObjectExclusions(tree);
+    const impactsByObjectApiName = indexObjectImpacts(tree);
+    const disabledFieldApiNamesByObjectApiName = /* @__PURE__ */ Object.create(null);
+    disabledLookups.forEach(function(disabledLookup) {
+      if (!disabledLookup || typeof disabledLookup !== "object") {
+        return;
+      }
+      const { objectApiName, fieldApiName } = disabledLookup;
+      if (typeof objectApiName !== "string" || typeof fieldApiName !== "string") {
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, objectApiName)) {
+        disabledFieldApiNamesByObjectApiName[objectApiName] = [];
+      }
+      disabledFieldApiNamesByObjectApiName[objectApiName].push(fieldApiName);
+    });
+    treeState.objectStates.forEach(function(treeObjectState) {
+      const objectApiName = treeObjectState.object.objectApiName;
+      const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
+      const isAutoExcluded = !!exclusion && exclusion.kind === "autoExcluded";
+      const isNoFieldsSelected = !!exclusion && exclusion.kind === "noFieldsSelected";
+      const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
+      const excludedParent = isAutoExcluded ? findObjectExclusion(tree, exclusion.excludedParentObjectApiName) : null;
+      const excludedParentState = excludedParent && excludedParent.kind === "noFieldsSelected" ? " has no fields selected" : " excluded";
+      if (exclusion && !isNoFieldsSelected) {
+        treeObjectState.element.classList.add("excluded");
+      } else {
+        treeObjectState.element.classList.remove("excluded");
+      }
+      treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact) : !exclusion ? "" : isAutoExcluded ? "auto-excluded — parent " + exclusion.excludedParentObjectApiName + excludedParentState : isNoFieldsSelected ? "not generated — " + objectApiName + " has no fields selected" : "excluded";
+      if (exclusion || impact) {
+        treeObjectState.exclusionElement.classList.remove("hidden");
+      } else {
+        treeObjectState.exclusionElement.classList.add("hidden");
+      }
+      const disabledFieldApiNames = Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, objectApiName) ? disabledFieldApiNamesByObjectApiName[objectApiName] : [];
+      treeObjectState.lookupsElement.textContent = formatParentLookups(treeObjectState.treeObject, disabledFieldApiNames);
+      if (treeObjectState.lookupsElement.textContent) {
+        treeObjectState.lookupsElement.classList.remove("hidden");
+      } else {
+        treeObjectState.lookupsElement.classList.add("hidden");
+      }
+      if (treeObjectState.countButtonElement) {
+        drawRecordCount(treeObjectState, !!exclusion);
+      }
+      if (!treeObjectState.includeElement) {
+        return;
+      }
+      const includeElement = treeObjectState.includeElement;
+      const glyphKind = exclusion ? exclusion.kind : impact ? "impacted" : "included";
+      const isRefused = !!treeObjectState.object.hasIndistinctOccurrences;
+      treeObjectState.isIncluded = !exclusion;
+      treeObjectState.glyphElement.setAttribute("class", "treeGlyph " + glyphKind);
+      treeObjectState.glyphPathElement.setAttribute("d", exclusion ? RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH : impact ? RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH : RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
+      includeElement.setAttribute("aria-pressed", exclusion ? "false" : "true");
+      includeElement.disabled = isAutoExcluded || isNoFieldsSelected || isRefused;
+      const title = isRefused ? objectApiName + " is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded" : isNoFieldsSelected ? "No fields selected, so no records will be generated. Tick a field to include it" : isAutoExcluded ? "Excluded because parent " + exclusion.excludedParentObjectApiName + (excludedParent && excludedParent.kind === "noFieldsSelected" ? " has no fields selected" : " is excluded") : exclusion ? "Excluded — click to include" : impact ? "Included — " + describeObjectImpact(impact) + ", so " + impact.fieldApiNames.join(", ") + (impact.fieldApiNames.length === 1 ? " is" : " are") + " left out. Click to exclude" : "Included — click to exclude";
+      includeElement.setAttribute("title", title);
+      includeElement.setAttribute("aria-label", objectApiName + ": " + title);
+    });
+    if (treeState.countElement) {
+      treeState.countElement.textContent = formatTreeCount(treeState);
+    }
+    drawFieldSelection(treeState);
+    drawResetSelection(treeState);
+  }
+  var fieldSelectionIndexesBySelection = /* @__PURE__ */ new WeakMap();
+  function indexFieldSelection(tree) {
+    const fieldSelection = tree.fieldSelection;
+    if (!fieldSelection || typeof fieldSelection !== "object" || !Array.isArray(fieldSelection.objects)) {
+      return /* @__PURE__ */ Object.create(null);
+    }
+    const indexedSelections = fieldSelectionIndexesBySelection.get(fieldSelection);
+    if (indexedSelections) {
+      return indexedSelections;
+    }
+    const selectionsByObjectApiName = /* @__PURE__ */ Object.create(null);
+    fieldSelection.objects.forEach(function(objectFieldSelection) {
+      const excludedFieldApiNames = /* @__PURE__ */ Object.create(null);
+      const lockReasonsByFieldApiName = /* @__PURE__ */ Object.create(null);
+      (Array.isArray(objectFieldSelection.excludedFieldApiNames) ? objectFieldSelection.excludedFieldApiNames : []).forEach(function(fieldApiName) {
+        excludedFieldApiNames[fieldApiName] = true;
+      });
+      (Array.isArray(objectFieldSelection.lockedFields) ? objectFieldSelection.lockedFields : []).forEach(function(lockedField) {
+        lockReasonsByFieldApiName[lockedField.fieldApiName] = String(lockedField.reason);
+      });
+      selectionsByObjectApiName[objectFieldSelection.objectApiName + "\\n" + (objectFieldSelection.nickname || "")] = {
+        excludedFieldApiNames,
+        lockReasonsByFieldApiName,
+        excludedFieldCount: Object.keys(excludedFieldApiNames).length,
+        isEveryFieldExcluded: objectFieldSelection.isEveryFieldExcluded === true
+      };
+    });
+    fieldSelectionIndexesBySelection.set(fieldSelection, selectionsByObjectApiName);
+    return selectionsByObjectApiName;
+  }
+  function findObjectFieldSelection(tree, objectApiName, nickname) {
+    const selectionsByObjectApiName = indexFieldSelection(tree);
+    const selectionKey = objectApiName + "\\n" + (nickname || "");
+    return Object.prototype.hasOwnProperty.call(selectionsByObjectApiName, selectionKey) ? selectionsByObjectApiName[selectionKey] : null;
+  }
+  function occurrenceNicknameOf(object) {
+    return object.iteration || Array.isArray(object.iterations) && object.iterations.length > 0 ? object.nickname || "" : "";
+  }
+  function isSameOccurrence(candidate, objectApiName, nickname) {
+    return candidate.objectApiName === objectApiName && (candidate.nickname || "") === (nickname || "");
+  }
+  function isTreeFieldUnticked(objectFieldSelection, fieldApiName) {
+    if (!objectFieldSelection) {
+      return false;
+    }
+    const lockReason = hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
+    return lockReason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON || hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
+  }
+  function drawFieldRowSelection(treeObjectState, fieldState) {
+    if (!fieldState.rowElement) {
+      return;
+    }
+    const tree = treeObjectState.tree;
+    const objectApiName = treeObjectState.object.objectApiName;
+    const fieldApiName = fieldState.field.fieldApiName;
+    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
+    const isObjectExcluded = !!findFieldLockingExclusion(tree, objectApiName);
+    const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
+    const isExcluded = isTreeFieldUnticked(objectFieldSelection, fieldApiName);
+    if (isExcluded) {
+      fieldState.rowElement.classList.add("fieldExcluded");
+    } else {
+      fieldState.rowElement.classList.remove("fieldExcluded");
+    }
+    if (fieldState.noteElement) {
+      fieldState.noteElement.textContent = lockReason;
+      if (fieldState.noteElement.textContent) {
+        fieldState.noteElement.classList.remove("hidden");
+      } else {
+        fieldState.noteElement.classList.add("hidden");
+      }
+    }
+    drawFieldRowFixedValue(treeObjectState, fieldState);
+    drawFieldRowValidationRule(treeObjectState, fieldState);
+    drawFieldRowLookupDecision(treeObjectState, fieldState);
+    const includeElement = fieldState.includeElement;
+    if (!includeElement) {
+      return;
+    }
+    fieldState.isIncluded = !isExcluded;
+    includeElement.textContent = isExcluded ? "" : "✓";
+    includeElement.setAttribute("aria-checked", isExcluded ? "false" : "true");
+    includeElement.disabled = isObjectExcluded || !!lockReason;
+    const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName) : lockReason ? "Cannot be unticked: " + lockReason : isExcluded ? "Unticked — click to generate this field" : "Ticked — click to leave this field out";
+    includeElement.setAttribute("title", title);
+    includeElement.setAttribute("aria-label", fieldApiName + ": " + title);
+  }
+
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/dataOrg/TreeInsert.ts
   function buildTreeInsertElement(treeState) {
     const controlsElement = createElement("div", "treeInsertControls");
@@ -2935,263 +5028,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     savePanelPlace();
   }
 
-  // src/treecipe/src/RecipeCockpitService/RecipeCockpitTreecipeFieldEditorConstants.ts
-  var RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ["Number", "Currency", "Percent"];
-  var RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
-  var RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER = "15- or 18-character Salesforce Id";
-  var RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT = "Saved as the Id of an existing record: every record generated points at it, and the tree insert checks the org it inserts into holds it, unless the lookup can point at more than one object. Save writes it into the recipe file; Clear puts back the lines the field had.";
-  var RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES = {
-    Latitude: { suffix: "__Latitude__s", limit: 90 },
-    Longitude: { suffix: "__Longitude__s", limit: 180 }
-  };
-  var RECIPE_COCKPIT_PICKLIST_RESET_LABEL = "Reset to generated";
-  var RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = "Tick at least one value to save.";
-  var RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = "This field has an edit that is not a choice of its values. Saving a choice replaces it.";
-  var RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = "+ Add friend";
-  var RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = "Wire to…";
-  var RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX = "Create ";
-  var RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX = " in recipe";
-  var RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX = "Use existing ";
-  var RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX = " from org…";
-  var RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS = {
-    "no-parent-template": "There is no minimum required fields template for {parent}, so it cannot be added to the recipe.",
-    "parent-object-already-exists": 'The recipe already has a "- object: {parent}" block; point this lookup at it with Wire to… or by hand.',
-    "parent-not-inserted-first": "{parent} is not at a lower relationship level than {object}, so the insert would not send it first."
-  };
-  var RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = "Wire TODO lookups";
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/LookupWiring.ts
-  var lookupWiringIndexByTree = /* @__PURE__ */ new WeakMap();
-  var addableParentIndexByTree = /* @__PURE__ */ new WeakMap();
-  var emptyLookupIndexByTree = /* @__PURE__ */ new WeakMap();
-  function appendAddFriendControls(treeKey, object, objectHeaderElement) {
-    const friendObjectApiNames = object.iteration && object.iteration.insertableFriendObjectApiNames || [];
-    if (friendObjectApiNames.length === 0) {
-      return;
-    }
-    const addFriendElement = createButton("secondary", "treeAddFriend", RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL);
-    const addFriendsElement = createElement("div", "treeAddFriends hidden");
-    addFriendElement.setAttribute("title", "Add one of the friends of " + object.objectApiName + " under " + object.nickname);
-    addFriendElement.setAttribute("aria-label", "Add friend under " + object.nickname);
-    addFriendElement.setAttribute("aria-expanded", "false");
-    addFriendElement.addEventListener("click", function() {
-      const isOpening = addFriendsElement.classList.contains("hidden");
-      if (isOpening) {
-        addFriendsElement.classList.remove("hidden");
-      } else {
-        addFriendsElement.classList.add("hidden");
-      }
-      addFriendElement.setAttribute("aria-expanded", isOpening ? "true" : "false");
-    });
-    addFriendsElement.appendChild(createElement("span", "muted", "Add under " + object.nickname + ":"));
-    friendObjectApiNames.forEach(function(friendObjectApiName) {
-      const choiceElement = createButton("secondary", "treeAddFriendChoice", "+ " + friendObjectApiName);
-      choiceElement.setAttribute("aria-label", "Add " + friendObjectApiName + " under " + object.nickname);
-      choiceElement.addEventListener("click", function() {
-        if (isAddFriendRunning) {
-          return;
-        }
-        setAddFriendRunning(true);
-        vscodeApi.postMessage({
-          command: "addIterationFriend",
-          treeKey,
-          objectApiName: object.objectApiName,
-          objectNickname: object.nickname,
-          friendObjectApiName
-        });
-      });
-      choiceElement.disabled = isAddFriendRunning;
-      addFriendButtonElements.push(choiceElement);
-      addFriendsElement.appendChild(choiceElement);
-    });
-    addFriendButtonElements.push(addFriendElement);
-    objectHeaderElement.appendChild(addFriendElement);
-    objectHeaderElement.appendChild(addFriendsElement);
-    addFriendElement.disabled = isAddFriendRunning;
-  }
-  function setAddFriendRunning(isRunning) {
-    isAddFriendRunning = isRunning;
-    addFriendButtonElements.forEach(function(buttonElement) {
-      buttonElement.disabled = isRunning;
-    });
-  }
-  function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
-    return objectApiName + "\\n" + (objectNickname || "") + "\\n" + fieldApiName;
-  }
-  function findLookupWiring(tree, object, fieldApiName) {
-    if (!tree.lookupWirings || tree.lookupWirings.length === 0) {
-      return null;
-    }
-    let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
-    if (!lookupWiringIndex) {
-      lookupWiringIndex = /* @__PURE__ */ Object.create(null);
-      const builtIndex = lookupWiringIndex;
-      tree.lookupWirings.forEach(function(entry) {
-        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
-      });
-      lookupWiringIndexByTree.set(tree, lookupWiringIndex);
-    }
-    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-    return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
-  }
-  function buildWireLookupElement(tree, wiring) {
-    const wireElement = createButton("secondary", "treeWireLookup", RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL);
-    const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? " (" + wiring.objectNickname + ")" : "") + "." + wiring.fieldApiName;
-    wireElement.setAttribute("title", wiring.candidateNicknames.length === 1 ? "Point this lookup at " + wiring.candidateNicknames[0] + " in the recipe file, after a confirmation" : "Choose which of " + wiring.candidateNicknames.join(", ") + " this lookup points at in the recipe file");
-    wireElement.setAttribute("aria-label", "Wire " + fieldLabel);
-    wireElement.addEventListener("click", function() {
-      if (isWireLookupRunning) {
-        return;
-      }
-      setWireLookupRunning(true);
-      const wireMessage = { command: "wireLookup", treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
-      if (wiring.objectNickname) {
-        wireMessage.objectNickname = wiring.objectNickname;
-      }
-      vscodeApi.postMessage(wireMessage);
-    });
-    wireElement.disabled = isWireLookupRunning;
-    wireLookupButtonElements.push(wireElement);
-    return wireElement;
-  }
-  function findAddableParent(tree, object, fieldApiName) {
-    if (!tree.addableParents || tree.addableParents.length === 0) {
-      return null;
-    }
-    let addableParentIndex = addableParentIndexByTree.get(tree);
-    if (!addableParentIndex) {
-      addableParentIndex = /* @__PURE__ */ Object.create(null);
-      const builtIndex = addableParentIndex;
-      tree.addableParents.forEach(function(entry) {
-        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
-      });
-      addableParentIndexByTree.set(tree, addableParentIndex);
-    }
-    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-    return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
-  }
-  function findEmptyLookup(tree, object, fieldApiName) {
-    if (!tree.emptyLookups || tree.emptyLookups.length === 0) {
-      return null;
-    }
-    let emptyLookupIndex = emptyLookupIndexByTree.get(tree);
-    if (!emptyLookupIndex) {
-      emptyLookupIndex = /* @__PURE__ */ Object.create(null);
-      const builtIndex = emptyLookupIndex;
-      tree.emptyLookups.forEach(function(entry) {
-        builtIndex[lookupWiringKeyOf(entry.objectApiName, entry.objectNickname, entry.fieldApiName)] = entry;
-      });
-      emptyLookupIndexByTree.set(tree, emptyLookupIndex);
-    }
-    const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
-    return Object.prototype.hasOwnProperty.call(emptyLookupIndex, key) ? emptyLookupIndex[key] : null;
-  }
-  function buildLookupDecisionElement(treeObjectState, fieldState, emptyLookup) {
-    const tree = treeObjectState.tree;
-    const addition = findAddableParent(tree, treeObjectState.object, emptyLookup.fieldApiName);
-    const fieldLabel = emptyLookup.objectApiName + (emptyLookup.objectNickname ? " (" + emptyLookup.objectNickname + ")" : "") + "." + emptyLookup.fieldApiName;
-    const decisionElement = createElement("span", "treeLookupDecision");
-    const createParentElement = createButton("secondary", "treeAddParentObject", RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX);
-    const useOrgRecordElement = createButton("secondary", "treeUseOrgRecord", RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX);
-    const postDecision = function(command) {
-      if (isWireLookupRunning) {
-        return;
-      }
-      setWireLookupRunning(true);
-      const decisionMessage = { command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
-      if (emptyLookup.objectNickname) {
-        decisionMessage.objectNickname = emptyLookup.objectNickname;
-      }
-      vscodeApi.postMessage(decisionMessage);
-    };
-    createParentElement.setAttribute("aria-label", "Create " + emptyLookup.parentObjectApiName + " in the recipe for " + fieldLabel);
-    createParentElement.addEventListener("click", function() {
-      if (createParentElement.disabled || !addition) {
-        return;
-      }
-      postDecision("addParentObject");
-    });
-    useOrgRecordElement.setAttribute("aria-label", "Use an existing " + emptyLookup.parentObjectApiName + " record from an org for " + fieldLabel);
-    useOrgRecordElement.addEventListener("click", function() {
-      if (useOrgRecordElement.disabled) {
-        return;
-      }
-      postDecision("useOrgRecordForLookup");
-    });
-    decisionElement.appendChild(createParentElement);
-    decisionElement.appendChild(useOrgRecordElement);
-    const decision = {
-      element: decisionElement,
-      createParentElement,
-      useOrgRecordElement,
-      emptyLookup,
-      createReason: addition ? "" : describeCreateParentRefusal(emptyLookup),
-      useReason: emptyLookup.orgRecordRefusal || ""
-    };
-    fieldState.lookupDecision = decision;
-    lookupDecisions.push(decision);
-    drawLookupDecisionButtons(decision);
-    return decisionElement;
-  }
-  function drawFieldRowLookupDecision(treeObjectState, fieldState) {
-    const decision = fieldState.lookupDecision;
-    if (!decision) {
-      return;
-    }
-    const tree = treeObjectState.tree;
-    const objectApiName = treeObjectState.object.objectApiName;
-    const fieldApiName = fieldState.field.fieldApiName;
-    const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
-    const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : "";
-    const isParentExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
-    if (isParentExcluded) {
-      decision.element.classList.add("hidden");
-    } else {
-      decision.element.classList.remove("hidden");
-    }
-    decision.selectionReason = findObjectExclusion(tree, objectApiName) ? FIXED_VALUE_OBJECT_EXCLUDED_REASON : objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) ? FIXED_VALUE_UNTICKED_REASON : "";
-    drawLookupDecisionButtons(decision);
-  }
-  function describeCreateParentRefusal(emptyLookup) {
-    const template = emptyLookup.createRefusalReason !== void 0 && hasOwnKey(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason) ? RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason] : "the recipe cannot add {parent}";
-    return template.split("{parent}").join(emptyLookup.parentObjectApiName).split("{object}").join(emptyLookup.objectApiName);
-  }
-  function drawLookupDecisionButtons(decision) {
-    const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
-    const useReason = decision.useReason || decision.selectionReason || "";
-    decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
-    decision.createParentElement.setAttribute("title", decision.createReason ? "Cannot be created: " + decision.createReason : "Add a " + parentObjectApiName + " block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation");
-    decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
-    decision.useOrgRecordElement.setAttribute("title", useReason ? "Cannot use an org record: " + useReason : "Choose an org, then search " + parentObjectApiName + " or enter a record Id; the Id is written into the recipe file after a confirmation");
-  }
-  function buildWireAllLookupsElement(tree) {
-    const singleCandidateCount = (tree.lookupWirings || []).filter(function(wiring) {
-      return wiring.candidateNicknames.length === 1;
-    }).length;
-    if (singleCandidateCount === 0) {
-      return null;
-    }
-    const wireAllElement = createButton("secondary", "treeWireAllLookups", RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL + " (" + singleCandidateCount + ")");
-    wireAllElement.setAttribute("title", "Point every TODO lookup of this tree that has exactly one record to choose from at that record's nickname, in the recipe file, after a confirmation that lists them");
-    wireAllElement.addEventListener("click", function() {
-      if (isWireLookupRunning) {
-        return;
-      }
-      setWireLookupRunning(true);
-      vscodeApi.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
-    });
-    wireAllElement.disabled = isWireLookupRunning;
-    wireLookupButtonElements.push(wireAllElement);
-    return wireAllElement;
-  }
-  function setWireLookupRunning(isRunning) {
-    isWireLookupRunning = isRunning;
-    wireLookupButtonElements.forEach(function(buttonElement) {
-      buttonElement.disabled = isRunning;
-    });
-    lookupDecisions.forEach(drawLookupDecisionButtons);
-  }
-
   // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingTodos.ts
   function buildTroubleshootingTodos(treeState, subTabState) {
     subTabState.noun = ["TODO", "TODOs"];
@@ -3478,230 +5314,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
   function fileNameOf(filePath) {
     const pathParts = String(filePath || "").split(/[\\\\/]/);
     return pathParts[pathParts.length - 1];
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingValidationRules.ts
-  function buildTroubleshootingValidationRules(treeState, subTabState) {
-    subTabState.noun = ["rule", "rules"];
-    subTabState.ruleGroups = [];
-    treeState.validationRuleSubTabState = subTabState;
-    const validationRuleListElement = createElement("div", "validationRuleList troubleshootingGroupCards");
-    treeState.validationRuleListElement = validationRuleListElement;
-    validationRuleListElement.appendChild(createElement("div", "treeEmpty muted", RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE));
-    subTabState.listElement.appendChild(validationRuleListElement);
-  }
-  function requestTreeValidationRules(treeState) {
-    if (renderedSequence === null || treeState.isValidationRulesRequested || !treeState.validationRuleListElement) {
-      return;
-    }
-    treeState.isValidationRulesRequested = true;
-    vscodeApi.postMessage({ command: "loadValidationRules", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
-  }
-  function buildValidationRuleSearchText(objectApiName, entry) {
-    const texts = [objectApiName, entry.ruleName, entry.statusLabel, entry.activeLabel, entry.messageText, entry.fieldsText].concat(entry.reasonTexts);
-    if (entry.isFormulaExpanded) {
-      texts.push(entry.rule.formula);
-    }
-    return texts.join("\\n").toLowerCase();
-  }
-  function renderTreeValidationRules(rulesMessage) {
-    if (renderedSequence === null || rulesMessage.renderSequence !== renderedSequence) {
-      return;
-    }
-    const treeState = findTreeState(rulesMessage.treeKey);
-    if (!treeState || !treeState.validationRuleListElement) {
-      return;
-    }
-    const listElement = treeState.validationRuleListElement;
-    const subTabState = treeState.validationRuleSubTabState;
-    const ruleGroups = [];
-    listElement.textContent = "";
-    subTabState.ruleGroups = ruleGroups;
-    if (rulesMessage.failureMessage) {
-      treeState.isValidationRulesRequested = false;
-      listElement.appendChild(createElement("div", "treeEmpty muted", String(rulesMessage.failureMessage)));
-      applyTroubleshootingFilter(treeState, "validationRules");
-      return;
-    }
-    const objects = Array.isArray(rulesMessage.objects) ? rulesMessage.objects : [];
-    const openableRuleKeys = /* @__PURE__ */ Object.create(null);
-    (Array.isArray(rulesMessage.openableRules) ? rulesMessage.openableRules : []).forEach(function(openableRule) {
-      openableRuleKeys[String(openableRule.objectApiName) + "\\n" + String(openableRule.ruleName)] = true;
-    });
-    const hasLocalRules = objects.some(function(object) {
-      return Array.isArray(object.rules) && object.rules.some(function(rule) {
-        return !rule.isFileMissing;
-      }) || object.unreadRuleCount > 0;
-    });
-    if (!hasLocalRules) {
-      listElement.appendChild(createElement("div", "validationRuleNoLocalRules muted", RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE));
-    }
-    objects.forEach(function(object) {
-      const rules = Array.isArray(object.rules) ? object.rules : [];
-      const objectApiName = String(object.objectApiName);
-      const groupState = {
-        objectApiName,
-        element: null,
-        toggleElement: null,
-        countElement: createElement("span", "validationRuleCount muted"),
-        bodyElement: createElement("div", "validationRuleRows hidden"),
-        entries: rules.map(function(rule) {
-          const entry = buildValidationRuleEntryState(objectApiName, rule);
-          entry.isSourceOpenable = !rule.isFileMissing && hasOwnKey(openableRuleKeys, objectApiName + "\\n" + entry.ruleName);
-          return entry;
-        }),
-        matchingCount: 0,
-        isBuilt: false,
-        isExpanded: false,
-        isShown: true
-      };
-      const groupCard = buildTroubleshootingGroupCard("validationRules", "validationRuleObject", "validationRuleToggle", objectApiName, "validationRuleObjectName", groupState.countElement, null, groupState.entries.length > 0);
-      const groupElement = groupCard.element;
-      groupState.element = groupElement;
-      const statusDetail = describeValidationRuleStatuses(groupState.entries);
-      if (statusDetail) {
-        groupCard.headerElement.appendChild(createElement("span", "validationRuleDetail muted", statusDetail));
-      }
-      if (groupState.entries.length > 0) {
-        groupState.toggleElement = groupCard.headerElement;
-        groupState.toggleElement.addEventListener("click", function() {
-          setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
-        });
-      }
-      if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
-        groupElement.appendChild(createElement("div", "validationRuleEmpty muted", RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE));
-      }
-      groupElement.appendChild(groupState.bodyElement);
-      if (object.unreadRuleCount > 0) {
-        groupElement.appendChild(createElement("div", "validationRuleUnread muted", pluralize(object.unreadRuleCount, "more rule file was", "more rule files were") + " not read."));
-      }
-      listElement.appendChild(groupElement);
-      ruleGroups.push(groupState);
-    });
-    applyTroubleshootingFilter(treeState, "validationRules");
-    if (Object.keys(openableRuleKeys).length > 0) {
-      vscodeApi.postMessage({ command: "validationRulesRendered", treeKey: rulesMessage.treeKey, renderSequence: rulesMessage.renderSequence, listSequence: rulesMessage.listSequence });
-    }
-  }
-  function buildValidationRuleEntryState(objectApiName, rule) {
-    const fieldApiNames = Array.isArray(rule.fieldApiNames) ? rule.fieldApiNames : [];
-    const reasonTexts = (Array.isArray(rule.reasons) ? rule.reasons : []).map(function(reason) {
-      return "Why not applied: " + String(reason);
-    });
-    if (rule.status === "notInRun") {
-      reasonTexts.push(RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE);
-    }
-    if (rule.isFileMissing) {
-      reasonTexts.push(RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE);
-    }
-    const entry = {
-      rule,
-      ruleName: String(rule.ruleName),
-      statusLabel: hasOwnKey(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS, rule.status) ? RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS[rule.status] : String(rule.status),
-      activeLabel: rule.isActive === true ? "active" : rule.isActive === false ? "inactive" : "",
-      messageText: typeof rule.errorMessage === "string" && rule.errorMessage !== "" ? "Error message: " + rule.errorMessage : "",
-      fieldsText: fieldApiNames.length > 0 ? "Constrains: " + fieldApiNames.map(String).join(", ") : RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE,
-      reasonTexts,
-      hasFormula: typeof rule.formula === "string" && rule.formula !== "",
-      isFormulaExpanded: false,
-      formulaElement: null,
-      searchText: "",
-      isMatch: true,
-      isShown: true,
-      element: null
-    };
-    entry.searchText = buildValidationRuleSearchText(objectApiName, entry);
-    return entry;
-  }
-  function setValidationRuleGroupExpanded(treeState, groupState, isExpanded, isAnimated) {
-    if (!groupState.toggleElement) {
-      return;
-    }
-    if (isExpanded && !groupState.isBuilt) {
-      groupState.entries.forEach(function(entry) {
-        const ruleElement = buildValidationRuleRow(treeState, groupState, entry);
-        entry.element = ruleElement;
-        if (!entry.isMatch) {
-          ruleElement.classList.add("hidden");
-        }
-        entry.isShown = entry.isMatch;
-        groupState.bodyElement.appendChild(ruleElement);
-      });
-      groupState.isBuilt = true;
-    }
-    groupState.isExpanded = isExpanded;
-    setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
-    drawTroubleshootingGroupExpanded(groupState, isExpanded);
-  }
-  function describeValidationRuleStatuses(entries) {
-    const countsByLabel = /* @__PURE__ */ Object.create(null);
-    const labels = [];
-    Object.keys(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS).forEach(function(status) {
-      labels.push(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS[status]);
-    });
-    entries.forEach(function(entry) {
-      if (!hasOwnKey(countsByLabel, entry.statusLabel)) {
-        countsByLabel[entry.statusLabel] = 0;
-        if (labels.indexOf(entry.statusLabel) === -1) {
-          labels.push(entry.statusLabel);
-        }
-      }
-      countsByLabel[entry.statusLabel]++;
-    });
-    return labels.filter(function(label) {
-      return hasOwnKey(countsByLabel, label);
-    }).map(function(label) {
-      return countsByLabel[label] + " " + label.toLowerCase();
-    }).join(" · ");
-  }
-  function buildValidationRuleRow(treeState, groupState, entry) {
-    const rule = entry.rule;
-    const ruleElement = createElement("div", "validationRule validationRule-" + String(rule.status));
-    const headerElement = createElement("div", "validationRuleHeader");
-    headerElement.appendChild(createElement("span", "validationRuleName", entry.ruleName));
-    headerElement.appendChild(createElement("span", "validationRuleStatus", entry.statusLabel));
-    if (entry.activeLabel) {
-      headerElement.appendChild(createElement("span", "validationRuleActive muted", entry.activeLabel));
-    }
-    if (entry.isSourceOpenable) {
-      headerElement.appendChild(buildValidationRuleSourceLink("validationRuleSource", RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL, groupState.objectApiName, entry.ruleName));
-    }
-    ruleElement.appendChild(headerElement);
-    if (entry.messageText) {
-      ruleElement.appendChild(createElement("div", "validationRuleMessage", entry.messageText));
-    }
-    ruleElement.appendChild(createElement("div", "validationRuleFields muted", entry.fieldsText));
-    entry.reasonTexts.forEach(function(reasonText) {
-      ruleElement.appendChild(createElement("div", "validationRuleReason muted", reasonText));
-    });
-    if (entry.hasFormula) {
-      const toggleElement = createButton("secondary", "validationRuleFormulaToggle", "Show formula", "compact");
-      toggleElement.setAttribute("aria-expanded", "false");
-      toggleElement.addEventListener("click", function() {
-        if (!entry.formulaElement) {
-          entry.formulaElement = createElement("div", "validationRuleFormula hidden", rule.formula);
-          ruleElement.appendChild(entry.formulaElement);
-        }
-        entry.isFormulaExpanded = !entry.isFormulaExpanded;
-        entry.searchText = buildValidationRuleSearchText(groupState.objectApiName, entry);
-        toggleElement.textContent = entry.isFormulaExpanded ? "Hide formula" : "Show formula";
-        toggleElement.setAttribute("aria-expanded", entry.isFormulaExpanded ? "true" : "false");
-        setShownWithMotion(entry.formulaElement, entry.isFormulaExpanded, true);
-        applyTroubleshootingFilter(treeState, "validationRules");
-      });
-      ruleElement.appendChild(toggleElement);
-    }
-    return ruleElement;
-  }
-  function buildValidationRuleSourceLink(className, labelText, objectApiName, ruleName) {
-    const sourceLinkElement = createButton("link", className + " sourceLink", labelText);
-    const description = RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX + " " + objectApiName + "." + ruleName;
-    sourceLinkElement.setAttribute("title", description);
-    sourceLinkElement.setAttribute("aria-label", description);
-    sourceLinkElement.addEventListener("click", function() {
-      vscodeApi.postMessage({ command: "openValidationRuleSource", objectApiName, ruleName });
-    });
-    return sourceLinkElement;
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/troubleshooting/TroubleshootingTab.ts
@@ -4992,451 +6604,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
     setShown(hintsElement, true);
   }
 
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/PicklistTiles.ts
-  function appendPicklistValueList(containerElement, picklistValues) {
-    if (!Array.isArray(picklistValues) || picklistValues.length === 0) {
-      containerElement.appendChild(createElement("div", "picklistEmpty muted", "no values"));
-      return;
-    }
-    picklistValues.forEach(function(picklistValue) {
-      containerElement.appendChild(createElement("div", "picklistValue", String(picklistValue)));
-    });
-  }
-  function buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname) {
-    return String(objectApiName) + "\\n" + String(fieldApiName) + "\\n" + String(treeKey) + "\\n" + String(nickname || "");
-  }
-  function requestPicklistValues(treeKey, objectApiName, nickname, fieldApiName, onValues) {
-    const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname);
-    if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
-      pendingPicklistValueElements[picklistKey] = [];
-    }
-    pendingPicklistValueElements[picklistKey].push(onValues);
-    const message = { command: "loadPicklistValues", objectApiName, fieldApiName, treeKey };
-    if (nickname) {
-      message.nickname = nickname;
-    }
-    vscodeApi.postMessage(message);
-  }
-  function renderPicklistValues(picklistValuesMessage) {
-    if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== "string") {
-      return;
-    }
-    const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey, picklistValuesMessage.nickname);
-    if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
-      return;
-    }
-    const onValuesCallbacks = pendingPicklistValueElements[picklistKey];
-    delete pendingPicklistValueElements[picklistKey];
-    onValuesCallbacks.forEach(function(onValues) {
-      onValues(picklistValuesMessage);
-    });
-  }
-  function findPicklistChoiceLockReason(treeObjectState, fieldState) {
-    if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) {
-      return "Values can be chosen only on a card with its own recipe file.";
-    }
-    const lockReason = findFixedValueLockReason(treeObjectState, fieldState);
-    return lockReason ? "Cannot be edited: " + lockReason : "";
-  }
-  function drawPicklistValueEditor(treeObjectState, fieldState, editorElement, picklistValuesMessage, closeEditor) {
-    const field = fieldState.field;
-    const object = treeObjectState.object;
-    const lockReason = findPicklistChoiceLockReason(treeObjectState, fieldState);
-    const picklistValues = Array.isArray(picklistValuesMessage.picklistValues) ? picklistValuesMessage.picklistValues : [];
-    const startValues = Array.isArray(picklistValuesMessage.chosenPicklistValues) ? picklistValuesMessage.chosenPicklistValues : picklistValues;
-    const tileStates = [];
-    editorElement.textContent = "";
-    if (picklistValues.length === 0) {
-      editorElement.appendChild(createElement("div", "picklistEmpty muted", "no values"));
-    }
-    if (picklistValuesMessage.isOtherEdit && !lockReason) {
-      editorElement.appendChild(createElement("div", "picklistEditorNote muted", RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE));
-    }
-    const reasonElement = createElement("div", "picklistEditorReason muted hidden");
-    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
-    refusalElement.setAttribute("role", "alert");
-    const saveElement = createButton("primary", "picklistEditorSave", "Save", "compact");
-    const cancelElement = createButton("secondary", "picklistEditorCancel", "Cancel", "compact");
-    const resetElement = picklistValuesMessage.isEdited ? createButton("secondary", "picklistEditorReset", RECIPE_COCKPIT_PICKLIST_RESET_LABEL, "compact") : null;
-    let isSaving = false;
-    const drawChoice = function() {
-      const chosenCount = tileStates.filter(function(tileState) {
-        return tileState.isChosen;
-      }).length;
-      const isChanged = !!picklistValuesMessage.isOtherEdit || tileStates.some(function(tileState) {
-        return tileState.isChosen !== tileState.isStartChosen;
-      });
-      const reason = lockReason || (picklistValues.length > 0 && chosenCount === 0 ? RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON : "");
-      saveElement.disabled = isSaving || !!reason || picklistValues.length === 0 || !isChanged;
-      if (resetElement) {
-        resetElement.disabled = isSaving || !!lockReason;
-      }
-      reasonElement.textContent = reason;
-      if (reason) {
-        reasonElement.classList.remove("hidden");
-      } else {
-        reasonElement.classList.add("hidden");
-      }
-    };
-    if (picklistValues.length > 0) {
-      const tilesElement = createElement("div", "picklistTiles");
-      tilesElement.setAttribute("role", "group");
-      tilesElement.setAttribute("aria-label", "Values of " + object.objectApiName + "." + field.fieldApiName);
-      picklistValues.forEach(function(picklistValue) {
-        const isStartChosen = startValues.indexOf(picklistValue) !== -1;
-        const tileElement = createElement("div", "picklistTile");
-        const checkElement = createButton("check", "picklistTileCheck");
-        const valueElement = createElement("span", "picklistValue", String(picklistValue));
-        const tileState = { value: picklistValue, isChosen: isStartChosen, isStartChosen, tileElement, checkElement };
-        checkElement.setAttribute("role", "checkbox");
-        checkElement.setAttribute("aria-label", String(picklistValue));
-        checkElement.disabled = !!lockReason;
-        tileElement.appendChild(checkElement);
-        tileElement.appendChild(valueElement);
-        tileElement.addEventListener("click", function() {
-          if (lockReason) {
-            return;
-          }
-          tileState.isChosen = !tileState.isChosen;
-          drawTile(tileState);
-          drawChoice();
-        });
-        drawTile(tileState);
-        tileStates.push(tileState);
-        tilesElement.appendChild(tileElement);
-      });
-      editorElement.appendChild(tilesElement);
-    }
-    const recordTypeSections = Array.isArray(picklistValuesMessage.recordTypePicklistValues) ? picklistValuesMessage.recordTypePicklistValues : [];
-    recordTypeSections.forEach(function(recordTypeSection) {
-      const { recordTypeDeveloperName, picklistValues: recordTypePicklistValues } = recordTypeSection;
-      editorElement.appendChild(createElement("div", "recordTypeHeading", "Record type: " + String(recordTypeDeveloperName)));
-      appendPicklistValueList(editorElement, recordTypePicklistValues);
-    });
-    saveElement.addEventListener("click", function(event) {
-      event.stopPropagation();
-      if (saveElement.disabled) {
-        return;
-      }
-      const message = {
-        command: "setPicklistValueChoice",
-        treeKey: treeObjectState.tree.treeKey,
-        objectApiName: object.objectApiName,
-        fieldApiName: field.fieldApiName,
-        picklistValues: tileStates.filter(function(tileState) {
-          return tileState.isChosen;
-        }).map(function(tileState) {
-          return tileState.value;
-        })
-      };
-      if (object.nickname) {
-        message.nickname = object.nickname;
-      }
-      refusalElement.textContent = "";
-      refusalElement.classList.add("hidden");
-      isSaving = true;
-      drawChoice();
-      fieldState.isPicklistExpanded = false;
-      savePanelPlace();
-      vscodeApi.postMessage(message);
-    });
-    if (resetElement) {
-      resetElement.setAttribute("title", "Put back the lines " + field.fieldApiName + " had before it was edited, after a confirmation");
-      resetElement.addEventListener("click", function(event) {
-        event.stopPropagation();
-        if (resetElement.disabled) {
-          return;
-        }
-        const message = {
-          command: "resetPicklistValueChoice",
-          treeKey: treeObjectState.tree.treeKey,
-          objectApiName: object.objectApiName,
-          fieldApiName: field.fieldApiName
-        };
-        if (object.nickname) {
-          message.nickname = object.nickname;
-        }
-        refusalElement.textContent = "";
-        refusalElement.classList.add("hidden");
-        isSaving = true;
-        drawChoice();
-        fieldState.isPicklistExpanded = false;
-        savePanelPlace();
-        vscodeApi.postMessage(message);
-      });
-    }
-    cancelElement.addEventListener("click", function(event) {
-      event.stopPropagation();
-      closeEditor();
-    });
-    const actionsElement = createElement("div", "fieldEditorActions");
-    actionsElement.appendChild(saveElement);
-    if (resetElement) {
-      actionsElement.appendChild(resetElement);
-    }
-    actionsElement.appendChild(cancelElement);
-    editorElement.appendChild(reasonElement);
-    editorElement.appendChild(refusalElement);
-    editorElement.appendChild(actionsElement);
-    fieldState.picklistRefusalElement = refusalElement;
-    fieldState.endPicklistSave = function() {
-      isSaving = false;
-      drawChoice();
-    };
-    drawChoice();
-  }
-  function drawTile(tileState) {
-    tileState.checkElement.setAttribute("aria-checked", tileState.isChosen ? "true" : "false");
-    tileState.checkElement.textContent = tileState.isChosen ? "✓" : "";
-    if (tileState.isChosen) {
-      tileState.tileElement.classList.add("chosen");
-    } else {
-      tileState.tileElement.classList.remove("chosen");
-    }
-  }
-  function renderPicklistChoiceResult(fieldEditResultMessage) {
-    const treeState = findTreeState(fieldEditResultMessage.treeKey);
-    if (!treeState) {
-      return;
-    }
-    treeState.objectStates.forEach(function(treeObjectState) {
-      if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) {
-        return;
-      }
-      treeObjectState.fieldStates.forEach(function(fieldState) {
-        if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || !fieldState.setPicklistExpanded || !fieldState.picklistRefusalElement) {
-          return;
-        }
-        if (typeof fieldEditResultMessage.refusal === "string") {
-          fieldState.picklistRefusalElement.textContent = fieldEditResultMessage.refusal;
-          fieldState.picklistRefusalElement.classList.remove("hidden");
-          if (fieldState.endPicklistSave) {
-            fieldState.endPicklistSave();
-          }
-          fieldState.isPicklistExpanded = true;
-          savePanelPlace();
-          return;
-        }
-        fieldState.setPicklistExpanded(false);
-      });
-    });
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/FieldEditor.ts
-  function toggleFieldEditor(treeObjectState, fieldState, edit) {
-    const isSameEditOpen = fieldState.editorEdit === edit;
-    closeFieldEditor(fieldState);
-    if (!isSameEditOpen) {
-      openFieldEditor(treeObjectState, fieldState, edit);
-    }
-    drawFieldRowFixedValue(treeObjectState, fieldState);
-  }
-  function closeFieldEditor(fieldState) {
-    if (!fieldState.editorElement || !fieldState.editorEdit) {
-      return;
-    }
-    const openerElement = fieldState.fixedValueButtonElement;
-    fieldState.editorElement.textContent = "";
-    fieldState.editorElement.classList.add("hidden");
-    fieldState.editorEdit = "";
-    fieldState.editorRefusalElement = null;
-    if (openerElement) {
-      openerElement.setAttribute("aria-expanded", "false");
-      if (!openerElement.disabled && typeof openerElement.focus === "function") {
-        openerElement.focus();
-      }
-    }
-  }
-  function describeFixedValueForm(field) {
-    if (field.fieldType === "Checkbox") {
-      return "Type true or false.";
-    }
-    if (field.fieldType === "Date") {
-      return "Type a date as YYYY-MM-DD, such as 2026-01-31.";
-    }
-    if (field.fieldType === "DateTime") {
-      return "Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.";
-    }
-    if (RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
-      return "Type a plain number, such as 42, -7 or 3.25.";
-    }
-    const geolocationComponent = field.fieldType === "Text" ? Object.keys(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES).find(function(componentKey) {
-      return field.fieldApiName.endsWith(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[componentKey].suffix);
-    }) : void 0;
-    if (geolocationComponent !== void 0) {
-      const limit = RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[geolocationComponent].limit;
-      return "Type a " + geolocationComponent.toLowerCase() + " from -" + limit + " to " + limit + ".";
-    }
-    if (field.fieldType === "MultiselectPicklist") {
-      return "Type values this picklist declares, separated by ;.";
-    }
-    if (field.isPicklist) {
-      return "Type a value this picklist declares.";
-    }
-    return "Type the text every record gets.";
-  }
-  function buildFieldEditorInput(maxLength, value, ariaLabel, placeholder) {
-    const inputElement = createElement("input", "fieldEditorInput");
-    inputElement.setAttribute("type", "text");
-    inputElement.setAttribute("maxlength", String(maxLength));
-    inputElement.setAttribute("aria-label", ariaLabel);
-    if (placeholder) {
-      inputElement.setAttribute("placeholder", placeholder);
-    }
-    inputElement.value = value;
-    return inputElement;
-  }
-  function openFieldEditor(treeObjectState, fieldState, edit) {
-    if (!fieldState.rowElement) {
-      return;
-    }
-    const field = fieldState.field;
-    const tree = treeObjectState.tree;
-    const object = treeObjectState.object;
-    const fieldLabel = object.objectApiName + "." + field.fieldApiName;
-    if (!fieldState.editorElement) {
-      fieldState.editorElement = createElement("div", "fieldEditor hidden");
-      fieldState.editorElement.setAttribute("role", "group");
-      fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
-    }
-    const editorElement = fieldState.editorElement;
-    const inputsElement = createElement("div", "fieldEditorInputs");
-    const isLookup = isLookupField(tree, object.objectApiName, field);
-    editorElement.setAttribute("aria-label", "Edit " + fieldLabel);
-    const valueElement = isLookup ? buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object)) || "", "Record Id for " + fieldLabel, RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER) : buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), "Value or faker expression for " + fieldLabel, "");
-    inputsElement.appendChild(valueElement);
-    const collectTypedValue = function(isClearing) {
-      const typedValue = String(valueElement.value);
-      return isClearing ? "" : isLookup || isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue;
-    };
-    const describeEdit = function() {
-      if (isLookup) {
-        return RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT;
-      }
-      return (isExpressionValue(String(valueElement.value).trim()) ? "Saved as a faker expression: one \${{ ... }} on one line. Change its arguments, or call another faker method." : "Saved as a fixed value. " + describeFixedValueForm(field) + " Start with \${{ to save a faker expression instead.") + " Save writes it into the recipe file; Clear puts back the lines the field had.";
-    };
-    const hintElement = createElement("div", "fieldEditorHint muted", describeEdit());
-    valueElement.addEventListener("input", function() {
-      hintElement.textContent = describeEdit();
-    });
-    const refusalElement = createElement("div", "fieldEditorRefusal hidden");
-    refusalElement.setAttribute("role", "alert");
-    const post = function(isClearing) {
-      const message = {
-        command: "setFieldFixedValue",
-        treeKey: tree.treeKey,
-        objectApiName: object.objectApiName,
-        fieldApiName: field.fieldApiName,
-        value: collectTypedValue(isClearing)
-      };
-      if (object.nickname) {
-        message.nickname = object.nickname;
-      }
-      refusalElement.textContent = "";
-      refusalElement.classList.add("hidden");
-      vscodeApi.postMessage(message);
-    };
-    const actionsElement = createElement("div", "fieldEditorActions");
-    const saveElement = createButton("primary", "fieldEditorSave", "Save", "compact");
-    const clearElement = createButton("secondary", "fieldEditorClear", "Clear", "compact");
-    const cancelElement = createButton("secondary", "fieldEditorCancel", "Cancel", "compact");
-    saveElement.addEventListener("click", function(event) {
-      event.stopPropagation();
-      post(false);
-    });
-    clearElement.addEventListener("click", function(event) {
-      event.stopPropagation();
-      post(true);
-    });
-    cancelElement.addEventListener("click", function(event) {
-      event.stopPropagation();
-      toggleFieldEditor(treeObjectState, fieldState, edit);
-    });
-    actionsElement.appendChild(saveElement);
-    actionsElement.appendChild(clearElement);
-    actionsElement.appendChild(cancelElement);
-    valueElement.addEventListener("keydown", function(event) {
-      if (event.isComposing) {
-        return;
-      }
-      if (event.key === "Enter") {
-        event.stopPropagation();
-        post(false);
-      }
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        toggleFieldEditor(treeObjectState, fieldState, edit);
-      }
-    });
-    editorElement.textContent = "";
-    editorElement.appendChild(inputsElement);
-    editorElement.appendChild(hintElement);
-    editorElement.appendChild(refusalElement);
-    editorElement.appendChild(actionsElement);
-    editorElement.classList.remove("hidden");
-    fieldState.editorEdit = edit;
-    fieldState.editorRefusalElement = refusalElement;
-    if (typeof valueElement.focus === "function") {
-      valueElement.focus();
-    }
-  }
-  function renderFieldEditResult(fieldEditResultMessage) {
-    if (renderedSequence === null || fieldEditResultMessage.renderSequence !== renderedSequence) {
-      return;
-    }
-    if (fieldEditResultMessage.edit === "picklistValues") {
-      renderPicklistChoiceResult(fieldEditResultMessage);
-      return;
-    }
-    const treeState = findTreeState(fieldEditResultMessage.treeKey);
-    if (!treeState) {
-      return;
-    }
-    treeState.objectStates.forEach(function(treeObjectState) {
-      if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) {
-        return;
-      }
-      treeObjectState.fieldStates.forEach(function(fieldState) {
-        if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || fieldState.editorEdit !== fieldEditResultMessage.edit) {
-          return;
-        }
-        if (typeof fieldEditResultMessage.refusal === "string" && fieldState.editorRefusalElement) {
-          fieldState.editorRefusalElement.textContent = fieldEditResultMessage.refusal;
-          fieldState.editorRefusalElement.classList.remove("hidden");
-          return;
-        }
-        toggleFieldEditor(treeObjectState, fieldState, fieldState.editorEdit);
-      });
-    });
-  }
-  function buildTreeFieldState(field) {
-    return {
-      field,
-      typeSearchText: String(field.fieldTypeWithSize || field.fieldType || "").toLowerCase(),
-      isMatch: true,
-      rowElement: null,
-      isPicklistExpanded: false,
-      includeElement: null,
-      noteElement: null,
-      isIncluded: true,
-      fixedValueButtonElement: null,
-      fixedValueBadgeElement: null,
-      fixedValueElement: null,
-      expressionElement: null,
-      picklistSectionElement: null,
-      validationRuleElement: null,
-      isValidationRuleApplied: true,
-      recordTypeDeveloperNames: null,
-      todos: Array.isArray(field.todos) ? field.todos : [],
-      editorElement: null,
-      editorEdit: "",
-      editorRefusalElement: null,
-      setPicklistExpanded: null,
-      picklistRefusalElement: null,
-      endPicklistSave: null
-    };
-  }
-
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterFieldEditor.ts
   function buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState) {
     const buttonElement = createButton("icon", "updaterFieldEdit");
@@ -5579,7 +6746,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
       setShown(fieldState.expressionRowElement, !isEdited);
     }
     if (fieldState.editBadgeElement) {
-      fieldState.editBadgeElement.textContent = !isEdited ? "" : isExpressionValue(editedValue) ? EDITED_EXPRESSION_BADGE_LABEL : FIXED_VALUE_BADGE_LABEL;
+      fieldState.editBadgeElement.textContent = !isEdited ? "" : isExpressionValue(editedValue) ? RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL : RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL;
       setShown(fieldState.editBadgeElement, isEdited);
     }
     if (fieldState.editButtonElement) {
@@ -5602,11 +6769,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
       return RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON;
     }
     const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + "\\n" + field.fieldApiName);
-    if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
+    if (isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
       return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
     }
     if (field.controllingField) {
-      return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;
+      return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;
     }
     if (RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
       return RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON;
@@ -6417,127 +7584,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `var recipeCockpitPanelModules
       recordTypeFieldsIndex[object.objectApiName] = developerNamesByFieldApiName;
     });
     return recordTypeFieldsIndex;
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/recordTypes/TodosToggles.ts
-  function todoCountOf(treeState) {
-    if (typeof treeState.todoCount !== "number") {
-      treeState.todoCount = treeState.objectStates.reduce(function(todoCount, treeObjectState) {
-        return todoCount + treeObjectState.todoCount;
-      }, 0);
-    }
-    return treeState.todoCount;
-  }
-  function isTodosOnlyIn(treeState) {
-    return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
-  }
-  function appendTodosToggle(treeState, tileElement) {
-    const rowElement = createElement("div", "treecipeFilterRow");
-    tileElement.appendChild(rowElement);
-    const todoCount = todoCountOf(treeState);
-    const checkElement = createElement("span", "treeTodosCheck");
-    const toggleElement = createButton("check", "treeFieldInclude treeTodosToggle");
-    const labelElement = createElement("span", "treeTodosLabel", todoCount > 0 ? RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + todoCount + ")" : RECIPE_COCKPIT_TODOS_ONLY_LABEL);
-    toggleElement.setAttribute("role", "checkbox");
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_TODOS_ONLY_LABEL + " (" + displayTitleOf(treeState.tree) + ")");
-    if (todoCount > 0) {
-      const title = "Show only the fields and objects with a TODO comment in the recipe (" + pluralize(todoCount, "TODO", "TODOs") + ")";
-      const toggleTodosOnly = function() {
-        if (toggleElement.disabled) {
-          return;
-        }
-        treeState.isTodosOnly = !treeState.isTodosOnly;
-        applyStructureFilter(treeState);
-        savePanelPlace();
-      };
-      toggleElement.setAttribute("title", title);
-      labelElement.setAttribute("title", title);
-      toggleElement.addEventListener("click", toggleTodosOnly);
-      labelElement.addEventListener("click", toggleTodosOnly);
-    } else {
-      toggleElement.disabled = true;
-      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_TODOS_NOTE);
-      checkElement.classList.add("disabled");
-    }
-    treeState.todosToggleElement = toggleElement;
-    checkElement.appendChild(toggleElement);
-    checkElement.appendChild(labelElement);
-    rowElement.appendChild(checkElement);
-    if (todoCount === 0) {
-      rowElement.appendChild(createElement("span", "treeTodosNote muted", RECIPE_COCKPIT_NO_TODOS_NOTE));
-    }
-    drawTodosToggle(treeState);
-  }
-  function drawTodosToggle(treeState) {
-    const toggleElement = treeState.todosToggleElement;
-    if (!toggleElement) {
-      return;
-    }
-    const isChecked = isTodosOnlyIn(treeState);
-    toggleElement.textContent = isChecked ? "✓" : "";
-    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
-  }
-  function buildTodoListElement(recipeFilePath, todos) {
-    const listElement = createElement("div", "treeTodos");
-    todos.forEach(function(todo) {
-      const todoElement = createElement("div", "treeTodo");
-      todoElement.appendChild(typeof todo.text === "string" ? createElement("span", "treeTodoText", todo.text) : createElement("span", "treeTodoText muted", RECIPE_COCKPIT_TODO_IN_VALUE_LABEL + " (line " + todo.lineNumber + ")"));
-      if (recipeFilePath && todo.lineNumber) {
-        todoElement.appendChild(buildSourceLink("treeTodoSource", "↗ yml", recipeFilePath, todo.lineNumber));
-      }
-      listElement.appendChild(todoElement);
-    });
-    return listElement;
-  }
-  function isObjectTodosOnlyIn(treeObjectState) {
-    return treeObjectState.isTodosOnly === true && treeObjectState.todoCount > 0;
-  }
-  function buildObjectTodosToggle(treeObjectState) {
-    const objectApiName = treeObjectState.object.objectApiName;
-    const checkElement = createElement("span", "treeFieldSelectAllCheck treeObjectTodosCheck");
-    const toggleElement = createButton("check", "treeObjectTodosToggle");
-    const labelText = treeObjectState.todoCount > 0 ? RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + treeObjectState.todoCount + ")" : RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL;
-    const labelElement = createElement("span", "treeObjectTodosLabel", labelText);
-    toggleElement.setAttribute("role", "checkbox");
-    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL + " (" + objectApiName + ")");
-    if (treeObjectState.todoCount > 0) {
-      const title = "Show only the fields of " + objectApiName + " with a TODO comment in the recipe (" + pluralize(treeObjectState.todoCount, "TODO", "TODOs") + ")";
-      const toggleTodosOnly = function() {
-        if (toggleElement.disabled) {
-          return;
-        }
-        treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
-        if (treeObjectState.treeState.structureSearch) {
-          filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
-          drawStructureMatchCount(treeObjectState.treeState);
-        }
-        drawObjectTodosToggle(treeObjectState);
-        savePanelPlace();
-      };
-      toggleElement.setAttribute("title", title);
-      labelElement.setAttribute("title", title);
-      toggleElement.addEventListener("click", toggleTodosOnly);
-      labelElement.addEventListener("click", toggleTodosOnly);
-    } else {
-      toggleElement.disabled = true;
-      toggleElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
-      labelElement.setAttribute("title", RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE);
-      checkElement.classList.add("disabled");
-    }
-    treeObjectState.todosToggleElement = toggleElement;
-    checkElement.appendChild(toggleElement);
-    checkElement.appendChild(labelElement);
-    drawObjectTodosToggle(treeObjectState);
-    return checkElement;
-  }
-  function drawObjectTodosToggle(treeObjectState) {
-    const toggleElement = treeObjectState.todosToggleElement;
-    if (!toggleElement) {
-      return;
-    }
-    const isChecked = isObjectTodosOnlyIn(treeObjectState);
-    toggleElement.textContent = isChecked ? "✓" : "";
-    toggleElement.setAttribute("aria-checked", isChecked ? "true" : "false");
   }
   return __toCommonJS(RecipeCockpitPanel_exports);
 })();

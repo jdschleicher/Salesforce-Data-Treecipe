@@ -56,3 +56,7 @@ export {
     listRecordTypeObjects,
     setRecordTypesExpanded
 } from './treecipe/recordTypes/RecordTypesSection';
+export { hasOwnKey } from './RecipeCockpitOwnKey';
+export { buildIncludeElement, drawObjectSelection, findObjectFieldSelection, indexObjectExclusions, indexObjectImpacts, isSameOccurrence, isTreeFieldUnticked, occurrenceNicknameOf } from './treecipe/fieldRows/SelectionCascade';
+export { buildSelectAllFieldsElement, drawHideUnselectedToggle, drawObjectFieldSelection, findHideUnselectedReason, isObjectHidingUnselectedIn } from './treecipe/fieldRows/FieldScope';
+export { applyTreeFieldVisibility, buildTreeFieldRow, drawResetSelection, formatParentLookups, isFieldTextMatch, renderObjectSelection } from './treecipe/fieldRows/FieldRow';
