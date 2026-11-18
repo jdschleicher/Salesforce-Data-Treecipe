@@ -5,7 +5,8 @@ import type { IActionCardView, ITabSearchView } from '../RecipeCockpitPanelBuild
     The shapes the Treecipe Adapter tab's panel modules work on (#641). A tree card's state is built
     by the panel script, which is not type checked yet, so IAdapterTreeState names only what these
     modules read and write on it. What the host posts is read as untrusted: every leaf is unknown,
-    and each is checked or converted where it is drawn.
+    and each is checked or converted where it is drawn. A tree's fixedValues is the field rows'
+    IFixedValue[] (#655), since findFixedValue reads it for both tabs and converts each value with String.
 */
 
 // THE PARTS OF A TREE'S MODEL THE TAB READS
