@@ -94,12 +94,14 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
-    it('holds no function and no JSON.stringify in any template literal of the service, so no panel logic is left in a string (#657)', () => {
+    it('holds no function or arrow in any template literal of the service, and no JSON.stringify in the shell\'s, so no panel logic or injected value is left in a string (#657)', () => {
 
         const servicePath = path.join(REPOSITORY_ROOT, 'src/treecipe/src/RecipeCockpitService/RecipeCockpitService.ts');
         const sourceFile = ts.createSourceFile(servicePath, fs.readFileSync(servicePath, 'utf8'), ts.ScriptTarget.Latest, true);
         const templateTexts: string[] = [];
+        const rawTemplateTexts: string[] = [];
         const visit = (node: ts.Node) => {
+            if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) { rawTemplateTexts.push(node.getText(sourceFile)); }
             // THE LITERAL TEXT ONLY: AN EXPRESSION INSIDE ${…} IS THE HOST'S OWN CHECKED CODE
             if (ts.isNoSubstitutionTemplateLiteral(node)) { templateTexts.push(node.text); }
             if (ts.isTemplateExpression(node)) { templateTexts.push([node.head.text, ...node.templateSpans.map(span => span.literal.text)].join('${…}')); }
@@ -109,6 +111,8 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
         expect(templateTexts.some(templateText => templateText.includes('<script nonce='))).toBe(true);
         expect(templateTexts.filter(templateText => /\bfunction\b[\s\w$]*\(|=>/.test(templateText))).toEqual([]);
+        // THE SHELL'S OWN ${…} EXPRESSIONS TOO: A VALUE STRINGIFIED INTO THE DOCUMENT IS AN INJECTION, WHEREVER IN IT
+        expect(rawTemplateTexts.filter(rawTemplateText => rawTemplateText.includes('<script nonce=') && rawTemplateText.includes('JSON.stringify('))).toEqual([]);
         const shellTemplate = templateTexts.find(templateText => templateText.includes('<script nonce=')) as string;
         expect(shellTemplate.substring(shellTemplate.indexOf('<script nonce='))).toBe('<script nonce="${…}">\n${…}</script>\n</body>\n</html>\n');
 
