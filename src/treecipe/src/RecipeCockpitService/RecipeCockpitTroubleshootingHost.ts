@@ -36,22 +36,17 @@ import type {
 */
 
 /*
-    What the tab reads and calls on the hub, and nothing else. It is the hub class itself, narrowed
-    to these names, so a read after an await sees the panel and state open now.
+    What the tab reads and calls on the hub, and nothing else: the hub class itself, narrowed to these
+    names, so a read after an await sees the panel and state open now. Read-only but for the deploy
+    and retrieve locks, the two the runs set; the panel state, allow-lists included, is never replaced.
 */
-export type IRecipeCockpitHubForTroubleshootingTab = Pick<typeof RecipeCockpitService,
+export type IRecipeCockpitHubForTroubleshootingTab = Readonly<Pick<typeof RecipeCockpitService,
     'buildConfirmOrg' |
     'buildDataOrgNoOrgsMessage' |
-    'buildObjectsByApiName' |
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
     'describeThrown' |
     'findRetrievedFilesApplyRefusal' |
-    'generateTreecipeAndReload' |
-    'isApplyingAdapterFiles' |
-    'isApplyingObjectRefresh' |
-    'isMetadataDeployInFlight' |
-    'isMetadataRetrieveInFlight' |
     'isScratchOrgSetupInFlight' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
@@ -61,7 +56,6 @@ export type IRecipeCockpitHubForTroubleshootingTab = Pick<typeof RecipeCockpitSe
     'metadataDeployRunStateMessage' |
     'metadataRetrieveRunStateMessage' |
     'postToPanel' |
-    'readOccurrenceNickname' |
     'readSourceApiVersion' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
@@ -78,7 +72,9 @@ export type IRecipeCockpitHubForTroubleshootingTab = Pick<typeof RecipeCockpitSe
     'setMetadataRetrieveState' |
     'showMetadataRetrieveNotification' |
     'toSingleLine' |
-    'withRunArtifactsGitIgnoreNote'>;
+    'withRunArtifactsGitIgnoreNote'>> & Pick<typeof RecipeCockpitService,
+    'isMetadataDeployInFlight' |
+    'isMetadataRetrieveInFlight'>;
 
 /*
     "Assign permission sets to me…" (#274, #302): while isRunning, every tree's insert, every

@@ -137,17 +137,17 @@ const RECIPE_COCKPIT_QUERY_EDITS_MAX_ENTRIES = 10000;
 const RECIPE_COCKPIT_QUERY_EDITS_FOLDER_NAME_MAX_LENGTH = 1000;
 
 /*
-    What the Query tab reads and calls on the hub, and nothing else. It is the hub class itself, narrowed
-    to these names, so a read after an await sees the panel and state open now.
+    What the Query tab reads and calls on the hub, and nothing else: the hub class itself, narrowed to
+    these names and read-only, so a read after an await sees the panel and state open now.
 */
-export type IRecipeCockpitHubForQueryTab = Pick<typeof RecipeCockpitService,
+export type IRecipeCockpitHubForQueryTab = Readonly<Pick<typeof RecipeCockpitService,
     'postToPanel' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'registerRecordLinkPreview' |
     'resolveSelectedReadOrg' |
-    'resolveTreeRunArtifactsLocation'>;
+    'resolveTreeRunArtifactsLocation'>>;
 
 // THE PANEL COMMANDS AND ACTION KINDS THIS HOST OWNS: THE HUB HANDS EACH ONE HERE, AND NO OTHER FILE HAS A case FOR IT
 export const RECIPE_COCKPIT_QUERY_COMMANDS = ['loadTreeQueries', 'saveTreeQueryEdit', 'runTreeQuery', 'exportTreeQueryResult'] as const;

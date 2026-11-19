@@ -221,9 +221,9 @@ const runtimeImportPaths = (sourceFile: ts.SourceFile): string[] => {
     return loadedPaths.filter(loadedPath => fs.existsSync(loadedPath));
 };
 
-const stringLiterals = (sourceFile: ts.SourceFile): string[] => {
+const stringLiterals = (node: ts.Node): string[] => {
     const literals: string[] = [];
-    visit(sourceFile, node => {
+    visit(node, node => {
         if ( ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ) {
             literals.push(node.text);
         }
@@ -279,6 +279,59 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                 .flatMap(filePath => stringLiterals(parse(filePath)).filter(literal => ownedNames.has(literal)).map(literal => `${path.relative(SOURCE_ROOT, filePath)}: '${literal}'`));
 
             expect(strayNames).toEqual([]);
+
+        });
+
+        // A FILE THE PANEL IMPORTS MAY NAME A COMMAND IN A TABLE THE PANEL POSTS FROM; ONLY THE TAB'S HOST MAY READ THAT TABLE
+        test('has its command tables read by no host-side file but its host', () => {
+
+            const ownedNames = new Set([...tabHost.commands, ...tabHost.actionKinds]);
+            const commandTables = new Set<string>();
+            panelImportedFiles.forEach(filePath => {
+                parse(filePath).statements.filter(ts.isVariableStatement).forEach(variableStatement => {
+                    variableStatement.declarationList.declarations.forEach(declaration => {
+                        if ( ts.isIdentifier(declaration.name) && declaration.initializer && stringLiterals(declaration.initializer).some(literal => ownedNames.has(literal)) ) {
+                            commandTables.add(declaration.name.text);
+                        }
+                    });
+                });
+            });
+
+            const strayReads: string[] = [];
+            hostSideFiles.filter(filePath => !hostFilePaths.includes(filePath) && !panelImportedFiles.has(filePath)).forEach(filePath => {
+                visit(parse(filePath), node => {
+                    if ( ts.isIdentifier(node) && commandTables.has(node.text)
+                            && !ts.isImportSpecifier(node.parent) && !ts.isExportSpecifier(node.parent) ) {
+                        strayReads.push(`${path.relative(SOURCE_ROOT, filePath)}: ${node.text}`);
+                    }
+                });
+            });
+
+            expect(strayReads).toEqual([]);
+
+        });
+
+        // THE HUB TYPE IS THE TAB'S WHOLE DEPENDENCE ON THE HUB: A NAME NO FILE OF THE TAB READS, OR ONE READ BUT NOT LISTED, FAILS
+        test('lists in its hub type exactly the hub members its files read', () => {
+
+            const hubTypeNames = new Set<string>();
+            visit(parse(hostFilePaths[0]), node => {
+                if ( ts.isTypeAliasDeclaration(node) && node.name.text.startsWith('IRecipeCockpitHubFor') ) {
+                    visit(node.type, typeNode => {
+                        if ( ts.isLiteralTypeNode(typeNode) && ts.isStringLiteral(typeNode.literal) ) {
+                            hubTypeNames.add(typeNode.literal.text);
+                        }
+                    });
+                }
+            });
+            const readNames = new Set<string>();
+            hostFilePaths.forEach(filePath => visit(parse(filePath), node => {
+                if ( ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'hub' ) {
+                    readNames.add(node.name.text);
+                }
+            }));
+
+            expect([...hubTypeNames].sort()).toEqual([...readNames].sort());
 
         });
 

@@ -8601,7 +8601,7 @@ export class RecipeCockpitService {
         palette. The latest run is loaded afterwards whether or not generation wrote one: Generate
         Treecipe reports its own failures, and reloading shows the reader exactly what is on disk.
     */
-    static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
 
         /*
             In flight until the RELOAD has finished, not only the command, so a second click before

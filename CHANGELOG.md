@@ -21,7 +21,8 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
 - **`tests/RecipeCockpitTabHosts.test.ts` has a Troubleshooting row.**
   - A tab's host can be several files.
   - Each pure module lists exactly what the hub still uses from it, with the slice that removes it (#667, #668, #669) or the shared hub service that keeps it.
-  - A file the panel imports may name a command, since that's the panel's own vocabulary.
+  - A file the panel imports may name a command, since that's the panel's own vocabulary. Only the tab's host may read such a table.
+  - A tab's hub type must list exactly the hub members its files read. It is `Readonly`, except for the deploy and retrieve locks the runs set.
 - **Tests changed only to reach code where it now lives.**
   - They import the moved names from the new files.
   - A test calling a moved private method passes the hub first, and spies sit on the new classes.
