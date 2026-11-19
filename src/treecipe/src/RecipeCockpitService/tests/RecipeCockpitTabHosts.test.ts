@@ -25,6 +25,7 @@ const HUB_FILE_NAME = 'RecipeCockpitService.ts';
 
 interface ITabHost {
     tabName: string;
+    hostClassName: string;
     hostFileName: string;
     hostModule: Record<string, unknown>;
     commands: readonly string[];
@@ -43,6 +44,7 @@ interface ITabHost {
 const TAB_HOSTS: ITabHost[] = [
     {
         tabName: 'Query',
+        hostClassName: 'RecipeCockpitQueryHost',
         hostFileName: 'RecipeCockpitQueryHost.ts',
         hostModule: RecipeCockpitQueryHostModule,
         commands: RECIPE_COCKPIT_QUERY_COMMANDS,
@@ -86,15 +88,47 @@ const caseLabels = (sourceFile: ts.SourceFile): string[] => {
 
 const importsOf = (sourceFile: ts.SourceFile): ts.ImportDeclaration[] => sourceFile.statements.filter(ts.isImportDeclaration);
 
-const resolvedImportPath = (sourceFile: ts.SourceFile, importDeclaration: ts.ImportDeclaration): string =>
+const resolvedImportPath = (sourceFile: ts.SourceFile, importDeclaration: ts.ImportDeclaration | ts.ExportDeclaration): string =>
     path.resolve(path.dirname(sourceFile.fileName), `${(importDeclaration.moduleSpecifier as ts.StringLiteral).text}.ts`);
+
+const isRelativeSpecifier = (moduleSpecifier: ts.Expression | undefined): moduleSpecifier is ts.StringLiteral =>
+    moduleSpecifier !== undefined && ts.isStringLiteral(moduleSpecifier) && moduleSpecifier.text.startsWith('.');
+
+// EVERY FILE IN src/ A MODULE LOADS AT RUN TIME: import, export ... from, require() AND import(), BUT NO import type OR export type
+const runtimeImportPaths = (sourceFile: ts.SourceFile): string[] => {
+    const loadedPaths: string[] = [];
+    visit(sourceFile, node => {
+        if ( ( ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly )
+                || ( ts.isExportDeclaration(node) && !node.isTypeOnly ) ) {
+            if ( isRelativeSpecifier(node.moduleSpecifier) ) {
+                loadedPaths.push(resolvedImportPath(sourceFile, node));
+            }
+        } else if ( ts.isCallExpression(node)
+                && ( node.expression.kind === ts.SyntaxKind.ImportKeyword || ( ts.isIdentifier(node.expression) && node.expression.text === 'require' ) )
+                && isRelativeSpecifier(node.arguments[0]) ) {
+            loadedPaths.push(path.resolve(path.dirname(sourceFile.fileName), `${(node.arguments[0] as ts.StringLiteral).text}.ts`));
+        }
+    });
+    return loadedPaths.filter(loadedPath => fs.existsSync(loadedPath));
+};
+
+const stringLiterals = (sourceFile: ts.SourceFile): string[] => {
+    const literals: string[] = [];
+    visit(sourceFile, node => {
+        if ( ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ) {
+            literals.push(node.text);
+        }
+    });
+    return literals;
+};
 
 const importedNames = (importDeclaration: ts.ImportDeclaration): string[] => {
     const namedBindings = importDeclaration.importClause?.namedBindings;
     return namedBindings && ts.isNamedImports(namedBindings) ? namedBindings.elements.map(importSpecifier => importSpecifier.name.text) : [];
 };
 
-const hostSideFiles = listHostSideFiles(SOURCE_ROOT).concat([path.join(SOURCE_ROOT, 'extension.ts')].filter(filePath => fs.existsSync(filePath)));
+const hostSideFiles = listHostSideFiles(SOURCE_ROOT);
+const hubFilePath = path.join(COCKPIT_FOLDER, HUB_FILE_NAME);
 
 describe('Recipe Cockpit tab hosts (#566)', () => {
 
@@ -110,14 +144,29 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
 
         });
 
-        test('has no case for its commands or action kinds outside its host', () => {
+        // NOT ONLY A case: AN if ON THE COMMAND OR A LOOKUP TABLE NAMES IT AS A STRING TOO
+        test('names its commands and action kinds nowhere outside its host', () => {
 
             const ownedNames = new Set([...tabHost.commands, ...tabHost.actionKinds]);
-            const strayCases = hostSideFiles
+            const strayNames = hostSideFiles
                 .filter(filePath => filePath !== hostFilePath)
-                .flatMap(filePath => caseLabels(parse(filePath)).filter(label => ownedNames.has(label)).map(label => `${path.relative(SOURCE_ROOT, filePath)}: case '${label}'`));
+                .flatMap(filePath => stringLiterals(parse(filePath)).filter(literal => ownedNames.has(literal)).map(literal => `${path.relative(SOURCE_ROOT, filePath)}: '${literal}'`));
 
-            expect(strayCases).toEqual([]);
+            expect(strayNames).toEqual([]);
+
+        });
+
+        test('is handed its messages by the hub\'s router and executor', () => {
+
+            const hubCalls = new Set<string>();
+            visit(parse(hubFilePath), node => {
+                if ( ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+                        && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === tabHost.hostClassName ) {
+                    hubCalls.add(node.expression.name.text);
+                }
+            });
+
+            expect(['routePanelMessage', 'executePanelAction'].filter(handOver => !hubCalls.has(handOver))).toEqual([]);
 
         });
 
@@ -133,7 +182,12 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                 importsOf(sourceFile)
                     .filter(importDeclaration => pureModulePaths.includes(resolvedImportPath(sourceFile, importDeclaration)))
                     .forEach(importDeclaration => {
-                        if ( filePath === path.join(COCKPIT_FOLDER, HUB_FILE_NAME) ) {
+                        if ( filePath === hubFilePath ) {
+                            // A NAMESPACE OR DEFAULT IMPORT WOULD HIDE WHICH NAMES THE HUB USES, SO ONLY NAMED IMPORTS COUNT AS OWED
+                            const importClause = importDeclaration.importClause;
+                            if ( importClause?.name || ( importClause?.namedBindings && !ts.isNamedImports(importClause.namedBindings) ) ) {
+                                strayImports.push(`${HUB_FILE_NAME}: ${importDeclaration.getText()}`);
+                            }
                             hubImportedNames.push(...importedNames(importDeclaration));
                         } else if ( HOST_FILE_NAMES.includes(fileName) && fileName !== tabHost.hostFileName ) {
                             strayImports.push(fileName);
@@ -142,26 +196,39 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
             });
 
             const hubMembers = new Set<string>();
-            visit(parse(path.join(COCKPIT_FOLDER, HUB_FILE_NAME)), node => {
+            visit(parse(hubFilePath), node => {
                 if ( ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && hubImportedNames.includes(node.expression.text) ) {
                     hubMembers.add(node.name.text);
                 }
             });
 
             expect(strayImports).toEqual([]);
-            expect(hubImportedNames.filter(importedName => !tabHost.hubUsesStillOwed.importedNames.includes(importedName))).toEqual([]);
-            expect([...hubMembers].filter(member => !tabHost.hubUsesStillOwed.members.includes(member))).toEqual([]);
+            // EXACT, SO AN ENTRY LEFT AFTER ITS SLICE MOVED THE USE OUT FAILS RATHER THAN STAYING ALLOWED
+            expect([...hubImportedNames].sort()).toEqual([...tabHost.hubUsesStillOwed.importedNames].sort());
+            expect([...hubMembers].sort()).toEqual([...tabHost.hubUsesStillOwed.members].sort());
 
         });
 
-        test('imports the hub only for its types, so the hub it is imported by never loads half-built', () => {
+        test('never loads the hub, directly or through another module, so the hub it is imported by never loads half-built', () => {
 
-            const sourceFile = parse(hostFilePath);
-            const runtimeHubImports = importsOf(sourceFile)
-                .filter(importDeclaration => resolvedImportPath(sourceFile, importDeclaration) === path.join(COCKPIT_FOLDER, HUB_FILE_NAME))
-                .filter(importDeclaration => !importDeclaration.importClause?.isTypeOnly);
+            const loadedFrom = new Map<string, string>([[hostFilePath, '']]);
+            const pendingPaths = [hostFilePath];
+            while ( pendingPaths.length > 0 ) {
+                const loadingPath = pendingPaths.shift() as string;
+                runtimeImportPaths(parse(loadingPath))
+                    .filter(loadedPath => !loadedFrom.has(loadedPath))
+                    .forEach(loadedPath => {
+                        loadedFrom.set(loadedPath, loadingPath);
+                        pendingPaths.push(loadedPath);
+                    });
+            }
 
-            expect(runtimeHubImports.map(importDeclaration => importDeclaration.getText())).toEqual([]);
+            const hubLoadChain: string[] = [];
+            for ( let chainPath = hubFilePath; loadedFrom.has(chainPath) && chainPath !== ''; chainPath = loadedFrom.get(chainPath) as string ) {
+                hubLoadChain.unshift(path.basename(chainPath));
+            }
+
+            expect(hubLoadChain).toEqual([]);
 
         });
 
@@ -179,8 +246,15 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
         test('is not re-exported by the hub: a test or a module reads a moved name from its host', () => {
 
             const reExportedNames = Object.keys(tabHost.hostModule).filter(exportedName => exportedName in RecipeCockpitServiceModule);
+            // TYPES LEAVE NO RUNTIME NAME, SO AN export ... from THE HOST IS LOOKED FOR IN THE HUB'S SOURCE TOO
+            const hubSource = parse(hubFilePath);
+            const reExportsFromHost = hubSource.statements
+                .filter(ts.isExportDeclaration)
+                .filter(exportDeclaration => isRelativeSpecifier(exportDeclaration.moduleSpecifier) && resolvedImportPath(hubSource, exportDeclaration) === hostFilePath)
+                .map(exportDeclaration => exportDeclaration.getText());
 
             expect(reExportedNames).toEqual([]);
+            expect(reExportsFromHost).toEqual([]);
 
         });
 
