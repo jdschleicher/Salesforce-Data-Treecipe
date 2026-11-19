@@ -3,14 +3,13 @@ import { RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE, RECIPE_COCKPIT_RECORD_TYPE_F
 import { IRecordTypesTreeState } from './RecordTypeTypes';
 import { displayTitleOf } from '../navigation/TreePicker';
 import { applyStructureFilter } from '../navigation/StructureFilter';
+import { savePanelPlace } from '../../shell/PanelPlace';
 
 /*
     "Record type fields only" (#320): the Treecipe tab's own check, per card and panel-only, kept
     in the reader's place. A card whose objects have no record types to choose from draws it
     disabled with a note saying why, so turning it on can never empty the tab silently.
-    These names are the panel script's own, read when a function runs.
 */
-declare function savePanelPlace(): void;
 
 // OBJECT API NAME -> FIELD API NAME -> THE DEVELOPER NAMES RESTRICTING IT
 export type RecordTypeFieldsIndex = Record<string, Record<string, string[]>>;

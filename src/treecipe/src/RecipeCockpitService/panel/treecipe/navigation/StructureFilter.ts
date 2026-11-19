@@ -13,20 +13,19 @@ import { applyTreecipesSearch } from './TreecipesSearch';
 import { chooseTree, isHiddenByFavorites } from './TreePicker';
 import { asNavigationObjectState, asNavigationTreeState } from './NavigationTypes';
 import type { IFocusTree, INavigationObjectState, INavigationTreeState, ITreeObjectStateView, ITreeStateView, ScriptTreeState } from './NavigationTypes';
+import { treeStates } from '../../shell/PanelRender';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { ensureTreeBodyBuilt, selectTreeTab } from '../card/TreeCardTabs';
+import { setTreeObjectExpanded } from '../card/TreeObjectRow';
+import { navigationState } from './NavigationState';
 
 /*
     The Treecipe tab's own filter (its search, "Record type fields only", "TODOs only" and "Hide
     unselected"), how far a search may open rows, and the focus a reload or a link asks for (#256,
-    #320, #354, #374, #477, #483). isFavoritesOnly is the panel script's, which keeps it with the
-    reader's place, so it is declare let here; the card, tab and row builders are still the script's.
+    #320, #354, #374, #477, #483). isFavoritesOnly is navigationState's, kept with the reader's
+    place; the card, its tabs and rows are treecipe/card/'s.
 */
-declare let isFavoritesOnly: boolean;
-declare const treeStates: ScriptTreeState[];
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
-declare function selectTreeTab(treeState: ScriptTreeState, tab: string, isAnimated?: boolean): void;
-declare function setTreeObjectExpanded(treeObjectState: INavigationObjectState, isExpanded: boolean | undefined, isAnimated?: boolean): void;
-declare function ensureTreeBodyBuilt(treeState: INavigationTreeState): void;
 
 // THE TREECIPE TAB'S OWN SEARCH AND ITS TWO CHECKS, CLEARED SO A ROW THE READER ASKED TO SEE IS NOT HIDDEN BY THEM
 export function clearStructureFilters(treeState: INavigationTreeState): void {
@@ -52,7 +51,7 @@ export function applyTreeFocus(focusTree: IFocusTree | null | undefined): boolea
     // WHAT THE READER JUST ACTED ON IS CHOSEN IN THE DROPDOWN (#374), AND SHOWN EVEN WHEN IT IS NOT A FAVORITE;
     // TURNING THE FILTER OFF RUNS THE SECTION SEARCH AGAIN, SINCE IT SEARCHED THE FAVORITES ONLY
     if (isHiddenByFavorites(treeState)) {
-        isFavoritesOnly = false;
+        navigationState.isFavoritesOnly = false;
         applyTreecipesSearch();
     }
     chooseTree(treeState, false);

@@ -18,16 +18,19 @@ import type {
     IObjectImpact,
     ISelectionTree
 } from './FieldRowTypes';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { drawRecordCount } from '../card/RecordCount';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void } = cockpitVscodeApi;
 
 /*
     The host's object and field cascade drawn onto a card (#219, #220, #449, #467, #611): which
     objects are excluded, auto-excluded or impacted, which lookups an excluded parent disables, and
     each field box. The panel never decides a selection: the host posts it and re-derives every lock
-    before it writes. drawRecordCount is the panel script's, declared here.
+    before it writes.
 */
-declare const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void };
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function drawRecordCount(treeObjectState: IFieldRowObjectState, isExcluded: boolean): void;
 
 export function buildIncludeElement(treeObjectState: IFieldRowObjectState, treeKey: string): void {
 

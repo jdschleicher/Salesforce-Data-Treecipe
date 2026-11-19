@@ -14,16 +14,15 @@ import { buildRowTable } from '../RecipeCockpitPanelBuilders';
 import { applyTroubleshootingFilter } from './TroubleshootingTab';
 import { IHistoryFile, IHistoryRow, IHistoryRowState, IHistorySort, ITroubleshootingHistoryMessage, ITroubleshootingSubTabState, ITroubleshootingTreeState } from './TroubleshootingTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { findTreeState, renderedSequence } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../shell/PanelPlace';
+import { versionLabelOf } from '../treecipe/card/TreeCard';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
 
 /*
-    The History sub-tab (#485, #639). These names are the panel script's own, read when a function runs.
+    The History sub-tab (#485, #639).
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare function findTreeState(treeKey: unknown): ITroubleshootingTreeState | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
-declare function versionLabelOf(treeState: ITroubleshootingTreeState, runFolderName: string | null): string;
 
 /*
     The History (#485): the tree's Troubleshooting steps as one table, read by the host when the

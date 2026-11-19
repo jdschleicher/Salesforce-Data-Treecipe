@@ -1,5 +1,5 @@
 import { createButton, createElement, setShownWithMotion } from '../../../CockpitKit/panel/CockpitPanelElements';
-import { setWireLookupRunning } from '../treecipe/fieldEditor/LookupWiring';
+import { setWireLookupRunning, wireLookupButtonElements } from '../treecipe/fieldEditor/LookupWiring';
 import {
     RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE,
     RECIPE_COCKPIT_NO_TREE_TODOS_NOTE,
@@ -34,21 +34,17 @@ import {
     ITroubleshootingTreeState
 } from './TroubleshootingTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { REFERENCE_ID_REQUIRED_TODO } from '../../../RelationshipService/ReferenceIdRequiredTodo';
+import { buildSourceLink, pluralize } from '../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../shell/PanelPlace';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
 
 /*
     The TODO's sub-tab (#365, #391, #639): the open TODOs of the card's recipe, one group per object
-    occurrence, and the ones the reader removed. These names are the panel script's own, read when a
-    function runs; the wire-lookup lock is shared with the Treecipe tab's lookups.
+    occurrence, and the ones the reader removed. The wire-lookup lock is runLocks', shared with the
+    Treecipe tab's lookups.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const isWireLookupRunning: boolean;
-declare const wireLookupButtonElements: HTMLButtonElement[];
-// OWNED BY RelationshipService (LAYER 3), WHICH NO PANEL MODULE CAN IMPORT, SO THE SCRIPT STILL DECLARES IT
-declare const REFERENCE_ID_REQUIRED_TODO_TEXT: string;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
-declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
-
 /*
     Every TODO comment of the card's recipe (#365, from #354's todos), one group per object
     occurrence: a header with its count, and rows -- the field (or "on the object"), the text
@@ -210,7 +206,7 @@ function findTodoRemoveReason(tree: ITroubleshootingTree, object: ITodoTreeObjec
     if (!tree.runFakerRecipeFileName) { return RECIPE_COCKPIT_TODO_NO_RECIPE_REASON; }
     if (fileNameOf(object.recipeFilePath) !== tree.runFakerRecipeFileName) { return RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON; }
     if (typeof todo.removeLock !== 'string') { return ''; }
-    if (todo.removeLock === 'field-value' && todoText.indexOf(REFERENCE_ID_REQUIRED_TODO_TEXT) === 0) { return RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON; }
+    if (todo.removeLock === 'field-value' && todoText.indexOf(REFERENCE_ID_REQUIRED_TODO) === 0) { return RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON; }
     return hasOwnKey(RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS, todo.removeLock) ? RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS[todo.removeLock as RecipeCockpitTodoRemoveLock] : RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS['field-value'];
 
 }
@@ -244,11 +240,11 @@ function buildRemoveTodoButton(treeState: ITroubleshootingTreeState, entry: ITod
 
     removeElement.setAttribute('title', 'Remove this TODO comment from the recipe file, after a confirmation. It is kept under Removed, where Restore puts it back.');
     removeElement.addEventListener('click', function () {
-        if (isWireLookupRunning) { return; }
+        if (runLocks.isWireLookupRunning) { return; }
         setWireLookupRunning(true);
         vscodeApi.postMessage({ command: 'removeTodo', treeKey: treeState.tree.treeKey, lineNumber: entry.todo.lineNumber });
     });
-    removeElement.disabled = isWireLookupRunning;
+    removeElement.disabled = runLocks.isWireLookupRunning;
     wireLookupButtonElements.push(removeElement);
     return removeElement;
 
@@ -310,11 +306,11 @@ function buildRemovedTodos(treeState: ITroubleshootingTreeState, subTabState: IT
         restoreElement.setAttribute('aria-label', RECIPE_COCKPIT_TODO_RESTORE_LABEL + ': ' + fieldLabel + ', ' + removedTodo.text);
         restoreElement.setAttribute('title', 'Put this TODO comment back in the recipe file where it was, after a confirmation');
         restoreElement.addEventListener('click', function () {
-            if (isWireLookupRunning) { return; }
+            if (runLocks.isWireLookupRunning) { return; }
             setWireLookupRunning(true);
             vscodeApi.postMessage({ command: 'restoreTodo', treeKey: treeState.tree.treeKey, removalKey: removedTodo.removalKey });
         });
-        restoreElement.disabled = isWireLookupRunning;
+        restoreElement.disabled = runLocks.isWireLookupRunning;
         wireLookupButtonElements.push(restoreElement);
 
         const entry: IRemovedTodoEntry = {

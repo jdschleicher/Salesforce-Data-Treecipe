@@ -1,67 +1,8 @@
+import { startRecipeCockpitPanel } from './RecipeCockpitPanelHost';
+
 /*
-    The Recipe Cockpit's panel modules (#565): esbuild.panel.js bundles this entry into
-    RecipeCockpitPanelBundle.generated.ts, and the shell inlines that inside its script. What this
-    exports is what the rest of the panel script calls by name: the script binds each export under
-    the same name right after the bundle (#638), until the code that calls it moves too.
+    The Recipe Cockpit's panel (#565, #657): esbuild.panel.js bundles this entry into
+    RecipeCockpitPanelBundle.generated.ts, and that bundle is the whole of the shell's script.
+    Every other function is reached from this one call.
 */
-export { closeConfirmDialog, renderConfirmRequest } from '../../CockpitKit/panel/CockpitConfirmDialogPanel';
-export { SVG_NAMESPACE, createButton, createElement, drawToggle, isMotionReduced, setShown, setShownWithMotion } from '../../CockpitKit/panel/CockpitPanelElements';
-export {
-    buildActionCard,
-    buildPencilGlyph,
-    buildRowTable,
-    buildSearchIconElement,
-    buildTabSearch,
-    buildToggleElement,
-    buildTreeGlyph
-} from './RecipeCockpitPanelBuilders';
-export { buildTroubleshootingTab, renderTroubleshootingSummary, requestTroubleshootingSummary, selectTroubleshootingSubTab, troubleshootingSearchKey } from './troubleshooting/TroubleshootingTab';
-export { selectTodosView } from './troubleshooting/TroubleshootingTodos';
-export { drawTreePermissionSet, renderPermissionSetAssignState } from './troubleshooting/TroubleshootingActions';
-export { buildValidationRuleSourceLink, renderTreeValidationRules } from './troubleshooting/TroubleshootingValidationRules';
-export { readHistorySort, renderTroubleshootingHistory } from './troubleshooting/TroubleshootingHistory';
-export { buildQueryTab, drawTreeQueryButtons, renderTreeQueries, renderTreeQueryResult, requestTreeQueries } from './query/QueryTab';
-export { acknowledgeRecordLinks } from './RecipeCockpitRecordTable';
-export { buildUpdaterTab } from './adapter/AdapterTab';
-export { clearUpdaterRecords, clearUpdaterValues, drawUpdaterLoadButtons, renderUpdaterRecords, renderUpdaterSnapshots, renderUpdaterValues, requestUpdaterSnapshots } from './adapter/AdapterLoadAndUpdate';
-export { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
-export { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';
-export { applyDatasetsFilter, buildDatasetsTab, renderDatasetAdded, renderDatasetLastInsert, renderDatasetPreferences } from './datasets/DatasetsTab';
-export { drawDatasetInserts, renderDatasetRecordCounts } from './datasets/DatasetRow';
-export { renderDatasetJourney, requestDatasetJourney, setDatasetJourneyExpanded } from './datasets/DatasetJourney';
-export { buildTreeFieldState, closeFieldEditor, renderFieldEditResult, toggleFieldEditor } from './treecipe/fieldEditor/FieldEditor';
-export { drawPicklistValueEditor, renderPicklistValues, requestPicklistValues } from './treecipe/fieldEditor/PicklistTiles';
-export {
-    appendAddFriendControls,
-    buildLookupDecisionElement,
-    buildWireAllLookupsElement,
-    buildWireLookupElement,
-    drawFieldRowLookupDecision,
-    findEmptyLookup,
-    findLookupWiring,
-    setAddFriendRunning,
-    setWireLookupRunning
-} from './treecipe/fieldEditor/LookupWiring';
-export { buildDataOrgView, drawDataOrgViews } from './treecipe/dataOrg/DataOrgView';
-export { buildTreeInsertElement, drawTreeInsert, drawTreeInserts, setInsertRunning } from './treecipe/dataOrg/TreeInsert';
-export { renderDataOrgList, renderDataOrgListingRefused, renderDataOrgProvisional, renderDataOrgReadiness, renderDataOrgSelection, renderScratchOrgState, requestDataOrgs } from './treecipe/dataOrg/DataOrgListing';
-export { appendRecordTypeFieldsToggle, drawRecordTypeFieldsToggle, indexRecordTypeFields, isRecordTypeFieldsOnlyIn } from './treecipe/recordTypes/RecordTypeFieldsToggle';
-export { appendTodosToggle, buildObjectTodosToggle, buildTodoListElement, drawObjectTodosToggle, drawTodosToggle, isObjectTodosOnlyIn, isTodosOnlyIn } from './treecipe/recordTypes/TodosToggles';
-export {
-    appendUnavailableRecordTypesButton,
-    applyRecordTypesFilter,
-    buildRecordTypeSelection,
-    buildRecordTypesSection,
-    drawRecordTypeChoices,
-    listRecordTypeObjects,
-    setRecordTypesExpanded
-} from './treecipe/recordTypes/RecordTypesSection';
-export { hasOwnKey } from './RecipeCockpitOwnKey';
-export { buildIncludeElement, drawObjectSelection, findObjectFieldSelection, indexObjectExclusions, indexObjectImpacts, isSameOccurrence, isTreeFieldUnticked, occurrenceNicknameOf } from './treecipe/fieldRows/SelectionCascade';
-export { buildSelectAllFieldsElement, drawHideUnselectedToggle, drawObjectFieldSelection, findHideUnselectedReason, isObjectHidingUnselectedIn } from './treecipe/fieldRows/FieldScope';
-export { applyTreeFieldVisibility, buildTreeFieldRow, drawResetSelection, formatParentLookups, isFieldTextMatch, renderObjectSelection } from './treecipe/fieldRows/FieldRow';
-export { applyStructureFilter, applyTreeFocus, drawStructureMatchCount, focusTreeInPlace } from './treecipe/navigation/StructureFilter';
-export { buildTreePicker, describeTreeDifferences, displayTitleOf, drawTreePickerObjectsToggle, releaseTreePickerObjectsList } from './treecipe/navigation/TreePicker';
-export { applyTreecipesSearch, buildTreecipesSearch } from './treecipe/navigation/TreecipesSearch';
-export { closeNicknameMenu, drawObjectNickname, isElementWithin, nicknameOfObject, readNestingParent } from './treecipe/navigation/Nicknames';
-export { drawFriendChips } from './treecipe/navigation/Friends';
+startRecipeCockpitPanel();

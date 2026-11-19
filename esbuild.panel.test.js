@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE, PANEL_MODULES_NAME } = require('./esbuild.panel.js');
+const { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE } = require('./esbuild.panel.js');
 
 describe('PanelBundler.buildOptions (#637)', () => {
 
@@ -15,7 +15,8 @@ describe('PanelBundler.buildOptions (#637)', () => {
         expect(options.entryPoints).toEqual([PANEL_ENTRY_POINT]);
         expect(options.platform).toBe('browser');
         expect(options.format).toBe('iife');
-        expect(options.globalName).toBe(PANEL_MODULES_NAME);
+        // THE ENTRY STARTS THE PANEL ITSELF (#657), SO NO GLOBAL HOLDS ITS EXPORTS
+        expect(options.globalName).toBeUndefined();
         expect(options.bundle).toBe(true);
         expect(options.external).toBeUndefined();
 
@@ -46,20 +47,20 @@ describe('PanelBundler.run (#637)', () => {
 
     it('writes the generated file and exits 0', async () => {
 
-        jest.spyOn(PanelBundler, 'buildScript').mockResolvedValue('var recipeCockpitPanelModules = (() => {})();\n');
+        jest.spyOn(PanelBundler, 'buildScript').mockResolvedValue('(() => {})();\n');
         const writeFileSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
         const output = consoleOutput();
 
         await expect(PanelBundler.run(output)).resolves.toBe(0);
 
-        expect(writeFileSpy).toHaveBeenCalledWith(path.resolve(__dirname, PANEL_BUNDLE_FILE), PanelBundler.buildGeneratedFileText('var recipeCockpitPanelModules = (() => {})();\n'));
+        expect(writeFileSpy).toHaveBeenCalledWith(path.resolve(__dirname, PANEL_BUNDLE_FILE), PanelBundler.buildGeneratedFileText('(() => {})();\n'));
         expect(output.log).toHaveBeenCalledWith(`Bundled ${PANEL_ENTRY_POINT} to ${PANEL_BUNDLE_FILE}.`);
 
     });
 
     it('reports to the console when no output is given, as npm run bundle-panel calls it', async () => {
 
-        jest.spyOn(PanelBundler, 'buildScript').mockResolvedValue('var recipeCockpitPanelModules = (() => {})();\n');
+        jest.spyOn(PanelBundler, 'buildScript').mockResolvedValue('(() => {})();\n');
         jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
         const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 

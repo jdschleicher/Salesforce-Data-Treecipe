@@ -2,8 +2,8 @@ import type { ITabSearchView } from '../RecipeCockpitPanelBuilders';
 
 /*
     The shapes the Previously Used Data Sets modules work on (#642). A tree card's state is built by
-    the panel script, which is not type checked yet, so IDatasetsTreeState names only what these
-    modules read and write on it. A data set comes from the posted model (IRecipeCockpitDatasetViewModel).
+    the card (treecipe/card/, #657) as one object that is every tab's view, so IDatasetsTreeState
+    names only what these modules read and write on it. A data set comes from the posted model (IRecipeCockpitDatasetViewModel).
 */
 
 export interface IDatasetRecordCount {
@@ -107,7 +107,7 @@ export interface IDatasetRowState {
     journeySortButtons?: Record<string, HTMLButtonElement>;
 }
 
-// THE PARTS OF A TREE CARD'S STATE THESE MODULES READ AND WRITE; THE SCRIPT BUILDS THE REST
+// THE PARTS OF A TREE CARD'S STATE THESE MODULES READ AND WRITE; THE CARD BUILDS THE REST
 export interface IDatasetsTreeState {
     tree: { treeKey: string; history?: { datasets: IDataset[] } };
     searchTexts: Record<string, string>;

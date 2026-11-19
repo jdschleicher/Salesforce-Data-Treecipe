@@ -4,9 +4,9 @@ import type { IRecipeTodo, IRecordTypeObject, IRecordTypesTreeObjectState, IReco
 
 /*
     The shapes the Treecipe tab's field rows and the object/field selection cascade work on (#655).
-    A tree card and its object rows are still built by the panel script, so these name only what
-    these modules read and write, over the views the field editor and the Record types section
-    already declare. The selections come from the host (IRecipeCockpitTreeViewModel): the panel
+    A tree card and its object rows are built by the card (treecipe/card/, #657), so these name only
+    what these modules read and write, over the views the field editor and the Record types
+    section name. The selections come from the host (IRecipeCockpitTreeViewModel): the panel
     draws them, and never decides one.
 */
 

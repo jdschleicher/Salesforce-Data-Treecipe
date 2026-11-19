@@ -2,8 +2,8 @@ import type { RecipeCockpitTroubleshootingSubTab } from '../../../RecipeCockpitT
 
 /*
     The shapes Target Org Manager and a tree's insert button work on (#654). A tree card's state is
-    built by the panel script, which is not type checked yet, so IDataOrgTreeState names only what
-    these modules read and write on it.
+    built by the card (treecipe/card/, #657) as one object that is every tab's view, so
+    IDataOrgTreeState names only what these modules read and write on it.
 */
 
 // ONE VIEW OF THE PANEL-WIDE ORG PICKER; drawnLabels IS THE LIST LAST DRAWN INTO ITS DROPDOWN, SO AN UNCHANGED LIST IS NOT REDRAWN
@@ -134,7 +134,7 @@ export interface IInsertActionCard {
     buttonElement: HTMLButtonElement;
 }
 
-// THE PARTS OF A TREE CARD'S STATE THESE MODULES READ AND WRITE; THE SCRIPT BUILDS THE REST
+// THE PARTS OF A TREE CARD'S STATE THESE MODULES READ AND WRITE; THE CARD BUILDS THE REST
 export interface IDataOrgTreeState {
     tree: IInsertTree;
     objectStates: IInsertTreeObjectState[];

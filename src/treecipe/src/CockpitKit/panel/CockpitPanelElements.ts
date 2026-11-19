@@ -3,8 +3,8 @@ import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS
 
 /*
     The elements every cockpit panel draws with (#638): plain elements, the one button maker, and
-    showing or hiding a body with motion. Browser code, bundled into a cockpit's script; it reads
-    nothing from the script around it. Every text goes in through textContent.
+    showing or hiding a body with motion. Browser code, bundled into a cockpit's script; it imports
+    nothing of a cockpit's. Every text goes in through textContent.
 */
 export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
@@ -20,7 +20,7 @@ export function createElement<TagName extends keyof HTMLElementTagNameMap>(tagNa
 // THE ONLY WAY THE PANEL MAKES A BUTTON (#363): ITS KIND STYLES IT, ITS OWN CLASS ONLY SIZES AND PLACES IT
 export function createButton(kind: CockpitButtonKind, className?: string, textContent?: string, size?: 'compact'): HTMLButtonElement {
 
-    // CODE STILL IN THE TEMPLATE-LITERAL SCRIPT IS NOT TYPE CHECKED, SO A KIND IS STILL CHECKED WHEN IT RUNS
+    // A KIND IS STILL CHECKED WHEN IT RUNS: tsc HOLDS EVERY CALLER TO THE UNION, AND AN UNKNOWN KIND WOULD DRAW AN UNSTYLED BUTTON
     if (COCKPIT_BUTTON_KINDS.indexOf(kind) === -1) { throw new Error('Unknown button kind: ' + kind); }
     const buttonClassName = 'sdtButton sdtButton-' + kind + (size === 'compact' ? ' sdtButton-compact' : '') + (className ? ' ' + className : '');
     return createElement('button', buttonClassName, textContent);
@@ -77,4 +77,8 @@ export function setShownWithMotion(element: Element, isShown: boolean, isAnimate
 export function drawToggle(toggleElement: Element, isExpanded: boolean, isAnimated: boolean): void {
     if (isAnimated) { toggleElement.classList.remove('noMotion'); } else { toggleElement.classList.add('noMotion'); }
     toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+}
+
+export function focusElement(element: Element | null): void {
+    if (element && typeof (element as HTMLElement).focus === 'function') { (element as HTMLElement).focus(); }
 }

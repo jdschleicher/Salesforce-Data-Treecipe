@@ -14,13 +14,12 @@ import {
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
 } from '../RecipeCockpitPanelConstants';
 import { displayTitleOf } from './treecipe/navigation/TreePicker';
+import { savePanelPlace } from './shell/PanelPlace';
 
 /*
     The Recipe Cockpit's shared panel builders (#638): action cards, the one column table, a tab's
-    search box, the chevron toggle and the glyphs. Every tab draws with them. Bundled into the
-    cockpit's script; the two names below are the script's own, read when a search box is typed in.
+    search box, the chevron toggle and the glyphs. Every tab draws with them.
 */
-declare function savePanelPlace(): void;
 
 type RecipeCockpitCardAction = RecipeCockpitTroubleshootingAction | RecipeCockpitStandaloneAction;
 
@@ -44,7 +43,7 @@ let actionCardCount = 0;
 */
 export function buildActionCard(action: RecipeCockpitCardAction, className: string, title: string): IActionCardView {
 
-    // CALLERS STILL IN THE TEMPLATE-LITERAL SCRIPT ARE NOT TYPE CHECKED, SO AN UNKNOWN ACTION STILL THROWS
+    // AN UNKNOWN ACTION STILL THROWS: tsc HOLDS EVERY CALLER TO THE UNION, AND A CARD WITH NO WORDS WOULD DRAW EMPTY
     const card = Object.prototype.hasOwnProperty.call(ACTION_CARDS, action) ? ACTION_CARDS[action] : undefined;
     if (!card || typeof RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb] !== 'string') { throw new Error('Unknown action: ' + action); }
 

@@ -1,24 +1,22 @@
 import { createButton, createElement } from '../../../CockpitKit/panel/CockpitPanelElements';
-import { RECIPE_COCKPIT_QUERY_INTRO } from '../../RecipeCockpitQueryTabConstants';
+import { RECIPE_COCKPIT_QUERY_INTRO, RECIPE_COCKPIT_QUERY_MAX_LENGTH } from '../../RecipeCockpitQueryTabConstants';
 import { IActionCardView, ITabSearchView, buildActionCard, buildTabSearch } from '../RecipeCockpitPanelBuilders';
 import { buildRecordTable } from '../RecipeCockpitRecordTable';
+import { renderedSequence, treeStates } from '../shell/PanelRender';
+import { drawActionCardState, pluralize } from '../RecipeCockpitPanelShared';
+import { vscodeApi as cockpitVscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
+import { dataOrgPicker } from '../treecipe/dataOrg/DataOrgPickerState';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: QueryPanelMessage): void } = cockpitVscodeApi;
 
 /*
     The Query tab (#367, #640): a tree's generated SOQL, each query editable, run against the Target
-    Org Manager selection and exported, with one preview of what the last run returned. These names
-    are the panel script's own, read when a function runs; isTreeQueryRunning is also set by the
-    script's treeQueryState message.
+    Org Manager selection and exported, with one preview of what the last run returned. The run lock
+    is runLocks.isTreeQueryRunning, also set by the host's treeQueryState message.
 */
-declare const vscodeApi: { postMessage(message: QueryPanelMessage): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IQueryTreeState[];
-declare const dataOrgLabels: string[] | null;
-declare const dataOrgSelectedIndex: number | null;
-declare let isTreeQueryRunning: boolean;
 // RecipeCockpitQuery.ts HOLDS THE LIMIT BESIDE ITS CHECK; IT IMPORTS NODE'S path, SO THE SHELL PASSES THE NUMBER IN
-declare const QUERY_MAX_LENGTH: number;
-declare function drawActionCardState(actionCard: IActionCardView, reason: string, title: string): void;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 // WHAT THIS TAB POSTS; THE HOST'S ROUTER CHECKS EACH FIELD AGAIN (routePanelMessage)
 type QueryExportFormat = 'json' | 'csv';
@@ -78,8 +76,8 @@ interface IQueryState {
     hasResult: boolean;
 }
 
-// THE PARTS OF A TREE CARD'S STATE THIS TAB READS AND WRITES; THE SCRIPT BUILDS THE REST
-interface IQueryTreeState {
+// THE PARTS OF A TREE CARD'S STATE THIS TAB READS AND WRITES; THE CARD BUILDS THE REST
+export interface IQueryTreeState {
     tree: { treeKey: string };
     searchTexts: Record<string, string>;
     searchQueries: Record<string, string>;
@@ -193,7 +191,7 @@ function buildTreeQuery(treeState: IQueryTreeState, treeQuery: ITreeQuery): void
     textElement.value = typeof treeQuery.editedText === 'string' ? treeQuery.editedText : generatedText;
     textElement.setAttribute('aria-label', 'SOQL for ' + queryTitle);
     textElement.setAttribute('spellcheck', 'false');
-    textElement.setAttribute('maxlength', String(QUERY_MAX_LENGTH));
+    textElement.setAttribute('maxlength', String(RECIPE_COCKPIT_QUERY_MAX_LENGTH));
     textElement.setAttribute('rows', String(Math.min(12, Math.max(3, generatedText.split('\n').length))));
     queryElement.appendChild(textElement);
     queryElement.appendChild(refusalElement);
@@ -244,7 +242,7 @@ function buildTreeQuery(treeState: IQueryTreeState, treeQuery: ITreeQuery): void
             return;
         }
         saveEdit();
-        isTreeQueryRunning = true;
+        runLocks.isTreeQueryRunning = true;
         drawTreeQueryButtons();
         vscodeApi.postMessage({ command: 'runTreeQuery', treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value });
     });
@@ -287,7 +285,7 @@ function describeQueryRefusal(queryText: string): string {
     const trimmedText = String(queryText || '').trim();
 
     if (!trimmedText) { return 'The query is empty.'; }
-    if (trimmedText.length > QUERY_MAX_LENGTH) { return 'The query is longer than ' + QUERY_MAX_LENGTH + ' characters.'; }
+    if (trimmedText.length > RECIPE_COCKPIT_QUERY_MAX_LENGTH) { return 'The query is longer than ' + RECIPE_COCKPIT_QUERY_MAX_LENGTH + ' characters.'; }
     if (!/^select\s/i.test(trimmedText)) { return 'The query must be one SOQL SELECT statement.'; }
 
     return '';
@@ -297,20 +295,20 @@ function describeQueryRefusal(queryText: string): string {
 // A QUERY RUNS AGAINST THE TARGET ORG MANAGER SELECTION (#439); WITH NONE, THE HOST ASKS FOR ONE
 export function drawTreeQueryButtons(): void {
 
-    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
+    const orgLabel = dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgSelectedIndex !== null && dataOrgPicker.dataOrgLabels[dataOrgPicker.dataOrgSelectedIndex] ? dataOrgPicker.dataOrgLabels[dataOrgPicker.dataOrgSelectedIndex] : '';
     const runLabel = orgLabel ? 'Run in ' + orgLabel : 'Run…';
     const runTitle = orgLabel ? 'Run this query against ' + orgLabel + ', the org chosen in Target Org Manager' : 'Choose the org to run this query against; it becomes the Target Org Manager selection';
 
     treeStates.forEach(function (treeState) {
         (treeState.queryStates || []).forEach(function (queryState) {
-            drawActionCardState(queryState.runCard, isTreeQueryRunning ? 'A query is running.' : '', runTitle);
+            drawActionCardState(queryState.runCard, runLocks.isTreeQueryRunning ? 'A query is running.' : '', runTitle);
             // WRITTEN ONLY ON A CHANGE: EVERY INSERT REDRAW COMES THROUGH HERE
             if (queryState.drawnRunLabel !== runLabel) {
                 queryState.drawnRunLabel = runLabel;
                 queryState.runCard.titleElement.textContent = runLabel;
             }
             queryState.exportCards.forEach(function (exportCard) {
-                drawActionCardState(exportCard, isTreeQueryRunning ? 'A query is running.' : queryState.hasResult ? '' : 'Run this query first', 'Write what this query returned to RunArtifacts in the tree folder');
+                drawActionCardState(exportCard, runLocks.isTreeQueryRunning ? 'A query is running.' : queryState.hasResult ? '' : 'Run this query first', 'Write what this query returned to RunArtifacts in the tree folder');
             });
         });
     });

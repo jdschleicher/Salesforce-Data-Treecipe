@@ -18,22 +18,27 @@ import type { FieldRowsPanelMessage, IFieldRowField, IFieldRowFieldState, IField
 import { drawTreePickerObjects } from '../navigation/TreePicker';
 import { drawStructureMatchCount } from '../navigation/StructureFilter';
 import { buildNicknameBackLink, findReferencedOwnerState } from '../navigation/Nicknames';
+import { findTreeState, renderedSequence } from '../../shell/PanelRender';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { drawHelpSummary } from '../../shell/Help';
+import { buildSourceLink } from '../../RecipeCockpitPanelShared';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+import { navigationState } from '../navigation/NavigationState';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void } = cockpitVscodeApi;
 
 /*
     One field row of the Treecipe tab (#220, #262, #320, #325, #398, #421, #560) and the card-wide
     draws that follow a selection answer. The row's text is written with textContent; every click
-    posts names only. The script's tree card, search and place restore are declared here until
-    they move too (#656, #657).
+    posts names only.
 */
-declare const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void };
-declare const renderedSequence: number | null;
-declare const treePickerShownTreeState: unknown;
-// THE SCRIPT EMPTIES IT FOR EVERY MODEL, SO A HAYSTACK NEVER OUTLIVES THE FIELD IT WAS LOWERCASED FROM
-declare let fieldSearchTexts: Map<IFieldRowField, string>;
-declare function savePanelPlace(): void;
-declare function drawHelpSummary(): void;
-declare function findTreeState(treeKey: unknown): ( IFieldRowTreeState & IDataOrgTreeState & ITroubleshootingTreeState ) | null;
-declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
+// ONE LOWERCASED HAYSTACK PER FIELD (searchTextOf, #655), EMPTIED FOR EVERY MODEL, SO A HAYSTACK NEVER OUTLIVES THE FIELD IT WAS LOWERCASED FROM
+let fieldSearchTexts: Map<IFieldRowField, string> = new Map();
+
+export function resetFieldSearchTexts(): void {
+    fieldSearchTexts = new Map();
+}
 
 /*
     One lowercased haystack per FIELD, shared by every occurrence of its object a card draws, so
@@ -115,7 +120,7 @@ export function renderObjectSelection(objectSelectionMessage: IObjectSelectionMe
     drawTreeInsert(treeState);
     drawTreePermissionSet(treeState);
     drawHelpSummary();
-    if (treeState === treePickerShownTreeState) { drawTreePickerObjects(); }
+    if (treeState === navigationState.treePickerShownTreeState) { drawTreePickerObjects(); }
 
     // WHAT THE TROUBLESHOOTING TAB COUNTS LEAVES OUT EXCLUDED OBJECTS AND UNTICKED FIELDS (#346)
     if (treeState.selectedTab === 'troubleshooting') { requestTroubleshootingSummary(treeState); }

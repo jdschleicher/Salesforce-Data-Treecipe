@@ -10,6 +10,11 @@ import {
 import type { RecipeCockpitRecordTypeImpactKind } from '../../../RecipeCockpitRecordTypesConstants';
 import { IRecordType, IRecordTypeObject, IRecordTypeRowState, IRecordTypesTreeState } from './RecordTypeTypes';
 import { displayTitleOf } from '../navigation/TreePicker';
+import { treeStates } from '../../shell/PanelRender';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { runLocks } from '../../RecipeCockpitRunLocks';
+import { recordTypesState } from './RecordTypesState';
 
 /*
     The Record types section of the Treecipe tab (#321, the #195 tab before it), opened by the
@@ -20,19 +25,9 @@ import { displayTitleOf } from '../navigation/TreePicker';
     built on first expand.
 
     The choice is the PANEL's (#195), per object and shared by every card that lists the object:
-    object api name -> developer names, in the order ticked. The script resets it, the row states
-    and "Remember this selection" with every model, so they stay the script's and are read here
-    when a function runs.
+    object api name -> developer names, in the order ticked. It, the row states and "Remember this
+    selection" are recordTypesState's (RecordTypesState.ts), reset with every model.
 */
-declare const treeStates: IRecordTypesTreeState[];
-declare const recordTypeChoices: Record<string, string[]>;
-declare const recordTypeObjects: IRecordTypeObject[];
-declare const recordTypeRowStates: IRecordTypeRowState[];
-declare const recordTypeRememberElements: HTMLButtonElement[];
-declare let isRecordTypeSelectionRemembered: boolean;
-declare const insertRunningTreeKey: string | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
 
 // EACH SECTION'S BUTTON NAMES ITS BODY AND ITS SUMMARY BY ID, SO A SCREEN READER ANNOUNCES "changed" ON THE BUTTON (#321)
 let recordTypesSectionCount = 0;
@@ -170,7 +165,7 @@ function drawRecordTypesSummary(treeState: IRecordTypesTreeState): void {
     const objects = listRecordTypeObjects(treeState);
     const searchQuery = treeState.searchQueries.treecipe;
     const matchingCount = objects.filter(function (object) { return !searchQuery || recordTypeObjectSearchText(object).indexOf(searchQuery) !== -1; }).length;
-    const isChanged = objects.some(function (object) { return !isSameChoice(recordTypeChoices[object.objectApiName] || [], object.generatedRecordTypeDeveloperNames || []); });
+    const isChanged = objects.some(function (object) { return !isSameChoice(recordTypesState.recordTypeChoices[object.objectApiName] || [], object.generatedRecordTypeDeveloperNames || []); });
     const isApplied = objects.some(function (object) { return object.isRecordTypeSelectionApplied === true; });
     const countText = !searchQuery
         ? pluralize(objects.length, 'object', 'objects')
@@ -218,7 +213,7 @@ function buildRecordTypesRows(treeState: IRecordTypesTreeState, panelElement: HT
             rowElement.appendChild(createElement('div', 'recordTypeImpact muted', describeRecordTypeImpacts(recordType)));
             objectElement.appendChild(rowElement);
 
-            recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement: checkboxElement });
+            recordTypesState.recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement: checkboxElement });
 
         });
 
@@ -248,7 +243,7 @@ function buildRecordTypesRows(treeState: IRecordTypesTreeState, panelElement: HT
     rememberRowElement.appendChild(rememberElement);
     rememberRowElement.appendChild(rememberLabelElement);
     panelElement.appendChild(rememberRowElement);
-    recordTypeRememberElements.push(rememberElement);
+    recordTypesState.recordTypeRememberElements.push(rememberElement);
 
     drawRecordTypeChoices();
     applyRecordTypesFilter(treeState);
@@ -270,7 +265,7 @@ export function applyRecordTypesFilter(treeState: IRecordTypesTreeState): void {
 // A CHOICE KEEPS AT LEAST ONE RECORD TYPE: "NONE" IS NOT A RECORD TYPE
 function toggleRecordTypeChoice(objectApiName: string, developerName: string): void {
 
-    const choice = recordTypeChoices[objectApiName] || [];
+    const choice = recordTypesState.recordTypeChoices[objectApiName] || [];
     const choiceIndex = choice.indexOf(developerName);
 
     if (choiceIndex === -1) {
@@ -279,14 +274,14 @@ function toggleRecordTypeChoice(objectApiName: string, developerName: string): v
         choice.splice(choiceIndex, 1);
     }
 
-    recordTypeChoices[objectApiName] = choice;
+    recordTypesState.recordTypeChoices[objectApiName] = choice;
     drawRecordTypeChoices();
 
 }
 
 function toggleRecordTypeSelectionRemembered(): void {
 
-    isRecordTypeSelectionRemembered = !isRecordTypeSelectionRemembered;
+    recordTypesState.isRecordTypeSelectionRemembered = !recordTypesState.isRecordTypeSelectionRemembered;
     drawRecordTypeChoices();
 
 }
@@ -307,8 +302,8 @@ export function buildRecordTypeSelection(): Record<string, string[]> {
 
     const recordTypeSelection: Record<string, string[]> = Object.create(null);
 
-    recordTypeObjects.forEach(function (object) {
-        const choice = recordTypeChoices[object.objectApiName] || [];
+    recordTypesState.recordTypeObjects.forEach(function (object) {
+        const choice = recordTypesState.recordTypeChoices[object.objectApiName] || [];
         const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
         if (choice.length > 0 && (isChanged || object.isRecordTypeSelectionApplied === true)) {
             recordTypeSelection[object.objectApiName] = choice.slice();
@@ -321,13 +316,13 @@ export function buildRecordTypeSelection(): Record<string, string[]> {
 
 export function drawRecordTypeChoices(): void {
 
-    recordTypeRowStates.forEach(function (rowState) {
-        const choice = recordTypeChoices[rowState.objectApiName] || [];
+    recordTypesState.recordTypeRowStates.forEach(function (rowState) {
+        const choice = recordTypesState.recordTypeChoices[rowState.objectApiName] || [];
         const isTicked = choice.indexOf(rowState.developerName) !== -1;
         const isLastTicked = isTicked && choice.length === 1;
         rowState.checkboxElement.textContent = isTicked ? '✓' : '';
         rowState.checkboxElement.setAttribute('aria-checked', isTicked ? 'true' : 'false');
-        rowState.checkboxElement.disabled = insertRunningTreeKey !== null || isLastTicked;
+        rowState.checkboxElement.disabled = runLocks.insertRunningTreeKey !== null || isLastTicked;
         if (isLastTicked) {
             rowState.checkboxElement.setAttribute('title', 'Each object keeps at least one record type');
         } else {
@@ -338,7 +333,7 @@ export function drawRecordTypeChoices(): void {
     treeStates.forEach(function (treeState) {
         (treeState.recordTypeObjectStates || []).forEach(function (objectState) {
             const object = objectState.object;
-            const choice = recordTypeChoices[object.objectApiName] || [];
+            const choice = recordTypesState.recordTypeChoices[object.objectApiName] || [];
             const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
             objectState.statusElement.textContent = isChanged
                 ? 'changed: the next generate writes ' + choice.join(', ')
@@ -348,10 +343,10 @@ export function drawRecordTypeChoices(): void {
 
     treeStates.forEach(drawRecordTypesSummary);
 
-    recordTypeRememberElements.forEach(function (rememberElement) {
-        rememberElement.textContent = isRecordTypeSelectionRemembered ? '✓' : '';
-        rememberElement.setAttribute('aria-checked', isRecordTypeSelectionRemembered ? 'true' : 'false');
-        rememberElement.disabled = insertRunningTreeKey !== null;
+    recordTypesState.recordTypeRememberElements.forEach(function (rememberElement) {
+        rememberElement.textContent = recordTypesState.isRecordTypeSelectionRemembered ? '✓' : '';
+        rememberElement.setAttribute('aria-checked', recordTypesState.isRecordTypeSelectionRemembered ? 'true' : 'false');
+        rememberElement.disabled = runLocks.insertRunningTreeKey !== null;
     });
 
 }

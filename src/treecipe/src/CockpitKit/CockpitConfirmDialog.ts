@@ -17,18 +17,6 @@ export type { ICockpitConfirmAnswer, ICockpitConfirmRecordTypeSetMode } from './
 import { ICockpitConfirmAnswer } from './CockpitConfirmLabels';
 
 /*
-    The names the dialog's panel module (panel/CockpitConfirmDialogPanel.ts, #637) takes from the
-    cockpit script it is bundled into: its declare block, less confirmDialog, which the kit's state
-    script declares. A cockpit that includes the bundle declares each of these in the same scope: a
-    name it misses throws while a request is drawn, before any answer is posted, and the host's
-    confirmInPanel would wait on it. A test holds this list to the module's declare block.
-*/
-export const COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES: readonly string[] = Object.freeze([
-    'vscodeApi', 'renderedSequence', 'focusElement', 'TREE_GLYPH_VIEW_BOX', 'TOGGLE_COLLAPSED_GLYPH_PATH',
-    'cockpitDialogHostElement', 'cockpitBodyElement', 'cockpitMetaElement', 'loadStatusElement'
-]);
-
-/*
     The classes the dialog draws with that COCKPIT_KIT_CONFIRM_DIALOG_STYLES does not style: the
     section chevron and the reveal it names itself, and those its required helpers set (a folded
     section is hidden by setShownWithMotion, its chevron held still by drawToggle). A cockpit that
@@ -103,10 +91,6 @@ export const COCKPIT_KIT_CONFIRM_DIALOG_STYLES = `    .confirmOverlay {
 
 // MARKUP: A STATIC SIBLING AFTER THE BODY, SO THE SHELL BUILDER STILL TAKES ONLY A NONCE
 export const COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP = `<div id="cockpitDialogHost"></div>`;
-
-// PANEL SCRIPT, DECLARED WITH THE PANEL'S OTHER STATE; THE PANEL MODULE AND THE OBJECT REFRESH DIALOG BOTH READ IT
-export const COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT = `    // THE ONE IN-PANEL CONFIRMATION ON SCREEN (#349), OR null
-    let confirmDialog = null;`;
 
 export class CockpitConfirmDialog {
 

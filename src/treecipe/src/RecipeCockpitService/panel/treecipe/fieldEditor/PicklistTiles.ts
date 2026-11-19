@@ -17,16 +17,24 @@ import type {
     PicklistValuesCallback
 } from './FieldEditorTypes';
 import { findFixedValueLockReason } from '../fieldRows/FieldRowFixedValue';
+import { findTreeState, renderedSequence } from '../../shell/PanelRender';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void } = cockpitVscodeApi;
 
 /*
-    A picklist's value tiles (#465, #653). These names are the panel script's own, read when a
-    function runs; pendingPicklistValueElements is its let, since it empties it for every new model.
+    A picklist's value tiles (#465, #653).
 */
-declare const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void };
-declare const renderedSequence: number | null;
-declare const pendingPicklistValueElements: Record<string, PicklistValuesCallback[]>;
-declare function findTreeState(treeKey: unknown): ITreeState | null;
-declare function savePanelPlace(): void;
+
+// ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
+let pendingPicklistValueElements: Record<string, PicklistValuesCallback[]> = Object.create(null);
+
+// A NEW MODEL ASKS AGAIN: AN ANSWER TO AN OLDER ASK HAS NO ROW TO FILL
+export function resetPicklistValueRequests(): void {
+    pendingPicklistValueElements = Object.create(null);
+}
 
 interface IPicklistTileState {
     value: unknown;

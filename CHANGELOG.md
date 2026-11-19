@@ -1,5 +1,35 @@
 # Change Log
 
+## [3.202.10] - The Recipe Cockpit's panel is checked TypeScript modules, with no script left in a string (#657, slice 3e-6 of #565)
+
+Nothing a user sees changes. Every cockpit suite passes, including place persistence and restore, help, motion, Object refresh, extension version and tree preferences. So do every journey (#577, #578, #579, #580) and the rendered baselines. No expectation changed; one source scan now accepts esbuild's double quotes.
+
+- **What moved out of the template-literal script.** The last 71 functions, the message handler and the Object refresh dialog's interpolated script are now type checked by `npm run compile`:
+  - `panel/treecipe/card/`: the tree cards and their header (`TreeCard.ts`), the tab strip (`TreeCardTabs.ts`), an object row and its iterations (`TreeObjectRow.ts`), the record count box (`RecordCount.ts`), and the inline name editor (`NameEditor.ts`), with `CardTypes.ts`.
+  - `panel/shell/`: the model on screen, its reset and its failure path (`PanelRender.ts`); the reader's place (`PanelPlace.ts`); help (`Help.ts`); and the CHANGELOG button (`CockpitMeta.ts`).
+  - `panel/treecipe/objectRefresh/ObjectRefreshDialog.ts`: "Get latest detail"'s button and dialog.
+  - `panel/RecipeCockpitPanelHost.ts`: `startRecipeCockpitPanel` and the router for every host message.
+  - The script lost all of its 2,557 lines. `RecipeCockpitService.ts` went from 25,448 lines to 22,804.
+- **The bundle is the shell's whole script, and starts the panel itself.** The entry calls `startRecipeCockpitPanel()`, and esbuild writes no global, so nothing lands on `window`. The `const { … } = recipeCockpitPanelModules;` bridge is gone.
+- **No module `declare`s a name any more: each one imports from the module that owns the name.**
+  - A value only one module writes is that module's own `let`, for example `renderedSequence` and `treeStates` (`PanelRender.ts`) and `isRestoringPlace` (`PanelPlace.ts`).
+  - State several modules write is one object, named for its owner and keeping the old names as keys: `runLocks`, `dataOrgPicker`, `navigationState` and `recordTypesState`.
+  - Each owner empties what belongs to one model when a new model is drawn.
+  - `acquireVsCodeApi` is called in one place, `RecipeCockpitPanelConnection.ts`.
+- **The kit's confirmation is connected, not declared.** A cockpit calls `connectConfirmDialog` with what the dialog posts through and draws on. `isConfirmDialogOpen` is what the Object refresh dialog asks. `COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES` and `COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT` are gone, and `focusElement` moved into `CockpitPanelElements.ts`.
+- **Every `${JSON.stringify(…)}` injection is gone.** Each value is an import from a file that imports nothing:
+  - `RecipeCockpitHelpConstants.ts`, `RecipeCockpitShellConstants.ts` and `RecipeCockpitObjectRefreshConstants.ts`, all re-exported where they were.
+  - The two limits, `RECIPE_COCKPIT_QUERY_MAX_LENGTH` and `RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH`.
+  - `RelationshipService/ReferenceIdRequiredTodo.ts`.
+  - The recipe writer imports nothing, so the panel spells its nickname rule out as `RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN`, and a test holds the two copies together.
+- **Unchanged.** A saved place that is malformed, from an older version or from another run is still ignored or upgraded. A panel that fails to draw still posts its failure and empties the allow-list. Every allow-list refusal stands.
+- **Tests.** `RecipeCockpitPanelBundle.test.ts` drops its bridge and `declare` checks, and now fails when:
+  - the shell's script is anything but the bundle;
+  - the bundle exports anything;
+  - a panel module `declare`s a name;
+  - a template literal in the service holds a `function`, an arrow or a `JSON.stringify`.
+  `CockpitKit.test.ts` fails when the dialog declares anything, or the Recipe Cockpit routes a message before connecting it.
+
 ## [3.202.9] - The Treecipe tab's navigation is checked TypeScript modules (#656, slice 3e-5 of #565)
 
 Nothing a user sees changes. Every tree picker, tree preferences, nickname reference, friend chip, friends menu, tab outline and sections suite passes with no expectation changed. So do the Treecipe tab and first journeys and the rendered baselines.

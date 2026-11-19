@@ -7,8 +7,8 @@ import type { ITroubleshootingTreeState } from '../../troubleshooting/Troublesho
 /*
     The shapes the Recipe Cockpit's navigation works on (#656): the tree picker, the Treecipes
     search, nicknames and their menus, friends and the Treecipe tab's filter. A tree card and its
-    object rows are still built by the panel script, so these name what navigation reads and writes,
-    over the field rows' view of the same objects.
+    object rows are built by the card (treecipe/card/, #657), so these name what navigation reads and
+    writes, over the field rows' view of the same objects.
 */
 
 // A LATER OCCURRENCE OF AN OBJECT (#188), AND THE friends: BLOCK IT NESTS UNDER (#411)
@@ -109,7 +109,7 @@ export interface INavigationTreeState extends IFieldRowTreeState {
 }
 
 /*
-    Every tab's module is handed its own view of a card's state, and the script builds ONE object
+    Every tab's module is handed its own view of a card's state, and the card builds ONE object
     per card that is all of them. A module that reaches navigation passes its view; navigation
     widens it here, in one place, rather than every caller naming the whole.
 */
@@ -130,7 +130,7 @@ export function asNavigationObjectState(treeObjectStateView: ITreeObjectStateVie
     return treeObjectStateView as unknown as INavigationObjectState;
 }
 
-// ONE TREE STATE OBJECT IS EVERY TAB'S VIEW AT ONCE: THE SCRIPT BUILDS IT, EACH MODULE NAMES THE PART IT READS
+// ONE TREE STATE OBJECT IS EVERY TAB'S VIEW AT ONCE: THE CARD BUILDS IT, EACH MODULE NAMES THE PART IT READS
 export type ScriptTreeState = INavigationTreeState & ITroubleshootingTreeState & IDataOrgTreeState & { tree: INavigationTree };
 
 export interface ITreecipesSearchEntry {

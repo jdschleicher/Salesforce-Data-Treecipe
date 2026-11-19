@@ -171,24 +171,30 @@ src/
     │   └── tests/
     ├── RecipeCockpitService/
     │   ├── RecipeCockpitService.ts           # Owns the Recipe Cockpit webview panel: shell, model, message router and executor
-    │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files
+    │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files; RecipeCockpitPanelHost.ts starts it and routes host messages (#657)
+    │   │   ├── shell/                        # The model on screen and its failure path, the reader's place, help and the CHANGELOG button (#657)
     │   │   ├── adapter/                      # The Treecipe Adapter tab: steps, field editor, load and update, retrieve, add child (#641)
     │   │   ├── datasets/                     # Previously Used Data Sets: the tab, a row and its insert journey (#642)
     │   │   ├── query/                        # The Query tab (#640)
     │   │   ├── treecipe/dataOrg/             # Target Org Manager's picker and connection check, a tree's insert button and its reasons (#654)
     │   │   ├── treecipe/fieldEditor/         # The Treecipe tab's field editor, picklist tiles and lookup wiring (#653)
     │   │   ├── treecipe/fieldRows/           # The Treecipe tab's field rows and the object/field selection cascade drawn from the host's answer (#655)
+    │   │   ├── treecipe/card/                # A tree card: its header, tab strip, object rows, record count box and inline name editor (#657)
     │   │   ├── treecipe/navigation/          # Tree picker, Treecipes search, nicknames and their menus, friends, the Treecipe tab's filter and focus (#656)
+    │   │   ├── treecipe/objectRefresh/       # "Get latest object detail"'s row button and host-driven dialog (#612, #657)
     │   │   ├── treecipe/recordTypes/         # The Treecipe tab's Record types section, "Record type fields only" and "TODOs only" (#652)
     │   │   └── troubleshooting/              # The Troubleshooting tab, its TODO's, Validation Rules and History sub-tabs (#639)
-    │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, inlined by the shell; never edited, npm run bundle-panel rewrites it
+    │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, the whole of the shell's script (#657); never edited, npm run bundle-panel rewrites it
     │   ├── RecipeCockpitPanelConstants.ts    # Glyph paths and action card words the panel modules draw with (#638); imports nothing, re-exported by the service
     │   ├── RecipeCockpitAdapterConstants.ts  # The Treecipe Adapter tab's words (#641); imports nothing, re-exported by the service
     │   ├── RecipeCockpitDatasetsTabConstants.ts # Previously Used Data Sets' labels, notes and the insert status union (#642); types only from host-free files, re-exported by the service
     │   ├── RecipeCockpitDataOrgConstants.ts  # Target Org Manager's and the tree insert's words (#654); types only from host-free files, re-exported by the service
     │   ├── RecipeCockpitFieldRowsConstants.ts # The field rows' lock reasons, badges and field scope words (#655); imports nothing, re-exported by the service
     │   ├── RecipeCockpitNavigationConstants.ts # The tree picker's, Treecipes search's and menus' words and the filter's expand budget (#656); imports nothing, re-exported by the service
-    │   ├── RecipeCockpitQueryTabConstants.ts # The Query tab's intro (#640); imports nothing, re-exported by the service
+    │   ├── RecipeCockpitQueryTabConstants.ts # The Query tab's intro and query length limit (#640, #657); imports nothing, re-exported by the service
+    │   ├── RecipeCockpitHelpConstants.ts     # The help section's words (#332, #657); imports nothing, re-exported by the service
+    │   ├── RecipeCockpitShellConstants.ts    # The frame's words: sections, run picker, tabs, the place's version and shape, CHANGELOG button (#657); imports nothing, re-exported by the service
+    │   ├── RecipeCockpitObjectRefreshConstants.ts # "Get latest detail"'s label, glyph and kinds (#612, #657); imports nothing, re-exported by the service
     │   ├── RecipeCockpitRecordTypesConstants.ts # The Record types section's and the Treecipe tab toggles' words (#652); imports nothing, re-exported by the service
     │   ├── RecipeCockpitTroubleshootingConstants.ts # The Troubleshooting tab's labels, notes and kinds (#639); types only from files that import nothing, re-exported by the service
     │   ├── RecipeCockpitTreecipeFieldEditorConstants.ts # The field editor, picklist tiles and lookup wiring's words (#653); imports nothing, re-exported by the service
@@ -200,7 +206,7 @@ src/
     │   ├── RecipeCockpitTreeUpdaterQuery.ts  # Treecipe Adapter load (#416, #444): the plan and one SELECT per object; no vscode
     │   ├── RecipeCockpitOrgChangeDetection.ts # Treecipe Adapter's Retrieve latest metadata (#445, #447): staging folder and field comparison
     │   ├── RecipeCockpitObjectRefresh.ts     # Get latest object detail from target org (#612): one object compared kind by kind, ticked items applied; no vscode
-    │   ├── RecipeCockpitObjectRefreshDialog.ts # Its row button and host-driven dialog (#612), interpolated into the shell
+    │   ├── RecipeCockpitObjectRefreshDialog.ts # Its dialog's styles (#612), interpolated into the shell's stylesheet until #644
     │   ├── RecipeCockpitAdaptedDataset.ts    # What a landed Adapter update leaves (#448): adapted data set and recipe; no vscode
     │   ├── RecipeCockpitDatasetJourney.ts    # A data set row's insert journey (#471)
     │   ├── RecipeCockpitRunHistory.ts        # Troubleshooting History (#485): step summaries written and listed
@@ -270,6 +276,7 @@ src/
     │   └── tests/
     ├── RelationshipService/
     │   ├── RelationshipService.ts           # Builds the relationship hierarchy and tree recipes; faker-js nests under friends:
+    │   ├── ReferenceIdRequiredTodo.ts       # The TODO a lookup with no parent in the recipe gets (#46); imports nothing, so the cockpit's panel reads it (#657)
     │   ├── StandardFieldParentReferenceMap.ts # The parent of a well-known standard lookup/hierarchy field with no <referenceTo>, by Object.Field (Account.ParentId → Account, #400); imports nothing
     │   └── tests/
     │       └── mocks/

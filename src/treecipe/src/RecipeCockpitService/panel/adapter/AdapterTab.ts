@@ -50,17 +50,16 @@ import { formatParentLookups } from '../treecipe/fieldRows/FieldRow';
 import { RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES } from '../../RecipeCockpitFieldRowsConstants';
 import { displayTitleOf } from '../treecipe/navigation/TreePicker';
 import { expandMatchesWithinBudget } from '../treecipe/navigation/StructureFilter';
+import { savePanelPlace } from '../shell/PanelPlace';
+import { buildSourceLink, pluralize } from '../RecipeCockpitPanelShared';
+import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../../RecipeCockpitAdapterConstants';
 
 /*
     The Treecipe Adapter tab (#415, #443, #641): its two steps, the objects and field rows of step 2,
-    the summary and the filter. These names are the panel script's own, read when a function runs.
+    the summary and the filter.
 */
-declare function savePanelPlace(): void;
-declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
-declare function pluralize(count: number, singular: string, plural: string): string;
 // THE TREECIPE TAB'S FIXED-VALUE RULES, WHICH ITS SLICE (#643) MOVES
 // RecipeCockpitTreeUpdaterQuery.ts HOLDS THE LIMIT BESIDE ITS CHECK AND IMPORTS OTHER HOST FILES, SO THE SHELL PASSES THE NUMBER IN
-declare const UPDATER_WHERE_MAX_LENGTH: number;
 
 /*
     The Treecipe Adapter tab (#415, #443): step 2 draws the parent and its descendants in insert
@@ -268,7 +267,7 @@ function buildUpdaterParentStep(treeState: IAdapterTreeState): HTMLElement {
 
     whereInputElement.setAttribute('type', 'text');
     whereInputElement.setAttribute('placeholder', RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER);
-    whereInputElement.setAttribute('maxlength', String(UPDATER_WHERE_MAX_LENGTH));
+    whereInputElement.setAttribute('maxlength', String(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH));
     whereInputElement.setAttribute('aria-label', RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER);
     whereInputElement.value = treeState.updaterParentWhereText;
     whereInputElement.addEventListener('input', function () {
@@ -628,7 +627,7 @@ function buildUpdaterWhereElement(treeState: IAdapterTreeState, updaterObjectSta
 
     inputElement.setAttribute('type', 'text');
     inputElement.setAttribute('placeholder', RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER);
-    inputElement.setAttribute('maxlength', String(UPDATER_WHERE_MAX_LENGTH));
+    inputElement.setAttribute('maxlength', String(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH));
     inputElement.setAttribute('aria-label', 'WHERE for ' + objectApiName + ' records');
     inputElement.value = hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : '';
     inputElement.addEventListener('input', function () {
