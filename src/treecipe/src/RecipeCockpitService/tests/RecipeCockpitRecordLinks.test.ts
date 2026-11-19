@@ -57,6 +57,7 @@ import {
     RECIPE_COCKPIT_RECORD_LINK_TITLE,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitQueryHost } from '../RecipeCockpitQueryHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
     ORG_FRONT_DOOR_FAILURE_TEXTS,
@@ -269,7 +270,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
         const drawPreview = async (previewKind: RecipeCockpitRecordLinkPreviewKind, recordIdsByObjectApiName: Map<string, (string | undefined)[]>) => {
             const heldSource = { records: [] };
             const heldField = { query: 'heldTreeQueryResult', updaterRecords: 'heldUpdaterRecords', updaterValues: 'heldUpdaterValues' }[previewKind];
-            (RecipeCockpitService as any)[heldField] = heldSource;
+            ( previewKind === 'query' ? RecipeCockpitQueryHost as any : RecipeCockpitService as any )[heldField] = heldSource;
             const recordLinkSequence = RecipeCockpitService.registerRecordLinkPreview(panelState(), previewDetail(previewKind, heldSource, lastRenderSequence(), recordIdsByObjectApiName))!;
             await receivedMessageHandler({ command: 'recordLinksRendered', renderSequence: lastRenderSequence(), recordLinkSequence });
             return recordLinkSequence;
@@ -319,7 +320,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
         });
 
         afterEach(() => {
-            RecipeCockpitService.clearHeldTreeQueryResult();
+            RecipeCockpitQueryHost.clearHeldTreeQueryResult();
             RecipeCockpitService.clearHeldUpdaterRecords();
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
@@ -379,7 +380,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             // AN UPDATE THAT SENT A REQUEST LETS THE RECORDS AND THEIR VALUES GO (isRecordsSpent), AND A RUN LETS THE LAST RESULT GO
             RecipeCockpitService.clearHeldUpdaterRecords();
-            RecipeCockpitService.clearHeldTreeQueryResult();
+            RecipeCockpitQueryHost.clearHeldTreeQueryResult();
 
             await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: recordsSequence, objectApiName: 'Account', rowIndex: 0 });
             await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: valuesSequence, objectApiName: 'Account', rowIndex: 0 });

@@ -46,12 +46,15 @@ import { execFile } from 'child_process';
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY,
-    RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL,
-    RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
     RECIPE_COCKPIT_TREE_TABS
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY,
+    RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL,
+    RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER,
+    RecipeCockpitQueryHost
+} from '../RecipeCockpitQueryHost';
 import { RECIPE_COCKPIT_QUERY_RECORD_CAP, RecipeCockpitQuery } from '../RecipeCockpitQuery';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -228,10 +231,10 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
 
-            (RecipeCockpitService as any).isTreeQueryInFlight = false;
-            (RecipeCockpitService as any).treeQueryRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldTreeQueryResult();
-            RecipeCockpitService.clearTreeQueryLists();
+            (RecipeCockpitQueryHost as any).isTreeQueryInFlight = false;
+            (RecipeCockpitQueryHost as any).treeQueryRunStateMessage = undefined;
+            RecipeCockpitQueryHost.clearHeldTreeQueryResult();
+            RecipeCockpitQueryHost.clearTreeQueryLists();
 
             postedPanelMessages = [];
             sentQueries = [];
@@ -370,13 +373,13 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
             const stored = JSON.parse(JSON.stringify({ version: 1, editsByFolderName: { Tree: { k: 7, ok: edit('SELECT Id FROM Lead'), noGenerated: { editedText: 'SELECT Id FROM Lead' }, '': edit('x') }, Other: 'nope' } }));
             stored.editsByFolderName = JSON.parse(JSON.stringify(stored.editsByFolderName).replace('{"Tree"', '{"__proto__":{"__proto__":' + JSON.stringify(edit('SELECT Id FROM Account LIMIT 1')) + '},"Tree"'));
-            const queryEdits = RecipeCockpitService.readQueryEdits(stateOf(stored));
+            const queryEdits = RecipeCockpitQueryHost.readQueryEdits(stateOf(stored));
 
             expect([...queryEdits.keys()]).toEqual(['__proto__', 'Tree']);
             expect(queryEdits.get('__proto__')?.get('__proto__')).toEqual(edit('SELECT Id FROM Account LIMIT 1'));
             expect([...(queryEdits.get('Tree') ?? new Map())]).toEqual([['ok', edit('SELECT Id FROM Lead')]]);
-            expect(RecipeCockpitService.readQueryEdits(stateOf({ version: 2, editsByFolderName: {} })).size).toBe(0);
-            expect(RecipeCockpitService.readQueryEdits({ get: () => { throw new Error('gone'); }, update: jest.fn() } as any).size).toBe(0);
+            expect(RecipeCockpitQueryHost.readQueryEdits(stateOf({ version: 2, editsByFolderName: {} })).size).toBe(0);
+            expect(RecipeCockpitQueryHost.readQueryEdits({ get: () => { throw new Error('gone'); }, update: jest.fn() } as any).size).toBe(0);
 
         });
 
@@ -809,7 +812,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
         it('starts its list of read trees again once it holds the most it keeps', async () => {
 
             await openCockpit();
-            const treeQueryLists: Map<string, unknown> = (RecipeCockpitService as any).treeQueryLists;
+            const treeQueryLists: Map<string, unknown> = (RecipeCockpitQueryHost as any).treeQueryLists;
             Array.from({ length: 50 }, (_unused, index) => treeQueryLists.set(`other-${index}`, []));
 
             await loadQueries();
@@ -823,8 +826,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await openCockpit();
             postedPanelMessages = [];
 
-            (RecipeCockpitService as any).postTreeQueries((RecipeCockpitService as any).recipeCockpitPanel, 'No-Such-Tree', lastRenderSequence());
-            (RecipeCockpitService as any).postTreeQueries((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, -1);
+            (RecipeCockpitQueryHost as any).postTreeQueries((RecipeCockpitService as any).hubForQueryTab, (RecipeCockpitService as any).recipeCockpitPanel, 'No-Such-Tree', lastRenderSequence());
+            (RecipeCockpitQueryHost as any).postTreeQueries((RecipeCockpitService as any).hubForQueryTab, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, -1);
 
             expect(postedNamed('treeQueries')).toEqual([]);
 
@@ -832,11 +835,11 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         it('warns once when there is no workspace to keep an edit in, or the write fails', async () => {
 
-            expect(await RecipeCockpitService.writeQueryEdits(undefined, new Map())).toBe(false);
-            expect(RecipeCockpitService.readQueryEdits(undefined).size).toBe(0);
+            expect(await RecipeCockpitQueryHost.writeQueryEdits(undefined, new Map())).toBe(false);
+            expect(RecipeCockpitQueryHost.readQueryEdits(undefined).size).toBe(0);
 
             const failingState = { get: jest.fn(), update: jest.fn().mockRejectedValue(new Error('disk full')) };
-            expect(await RecipeCockpitService.writeQueryEdits(failingState, new Map([['Tree', new Map([['k', { generatedText: 'SELECT Id FROM Account', editedText: 'SELECT Id FROM Account LIMIT 1' }]])]]))).toBe(false);
+            expect(await RecipeCockpitQueryHost.writeQueryEdits(failingState, new Map([['Tree', new Map([['k', { generatedText: 'SELECT Id FROM Account', editedText: 'SELECT Id FROM Account LIMIT 1' }]])]]))).toBe(false);
 
             expect(notifications().map(notice => notice.text)).toEqual([
                 'The Recipe Cockpit has no workspace to keep query edits in. Open a folder and re-open the cockpit.',
@@ -900,7 +903,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             const firstRun = run();
             await flushAsyncWork();
             postedPanelMessages = [];
-            await (RecipeCockpitService as any).runTreeQueryFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, 'Account:base:0', 'SELECT Id FROM Account');
+            await (RecipeCockpitQueryHost as any).runTreeQueryFromPanel((RecipeCockpitService as any).hubForQueryTab, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, 'Account:base:0', 'SELECT Id FROM Account');
             expect(postedNamed('treeQueryState')).toEqual([{ command: 'treeQueryState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0' }]);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;

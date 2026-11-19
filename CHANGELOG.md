@@ -1,5 +1,25 @@
 # Change Log
 
+## [3.202.12] - The Query tab's host code is its own module, handed its messages by the hub (#665, slice 1 of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **`RecipeCockpitQueryHost.ts` holds the Query tab's host half.** This was spread across four places in the hub.
+  - It holds the tab's message and action types, its four router cases and five action kinds.
+  - It holds the tree query lists, the saved edits, the one-run-per-window lock, the held result and the export.
+  - Every refusal of a forged or stale query message is the same check as before, moved unchanged.
+- **The hub hands a Query command or action kind to the host first.** It still promotes and empties every allow-list, and it keeps the replay order and the panel's lifecycle.
+- **The host reads the hub only through `IRecipeCockpitHubForQueryTab`.** That interface lists the current panel and state, the workspace state, posting, record links, the read org and the tree's RunArtifacts folder. The host imports the hub's types only, so neither file runs the other's code while loading.
+- **`RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE` moved to `RecipeCockpitQuery.ts`.** The Treecipe Adapter says it too.
+- **`tests/RecipeCockpitTabHosts.test.ts` holds each tab host to the pattern.** Each of these fails it:
+  - a `case` for one of the tab's commands or action kinds outside its host;
+  - another host importing the tab's pure module, or the hub using more of it than the Adapter still owes until #668 (`fetchQueryRecords`, `countValues`, `buildPreview`);
+  - a runtime import of the hub;
+  - an import of several names on one line;
+  - a re-export from the hub.
+- **Tests read the moved names from `RecipeCockpitQueryHost`.** Three Query tab tests call a moved private method, so they now pass it the hub's `hubForQueryTab`.
+- **`RecipeCockpitService.ts` went from 21,956 lines to 21,314.**
+
 ## [3.202.11] - The Recipe Cockpit's stylesheet is .css files, inlined at build time (#644, slice 4 of #565)
 
 Nothing a user sees changes. With every new custom property set back to its value, the stylesheet the shell writes is byte for byte what 3.202.10 wrote. Every journey and the rendered baselines pass with no expectation changed.
