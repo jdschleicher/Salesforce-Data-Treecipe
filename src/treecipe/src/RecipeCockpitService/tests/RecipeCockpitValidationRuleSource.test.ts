@@ -45,10 +45,13 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RecipeCockpitService,
-    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX,
     RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX,
+    RecipeCockpitTroubleshootingViews
+} from '../RecipeCockpitTroubleshootingViews';
 import { RecipeCockpitValidationRuleList, VALIDATION_RULE_LIST_MAX_FILE_BYTES } from '../RecipeCockpitValidationRuleList';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -273,7 +276,7 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
             fs.cpSync(VALIDATION_RULE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
             fs.cpSync(OBJECTS_FIXTURE_PATH, path.join(workspaceRoot, OBJECTS_RELATIVE_PATH), { recursive: true });
 
-            RecipeCockpitService.clearTreeValidationRuleLists();
+            RecipeCockpitTroubleshootingViews.clearTreeValidationRuleLists();
             postedPanelMessages = [];
 
             (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => ({
@@ -409,7 +412,7 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
             await flushAsyncWork();
             const firstList = lastList();
 
-            await (RecipeCockpitService as any).refreshTreeValidationRules(GADGET_TREE_KEY);
+            await (RecipeCockpitTroubleshootingViews as any).refreshTreeValidationRules(RecipeCockpitService, GADGET_TREE_KEY);
             await flushAsyncWork();
             expect(lastList().listSequence).toBeGreaterThan(firstList.listSequence);
 

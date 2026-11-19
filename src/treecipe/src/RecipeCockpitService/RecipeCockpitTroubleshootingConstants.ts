@@ -216,3 +216,9 @@ export const RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON = 'A data set is being
 
 // THE ASSIGN PERMISSION SETS CARD'S TITLE (#274): WHAT IT ASKS FOR, AND WHERE IT ASSIGNS THEM
 export const RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
+
+// THE BUTTON ON A RUN'S NOTIFICATION THAT OPENS ITS OUTPUT FILE: A PERMISSION SET ASSIGNMENT'S, A RETRIEVE'S
+export const RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL = 'View output';
+
+// SAID WHEN A RETRIEVE'S ORG COULD NOT BE CONNECTED TO: THE TROUBLESHOOTING TAB'S RETRIEVES AND "Get latest object detail" (#612)
+export const RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE = 'Log in to it again with sf org login web, or choose another org in Target Org Manager, then retrieve again.';

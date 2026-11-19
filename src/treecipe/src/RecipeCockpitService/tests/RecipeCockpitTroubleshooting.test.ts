@@ -51,17 +51,21 @@ import {
     RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
     RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
+    RECIPE_COCKPIT_TREE_TABS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL,
     RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL,
     RECIPE_COCKPIT_DEPLOY_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL,
-    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
-    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_TREE_TABS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
-    RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
+    RecipeCockpitTroubleshootingRuns
+} from '../RecipeCockpitTroubleshootingRuns';
+import { RecipeCockpitTroubleshootingViews } from '../RecipeCockpitTroubleshootingViews';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { RecipeCockpitRunHistory } from '../RecipeCockpitRunHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -360,11 +364,11 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
             SalesforceOrgService.clearDescribeCache();
-            RecipeCockpitService.clearTroubleshootingSummaries();
+            RecipeCockpitTroubleshootingViews.clearTroubleshootingSummaries();
             (RecipeCockpitService as any).isMetadataDeployInFlight = false;
             (RecipeCockpitService as any).metadataDeployRunStateMessage = undefined;
-            (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
-            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
+            (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
             (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
@@ -994,7 +998,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(postedNamed('troubleshootingSummary').at(-1)).toMatchObject({ customFieldCount: 6 });
 
             // ONCE CLEARED IT IS READ AGAIN, AND A PROJECT THAT CANNOT BE READ IS NOT KEPT
-            RecipeCockpitService.clearTroubleshootingSummaries();
+            RecipeCockpitTroubleshootingViews.clearTroubleshootingSummaries();
             await receivedMessageHandler({ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
             await flushAsyncWork();
 
@@ -1087,7 +1091,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             }
 
             const runningState = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' };
-            await (RecipeCockpitService as any).deployTreeMetadataFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, 'recordTypes', true);
+            await (RecipeCockpitTroubleshootingRuns as any).deployTreeMetadataFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, 'recordTypes', true);
             expect(postedPanelMessages.at(-1)).toEqual(runningState);
 
             const rebuiltState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
@@ -1108,11 +1112,11 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
             const summariesBefore = postedNamed('troubleshootingSummary').length;
 
-            await (RecipeCockpitService as any).postTroubleshootingSummary(cockpitPanel, 'Gone-Tree', lastRenderSequence());
-            await (RecipeCockpitService as any).postTroubleshootingSummary(cockpitPanel, ACCOUNT_TREE_KEY, lastRenderSequence() + 1);
+            await (RecipeCockpitTroubleshootingViews as any).postTroubleshootingSummary(RecipeCockpitService, cockpitPanel, 'Gone-Tree', lastRenderSequence());
+            await (RecipeCockpitTroubleshootingViews as any).postTroubleshootingSummary(RecipeCockpitService, cockpitPanel, ACCOUNT_TREE_KEY, lastRenderSequence() + 1);
             expect(postedNamed('troubleshootingSummary')).toHaveLength(summariesBefore);
 
-            await (RecipeCockpitService as any).deployTreeMetadataFromPanel(cockpitPanel, ACCOUNT_TREE_KEY, 'fields', true);
+            await (RecipeCockpitTroubleshootingRuns as any).deployTreeMetadataFromPanel(RecipeCockpitService, cockpitPanel, ACCOUNT_TREE_KEY, 'fields', true);
             expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' });
             expect(modalCalls()).toEqual([]);
 

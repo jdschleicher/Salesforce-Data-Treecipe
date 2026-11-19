@@ -7,16 +7,19 @@ jest.mock('vscode', () => ({}), { virtual: true });
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTroubleshootingHistoryMessage,
-    IRecipeCockpitTroubleshootingHistoryRowViewModel,
     RECIPE_COCKPIT_HISTORY_EMPTY_NOTE,
-    RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT,
     RECIPE_COCKPIT_HISTORY_LOADING_NOTE,
     RECIPE_COCKPIT_HISTORY_STATUS_DISPLAY,
     RECIPE_COCKPIT_HISTORY_UNRECORDED_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitTroubleshootingHistoryMessage,
+    IRecipeCockpitTroubleshootingHistoryRowViewModel,
+    RECIPE_COCKPIT_HISTORY_FILE_GONE_TEXT
+} from '../RecipeCockpitTroubleshootingHost';
+import { RecipeCockpitTroubleshootingViews } from '../RecipeCockpitTroubleshootingViews';
 import { RecipeCockpitRunHistory } from '../RecipeCockpitRunHistory';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -407,7 +410,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
                 startedAt: new Date(2026, 9, 28, 10, 0, 0), finishedAt: new Date(2026, 9, 28, 10, 0, 9), succeededCount: 7, filePaths: [resultFilePath]
             });
 
-            (RecipeCockpitService as any).postTroubleshootingHistory(cockpitPanel, panelState, ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingViews as any).postTroubleshootingHistory(RecipeCockpitService, cockpitPanel, panelState, ACCOUNT_TREE_KEY);
 
             const [message] = historyMessages();
             expect(message).toEqual({
@@ -441,7 +444,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
 
             const location = RecipeCockpitService.resolveTreeRunArtifactsLocation(workspaceRoot, panelState.recipeDataMessage!.recipe, { folderName: ACCOUNT_TREE_KEY })!;
 
-            (RecipeCockpitService as any).recordTroubleshootingStep(location, {
+            (RecipeCockpitTroubleshootingViews as any).recordTroubleshootingStep(location, {
                 step: 'field-deploy', outcome: 'failed', orgUsername: QA_USERNAME,
                 startedAt: new Date(2026, 9, 28, 10, 0, 0), finishedAt: new Date(2026, 9, 28, 10, 0, 1),
                 detail: 'auth failed for force://PlatformCLI::secret@example.my.salesforce.com with 00D000000000077!AQ.abc_def (exit code 1)',
@@ -463,12 +466,12 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
             fs.writeFileSync(path.join(accountRunArtifactsFolder('recipe-2026-09-01T00-00-00'), 'OrgOperations', QA_USERNAME, '20260901-100000-field-retrieve.json'), '{}');
             panelState.recipeDataMessage!.recipe.runs = [...panelState.recipeDataMessage!.recipe.runs, { runFolderName: 'recipe-2026-09-01T00-00-00' } as any];
 
-            (RecipeCockpitService as any).postTroubleshootingHistory(cockpitPanel, panelState, ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingViews as any).postTroubleshootingHistory(RecipeCockpitService, cockpitPanel, panelState, ACCOUNT_TREE_KEY);
             expect(historyMessages()[0].rows.map((row: any) => [row.step, row.status, row.runFolderName])).toEqual([['field-retrieve', 'unrecorded', 'recipe-2026-09-01T00-00-00']]);
 
-            (RecipeCockpitService as any).postTroubleshootingHistory(cockpitPanel, panelState, 'Not-A-Card');
+            (RecipeCockpitTroubleshootingViews as any).postTroubleshootingHistory(RecipeCockpitService, cockpitPanel, panelState, 'Not-A-Card');
             panelState.recipeDataMessage = undefined;
-            (RecipeCockpitService as any).postTroubleshootingHistory(cockpitPanel, panelState, ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingViews as any).postTroubleshootingHistory(RecipeCockpitService, cockpitPanel, panelState, ACCOUNT_TREE_KEY);
             expect(historyMessages()).toHaveLength(1);
 
         });
@@ -483,11 +486,11 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
 
         it('lists a tree again after a step only when this model already drew its History', () => {
 
-            (RecipeCockpitService as any).refreshTroubleshootingHistory(ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingViews as any).refreshTroubleshootingHistory(RecipeCockpitService, ACCOUNT_TREE_KEY);
             expect(historyMessages()).toEqual([]);
 
-            (RecipeCockpitService as any).postTroubleshootingHistory(cockpitPanel, panelState, ACCOUNT_TREE_KEY);
-            (RecipeCockpitService as any).refreshTroubleshootingHistory(ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingViews as any).postTroubleshootingHistory(RecipeCockpitService, cockpitPanel, panelState, ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingViews as any).refreshTroubleshootingHistory(RecipeCockpitService, ACCOUNT_TREE_KEY);
 
             expect(historyMessages()).toHaveLength(2);
             expect(historyMessages()[1].historySequence).toBeGreaterThan(historyMessages()[0].historySequence);

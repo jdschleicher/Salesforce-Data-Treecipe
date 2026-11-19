@@ -49,11 +49,14 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
-    RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL,
-    RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL,
+    RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER,
+    RecipeCockpitTroubleshootingRuns
+} from '../RecipeCockpitTroubleshootingRuns';
 import { PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, PERMISSION_SET_MAX_PICKS, RecipeCockpitPermissionSetAssign } from '../RecipeCockpitPermissionSetAssign';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -556,8 +559,8 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
             SalesforceOrgService.clearDescribeCache();
-            (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
-            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
+            (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
             (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
 
@@ -1151,7 +1154,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
-            expect((RecipeCockpitService as any).isPermissionSetAssignInFlight).toBe(false);
+            expect((RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight).toBe(false);
 
         });
 
@@ -1159,7 +1162,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             await openCockpitWithQaSelected();
 
-            await (RecipeCockpitService as any).assignTreePermissionSetsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-tree', false);
+            await (RecipeCockpitTroubleshootingRuns as any).assignTreePermissionSetsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, 'Gone-tree', false);
 
             expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: 'Gone-tree' });
             expect(quickPick()).not.toHaveBeenCalled();
@@ -1200,10 +1203,10 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
         it('is refused while another assignment runs', async () => {
 
             await openCockpitWithQaSelected();
-            (RecipeCockpitService as any).isPermissionSetAssignInFlight = true;
-            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = true;
+            (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
 
-            await (RecipeCockpitService as any).assignTreePermissionSetsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, true);
+            await (RecipeCockpitTroubleshootingRuns as any).assignTreePermissionSetsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, true);
 
             expect(quickPick()).not.toHaveBeenCalled();
             expect(assignCalls()).toEqual([]);

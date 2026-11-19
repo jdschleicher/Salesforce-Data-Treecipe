@@ -47,12 +47,15 @@ import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL,
-    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL,
-    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL,
-    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL,
+    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL,
+    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL,
+    RecipeCockpitTroubleshootingRuns
+} from '../RecipeCockpitTroubleshootingRuns';
 import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
 import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { IPermissionSetGeneratePlan, PERMISSION_SET_GENERATED_FOLDER_NAME, RecipeCockpitPermissionSetGenerate } from '../RecipeCockpitPermissionSetGenerate';
@@ -412,9 +415,9 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             modalAnswer = RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL;
             informationAnswer = undefined;
             workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
-            (RecipeCockpitService as any).isPermissionSetGenerateInFlight = false;
-            (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
-            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetGenerateInFlight = false;
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
+            (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
 
@@ -589,7 +592,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
         it('starts the assign flow through the router when its button is chosen', async () => {
 
             informationAnswer = RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL;
-            const assignSpy = jest.spyOn(RecipeCockpitService as any, 'assignTreePermissionSetsFromPanel').mockResolvedValue(undefined);
+            const assignSpy = jest.spyOn(RecipeCockpitTroubleshootingRuns as any, 'assignTreePermissionSetsFromPanel').mockResolvedValue(undefined);
             const routeSpy = jest.spyOn(RecipeCockpitService, 'routePanelMessage');
 
             await openCockpit();
@@ -597,7 +600,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             await generate();
 
             expect(routeSpy).toHaveBeenCalledWith({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, expect.anything());
-            expect(assignSpy).toHaveBeenCalledWith(expect.anything(), ACCOUNT_TREE_KEY, false);
+            expect(assignSpy).toHaveBeenCalledWith(RecipeCockpitService, expect.anything(), ACCOUNT_TREE_KEY, false);
 
         });
 
@@ -684,10 +687,10 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(warningTexts().at(-1)).toContain('EACCES: permission denied');
             expect(informationCalls()).toHaveLength(0);
 
-            (RecipeCockpitService as any).isPermissionSetGenerateInFlight = true;
-            await (RecipeCockpitService as any).generateTreePermissionSetFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY);
-            (RecipeCockpitService as any).isPermissionSetGenerateInFlight = false;
-            await (RecipeCockpitService as any).generateTreePermissionSetFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Not-A-Tree');
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetGenerateInFlight = true;
+            await (RecipeCockpitTroubleshootingRuns as any).generateTreePermissionSetFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY);
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetGenerateInFlight = false;
+            await (RecipeCockpitTroubleshootingRuns as any).generateTreePermissionSetFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, 'Not-A-Tree');
 
             expect(modalCalls()).toHaveLength(1);
 
@@ -768,7 +771,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             await openCockpit();
             (RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage = undefined;
-            await (RecipeCockpitService as any).generateTreePermissionSetFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY);
+            await (RecipeCockpitTroubleshootingRuns as any).generateTreePermissionSetFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY);
 
             expect(modalCalls()).toHaveLength(0);
             expect(warningTexts()).toEqual([]);
@@ -906,9 +909,9 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
     it('builds no deploy argv anywhere on the generate path', () => {
 
-        const serviceSource = fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitService.ts'), 'utf8');
+        const runsSource = fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitTroubleshootingRuns.ts'), 'utf8');
         const generateSource = fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitPermissionSetGenerate.ts'), 'utf8');
-        const generatePath = serviceSource.slice(serviceSource.indexOf('private static async generateTreePermissionSetFromPanel'), serviceSource.indexOf('private static async promptForPermissionSetOrg'));
+        const generatePath = runsSource.slice(runsSource.indexOf('static async generateTreePermissionSetFromPanel'), runsSource.indexOf('private static async promptForPermissionSetOrg'));
 
         expect(generatePath.length).toBeGreaterThan(0);
         [generatePath, generateSource].forEach(source => {

@@ -826,8 +826,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await openCockpit();
             postedPanelMessages = [];
 
-            (RecipeCockpitQueryHost as any).postTreeQueries((RecipeCockpitService as any).hubForQueryTab, (RecipeCockpitService as any).recipeCockpitPanel, 'No-Such-Tree', lastRenderSequence());
-            (RecipeCockpitQueryHost as any).postTreeQueries((RecipeCockpitService as any).hubForQueryTab, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, -1);
+            (RecipeCockpitQueryHost as any).postTreeQueries(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, 'No-Such-Tree', lastRenderSequence());
+            (RecipeCockpitQueryHost as any).postTreeQueries(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, -1);
 
             expect(postedNamed('treeQueries')).toEqual([]);
 
@@ -903,7 +903,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             const firstRun = run();
             await flushAsyncWork();
             postedPanelMessages = [];
-            await (RecipeCockpitQueryHost as any).runTreeQueryFromPanel((RecipeCockpitService as any).hubForQueryTab, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, 'Account:base:0', 'SELECT Id FROM Account');
+            await (RecipeCockpitQueryHost as any).runTreeQueryFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, 'Account:base:0', 'SELECT Id FROM Account');
             expect(postedNamed('treeQueryState')).toEqual([{ command: 'treeQueryState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0' }]);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;

@@ -50,18 +50,22 @@ import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
-    RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
-    RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
     RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND,
     RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE,
-    RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL,
-    RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
+    RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
+    RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL,
+    RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
+    RecipeCockpitTroubleshootingRuns
+} from '../RecipeCockpitTroubleshootingRuns';
+import { RecipeCockpitTroubleshootingViews } from '../RecipeCockpitTroubleshootingViews';
 import { IMetadataDeploySummary } from '../RecipeCockpitMetadataDeploy';
 import { MetadataRetrieveKind, RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -450,13 +454,13 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             process.env.PATH = path.join(temporaryRoot, 'installed', 'bin');
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
-            RecipeCockpitService.clearTroubleshootingSummaries();
+            RecipeCockpitTroubleshootingViews.clearTroubleshootingSummaries();
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
             (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
             (RecipeCockpitService as any).isMetadataDeployInFlight = false;
             (RecipeCockpitService as any).metadataDeployRunStateMessage = undefined;
-            (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
-            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
+            (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
@@ -801,8 +805,8 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             await openCockpit();
             const summarizeSpy = jest.spyOn(require('../RecipeCockpitMetadataDeploy').RecipeCockpitMetadataDeploy, 'summarizeTreeMetadata');
-            const summaryRefreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshTroubleshootingSummary');
-            const ruleListRefreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshTreeValidationRules');
+            const summaryRefreshSpy = jest.spyOn(RecipeCockpitTroubleshootingViews as any, 'refreshTroubleshootingSummary');
+            const ruleListRefreshSpy = jest.spyOn(RecipeCockpitTroubleshootingViews as any, 'refreshTreeValidationRules');
 
             promptSpy.mockResolvedValueOnce(undefined);
             await retrieve('fields');

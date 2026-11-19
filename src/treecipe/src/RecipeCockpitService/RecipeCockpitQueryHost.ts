@@ -7,7 +7,6 @@ import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingServi
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import {
-    IRecipeCockpitRunArtifactsLocation,
     RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME,
     RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE,
     RecipeCockpitRunArtifacts
@@ -32,15 +31,13 @@ import {
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
-// TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER RUNS THE HUB'S CODE BUT THROUGH IRecipeCockpitHubForQueryTab
+// TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForQueryTab
 import type {
-    IRecipeCockpitOpenableRecordPreview,
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     IRecipeCockpitWorkspaceState,
-    RecipeCockpitHostMessage
+    RecipeCockpitHostMessage,
+    RecipeCockpitService
 } from './RecipeCockpitService';
 
 /*
@@ -139,26 +136,18 @@ const RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH = 200;
 const RECIPE_COCKPIT_QUERY_EDITS_MAX_ENTRIES = 10000;
 const RECIPE_COCKPIT_QUERY_EDITS_FOLDER_NAME_MAX_LENGTH = 1000;
 
-// WHAT THE QUERY TAB READS AND CALLS ON THE HUB, AND NOTHING ELSE; THE HUB BUILDS IT AND PASSES IT WITH EACH ACTION
-export interface IRecipeCockpitHubForQueryTab {
-    // THE PANEL AND STATE OPEN NOW: A RUN THAT AWAITED ASKS AGAIN, SINCE A RELOAD OR CLOSE REPLACES THEM
-    currentPanel(): vscode.WebviewPanel | undefined;
-    currentPanelState(): IRecipeCockpitPanelState;
-    workspaceState(): IRecipeCockpitWorkspaceState | undefined;
-    postToPanel(cockpitPanel: vscode.WebviewPanel, hostMessage: RecipeCockpitHostMessage): void;
-    registerRecordLinkPreview(panelState: IRecipeCockpitPanelState,
-                              previewDetail: Omit<IRecipeCockpitOpenableRecordPreview, 'recordLinkSequence' | 'heldSourceToken'> & { heldSource: object }): number | undefined;
-    resolveSelectedReadOrg(cockpitPanel: vscode.WebviewPanel,
-                           panelState: IRecipeCockpitPanelState,
-                           refusalPrefix: string,
-                           placeholder: string,
-                           busyRefusal: string,
-                           connectionFailedAdvice: string,
-                           promptFlag: 'isQueryOrgPromptOpen'): Promise<IAuthenticatedOrgDetail | undefined>;
-    resolveTreeRunArtifactsLocation(workspaceRoot: string,
-                                    recipeViewModel: Pick<IRecipeCockpitRecipeViewModel, 'selectedRunFolderName'>,
-                                    tree: Pick<IRecipeCockpitTreeViewModel, 'folderName'>): IRecipeCockpitRunArtifactsLocation | undefined;
-}
+/*
+    What the Query tab reads and calls on the hub, and nothing else: the hub class itself, narrowed to
+    these names and read-only, so a read after an await sees the panel and state open now.
+*/
+export type IRecipeCockpitHubForQueryTab = Readonly<Pick<typeof RecipeCockpitService,
+    'postToPanel' |
+    'recipeCockpitPanel' |
+    'recipeCockpitPanelState' |
+    'recipeCockpitWorkspaceState' |
+    'registerRecordLinkPreview' |
+    'resolveSelectedReadOrg' |
+    'resolveTreeRunArtifactsLocation'>>;
 
 // THE PANEL COMMANDS AND ACTION KINDS THIS HOST OWNS: THE HUB HANDS EACH ONE HERE, AND NO OTHER FILE HAS A case FOR IT
 export const RECIPE_COCKPIT_QUERY_COMMANDS = ['loadTreeQueries', 'saveTreeQueryEdit', 'runTreeQuery', 'exportTreeQueryResult'] as const;
@@ -355,7 +344,7 @@ export class RecipeCockpitQueryHost {
 
     private static readTreeQueries(hub: IRecipeCockpitHubForQueryTab, treeKey: string): { renderSequence: number; folderName: string; queries?: ISOQLTreeQuery[]; failureMessage?: string } | undefined {
 
-        const panelState = hub.currentPanelState();
+        const panelState = hub.recipeCockpitPanelState;
         const recipeDataMessage = panelState.recipeDataMessage;
         const tree = recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
 
@@ -411,7 +400,7 @@ export class RecipeCockpitQueryHost {
         if ( !treeQueryRead.queries ) {
             queriesMessage.failureMessage = treeQueryRead.failureMessage;
         } else {
-            const folderEdits = this.readQueryEdits(hub.workspaceState()).get(treeQueryRead.folderName);
+            const folderEdits = this.readQueryEdits(hub.recipeCockpitWorkspaceState).get(treeQueryRead.folderName);
             queriesMessage.queries = treeQueryRead.queries.map(treeQuery => {
                 const queryEdit = folderEdits?.get(treeQuery.queryKey);
                 const editedText = queryEdit?.generatedText === treeQuery.text ? queryEdit.editedText : undefined;
@@ -426,7 +415,7 @@ export class RecipeCockpitQueryHost {
             });
         }
 
-        if ( hub.currentPanel() === cockpitPanel && hub.currentPanelState().recipeDataMessage?.renderSequence === renderSequence ) {
+        if ( hub.recipeCockpitPanel === cockpitPanel && hub.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
             hub.postToPanel(cockpitPanel, queriesMessage);
         }
 
@@ -506,7 +495,7 @@ export class RecipeCockpitQueryHost {
             return;
         }
 
-        const queryEdits = this.readQueryEdits(hub.workspaceState());
+        const queryEdits = this.readQueryEdits(hub.recipeCockpitWorkspaceState);
         const folderEdits = queryEdits.get(treeQueryRead.folderName) ?? new Map<string, IRecipeCockpitQueryEdit>();
 
         if ( queryText === '' || queryText === treeQuery.text ) {
@@ -521,7 +510,7 @@ export class RecipeCockpitQueryHost {
             queryEdits.delete(treeQueryRead.folderName);
         }
 
-        await this.writeQueryEdits(hub.workspaceState(), queryEdits);
+        await this.writeQueryEdits(hub.recipeCockpitWorkspaceState, queryEdits);
 
     }
 
@@ -550,9 +539,9 @@ export class RecipeCockpitQueryHost {
     private static setTreeQueryState(hub: IRecipeCockpitHubForQueryTab, queryStateMessage: IRecipeCockpitTreeQueryStateMessage) {
 
         this.treeQueryRunStateMessage = queryStateMessage.isRunning ? queryStateMessage : undefined;
-        hub.currentPanelState().treeQueryStateMessage = queryStateMessage;
+        hub.recipeCockpitPanelState.treeQueryStateMessage = queryStateMessage;
 
-        const currentPanel = hub.currentPanel();
+        const currentPanel = hub.recipeCockpitPanel;
         if ( currentPanel ) {
             hub.postToPanel(currentPanel, queryStateMessage);
         }
@@ -613,11 +602,11 @@ export class RecipeCockpitQueryHost {
 
     private static async performTreeQuery(hub: IRecipeCockpitHubForQueryTab, cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number, folderName: string, treeQuery: ISOQLTreeQuery, queryText: string) {
 
-        const workspaceRoot = hub.currentPanelState().workspaceRoot;
+        const workspaceRoot = hub.recipeCockpitPanelState.workspaceRoot;
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
-            orgDetail = await this.resolveTreeQueryOrg(hub, cockpitPanel, hub.currentPanelState());
+            orgDetail = await this.resolveTreeQueryOrg(hub, cockpitPanel, hub.recipeCockpitPanelState);
         } catch (listError) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${this.describeThrown(listError)}`));
             return;
@@ -684,7 +673,7 @@ export class RecipeCockpitQueryHost {
         const recordsText = `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
 
         // DRAWN ONLY ON THE MODEL IT WAS RUN ON: A RELOAD SINCE IS ANOTHER MODEL, AND KEEPS ITS OWN TAB
-        if ( hub.currentPanelState().recipeDataMessage?.renderSequence === renderSequence ) {
+        if ( hub.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
             const resultMessage: IRecipeCockpitTreeQueryResultMessage = {
                 command: 'treeQueryResult',
                 renderSequence: renderSequence,
@@ -698,7 +687,7 @@ export class RecipeCockpitQueryHost {
                 rows: preview.rows,
                 hiddenColumnCount: preview.hiddenColumnCount
             };
-            const recordLinkSequence = hub.registerRecordLinkPreview(hub.currentPanelState(), {
+            const recordLinkSequence = hub.registerRecordLinkPreview(hub.recipeCockpitPanelState, {
                 previewKind: 'query',
                 renderSequence: renderSequence,
                 treeKey: treeKey,
@@ -710,8 +699,8 @@ export class RecipeCockpitQueryHost {
                 resultMessage.recordLinkSequence = recordLinkSequence;
                 resultMessage.recordLinks = preview.recordLinks;
             }
-            hub.currentPanelState().treeQueryResultMessage = resultMessage;
-            const currentPanel = hub.currentPanel();
+            hub.recipeCockpitPanelState.treeQueryResultMessage = resultMessage;
+            const currentPanel = hub.recipeCockpitPanel;
             if ( currentPanel ) {
                 hub.postToPanel(currentPanel, resultMessage);
             }
@@ -747,18 +736,18 @@ export class RecipeCockpitQueryHost {
     */
     private static exportTreeQueryResult(hub: IRecipeCockpitHubForQueryTab, treeKey: string, queryKey: string, exportFormat: RecipeCockpitQueryExportFormat) {
 
-        const workspaceRoot = hub.currentPanelState().workspaceRoot;
-        const tree = hub.currentPanelState().recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const workspaceRoot = hub.recipeCockpitPanelState.workspaceRoot;
+        const tree = hub.recipeCockpitPanelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
         const heldResult = this.heldTreeQueryResult;
 
-        const renderSequence = hub.currentPanelState().recipeDataMessage?.renderSequence;
+        const renderSequence = hub.recipeCockpitPanelState.recipeDataMessage?.renderSequence;
 
         if ( !heldResult || heldResult.resultKey !== JSON.stringify([workspaceRoot, renderSequence, tree?.folderName, queryKey]) ) {
             VSCodeWorkspaceService.showWarningMessage('Nothing was exported: run this query first. Only the last query run is kept to export.');
             return;
         }
 
-        const recipeViewModel = hub.currentPanelState().recipeDataMessage?.recipe;
+        const recipeViewModel = hub.recipeCockpitPanelState.recipeDataMessage?.recipe;
         const runArtifactsLocation = recipeViewModel && tree ? hub.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree) : undefined;
         let exportFilePath: string | undefined;
         try {
