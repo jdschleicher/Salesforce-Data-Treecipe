@@ -1,5 +1,33 @@
 # Change Log
 
+## [3.202.13] - The Troubleshooting tab's host code is three modules of its own, handed its messages by the hub (#666, slice 2 of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **The Troubleshooting tab's host half left the hub.** It is three files, which load one way: Host, then Runs, then Views.
+  - `RecipeCockpitTroubleshootingHost.ts`: the tab's message and action types, its 15 commands and 12 action kinds, the pure router and the executor.
+  - `RecipeCockpitTroubleshootingRuns.ts`: the deploys, the retrieves, permission set assignment and generation, and the permission set locks.
+  - `RecipeCockpitTroubleshootingViews.ts`: the summary, the Validation Rules list and History, and the History step a run records.
+  - One file would have been about 2,100 lines, past CLAUDE.md's ~2,000-line guidance.
+- **Some Troubleshooting code stays in the hub, because the hub or other tabs use it:**
+  - The Validation Rules and History acks, since only the hub promotes allow-lists.
+  - Removing and restoring a TODO, which write the recipe and move with #669.
+  - The deploy and retrieve locks, which the Treecipe Adapter reads too.
+  - The shared retrieve and CLI runners.
+  - The retrieve notification and its "Generate Treecipe" follow-up.
+  - `listTreeDeployObjects`, which reads the cockpit's model.
+- **A tab host now reads the hub through the hub class itself, narrowed with `Pick`.** The hub passes `this`, and the names listed are everything the tab reads. The Query host moved to the same pattern, and the hub's `hubForQueryTab` object of getters is gone. The hub made public only the members a tab reads.
+- **Three constants moved out of the hub.** `RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL` and `RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE` are now in `RecipeCockpitTroubleshootingConstants.ts`, which imports nothing. `RECIPE_COCKPIT_TROUBLESHOOTING_ORG_CHANGE_ACTION_KINDS` is now the host's share of the hub's "Change org…" list.
+- **`tests/RecipeCockpitTabHosts.test.ts` has a Troubleshooting row.**
+  - A tab's host can be several files.
+  - Each pure module lists exactly what the hub still uses from it, with the slice that removes it (#667, #668, #669) or the shared hub service that keeps it.
+  - A file the panel imports may name a command, since that's the panel's own vocabulary.
+- **Tests changed only to reach code where it now lives.**
+  - They import the moved names from the new files.
+  - A test calling a moved private method passes the hub first, and spies sit on the new classes.
+  - The confirmation count and the generate-path scan now read the runs file too.
+- **`RecipeCockpitService.ts` went from 21,314 lines to 18,888.**
+
 ## [3.202.12] - The Query tab's host code is its own module, handed its messages by the hub (#665, slice 1 of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

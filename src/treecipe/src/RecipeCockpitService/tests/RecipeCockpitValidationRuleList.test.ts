@@ -53,6 +53,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE
 } from '../RecipeCockpitService';
+import { RecipeCockpitTroubleshootingViews } from '../RecipeCockpitTroubleshootingViews';
 import {
     IValidationRuleListObject,
     RecipeCockpitValidationRuleList,
@@ -390,7 +391,7 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
             fs.cpSync(VALIDATION_RULE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
             fs.cpSync(OBJECTS_FIXTURE_PATH, path.join(workspaceRoot, OBJECTS_RELATIVE_PATH), { recursive: true });
 
-            RecipeCockpitService.clearTreeValidationRuleLists();
+            RecipeCockpitTroubleshootingViews.clearTreeValidationRuleLists();
             postedPanelMessages = [];
             const storedWorkspaceState = new Map<string, unknown>();
             workspaceState = {
@@ -455,7 +456,7 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
 
             expect(ruleNamed((await loadRules()).objects, 'Widget__c', 'Later')).toBeUndefined();
 
-            await (RecipeCockpitService as any).refreshTreeValidationRules(GADGET_TREE_KEY);
+            await (RecipeCockpitTroubleshootingViews as any).refreshTreeValidationRules(RecipeCockpitService, GADGET_TREE_KEY);
             expect(ruleNamed(postedNamed('treeValidationRules').at(-1).objects, 'Widget__c', 'Later')).toMatchObject({ status: 'notInRun', isActive: true });
 
         });
@@ -489,7 +490,7 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
             expect(wrapperReads()).toBe(1);
 
             // A RETRIEVE READS THE RULE FILES AGAIN, NOT THE WRAPPER, WHICH IT DID NOT CHANGE
-            await (RecipeCockpitService as any).refreshTreeValidationRules(GADGET_TREE_KEY);
+            await (RecipeCockpitTroubleshootingViews as any).refreshTreeValidationRules(RecipeCockpitService, GADGET_TREE_KEY);
             expect(postedNamed('treeValidationRules')).toHaveLength(2);
             expect(wrapperReads()).toBe(1);
 
@@ -500,7 +501,7 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
             await openCockpit();
             await loadRules();
 
-            await (RecipeCockpitService as any).refreshTreeValidationRules('Another-tree');
+            await (RecipeCockpitTroubleshootingViews as any).refreshTreeValidationRules(RecipeCockpitService, 'Another-tree');
 
             expect(postedNamed('treeValidationRules').map(rulesMessage => rulesMessage.treeKey)).toEqual([GADGET_TREE_KEY, GADGET_TREE_KEY]);
 
@@ -511,7 +512,7 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
             await openCockpit();
             const buildSpy = jest.spyOn(RecipeCockpitValidationRuleList, 'buildTreeValidationRules').mockRejectedValueOnce(new Error('boom'));
 
-            await expect((RecipeCockpitService as any).postTreeValidationRules((RecipeCockpitService as any).recipeCockpitPanel, GADGET_TREE_KEY, lastRenderSequence())).rejects.toThrow('boom');
+            await expect((RecipeCockpitTroubleshootingViews as any).postTreeValidationRules(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, GADGET_TREE_KEY, lastRenderSequence())).rejects.toThrow('boom');
             expect((await loadRules()).objects.length).toBe(2);
             expect(buildSpy).toHaveBeenCalledTimes(2);
 
@@ -522,8 +523,8 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
             await openCockpit();
             const renderSequence = lastRenderSequence();
 
-            await (RecipeCockpitService as any).postTreeValidationRules((RecipeCockpitService as any).recipeCockpitPanel, 'Missing-tree', renderSequence);
-            await (RecipeCockpitService as any).postTreeValidationRules((RecipeCockpitService as any).recipeCockpitPanel, GADGET_TREE_KEY, renderSequence + 1);
+            await (RecipeCockpitTroubleshootingViews as any).postTreeValidationRules(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, 'Missing-tree', renderSequence);
+            await (RecipeCockpitTroubleshootingViews as any).postTreeValidationRules(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, GADGET_TREE_KEY, renderSequence + 1);
 
             expect(postedNamed('treeValidationRules')).toEqual([]);
 

@@ -11,6 +11,7 @@ import {
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
     RECIPE_COCKPIT_TREECIPE_PICKER_LABEL
 } from '../../RecipeCockpitService';
+import { RecipeCockpitTroubleshootingViews } from '../../RecipeCockpitTroubleshootingViews';
 import { RecipeCockpitQueryHost } from '../../RecipeCockpitQueryHost';
 import { copyAsVsCodeDelivers, runPanelScript } from '../RecipeCockpitPanelHarness';
 import {
@@ -81,8 +82,8 @@ const DEFAULT_SETTLE_STALL_LIMIT_MS = 2000;
 const WINDOW_CACHES: ReadonlyArray<{ name: string; clear: () => void }> = [
     { name: 'connected org status', clear: () => SalesforceOrgService.clearConnectedOrgStatusCache() },
     { name: 'org describes', clear: () => SalesforceOrgService.clearDescribeCache() },
-    { name: 'Troubleshooting summaries', clear: () => RecipeCockpitService.clearTroubleshootingSummaries() },
-    { name: 'Validation Rules lists', clear: () => RecipeCockpitService.clearTreeValidationRuleLists() },
+    { name: 'Troubleshooting summaries', clear: () => RecipeCockpitTroubleshootingViews.clearTroubleshootingSummaries() },
+    { name: 'Validation Rules lists', clear: () => RecipeCockpitTroubleshootingViews.clearTreeValidationRuleLists() },
     { name: 'Query tab lists', clear: () => RecipeCockpitQueryHost.clearTreeQueryLists() }
 ];
 /*

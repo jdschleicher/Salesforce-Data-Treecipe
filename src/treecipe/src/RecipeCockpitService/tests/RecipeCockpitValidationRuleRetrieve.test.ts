@@ -51,11 +51,14 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER,
+    RecipeCockpitTroubleshootingRuns
+} from '../RecipeCockpitTroubleshootingRuns';
 import { METADATA_RETRIEVE_MAX_COMPONENTS, RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -102,7 +105,7 @@ answerInPanelConfirmationsThroughWarningMock();
 // THE HOST'S RETRIEVE OF A TREE'S VALIDATION RULES (#326), DRIVEN DIRECTLY: A TREE NAMED BY ITS LABEL AND OBJECTS
 // THE TREE'S FOLDER IS treeWorkspace's, SO ITS RUN FILES HAVE A RunArtifacts FOLDER TO GO TO (#470)
 const performTreeRetrieve = (workspaceRoot: string, treeLabel: string, objectApiNames: string[]) =>
-    (RecipeCockpitService as any).performMetadataRetrieve(workspaceRoot, { objects: [], trees: [], selectedRunFolderName: 'recipe-2026-09-20T10-00-00' },
+    (RecipeCockpitTroubleshootingRuns as any).performMetadataRetrieve(RecipeCockpitService, workspaceRoot, { objects: [], trees: [], selectedRunFolderName: 'recipe-2026-09-20T10-00-00' },
         { title: treeLabel, folderName: 'Account-thru-OtherChildObject__c', objects: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName })) }, 'validationRules',
         () => (RecipeCockpitService as any).resolveSelectedReadOrg(undefined, undefined, 'Nothing was retrieved', RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER));
 
@@ -557,8 +560,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             SalesforceOrgService.clearConnectedOrgStatusCache();
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
             (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
-            (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
-            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
+            (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
+            (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
             (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
 
@@ -1096,7 +1099,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             await openCockpit();
             postedPanelMessages = [];
 
-            await (RecipeCockpitService as any).retrieveTreeMetadataFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-Tree', 'validationRules');
+            await (RecipeCockpitTroubleshootingRuns as any).retrieveTreeMetadataFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, 'Gone-Tree', 'validationRules');
             expect(postedNamed('metadataRetrieveState')).toEqual([{ command: 'metadataRetrieveState', isRunning: false, treeKey: 'Gone-Tree', retrieveKind: 'validationRules' }]);
 
             const runningState = { command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' };
