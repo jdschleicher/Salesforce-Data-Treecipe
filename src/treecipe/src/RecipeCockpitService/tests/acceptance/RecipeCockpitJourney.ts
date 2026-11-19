@@ -11,6 +11,7 @@ import {
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
     RECIPE_COCKPIT_TREECIPE_PICKER_LABEL
 } from '../../RecipeCockpitService';
+import { RecipeCockpitQueryHost } from '../../RecipeCockpitQueryHost';
 import { copyAsVsCodeDelivers, runPanelScript } from '../RecipeCockpitPanelHarness';
 import {
     SalesforceOrgService,
@@ -82,7 +83,7 @@ const WINDOW_CACHES: ReadonlyArray<{ name: string; clear: () => void }> = [
     { name: 'org describes', clear: () => SalesforceOrgService.clearDescribeCache() },
     { name: 'Troubleshooting summaries', clear: () => RecipeCockpitService.clearTroubleshootingSummaries() },
     { name: 'Validation Rules lists', clear: () => RecipeCockpitService.clearTreeValidationRuleLists() },
-    { name: 'Query tab lists', clear: () => RecipeCockpitService.clearTreeQueryLists() }
+    { name: 'Query tab lists', clear: () => RecipeCockpitQueryHost.clearTreeQueryLists() }
 ];
 /*
     faker-js draws every generated value from one seeded stream, so a journey that generates a data set

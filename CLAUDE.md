@@ -213,6 +213,7 @@ src/
     │   ├── RecipeCockpitRunHistory.ts        # Troubleshooting History (#485): step summaries written and listed
     │   ├── RecipeCockpitRecordUpdate.ts      # Treecipe Adapter update (#418) and restore snapshots (#419); no vscode
     │   ├── RecipeCockpitQuery.ts             # Query tab (#367): queries, query check, paging, preview, exports; no vscode
+    │   ├── RecipeCockpitQueryHost.ts         # The Query tab's host half (#665): its router cases, actions and state, handed its commands by the hub; tests/RecipeCockpitTabHosts.test.ts holds each tab host to the pattern
     │   ├── RecipeCockpitValidationRuleList.ts # Validation Rules sub-tab list (#327); no vscode
     │   ├── RecipeCockpitMetadataRetrieve.ts  # Troubleshooting retrieves (#326, #382): org listing, package.xml, CLI answer; no vscode
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode

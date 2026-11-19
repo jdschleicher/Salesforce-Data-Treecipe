@@ -124,7 +124,7 @@ import {
     RECIPE_COCKPIT_TODO_IN_VALUE_LABEL
 } from './RecipeCockpitRecordTypesConstants';
 import type { RecipeCockpitRecordTypeImpactKind } from './RecipeCockpitRecordTypesConstants';
-import { RECIPE_COCKPIT_QUERY_INTRO } from './RecipeCockpitQueryTabConstants';
+import { RECIPE_COCKPIT_QUERY_INTRO, RECIPE_COCKPIT_QUERY_MAX_LENGTH } from './RecipeCockpitQueryTabConstants';
 import {
     RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
     RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX,
@@ -751,15 +751,20 @@ import { RunFakerConfirmation } from '../RunFakerConfirmation/RunFakerConfirmati
 import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, SCRATCH_ORG_DURATION_DAYS, SCRATCH_ORG_MAX_DURATION_DAYS, SCRATCH_ORG_MIN_DURATION_DAYS, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { INotificationCommandAction, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
-    RECIPE_COCKPIT_QUERY_EXPORT_FORMATS,
-    RECIPE_COCKPIT_QUERY_MAX_LENGTH,
-    RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT,
+    RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE,
     RECIPE_COCKPIT_QUERY_RECORD_CAP,
     RECIPE_COCKPIT_QUERY_VALUE_BUDGET,
     IRecipeCockpitPreviewRecordLinks,
-    RecipeCockpitQuery,
-    RecipeCockpitQueryExportFormat
+    RecipeCockpitQuery
 } from './RecipeCockpitQuery';
+import {
+    IRecipeCockpitHubForQueryTab,
+    IRecipeCockpitTreeQueriesMessage,
+    IRecipeCockpitTreeQueryResultMessage,
+    IRecipeCockpitTreeQueryStateMessage,
+    RecipeCockpitQueryHost,
+    RecipeCockpitQueryPanelAction
+} from './RecipeCockpitQueryHost';
 import { IRecipeCockpitRunArtifactsLocation, RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { IRunHistoryStepRecord, RUN_HISTORY_STEP_LABELS, RunHistoryOutcome, RunHistoryRowStatus, RunHistoryStep, RecipeCockpitRunHistory } from './RecipeCockpitRunHistory';
 import { DATASET_JOURNEY_ENTRY_LIMIT, DatasetJourneyEntryKind, RecipeCockpitDatasetJourney } from './RecipeCockpitDatasetJourney';
@@ -769,8 +774,6 @@ import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChang
 import { RecipeService } from '../RecipeService/RecipeService';
 import { IObjectRefreshComparisonRequest, IObjectRefreshItem, IObjectRefreshPlannedItem, OBJECT_REFRESH_KIND_LABELS, OBJECT_REFRESH_KINDS, OBJECT_REFRESH_OPERATION_NAME, ObjectRefreshKind, RecipeCockpitObjectRefresh } from './RecipeCockpitObjectRefresh';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
-import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
-import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -2060,72 +2063,6 @@ export interface IRecipeCockpitValidationRuleSourceViewModel {
 }
 
 /*
-    The Query tab (#367): one tree's generated queries, read from the run's objects wrapper when the
-    tab is opened, each with the reader's saved edit when there is one. renderSequence names the
-    model they were read for, and the panel drops them for any other. failureMessage is set, and
-    queries empty, when the wrapper could not be read.
-*/
-export interface IRecipeCockpitTreeQueryViewModel {
-    queryKey: string;
-    objectApiName: string;
-    kindLabel: string;
-    notes: string[];
-    generatedText: string;
-    editedText?: string;
-}
-
-/*
-    One saved edit (#367), with the text Generate Treecipe wrote for that query when it was saved.
-    A query key is a position (<object>:<kind>:<index>), so a regeneration that adds or drops a
-    lookup or a record type can give the key to another query; an edit is drawn only while its
-    query still generates the text it was made from.
-*/
-export interface IRecipeCockpitQueryEdit {
-    generatedText: string;
-    editedText: string;
-}
-
-export interface IRecipeCockpitTreeQueriesMessage {
-    command: 'treeQueries';
-    renderSequence: number;
-    treeKey: string;
-    queries: IRecipeCockpitTreeQueryViewModel[];
-    failureMessage?: string;
-}
-
-/*
-    One query run per window (#367): while isRunning, every Run button is disabled. treeKey and
-    queryKey name the button clicked. How the run went is a VS Code notification. Stored and replayed.
-*/
-export interface IRecipeCockpitTreeQueryStateMessage {
-    command: 'treeQueryState';
-    isRunning: boolean;
-    treeKey: string;
-    queryKey: string;
-}
-
-/*
-    A run's PREVIEW (#367): the first rows as text, never the whole result, which the host holds for
-    the export. renderSequence names the model it was run on; the panel draws it only on that model.
-*/
-export interface IRecipeCockpitTreeQueryResultMessage {
-    command: 'treeQueryResult';
-    renderSequence: number;
-    treeKey: string;
-    queryKey: string;
-    orgLabel: string;
-    totalSize: number;
-    recordCount: number;
-    isTruncated: boolean;
-    columns: string[];
-    rows: string[][];
-    hiddenColumnCount: number;
-    // THE ROWS WHOSE Id OPENS THE RECORD (#556), AND THE SEQUENCE A CLICK AND THE PANEL'S ACK NAME THEM BY; ABSENT WHEN NO ROW HAS ONE
-    recordLinkSequence?: number;
-    recordLinks?: IRecipeCockpitPreviewRecordLinks;
-}
-
-/*
     The Treecipe Adapter's load (#416): one per window; while isRunning every Load records button is
     disabled, and treeKey names the card clicked. How it went is a VS Code notification. Stored and
     replayed, like a query run's.
@@ -2658,8 +2595,6 @@ export const RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL = 'Restore values';
 export const RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL = 'Nothing was restored: another run is using the org selection. Try again when it ends.';
 export const RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL = 'Nothing was restored: the values the records hold now could not be saved to RunArtifacts in the tree folder, and a restore never runs without them.';
 
-export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Select the org to run the query against; it becomes the Target Org Manager selection';
-
 /*
     A record Id opened from a preview (#556): every refusal is one of these FIXED texts, worded with no
     parentheses since a notification escapes them, and none names the org's address. The link's
@@ -2673,25 +2608,6 @@ export const RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL = 'The record was not open
 export const RECIPE_COCKPIT_RECORD_LINK_ORG_GONE_REFUSAL = 'The record was not opened: the org it was read from is no longer in the org list. Choose it in Target Org Manager, then run the query or load the records again.';
 
 export const RECIPE_COCKPIT_RECORD_LINK_OPEN_RUNNING_REFUSAL = 'The record was not opened: an org is already being opened in the browser. Try again when it has opened.';
-
-export const RECIPE_COCKPIT_QUERY_BUSY_REFUSAL = 'The query was not run: another run is using the org selection. Choose an org in Target Org Manager, or try again when it ends.';
-
-export const RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL = 'Open file';
-
-export const RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE = 'Log in to it again with sf org login web, then run the query again.';
-
-export const RECIPE_COCKPIT_QUERY_NOT_GIT_IGNORED_NOTE = RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE;
-
-// THE READER'S EDITS OF A TREE'S QUERIES (#367), BY TREE FOLDER, THEN QUERY KEY
-export const RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY = 'treecipe.recipeCockpit.queryEdits';
-
-export const RECIPE_COCKPIT_QUERY_EDITS_VERSION = 1;
-
-// HOW MANY TREES' QUERY LISTS THE HOST KEEPS BEFORE IT STARTS AGAIN
-export const RECIPE_COCKPIT_QUERY_LIST_CACHE_LIMIT = 50;
-
-// THE LONGEST QUERY KEY A MESSAGE MAY CARRY: <object api name, at most 80>:<kind>:<index>
-const RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH = 200;
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create with Salesforce CLI';
 
@@ -2976,6 +2892,7 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
 */
 export type RecipeCockpitPanelAction =
     { kind: 'replay'; hostMessages: RecipeCockpitHostMessage[] }
+    | RecipeCockpitQueryPanelAction
     | { kind: 'activateActions' }
     | { kind: 'activateDatasetActions' }
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
@@ -3031,7 +2948,6 @@ export type RecipeCockpitPanelAction =
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataDeploy'; refusalText?: string; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
     | { kind: 'loadTroubleshootingSummary'; treeKey: string; renderSequence: number }
-    | { kind: 'loadTreeQueries'; treeKey: string; renderSequence: number }
     | { kind: 'loadValidationRules'; treeKey: string; renderSequence: number }
     | { kind: 'loadTroubleshootingHistory'; treeKey: string }
     | { kind: 'activateTroubleshootingHistory'; treeKey: string }
@@ -3039,9 +2955,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadDatasetJourney'; datasetFolderName: string }
     | { kind: 'activateDatasetJourney'; datasetFolderName: string }
     | { kind: 'openDatasetJourneyFile'; filePath: string }
-    | { kind: 'saveTreeQueryEdit'; treeKey: string; queryKey: string; queryText: string }
-    | { kind: 'runTreeQuery'; treeKey: string; queryKey: string; queryText: string }
-    | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
     // THE UPDATER'S LOAD (#416): FROM THE SELECTED SANDBOX, OR, WITH NONE SELECTED, FROM ONE ASKED FOR AS THE INSERT ASKS
     | { kind: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; requests: IRecipeCockpitUpdaterObjectRequest[]; isOrgPrompted: boolean }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
@@ -3068,7 +2981,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'activateUpdaterSnapshots'; treeKey: string }
     | { kind: 'restoreUpdaterSnapshot'; treeKey: string; snapshotName: string }
     | { kind: 'generateUpdaterValues'; treeKey: string; renderSequence: number; fieldRequests: IRecipeCockpitUpdaterFieldValueRequest[] }
-    | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitMetadataRetrieveStateMessage }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
@@ -7000,7 +6912,7 @@ export class RecipeCockpitService {
         this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
         this.adoptMetadataRetrieveRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
-        this.adoptTreeQueryRunState(this.recipeCockpitPanelState);
+        RecipeCockpitQueryHost.adoptTreeQueryRunState(this.recipeCockpitPanelState);
         this.adoptUpdaterLoadRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
@@ -7041,7 +6953,7 @@ export class RecipeCockpitService {
                 this.recipeCockpitMessageSubscription = undefined;
                 this.recipeCockpitPanel = undefined;
                 this.recipeCockpitPanelState = this.buildInitialPanelState('');
-                this.clearHeldTreeQueryResult();
+                RecipeCockpitQueryHost.clearHeldTreeQueryResult();
                 this.clearHeldUpdaterRecords();
             });
 
@@ -7391,7 +7303,7 @@ export class RecipeCockpitService {
         panelState.objectsWrapperFilePath = loadedRecipe.objectsWrapperFilePath;
         panelState.treeQueryResultMessage = undefined;
         // A RESULT IS EXPORTED ONLY FROM THE MODEL IT WAS RUN ON, SO A NEW ONE LETS IT GO
-        this.clearHeldTreeQueryResult();
+        RecipeCockpitQueryHost.clearHeldTreeQueryResult();
         // SO ARE AN UPDATER LOAD'S RECORDS (#416), AND WHAT A METADATA RETRIEVE FOUND (#445)
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterChildBlockMessage = undefined;
@@ -7625,7 +7537,24 @@ export class RecipeCockpitService {
         return { ...( orgDetail.alias ? { alias: orgDetail.alias } : {} ), username: orgDetail.username };
     }
 
+    // WHAT THE QUERY TAB'S HOST MAY READ AND CALL HERE (#665); EACH GETTER READS THE PANEL AND STATE OPEN AT THE CALL
+    private static readonly hubForQueryTab: IRecipeCockpitHubForQueryTab = {
+        currentPanel: () => RecipeCockpitService.recipeCockpitPanel,
+        currentPanelState: () => RecipeCockpitService.recipeCockpitPanelState,
+        workspaceState: () => RecipeCockpitService.recipeCockpitWorkspaceState,
+        postToPanel: (cockpitPanel, hostMessage) => RecipeCockpitService.postToPanel(cockpitPanel, hostMessage),
+        registerRecordLinkPreview: (panelState, previewDetail) => RecipeCockpitService.registerRecordLinkPreview(panelState, previewDetail),
+        resolveSelectedReadOrg: (cockpitPanel, panelState, refusalPrefix, placeholder, busyRefusal, connectionFailedAdvice, promptFlag) =>
+            RecipeCockpitService.resolveSelectedReadOrg(cockpitPanel, panelState, refusalPrefix, placeholder, busyRefusal, connectionFailedAdvice, promptFlag),
+        resolveTreeRunArtifactsLocation: (workspaceRoot, recipeViewModel, tree) => RecipeCockpitService.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree)
+    };
+
     private static async executePanelAction(cockpitPanel: vscode.WebviewPanel, panelAction: RecipeCockpitPanelAction) {
+
+        if ( RecipeCockpitQueryHost.isQueryPanelAction(panelAction) ) {
+            await RecipeCockpitQueryHost.executePanelAction(this.hubForQueryTab, cockpitPanel, panelAction);
+            return;
+        }
 
         const panelState = this.recipeCockpitPanelState;
 
@@ -8058,11 +7987,6 @@ export class RecipeCockpitService {
                 await this.postTroubleshootingSummary(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
                 return;
 
-            case 'loadTreeQueries':
-
-                this.postTreeQueries(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
-                return;
-
             case 'loadValidationRules':
 
                 await this.postTreeValidationRules(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
@@ -8106,21 +8030,6 @@ export class RecipeCockpitService {
             case 'openDatasetJourneyFile':
 
                 await VSCodeWorkspaceService.openWorkspaceResultFile(panelAction.filePath, panelState.workspaceRoot, RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT);
-                return;
-
-            case 'saveTreeQueryEdit':
-
-                await this.saveTreeQueryEdit(panelAction.treeKey, panelAction.queryKey, panelAction.queryText);
-                return;
-
-            case 'runTreeQuery':
-
-                await this.runTreeQueryFromPanel(cockpitPanel, panelAction.treeKey, panelAction.queryKey, panelAction.queryText);
-                return;
-
-            case 'postTreeQueryState':
-
-                this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
             case 'loadUpdaterRecords':
@@ -8237,11 +8146,6 @@ export class RecipeCockpitService {
                     VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
                 }
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
-                return;
-
-            case 'exportTreeQueryResult':
-
-                this.exportTreeQueryResult(panelAction.treeKey, panelAction.queryKey, panelAction.exportFormat);
                 return;
 
             case 'refusePermissionSetAssign':
@@ -9732,7 +9636,7 @@ export class RecipeCockpitService {
                                                     recordId: string,
                                                     orgDetail: IAuthenticatedOrgDetail) {
 
-        const heldSource = preview.previewKind === 'query' ? this.heldTreeQueryResult
+        const heldSource = preview.previewKind === 'query' ? RecipeCockpitQueryHost.heldResultForRecordLinks()
             : preview.previewKind === 'updaterRecords' ? this.heldUpdaterRecords
             : this.heldUpdaterValues;
 
@@ -10351,413 +10255,6 @@ export class RecipeCockpitService {
                 await this.postTreeValidationRules(cockpitPanel, drawnTreeKey, renderSequence);
             }
         }
-
-    }
-
-    static isQueryKeyShaped(queryKey: unknown): queryKey is string {
-
-        return typeof queryKey === 'string' && queryKey !== '' && queryKey.length <= RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH;
-
-    }
-
-    /*
-        A tree's queries (#367), read from the objects wrapper of the run on screen and kept per
-        model and tree: the tab asks each time it is selected, and a run, an edit or an export
-        matches its query key against this list, never a list the panel sent. A wrapper that cannot
-        be read is the tab's message, never a failure of the cockpit.
-    */
-    private static treeQueryLists = new Map<string, ISOQLTreeQuery[]>();
-
-    // THE WRAPPER READ AGAIN FOR THE QUERY TAB, ONCE PER MODEL RATHER THAN ONCE PER TREE: 120,000 FIELDS TOOK ~650 MS TO READ
-    private static queryObjectsWrapperRead: { modelKey: string; objectsWrapper: ObjectInfoWrapper } | undefined;
-
-    static clearTreeQueryLists() {
-        this.treeQueryLists.clear();
-        this.queryObjectsWrapperRead = undefined;
-    }
-
-    private static readTreeQueries(treeKey: string): { renderSequence: number; folderName: string; queries?: ISOQLTreeQuery[]; failureMessage?: string } | undefined {
-
-        const panelState = this.recipeCockpitPanelState;
-        const recipeDataMessage = panelState.recipeDataMessage;
-        const tree = recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
-
-        if ( !recipeDataMessage || !tree?.folderName ) {
-            return undefined;
-        }
-
-        const listKey = JSON.stringify([panelState.workspaceRoot, recipeDataMessage.renderSequence, treeKey]);
-        const listedQueries = this.treeQueryLists.get(listKey);
-
-        const treeRead = { renderSequence: recipeDataMessage.renderSequence, folderName: tree.folderName };
-
-        if ( listedQueries ) {
-            return { ...treeRead, queries: listedQueries };
-        }
-
-        // A MODEL IS ONLY EVER BUILT FROM A WRAPPER IT READ, SO A PATH IS THERE; WHAT CAN FAIL IS READING IT AGAIN
-        const objectsWrapperFilePath = panelState.objectsWrapperFilePath ?? '';
-        const modelKey = JSON.stringify([panelState.workspaceRoot, recipeDataMessage.renderSequence, objectsWrapperFilePath]);
-
-        if ( this.queryObjectsWrapperRead?.modelKey !== modelKey ) {
-            try {
-                this.queryObjectsWrapperRead = {
-                    modelKey: modelKey,
-                    objectsWrapper: RecipeCockpitQuery.toQueryObjectsWrapper(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')))
-                };
-            } catch (readError) {
-                return { ...treeRead, failureMessage: `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${this.describeThrown(readError)} Run "Generate Treecipe" again.` };
-            }
-        }
-
-        const treeQueries = SOQLTemplateService.listTreeQueries(this.queryObjectsWrapperRead.objectsWrapper, tree.objects.map(treeObject => treeObject.objectApiName));
-
-        if ( this.treeQueryLists.size >= RECIPE_COCKPIT_QUERY_LIST_CACHE_LIMIT ) {
-            this.treeQueryLists.clear();
-        }
-        this.treeQueryLists.set(listKey, treeQueries);
-
-        return { ...treeRead, queries: treeQueries };
-
-    }
-
-    private static postTreeQueries(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number) {
-
-        const treeQueryRead = this.readTreeQueries(treeKey);
-
-        if ( !treeQueryRead ) {
-            return;
-        }
-
-        const queriesMessage: IRecipeCockpitTreeQueriesMessage = { command: 'treeQueries', renderSequence: renderSequence, treeKey: treeKey, queries: [] };
-
-        if ( !treeQueryRead.queries ) {
-            queriesMessage.failureMessage = treeQueryRead.failureMessage;
-        } else {
-            const folderEdits = this.readQueryEdits(this.recipeCockpitWorkspaceState).get(treeQueryRead.folderName);
-            queriesMessage.queries = treeQueryRead.queries.map(treeQuery => {
-                const queryEdit = folderEdits?.get(treeQuery.queryKey);
-                const editedText = queryEdit?.generatedText === treeQuery.text ? queryEdit.editedText : undefined;
-                return {
-                    queryKey: treeQuery.queryKey,
-                    objectApiName: treeQuery.objectApiName,
-                    kindLabel: SOQL_QUERY_KIND_LABELS[treeQuery.kind],
-                    notes: treeQuery.notes,
-                    generatedText: treeQuery.text,
-                    ...( editedText !== undefined && editedText !== treeQuery.text ? { editedText: editedText } : {} )
-                };
-            });
-        }
-
-        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
-            this.postToPanel(cockpitPanel, queriesMessage);
-        }
-
-    }
-
-    /*
-        The reader's edits (#367), as workspaceState kept them, each checked on its own: folder and
-        query key bounded names, both texts strings no longer than a query may be. Maps, so a folder
-        or key named __proto__ is a key like any other.
-    */
-    static readQueryEdits(workspaceState: IRecipeCockpitWorkspaceState | undefined): Map<string, Map<string, IRecipeCockpitQueryEdit>> {
-
-        const queryEdits = new Map<string, Map<string, IRecipeCockpitQueryEdit>>();
-        let storedEdits: unknown;
-
-        try {
-            storedEdits = workspaceState?.get<unknown>(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY);
-        } catch {
-            return queryEdits;
-        }
-
-        if ( !this.isPlainRecord(storedEdits) || storedEdits.version !== RECIPE_COCKPIT_QUERY_EDITS_VERSION || !this.isPlainRecord(storedEdits.editsByFolderName) ) {
-            return queryEdits;
-        }
-
-        const editsByFolderName = storedEdits.editsByFolderName;
-
-        Object.keys(editsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
-            const storedFolderEdits = editsByFolderName[folderName];
-            if ( !this.isBoundedText(folderName) || folderName === '' || !this.isPlainRecord(storedFolderEdits) ) {
-                return;
-            }
-            const folderEdits = new Map<string, IRecipeCockpitQueryEdit>();
-            Object.keys(storedFolderEdits).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(queryKey => {
-                const storedEdit = storedFolderEdits[queryKey];
-                const isQueryText = (candidateText: unknown): candidateText is string => typeof candidateText === 'string' && candidateText !== '' && candidateText.length <= RECIPE_COCKPIT_QUERY_MAX_LENGTH;
-                if ( this.isQueryKeyShaped(queryKey) && this.isPlainRecord(storedEdit) && isQueryText(storedEdit.generatedText) && isQueryText(storedEdit.editedText) ) {
-                    folderEdits.set(queryKey, { generatedText: storedEdit.generatedText, editedText: storedEdit.editedText });
-                }
-            });
-            if ( folderEdits.size > 0 ) {
-                queryEdits.set(folderName, folderEdits);
-            }
-        });
-
-        return queryEdits;
-
-    }
-
-    static async writeQueryEdits(workspaceState: IRecipeCockpitWorkspaceState | undefined, queryEdits: Map<string, Map<string, IRecipeCockpitQueryEdit>>): Promise<boolean> {
-
-        if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep query edits in. Open a folder and re-open the cockpit.');
-            return false;
-        }
-
-        // fromEntries DEFINES EACH KEY, SO A FOLDER OR QUERY KEY NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
-        const editsByFolderName = Object.fromEntries([...queryEdits].map(([folderName, folderEdits]) => [folderName, Object.fromEntries(folderEdits)]));
-
-        try {
-            await workspaceState.update(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY, { version: RECIPE_COCKPIT_QUERY_EDITS_VERSION, editsByFolderName: editsByFolderName });
-            return true;
-        } catch (updateError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query edit could not be saved: ${this.describeThrown(updateError)}`));
-            return false;
-        }
-
-    }
-
-    // AN EMPTY TEXT, OR THE GENERATED ONE, IS RESET: THE EDIT IS REMOVED RATHER THAN KEPT EQUAL TO WHAT IS GENERATED
-    private static async saveTreeQueryEdit(treeKey: string, queryKey: string, queryText: string) {
-
-        const treeQueryRead = this.readTreeQueries(treeKey);
-        const treeQuery = treeQueryRead?.queries?.find(candidateQuery => candidateQuery.queryKey === queryKey);
-
-        if ( !treeQueryRead || !treeQuery ) {
-            return;
-        }
-
-        const queryEdits = this.readQueryEdits(this.recipeCockpitWorkspaceState);
-        const folderEdits = queryEdits.get(treeQueryRead.folderName) ?? new Map<string, IRecipeCockpitQueryEdit>();
-
-        if ( queryText === '' || queryText === treeQuery.text ) {
-            folderEdits.delete(queryKey);
-        } else {
-            folderEdits.set(queryKey, { generatedText: treeQuery.text, editedText: queryText });
-        }
-
-        if ( folderEdits.size > 0 ) {
-            queryEdits.set(treeQueryRead.folderName, folderEdits);
-        } else {
-            queryEdits.delete(treeQueryRead.folderName);
-        }
-
-        await this.writeQueryEdits(this.recipeCockpitWorkspaceState, queryEdits);
-
-    }
-
-    private static isTreeQueryInFlight = false;
-
-    private static treeQueryRunStateMessage: IRecipeCockpitTreeQueryStateMessage | undefined;
-
-    /*
-        The last run's whole result (#367), which only an export of the SAME tree folder and query
-        reads. One is kept, so a large result is held only until the next run.
-    */
-    private static heldTreeQueryResult: {
-        // THE WORKSPACE, MODEL, TREE FOLDER AND QUERY KEY IT WAS RUN FOR, AS ONE KEY
-        resultKey: string;
-        folderName: string;
-        objectApiName: string;
-        kind: SOQLQueryKind;
-        orgLabel: string;
-        records: Record<string, unknown>[];
-    } | undefined;
-
-    static clearHeldTreeQueryResult() {
-        this.heldTreeQueryResult = undefined;
-    }
-
-    private static setTreeQueryState(queryStateMessage: IRecipeCockpitTreeQueryStateMessage) {
-
-        this.treeQueryRunStateMessage = queryStateMessage.isRunning ? queryStateMessage : undefined;
-        this.recipeCockpitPanelState.treeQueryStateMessage = queryStateMessage;
-
-        if ( this.recipeCockpitPanel ) {
-            this.postToPanel(this.recipeCockpitPanel, queryStateMessage);
-        }
-
-    }
-
-    private static adoptTreeQueryRunState(panelState: IRecipeCockpitPanelState) {
-
-        if ( this.isTreeQueryInFlight && this.treeQueryRunStateMessage ) {
-            panelState.treeQueryStateMessage = this.treeQueryRunStateMessage;
-        }
-
-    }
-
-    /*
-        "Run" (#367): the text is held to one SELECT, the org is the Target Org Manager selection
-        (#439) -- any org it lists, the CLI's default production org included, since a query only
-        reads -- asked for once over that listing when none is chosen, and the query is sent on a connection opened by that org's username, every page read up to the cap
-        and cancellable between pages. The whole result is held for an export, a preview is posted,
-        and how it went is ONE notification. One run per window.
-    */
-    private static async runTreeQueryFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, queryKey: string, queryText: string) {
-
-        const notRunning: IRecipeCockpitTreeQueryStateMessage = { command: 'treeQueryState', isRunning: false, treeKey: treeKey, queryKey: queryKey };
-
-        if ( this.isTreeQueryInFlight ) {
-            this.postToPanel(cockpitPanel, this.treeQueryRunStateMessage ?? notRunning);
-            return;
-        }
-
-        const treeQueryRead = this.readTreeQueries(treeKey);
-        const treeQuery = treeQueryRead?.queries?.find(candidateQuery => candidateQuery.queryKey === queryKey);
-
-        if ( !treeQueryRead?.queries || !treeQuery ) {
-            this.postToPanel(cockpitPanel, notRunning);
-            return;
-        }
-
-        const queryCheck = RecipeCockpitQuery.checkQueryText(queryText);
-
-        if ( 'refusal' in queryCheck ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${queryCheck.refusal}`));
-            this.postToPanel(cockpitPanel, notRunning);
-            return;
-        }
-
-        this.isTreeQueryInFlight = true;
-        this.setTreeQueryState({ command: 'treeQueryState', isRunning: true, treeKey: treeKey, queryKey: queryKey });
-
-        try {
-            await this.performTreeQuery(cockpitPanel, treeKey, treeQueryRead.renderSequence, treeQueryRead.folderName, treeQuery, queryCheck.query);
-        } finally {
-            this.isTreeQueryInFlight = false;
-            this.setTreeQueryState(notRunning);
-        }
-
-    }
-
-    private static async performTreeQuery(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number, folderName: string, treeQuery: ISOQLTreeQuery, queryText: string) {
-
-        const workspaceRoot = this.recipeCockpitPanelState.workspaceRoot;
-
-        let orgDetail: IAuthenticatedOrgDetail | undefined;
-        try {
-            orgDetail = await this.resolveTreeQueryOrg(cockpitPanel, this.recipeCockpitPanelState);
-        } catch (listError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${this.describeThrown(listError)}`));
-            return;
-        }
-
-        if ( !orgDetail ) {
-            return;
-        }
-
-        const orgUsername = orgDetail.username;
-        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
-        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
-        const queryLabel = `${treeQuery.objectApiName} ${SOQL_QUERY_KIND_LABELS[treeQuery.kind]}`;
-
-        // THE LAST RESULT IS LET GO BEFORE THE NEXT IS READ, SO TWO LARGE RESULTS ARE NEVER HELD AT ONCE
-        this.clearHeldTreeQueryResult();
-
-        let queryResult: Awaited<ReturnType<typeof RecipeCockpitQuery.fetchQueryRecords>> | undefined;
-        try {
-            queryResult = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: running the ${queryLabel} in ${orgLabel}`),
-                cancellable: true
-            }, async (_progress, cancellationToken) => {
-                let connection: Connection;
-                try {
-                    connection = await SalesforceOrgService.getConnection(orgUsername);
-                } catch {
-                    return undefined;
-                }
-                return await RecipeCockpitQuery.fetchQueryRecords({
-                    query: async (soql: string) => await connection.query(soql),
-                    queryMore: async (nextRecordsUrl: string) => await connection.queryMore(nextRecordsUrl)
-                }, queryText, RECIPE_COCKPIT_QUERY_RECORD_CAP, () => cancellationToken.isCancellationRequested);
-            });
-        } catch (queryError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} failed in ${orgLabel}: ${this.describeThrown(queryError)}`));
-            return;
-        }
-
-        // A CONNECTION THAT COULD NOT BE OPENED IS ONE FIXED WARNING: ITS ERROR CAN CARRY AN AUTH URL OR TOKEN TEXT
-        if ( !queryResult ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} was not run: ${orgLabel} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
-            return;
-        }
-
-        if ( queryResult.isCancelled ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} in ${orgLabel} was cancelled, so nothing was kept to export.`));
-            return;
-        }
-
-        const heldTreeQueryResult = {
-            resultKey: JSON.stringify([workspaceRoot, renderSequence, folderName, treeQuery.queryKey]),
-            folderName: folderName,
-            objectApiName: treeQuery.objectApiName,
-            kind: treeQuery.kind,
-            orgLabel: orgLabel,
-            records: queryResult.records
-        };
-        this.heldTreeQueryResult = heldTreeQueryResult;
-
-        const preview = RecipeCockpitQuery.buildPreview(queryResult.records, RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT);
-        const recordCount = queryResult.records.length;
-        const recordsText = `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
-
-        // DRAWN ONLY ON THE MODEL IT WAS RUN ON: A RELOAD SINCE IS ANOTHER MODEL, AND KEEPS ITS OWN TAB
-        if ( this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
-            const resultMessage: IRecipeCockpitTreeQueryResultMessage = {
-                command: 'treeQueryResult',
-                renderSequence: renderSequence,
-                treeKey: treeKey,
-                queryKey: treeQuery.queryKey,
-                orgLabel: orgLabel,
-                totalSize: queryResult.totalSize,
-                recordCount: recordCount,
-                isTruncated: queryResult.isTruncated,
-                columns: preview.columns,
-                rows: preview.rows,
-                hiddenColumnCount: preview.hiddenColumnCount
-            };
-            const recordLinkSequence = this.registerRecordLinkPreview(this.recipeCockpitPanelState, {
-                previewKind: 'query',
-                renderSequence: renderSequence,
-                treeKey: treeKey,
-                orgUsername: orgUsername,
-                heldSource: heldTreeQueryResult,
-                recordIdsByObjectApiName: new Map([['', preview.recordIds ?? []]])
-            });
-            if ( recordLinkSequence !== undefined && preview.recordLinks ) {
-                resultMessage.recordLinkSequence = recordLinkSequence;
-                resultMessage.recordLinks = preview.recordLinks;
-            }
-            this.recipeCockpitPanelState.treeQueryResultMessage = resultMessage;
-            if ( this.recipeCockpitPanel ) {
-                this.postToPanel(this.recipeCockpitPanel, resultMessage);
-            }
-        }
-
-        if ( queryResult.isTruncated ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(
-                `The ${queryLabel} matched ${queryResult.totalSize} records in ${orgLabel}, and only the first ${recordsText} were read: a run reads at most ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values. Select fewer fields or add a WHERE clause to export them all.`));
-            return;
-        }
-
-        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} returned ${recordsText} from ${orgLabel}.`));
-
-    }
-
-    /*
-        The org a query runs against is the Target Org Manager selection as it is at the click
-        (#439), whatever it answered about being a sandbox, unless no connection could be opened
-        to it. With none, it asks once over the dropdown's own listing and the pick becomes the
-        selection, checked and remembered as one made in the dropdown -- unless another run holds
-        the selection, which a prompt would change under it.
-    */
-    private static async resolveTreeQueryOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
-
-        return this.resolveSelectedReadOrg(cockpitPanel, panelState, 'The query was not run', RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER, RECIPE_COCKPIT_QUERY_BUSY_REFUSAL, RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE, 'isQueryOrgPromptOpen');
 
     }
 
@@ -14546,61 +14043,6 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Export JSON" / "Export CSV" (#367): the result held for the same tree folder and query, and
-        nothing else, written under <tree folder>/RunArtifacts/QueryResults/. The panel posts only names; the
-        path is the host's and opened only through the notification's "Open file".
-    */
-    private static exportTreeQueryResult(treeKey: string, queryKey: string, exportFormat: RecipeCockpitQueryExportFormat) {
-
-        const workspaceRoot = this.recipeCockpitPanelState.workspaceRoot;
-        const tree = this.recipeCockpitPanelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
-        const heldResult = this.heldTreeQueryResult;
-
-        const renderSequence = this.recipeCockpitPanelState.recipeDataMessage?.renderSequence;
-
-        if ( !heldResult || heldResult.resultKey !== JSON.stringify([workspaceRoot, renderSequence, tree?.folderName, queryKey]) ) {
-            VSCodeWorkspaceService.showWarningMessage('Nothing was exported: run this query first. Only the last query run is kept to export.');
-            return;
-        }
-
-        const recipeViewModel = this.recipeCockpitPanelState.recipeDataMessage?.recipe;
-        const runArtifactsLocation = recipeViewModel && tree ? this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree) : undefined;
-        let exportFilePath: string | undefined;
-        try {
-            const exportContent = exportFormat === 'json'
-                ? RecipeCockpitQuery.buildJsonExport(heldResult.records)
-                : RecipeCockpitQuery.buildCsvExport(heldResult.records);
-            exportFilePath = runArtifactsLocation && RecipeCockpitQuery.writeQueryExport(runArtifactsLocation, heldResult.objectApiName, heldResult.kind, exportFormat, exportContent, new Date());
-        } catch (exportError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be built: ${this.describeThrown(exportError)}`));
-            return;
-        }
-
-        if ( !exportFilePath ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME}/QueryResults folder in this workspace.`));
-            return;
-        }
-
-        const recordCount = heldResult.records.length;
-        const relativeFilePath = path.relative(workspaceRoot, exportFilePath).split(path.sep).join('/');
-        const exportedText = `Exported ${recordCount} ${recordCount === 1 ? 'record' : 'records'} from ${heldResult.orgLabel} to ${relativeFilePath}.`;
-        // ORG DATA, POSSIBLY PRODUCTION'S, IN A FOLDER GIT DOES NOT IGNORE IS SAID, SO IT IS NOT COMMITTED UNSEEN
-        const isGitIgnored = runArtifactsLocation !== undefined && RecipeCockpitRunArtifacts.isGitIgnored(runArtifactsLocation);
-        const shown = isGitIgnored
-            ? vscode.window.showInformationMessage(RecipeYamlScalar.escapeForNotification(exportedText), RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL)
-            : vscode.window.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${exportedText} ${RECIPE_COCKPIT_QUERY_NOT_GIT_IGNORED_NOTE}`), RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL);
-
-        Promise.resolve(shown)
-            .then(async chosenAction => {
-                if ( chosenAction === RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL ) {
-                    await VSCodeWorkspaceService.openWorkspaceResultFile(exportFilePath, workspaceRoot, 'The exported file no longer exists in this workspace.');
-                }
-            })
-            .catch(exportFollowUpError => ErrorHandlingService.handleCapturedError(exportFollowUpError, 'openRecipeCockpit'));
-
-    }
-
-    /*
         A Troubleshooting deploy (#346): one section's components, named in a host modal, deployed
         through a generated package.xml to a sandbox or scratch org. One per window, and while it
         runs nothing else may insert, assign, retrieve, create a scratch org or change the
@@ -17984,6 +17426,10 @@ export class RecipeCockpitService {
     static routePanelMessage(panelMessage: IRecipeCockpitPanelMessage | undefined,
                                 panelState: IRecipeCockpitPanelState): RecipeCockpitPanelAction | undefined {
 
+        if ( panelMessage && RecipeCockpitQueryHost.isQueryCommand(panelMessage.command) ) {
+            return RecipeCockpitQueryHost.routePanelMessage(panelMessage, panelState);
+        }
+
         switch ( panelMessage?.command ) {
 
             case 'ready':
@@ -19246,29 +18692,6 @@ export class RecipeCockpitService {
             }
 
             /*
-                The Query tab (#367) posts the tree's KEY, a query KEY and, to save or run, the
-                reader's text: never an org, a path or an object. The key must be a card with a
-                folder the panel confirmed drawing; the host matches the query key against the
-                queries it read for that tree, and holds the text to one SELECT before it is sent.
-                A query only reads, and its org is the Target Org Manager selection the host reads
-                at the run (#439), so nothing else running holds it at the router.
-            */
-            case 'loadTreeQueries': {
-
-                const { treeKey, renderSequence } = panelMessage;
-
-                if ( typeof treeKey !== 'string'
-                        || !panelState.recipeDataMessage
-                        || renderSequence !== panelState.recipeDataMessage.renderSequence
-                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return undefined;
-                }
-
-                return { kind: 'loadTreeQueries', treeKey: treeKey, renderSequence: renderSequence as number };
-
-            }
-
-            /*
                 The Validation Rules sub-tab's list (#327) posts the tree's KEY and the model it was
                 drawn on, nothing else: the objects are the host's model of the tree. It reads local
                 files and nothing else, so it is answered whatever else runs.
@@ -19396,48 +18819,6 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'openTroubleshootingHistoryFile', filePath: activeFiles.filePaths[fileIndex] };
-
-            }
-
-            case 'saveTreeQueryEdit': {
-
-                const { treeKey, queryKey, queryText } = panelMessage;
-
-                if ( typeof treeKey !== 'string'
-                        || !this.isQueryKeyShaped(queryKey)
-                        || typeof queryText !== 'string'
-                        || queryText.length > RECIPE_COCKPIT_QUERY_MAX_LENGTH
-                        || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return undefined;
-                }
-
-                return { kind: 'saveTreeQueryEdit', treeKey: treeKey, queryKey: queryKey, queryText: queryText };
-
-            }
-
-            case 'runTreeQuery': {
-
-                const { treeKey, queryKey, queryText } = panelMessage;
-
-                // A RELOADED DOCUMENT MAY NOT KNOW A QUERY IS RUNNING: IT IS TOLD, AND THE RUN'S OWN END GIVES THE BUTTONS BACK
-                if ( panelState.treeQueryStateMessage?.isRunning ) {
-                    return { kind: 'postTreeQueryState', hostMessage: panelState.treeQueryStateMessage };
-                }
-
-                if ( typeof treeKey !== 'string'
-                        || !this.isQueryKeyShaped(queryKey)
-                        || typeof queryText !== 'string'
-                        || queryText.length > RECIPE_COCKPIT_QUERY_MAX_LENGTH
-                        || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return {
-                        kind: 'postTreeQueryState',
-                        hostMessage: { command: 'treeQueryState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', queryKey: typeof queryKey === 'string' ? queryKey : '' }
-                    };
-                }
-
-                return { kind: 'runTreeQuery', treeKey: treeKey, queryKey: queryKey, queryText: queryText };
 
             }
 
@@ -19965,23 +19346,6 @@ export class RecipeCockpitService {
 
             }
 
-            case 'exportTreeQueryResult': {
-
-                const { treeKey, queryKey, exportFormat } = panelMessage;
-                const matchedFormat = RECIPE_COCKPIT_QUERY_EXPORT_FORMATS.find(candidateFormat => candidateFormat === exportFormat);
-
-                if ( typeof treeKey !== 'string'
-                        || !this.isQueryKeyShaped(queryKey)
-                        || !matchedFormat
-                        || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return undefined;
-                }
-
-                return { kind: 'exportTreeQueryResult', treeKey: treeKey, queryKey: queryKey, exportFormat: matchedFormat };
-
-            }
-
             /*
                 "Open in browser" (#279) names the org by INDEX, and only the org SELECTED now is
                 opened: an index the panel could have kept from an older listing, or any other org
@@ -20199,13 +19563,7 @@ export class RecipeCockpitService {
             replayMessages.push(panelState.metadataDeployStateMessage);
         }
 
-        if ( panelState.treeQueryStateMessage ) {
-            replayMessages.push(panelState.treeQueryStateMessage);
-        }
-
-        if ( panelState.treeQueryResultMessage && panelState.treeQueryResultMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
-            replayMessages.push(panelState.treeQueryResultMessage);
-        }
+        replayMessages.push(...RecipeCockpitQueryHost.buildReplayMessages(panelState));
 
         if ( panelState.updaterLoadStateMessage ) {
             replayMessages.push(panelState.updaterLoadStateMessage);
