@@ -17,13 +17,13 @@ import * as CockpitButtonKindsModule from '../CockpitButtonKinds';
 import * as CockpitOrgPickerModule from '../CockpitOrgPicker';
 import * as CockpitConfirmDialogModule from '../CockpitConfirmDialog';
 import { COCKPIT_PALETTE, CockpitPalette, CockpitPaletteToken } from '../CockpitPalette';
-import { COCKPIT_BUTTON_KINDS, CockpitButtonKinds } from '../CockpitButtonKinds';
-import { CockpitOrgPicker } from '../CockpitOrgPicker';
+import { COCKPIT_BUTTON_KINDS } from '../CockpitButtonKinds';
 import {
     COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES,
-    COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
     CockpitConfirmDialog
 } from '../CockpitConfirmDialog';
+import { COCKPIT_KIT_CUSTOM_PROPERTIES, COCKPIT_KIT_STYLESHEET_FILES, CockpitKitStylesheet } from '../CockpitKitStylesheet';
+import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitMotion';
 import {
     RecipeCockpitService,
     RECIPE_COCKPIT_BUTTON_KINDS,
@@ -32,6 +32,7 @@ import {
     RECIPE_COCKPIT_PALETTE
 } from '../../RecipeCockpitService/RecipeCockpitService';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../../RecipeCockpitService/RecipeCockpitPanelBundle.generated';
+import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../../RecipeCockpitService/RecipeCockpitPanelStylesheet.generated';
 
 /*
     #524: the first cut of the cockpit kit. The Recipe Cockpit's document must be what it was, so
@@ -44,6 +45,12 @@ const kitPieces = (): [string, string][] =>
     [CockpitButtonKindsModule, CockpitOrgPickerModule, CockpitConfirmDialogModule]
         .flatMap(kitModule => Object.entries(kitModule))
         .filter(([exportName, exportValue]) => exportName.startsWith('COCKPIT_KIT_') && typeof exportValue === 'string') as [string, string][];
+
+// A KIT .css FILE (#644) AS esbuild.panel.js INLINES IT: VERBATIM, LESS ITS LAST LINE BREAK
+const KIT_PANEL_DIRECTORY = path.join(KIT_DIRECTORY, 'panel');
+const kitCss = (fileName: string) => fs.readFileSync(path.join(KIT_PANEL_DIRECTORY, fileName), 'utf8').replace(/\n$/, '');
+const buttonKindCss = () => ['base', 'primary', 'state', 'check'].map(piece => kitCss(`CockpitButtonKinds.${piece}.css`)).join('\n');
+const orgPickerCss = () => ['CockpitOrgPicker.refresh.css', 'CockpitOrgPicker.css', 'CockpitOrgPicker.pinnedSection.css'].map(kitCss).join('\n');
 
 const recipeShell = () => RecipeCockpitService.buildWebviewShellHtml('kitNonce');
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="kitNonce">'), html.lastIndexOf('</script>'));
@@ -76,21 +83,46 @@ describe('CockpitKit (#524)', () => {
             const html = recipeShell();
             const pieces = kitPieces();
 
-            expect(pieces.map(([pieceName]) => pieceName).sort()).toEqual([
-                'COCKPIT_KIT_BUTTON_KIND_BASE_STYLES',
-                'COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES',
-                'COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES',
-                'COCKPIT_KIT_BUTTON_KIND_STATE_STYLES',
-                'COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP',
-                'COCKPIT_KIT_CONFIRM_DIALOG_STYLES',
-                'COCKPIT_KIT_ORG_PICKER_REFRESH_STYLES',
-                'COCKPIT_KIT_ORG_PICKER_STYLES',
-                'COCKPIT_KIT_PINNED_SECTION_STYLES'
-            ]);
+            expect(pieces.map(([pieceName]) => pieceName).sort()).toEqual(['COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP']);
             pieces.forEach(([pieceName, piece]) => {
                 expect(piece.length).toBeGreaterThan(0);
                 expect({ pieceName, count: countOccurrences(html, piece) }).toEqual({ pieceName, count: 1 });
             });
+
+        });
+
+        // #644: THE KIT'S STYLES ARE .css FILES THE RECIPE COCKPIT'S .css INCLUDES, EACH ONCE, IN THE ORDER THE KIT LISTS THEM
+        it('lists every .css file under panel/, and the Recipe Cockpit\'s stylesheet holds each verbatim, once, in that order', () => {
+
+            const cssFileNames = fs.readdirSync(KIT_PANEL_DIRECTORY).filter(fileName => fileName.endsWith('.css'));
+
+            expect([...COCKPIT_KIT_STYLESHEET_FILES].sort()).toEqual(cssFileNames.sort());
+            COCKPIT_KIT_STYLESHEET_FILES.map(fileName => {
+                expect({ fileName, count: countOccurrences(RECIPE_COCKPIT_PANEL_STYLESHEET, kitCss(fileName)) }).toEqual({ fileName, count: 1 });
+                return RECIPE_COCKPIT_PANEL_STYLESHEET.indexOf(kitCss(fileName));
+            }).reduce((previousIndex, fileIndex) => {
+                expect(fileIndex).toBeGreaterThan(previousIndex);
+                return fileIndex;
+            }, -1);
+
+        });
+
+        it('writes each value its .css files read into the Recipe Cockpit\'s :root, once, from the kit\'s constants', () => {
+
+            const html = recipeShell();
+            const kitCssText = COCKPIT_KIT_STYLESHEET_FILES.map(kitCss).join('\n');
+
+            expect(COCKPIT_KIT_CUSTOM_PROPERTIES).toEqual({
+                '--sdt-motion-reveal': `${COCKPIT_MOTION_REVEAL_MILLISECONDS}ms`,
+                '--sdt-motion-conceal': `${COCKPIT_MOTION_CONCEAL_MILLISECONDS}ms`,
+                '--sdt-spinner-rotation': `${CockpitOrgPickerModule.COCKPIT_SPINNER_ROTATION_MILLISECONDS}ms`,
+                '--sdt-pinned-org-section-scroll-padding': CockpitOrgPickerModule.COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
+                '--sdt-action-card-height': CockpitButtonKindsModule.COCKPIT_ACTION_CARD_HEIGHT
+            });
+            expect(countOccurrences(html, CockpitKitStylesheet.buildCustomProperties())).toBe(1);
+            // A .css FILE HOLDS NO NUMBER THE TYPESCRIPT READS: NO TEMPLATE LEFT IN IT, AND NO TIMING OUTSIDE A var()
+            expect(kitCssText).not.toContain('${');
+            expect(kitCssText).not.toMatch(/\b\d+ms\b/);
 
         });
 
@@ -141,12 +173,11 @@ describe('CockpitKit (#524)', () => {
         it('joins the kind rules in the order the Recipe Cockpit draws them', () => {
 
             const html = recipeShell();
-            const styles = CockpitButtonKinds.buildStyles();
+            const styles = buttonKindCss();
             const pieces = styles.split('\n').length;
 
             expect(pieces).toBeGreaterThan(50);
-            [CockpitButtonKindsModule.COCKPIT_KIT_BUTTON_KIND_BASE_STYLES, CockpitButtonKindsModule.COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES,
-                CockpitButtonKindsModule.COCKPIT_KIT_BUTTON_KIND_STATE_STYLES, CockpitButtonKindsModule.COCKPIT_KIT_BUTTON_KIND_CHECK_STYLES]
+            ['base', 'primary', 'state', 'check'].map(piece => kitCss(`CockpitButtonKinds.${piece}.css`))
                 .map(piece => html.indexOf(piece))
                 .reduce((previousIndex, pieceIndex) => {
                     expect(pieceIndex).toBeGreaterThan(previousIndex);
@@ -157,7 +188,7 @@ describe('CockpitKit (#524)', () => {
 
         it('styles every kind, and states only through one kind class per rule', () => {
 
-            const styles = CockpitButtonKinds.buildStyles();
+            const styles = buttonKindCss();
             const stateRules = Array.from(styles.matchAll(/\n\s*([^{}\n]*:(?:hover|active|disabled)[^{}\n]*) \{/g), match => match[1]);
 
             COCKPIT_BUTTON_KINDS.forEach(kind => expect(styles).toContain(`.sdtButton-${kind}`));
@@ -185,13 +216,13 @@ describe('CockpitKit (#524)', () => {
 
         it('joins the picker, refresh and pinned section rules, the pinned section opaque and sticky', () => {
 
-            const styles = CockpitOrgPicker.buildStyles();
+            const styles = orgPickerCss();
 
             ['.dataOrgSelect', '.dataOrgType', '.dataOrgSpinner', '.dataOrgRefresh', '.cockpitSectionHeader'].forEach(selector => expect(styles).toContain(selector));
             expect(styles).toContain('#cockpitOrgSection { position: sticky; top: 0;');
             expect(styles).toContain('background-color: var(--sdt-org-section)');
-            expect(styles).toContain(`scroll-padding-top: ${CockpitOrgPickerModule.COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING};`);
-            expect(styles).toContain(`animation: sdtSpin ${CockpitOrgPickerModule.COCKPIT_SPINNER_ROTATION_MILLISECONDS}ms linear infinite;`);
+            expect(styles).toContain('scroll-padding-top: var(--sdt-pinned-org-section-scroll-padding);');
+            expect(styles).toContain('animation: sdtSpin var(--sdt-spinner-rotation) linear infinite;');
 
         });
 
@@ -214,9 +245,10 @@ describe('CockpitKit (#524)', () => {
 
         it('names every class it draws with that its own styles do not, and the Recipe Cockpit styles each outside them', () => {
 
-            const styledByKit = classSelectorsOf(COCKPIT_KIT_CONFIRM_DIALOG_STYLES);
+            const confirmDialogCss = kitCss('CockpitConfirmDialog.css');
+            const styledByKit = classSelectorsOf(confirmDialogCss);
             const namedByModule = Array.from(confirmDialogPanelSource().matchAll(/(?:classList\.add\(|setAttribute\('class', )'([A-Za-z][\w-]*)'/g), match => match[1]);
-            const recipeStyleSheet = styleSheetOf(recipeShell()).replace(COCKPIT_KIT_CONFIRM_DIALOG_STYLES, '');
+            const recipeStyleSheet = styleSheetOf(recipeShell()).replace(confirmDialogCss, '');
 
             expect(namedByModule.length).toBeGreaterThan(0);
             namedByModule.filter(className => !styledByKit.has(className)).forEach(className =>
@@ -268,7 +300,7 @@ describe('CockpitKit (#524)', () => {
             const kitFiles = fs.readdirSync(KIT_DIRECTORY).filter(fileName => fileName.endsWith('.ts'));
             const isKitModule = (moduleName: string) => moduleName === 'crypto' || /^\.\/[A-Za-z]+$/.test(moduleName);
 
-            expect(kitFiles.sort()).toEqual(['CockpitButtonKindNames.ts', 'CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitMotion.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
+            expect(kitFiles.sort()).toEqual(['CockpitButtonKindNames.ts', 'CockpitButtonKinds.ts', 'CockpitConfirmDialog.ts', 'CockpitConfirmLabels.ts', 'CockpitKitStylesheet.ts', 'CockpitMotion.ts', 'CockpitOrgPicker.ts', 'CockpitPalette.ts']);
             kitFiles.forEach(fileName => {
                 const importedModules = Array.from(fs.readFileSync(path.join(KIT_DIRECTORY, fileName), 'utf8').matchAll(/^import .* from '([^']+)';$/gm), match => match[1]);
                 expect({ fileName, importedModules: importedModules.filter(moduleName => !isKitModule(moduleName)) }).toEqual({ fileName, importedModules: [] });

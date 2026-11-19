@@ -21,6 +21,7 @@ import {
     RECIPE_COCKPIT_PALETTE
 } from '../RecipeCockpitService';
 import { runPanelScript, IPanelScriptOptions } from './RecipeCockpitPanelHarness';
+import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
 /*
     Motion (#227): what the stylesheet animates, and what the panel script marks for animation. The
@@ -35,7 +36,7 @@ const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
 const styleSheetOf = (shellHtml: string): string =>
-    shellHtml.substring(shellHtml.indexOf('<style nonce="testNonce">'), shellHtml.indexOf('</style>'));
+    withCustomPropertyValues(shellHtml.substring(shellHtml.indexOf('<style nonce="testNonce">'), shellHtml.indexOf('</style>')));
 
 const reducedMotionBlockOf = (styleSheet: string): string => {
     const blockStart = styleSheet.indexOf('@media (prefers-reduced-motion: reduce) {');

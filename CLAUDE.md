@@ -34,7 +34,7 @@ npm run compile
 # Watch mode (auto-recompile on save)
 npm run watch
 
-# Rebuild the Recipe Cockpit panel bundle after changing a panel/ module
+# Rebuild the Recipe Cockpit panel bundle and stylesheet after changing a panel/ module or .css file
 npm run bundle-panel
 
 # Run all tests with coverage
@@ -119,7 +119,8 @@ src/
     ├── tests/
     │   └── ServiceLayers.test.ts            # SERVICE_LAYERS, the one layer table (#570); fails on any upward import or cycle, and on a panel/ module importing beyond panel/ and host-free files (#637, #638, #639)
     ├── CockpitKit/                          # What every cockpit shares (#524): palette, button kinds, org picker CSS, in-panel confirmation; imports only crypto
-    │   ├── panel/                           # Checked panel modules a cockpit bundles: the confirmation (#637); elements, createButton and motion (#638)
+    │   ├── CockpitKitStylesheet.ts          # The kit's .css files in cascade order and the values they read, written into :root (#644)
+    │   ├── panel/                           # Checked panel modules a cockpit bundles: the confirmation (#637); elements, createButton and motion (#638); the kit's .css files (#644)
     │   └── tests/                           # Every kit piece appears verbatim and once in the Recipe Cockpit's document, so its suites cover the kit
     ├── CollectionsApiService/
     │   ├── CollectionsApiService.ts         # Formats fake data for Salesforce Collections API
@@ -171,7 +172,7 @@ src/
     │   └── tests/
     ├── RecipeCockpitService/
     │   ├── RecipeCockpitService.ts           # Owns the Recipe Cockpit webview panel: shell, model, message router and executor
-    │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files; RecipeCockpitPanelHost.ts starts it and routes host messages (#657)
+    │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files; RecipeCockpitPanelHost.ts starts it and routes host messages (#657); RecipeCockpitPanel.css is the stylesheet (#644)
     │   │   ├── shell/                        # The model on screen and its failure path, the reader's place, help and the CHANGELOG button (#657)
     │   │   ├── adapter/                      # The Treecipe Adapter tab: steps, field editor, load and update, retrieve, add child (#641)
     │   │   ├── datasets/                     # Previously Used Data Sets: the tab, a row and its insert journey (#642)
@@ -185,6 +186,7 @@ src/
     │   │   ├── treecipe/recordTypes/         # The Treecipe tab's Record types section, "Record type fields only" and "TODOs only" (#652)
     │   │   └── troubleshooting/              # The Troubleshooting tab, its TODO's, Validation Rules and History sub-tabs (#639)
     │   ├── RecipeCockpitPanelBundle.generated.ts # esbuild.panel.js's bundle of panel/, the whole of the shell's script (#657); never edited, npm run bundle-panel rewrites it
+    │   ├── RecipeCockpitPanelStylesheet.generated.ts # panel/RecipeCockpitPanel.css and the files it includes, the shell's stylesheet after :root (#644); never edited, npm run bundle-panel rewrites it
     │   ├── RecipeCockpitPanelConstants.ts    # Glyph paths and action card words the panel modules draw with (#638); imports nothing, re-exported by the service
     │   ├── RecipeCockpitAdapterConstants.ts  # The Treecipe Adapter tab's words (#641); imports nothing, re-exported by the service
     │   ├── RecipeCockpitDatasetsTabConstants.ts # Previously Used Data Sets' labels, notes and the insert status union (#642); types only from host-free files, re-exported by the service
@@ -206,7 +208,6 @@ src/
     │   ├── RecipeCockpitTreeUpdaterQuery.ts  # Treecipe Adapter load (#416, #444): the plan and one SELECT per object; no vscode
     │   ├── RecipeCockpitOrgChangeDetection.ts # Treecipe Adapter's Retrieve latest metadata (#445, #447): staging folder and field comparison
     │   ├── RecipeCockpitObjectRefresh.ts     # Get latest object detail from target org (#612): one object compared kind by kind, ticked items applied; no vscode
-    │   ├── RecipeCockpitObjectRefreshDialog.ts # Its dialog's styles (#612), interpolated into the shell's stylesheet until #644
     │   ├── RecipeCockpitAdaptedDataset.ts    # What a landed Adapter update leaves (#448): adapted data set and recipe; no vscode
     │   ├── RecipeCockpitDatasetJourney.ts    # A data set row's insert journey (#471)
     │   ├── RecipeCockpitRunHistory.ts        # Troubleshooting History (#485): step summaries written and listed

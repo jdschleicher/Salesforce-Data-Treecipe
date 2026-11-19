@@ -1,0 +1,20 @@
+    .sdtButton-check {
+        position: relative;
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.25em;
+        height: 1.25em;
+        padding: 0;
+        font: inherit;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--sdt-on-action);
+        background-color: var(--sdt-action);
+        border: 1px solid var(--sdt-action-edge);
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .sdtButton-check[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
+    .sdtButton-check:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }

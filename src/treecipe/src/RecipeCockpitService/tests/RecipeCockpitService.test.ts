@@ -50,7 +50,8 @@ import {
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RecipeCockpitPaletteToken,
-    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
+    RECIPE_COCKPIT_CUSTOM_PROPERTIES
 } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -61,6 +62,8 @@ import { SalesforceOrgService, ORG_DESCRIBE_CANCELLED_MESSAGE } from '../../Sale
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../RecipeCockpitPanelStylesheet.generated';
+import { COCKPIT_KIT_CUSTOM_PROPERTIES } from '../../CockpitKit/CockpitKitStylesheet';
 
 const MOCK_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'workspace');
 const MOCK_GENERATED_RECIPES_PATH = path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes');
@@ -345,15 +348,53 @@ describe('RecipeCockpitService', () => {
         });
 
         // A TYPO IN A var() READ FALLS BACK TO THE INHERITED VALUE SILENTLY, SO EVERY READ IS CHECKED AGAINST WHAT IS DEFINED
-        it('reads no --sdt- property the palette does not define', () => {
+        // THE .css FILES (#644): A NAME NEITHER THE PALETTE NOR THE SHELL'S :root DEFINES WOULD DRAW NOTHING, SILENTLY
+        it('reads no --sdt- property in its .css files that the palette, the kit or the cockpit does not write into :root', () => {
 
-            const definedPropertyNames = (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[])
+            const paletteNames = (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[])
                 .map(paletteToken => RecipeCockpitService.buildPaletteCustomPropertyName(paletteToken));
-            const readPropertyNames = (styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).match(/var\(--sdt-[a-z-]+/g) ?? [])
+            const valueNames = [...Object.keys(COCKPIT_KIT_CUSTOM_PROPERTIES), ...Object.keys(RECIPE_COCKPIT_CUSTOM_PROPERTIES)];
+            const readPropertyNames = (RECIPE_COCKPIT_PANEL_STYLESHEET.match(/var\(--sdt-[A-Za-z-]+/g) ?? [])
                 .map(variableRead => variableRead.substring('var('.length));
+            const rootBlock = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).split(':root {')[1].split('    }')[0];
 
             expect(readPropertyNames).not.toBeEmpty();
-            readPropertyNames.forEach(readPropertyName => expect(definedPropertyNames).toContain(readPropertyName));
+            readPropertyNames.forEach(readPropertyName => expect([...paletteNames, ...valueNames]).toContain(readPropertyName));
+            // EVERY VALUE THE SHELL WRITES IS READ, AND WRITTEN ONCE, FROM ITS CONSTANT
+            valueNames.forEach(valueName => expect({ valueName, isRead: readPropertyNames.includes(valueName) }).toEqual({ valueName, isRead: true }));
+            Object.entries({ ...COCKPIT_KIT_CUSTOM_PROPERTIES, ...RECIPE_COCKPIT_CUSTOM_PROPERTIES }).forEach(([valueName, value]) =>
+                expect(rootBlock.split(`\n        ${valueName}: ${value};`)).toHaveLength(2));
+            expect(paletteNames.filter(paletteName => valueNames.includes(paletteName))).toEqual([]);
+
+        });
+
+        /*
+            #644: a colour written into a .css file would draw whatever the palette says. Every colour a
+            rule sets reads var(--sdt-…); the one exception is the two shadow tints, which colour no
+            text or surface and appear only inside a box-shadow.
+        */
+        const findHardCodedColours = (styleSheet: string): string[] => {
+            const shadowTintFree = styleSheet.replace(/box-shadow:[^;]*;/g, shadowDeclaration => shadowDeclaration.replace(/rgba\(15, 23, 42, 0\.0[68]\)/g, ''));
+            const colourLiterals = shadowTintFree.match(/#[0-9A-Fa-f]{3,8}(?![\w-])|\b(?:rgba?|hsla?)\([^)]*\)/g) ?? [];
+            const namedColours = Array.from(shadowTintFree.matchAll(/(?:^|[\s;{])(?:color|background(?:-color)?|border(?:-[a-z]+)*|fill|stroke|outline(?:-color)?|text-decoration(?:-color)?|caret-color|accent-color)\s*:\s*([^;}]*)/g), match => match[1])
+                .flatMap(value => value.match(/\b(?:white|black|red|green|blue|gray|grey|yellow|orange|navy|teal|purple|pink|silver)\b/g) ?? []);
+            return [...colourLiterals, ...namedColours];
+        };
+
+        it('sets no colour in its .css files but through the palette, and fails on one that does', () => {
+
+            // A COMMENT CAN NAME AN ISSUE (#434) OR A COLOUR IN WORDS; ONLY DECLARATIONS ARE READ
+            const declarations = RECIPE_COCKPIT_PANEL_STYLESHEET.replace(/\/\*[\s\S]*?\*\//g, '');
+
+            expect(findHardCodedColours(declarations)).toEqual([]);
+            expect((declarations.match(/rgba\(15, 23, 42, 0\.0[68]\)/g) ?? []).length).toBeGreaterThan(0);
+            expect(findHardCodedColours('    .treeCard { color: #1D3557; }')).toEqual(['#1D3557']);
+            expect(findHardCodedColours('    .treeCard { background-color: rgba(0, 0, 0, 0.5); }')).toEqual(['rgba(0, 0, 0, 0.5)']);
+            expect(findHardCodedColours('    .treeCard { border: 1px solid navy; }')).toEqual(['navy']);
+            expect(findHardCodedColours('    .treeCard { border-color: navy; }')).toEqual(['navy']);
+            expect(findHardCodedColours('    #cockpitOrgSection { color: var(--sdt-text); white-space: nowrap; }')).toEqual([]);
+            expect(findHardCodedColours('    .a { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }')).toEqual([]);
+            expect(findHardCodedColours('    .a { box-shadow: 0 0 0 2px #FF0000; }')).toEqual(['#FF0000']);
 
         });
 

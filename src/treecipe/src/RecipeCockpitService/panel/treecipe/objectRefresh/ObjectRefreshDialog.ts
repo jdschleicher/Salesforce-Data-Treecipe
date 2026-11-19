@@ -14,8 +14,8 @@ import type { IDataOrgView } from '../dataOrg/DataOrgTypes';
     The panel half of "Get latest detail" (#612): the row's button and the dialog the host drives
     through objectRefreshState. The dialog draws over the cockpit with the confirmation's own
     overlay classes, writes every host string through textContent, and answers only with the
-    dialog's id, kind names from the fixed list, and item indexes. Its styles are still the host's
-    string, RECIPE_COCKPIT_OBJECT_REFRESH_DIALOG_STYLES, until the stylesheet moves (#644).
+    dialog's id, kind names from the fixed list, and item indexes. Its styles are ObjectRefreshDialog.css
+    beside it, which the cockpit's stylesheet includes (#644).
 */
 
 type ObjectRefreshStep = 'choose' | 'retrieving' | 'applying' | 'review';

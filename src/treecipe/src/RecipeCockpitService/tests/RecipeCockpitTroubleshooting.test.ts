@@ -73,6 +73,7 @@ import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from 
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 import JSZip = require('jszip');
 
 const findDescendantsByClass = (rootElement: any, className: string): any[] => {
@@ -1704,7 +1705,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             it('styles the card by its kind alone: one fixed size, a wrapping grid that is one column in a narrow panel, and clamped text', () => {
 
-                const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+                const styleSheet = withCustomPropertyValues(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
                 expect(styleSheet).toMatch(/\.sdtButton-card \{[^}]*height: 10.5rem;[^}]*overflow: hidden;/);
                 expect(styleSheet).toMatch(/\.troubleshootingCards \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(100%, 18rem\), 1fr\)\);/);
                 expect(styleSheet).toMatch(/\.actionCardTitle \{ -webkit-line-clamp: 2; font-size: inherit; \}/);

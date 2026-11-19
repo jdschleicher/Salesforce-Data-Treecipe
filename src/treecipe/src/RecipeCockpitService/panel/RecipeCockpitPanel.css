@@ -1,0 +1,872 @@
+    html, body {
+        color: var(--sdt-text);
+        background-color: var(--sdt-page);
+        scrollbar-color: var(--sdt-border) var(--sdt-page);
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background-color: var(--sdt-page); }
+    ::-webkit-scrollbar-thumb {
+        background-color: var(--sdt-border);
+        border: 2px solid var(--sdt-page);
+        border-radius: 5px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--sdt-muted); }
+    body {
+        margin: 0;
+        font-family: var(--vscode-font-family);
+        font-size: var(--vscode-font-size);
+        padding: 0 1rem 2rem 1rem;
+    }
+    h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
+    .hidden { display: none !important; }
+    .muted { color: var(--sdt-muted); }
+    :focus-visible { outline: 2px solid var(--sdt-accent); outline-offset: 1px; }
+    /* A NAVY RING WOULD VANISH ON THE NAVY TITLE BAR AND TREE HEADERS (#434) */
+    .cockpitHeader :focus-visible, .treeHeader :focus-visible { outline-color: var(--sdt-action); }
+    button, select, input {
+        transition: color var(--sdt-motion-hover) ease, background-color var(--sdt-motion-hover) ease, border-color var(--sdt-motion-hover) ease, box-shadow var(--sdt-motion-hover) ease, filter var(--sdt-motion-hover) ease, transform 80ms ease;
+    }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    @keyframes sdtReveal {
+        from { opacity: 0; transform: translateY(-0.25rem); }
+        to { opacity: 1; transform: none; }
+    }
+    @keyframes sdtConceal {
+        from { opacity: 1; transform: none; visibility: visible; }
+        to { opacity: 0; transform: translateY(-0.25rem); visibility: hidden; }
+    }
+    .motionReveal { animation: sdtReveal var(--sdt-motion-reveal) ease-out; }
+    /* EVERY BODY THAT CONCEALS IS A BLOCK div; A FLEX OR GRID ONE WOULD NEED ITS OWN display HERE */
+    .hidden.motionConceal {
+        display: block !important;
+        animation: sdtConceal var(--sdt-motion-conceal) ease-in forwards;
+        pointer-events: none;
+    }
+    .loadStatus {
+        border-left: 3px solid var(--sdt-accent);
+        padding: 0.4rem 0.6rem;
+        margin: 0.75rem 0;
+        color: var(--sdt-muted);
+        background-color: var(--sdt-surface);
+        border-radius: 4px;
+    }
+    .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
+    .runSelect, .tabSearchInput, .treecipesSearchInput {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    /* THE DATED RUNS (#533): THE LABEL, THEN THE DROPDOWN TAKING WHAT IS LEFT OF THE ROW, WRAPPING WHEN NARROW */
+    .runPicker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.4rem 0 0.2rem 0; }
+    .runPickerLabel { font-weight: 600; }
+    .runSelect { flex: 1 1 12rem; min-width: 0; max-width: 100%; padding: 0.3rem; }
+    .tabSearch, .treecipesSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
+    /* THE MAGNIFIER INSIDE EVERY SEARCH BOX (#373), DRAWN LIKE THE CHAIN LINK; THE TEXT STARTS PAST IT */
+    .tabSearchField { position: relative; display: flex; align-items: center; flex: 1 1 16rem; min-width: 0; }
+    .tabSearchInput {
+        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 0.3rem 0.5rem 0.3rem 2rem;
+    }
+    .tabSearchIcon { position: absolute; left: 0.5rem; width: 1.1rem; height: 1.1rem; cursor: text; }
+    .tabSearchIcon path { fill: none; stroke: var(--sdt-muted); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .tabSearchInput::placeholder, .treecipesSearchInput::placeholder { color: var(--sdt-muted); opacity: 1; }
+    .emptyStateActions { margin-top: 0.5rem; }
+    /* THE TREECIPES SECTION'S SEARCH, ITS RESULTS AND THE DROPDOWN (#374) */
+    .treecipesSearch { padding-left: 0; padding-right: 0; }
+    .treecipesSearchInput { flex: 1 1 auto; width: 100%; min-width: 0; box-sizing: border-box; padding: 0.3rem 0.5rem 0.3rem 2rem; }
+    .treecipesSearchResults { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.2rem 0 0.4rem 0; }
+    .treecipesResultGroup { display: flex; flex-direction: column; gap: 0.15rem; }
+    .treecipesResultTree { font-weight: 600; }
+    .treecipesResult { display: flex; gap: 0.5rem; align-items: baseline; padding-left: 0.75rem; }
+    .treecipesResultKind { flex: none; min-width: 6rem; }
+    .treePicker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+    .treePickerLabel { font-weight: 600; }
+    .treePickerSelect {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+        padding: 0.3rem;
+        max-width: 100%;
+    }
+    .treePickerObjects { display: flex; align-items: baseline; padding: 0 0 0.4rem 0; }
+    .treePickerObjectsLabel { flex: none; font-weight: 600; margin-right: 0.4rem; }
+    /* ONE LINE, CUT WITH "…", UNTIL THE TOGGLE OPENS IT (#464); THE COUNT AND THE TOGGLE STAY BESIDE IT */
+    .treePickerObjectsList { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .treePickerObjectsList.expanded { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+    .treePickerObjectSeparator, .treePickerObjectsCount { white-space: pre; }
+    .treePickerObjectsCount { flex: none; }
+    .treePickerObjectsToggle { flex: none; margin-left: 0.4rem; }
+    .treePickerObject.excluded { color: var(--sdt-muted); text-decoration: line-through; }
+    .treePickerSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .notice {
+        border-left: 3px solid var(--sdt-changed);
+        padding: 0.3rem 0.6rem;
+        margin: 0.4rem 0;
+        background-color: var(--sdt-surface);
+        border-radius: 4px;
+    }
+    .emptyState {
+        border: 1px dashed var(--sdt-border);
+        background-color: var(--sdt-surface);
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        margin-top: 0.75rem;
+    }
+    /*
+        ? IS AS TALL AS THE CHANGELOG BUTTON BESIDE IT (#487), AND WHILE THE HELP IS OPEN IT IS
+        DRAWN PRESSED: navy on the title bar's light text colour with a teal inset ring, so the
+        state is a change of fill AND an edge, never colour alone.
+    */
+    .cockpitMeta .helpToggle {
+        box-sizing: border-box;
+        height: 2rem;
+        min-height: 0;
+        min-width: 2rem;
+        padding: 0 0.7rem;
+        font-size: 1em;
+        line-height: 1;
+        border-radius: 999px;
+    }
+    .cockpitMeta .helpToggle[aria-expanded="true"] {
+        color: var(--sdt-on-action);
+        background-color: var(--sdt-on-header);
+        border-color: var(--sdt-action);
+        box-shadow: inset 0 0 0 2px var(--sdt-action);
+    }
+    .helpSection {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        padding: 0.6rem 0.9rem;
+        margin: 0.25rem 0 0.75rem 0;
+    }
+    .helpHeader { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .helpTitle { font-weight: 600; font-size: 1.1em; }
+    .helpClose { flex: none; width: 2rem; height: 2rem; font-size: 1.1em; line-height: 1; }
+    .helpRun { margin-top: 0.2rem; }
+    .helpPart { margin-top: 0.6rem; }
+    .helpHeading { font-weight: 600; }
+    .helpParagraph { margin: 0.3rem 0; }
+    .helpList { margin: 0.3rem 0; padding-left: 1.2rem; }
+    .helpActions { margin-top: 0.6rem; }
+    .treeCard {
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
+        margin: 0.6rem 0;
+        overflow: hidden;
+    }
+    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sdt-tree-header-gap); }
+    .treeHeader {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        min-height: 4rem;
+        box-sizing: border-box;
+        padding: 0.8rem 1rem;
+        color: var(--sdt-on-header);
+        background-color: var(--sdt-header);
+    }
+    .treeHeader .muted { color: var(--sdt-on-header-muted); }
+    .treeObjectHeader, .treeField, .treeDataset { transition: background-color var(--sdt-motion-hover) ease, box-shadow var(--sdt-motion-hover) ease; }
+    .treeTitle { font-weight: 600; font-size: 1.1em; }
+    .treeHeaderActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
+    /* include: ../../CockpitKit/panel/CockpitButtonKinds.base.css */
+    /* include: ../../CockpitKit/panel/CockpitOrgPicker.refresh.css */
+    .chevronToggle {
+        box-sizing: border-box;
+        flex: none;
+        width: 1.6rem;
+        height: 1.6rem;
+        min-width: 0;
+        min-height: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        line-height: 1;
+    }
+    .picklistSection { margin: 0.2rem 0 0 0; }
+    .picklistToggle { box-sizing: border-box; flex: none; width: 7.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
+    .toggleGlyph { display: block; width: 1.2rem; height: 1.2rem; transition: transform var(--sdt-motion-reveal) ease; }
+    [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
+    .noMotion > .toggleGlyph { transition: none; }
+    .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    /* include: ../../CockpitKit/panel/CockpitButtonKinds.primary.css */
+    .treeAddFriend { font-weight: 600; }
+    .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
+    .treeAddFriendChoice, .historyAction { text-decoration: underline; }
+    /* include: ../../CockpitKit/panel/CockpitButtonKinds.state.css */
+    .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
+    .treeBody { border-top: 1px solid var(--sdt-border); }
+    .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; }
+    /*
+        An unselected tab rests in the mint, rounded-top look hover used to add (#493), and hover
+        makes its label bold and underlined. Going bold must not widen the tab and shift the strip,
+        so each tab carries its label in data-label, drawn bold, hidden and zero-height above the
+        text: the tab is always as wide as its bold label. The disabled kind's (0,2,0) rule still
+        outranks the resting fill, and the selected (0,4,0) rule below outranks it on a selected tab.
+        The sub-tabs copy these rules below rather than share them (#363's one-class state rule).
+    */
+    .treeTab { color: var(--sdt-muted); background-color: var(--sdt-row-hover); border-color: transparent; border-radius: 6px 6px 0 0; }
+    .treeTab::before { content: attr(data-label) / ''; display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
+    .treeTab:hover:not(:disabled):not(.selected) { border-color: transparent; font-weight: 600; text-decoration: underline; }
+    .treeTab.selected { color: var(--sdt-text); font-weight: 600; }
+    /*
+        The selected tab and its panel are ONE outline (#373): the tab's sides and top, then the
+        panel's sides and bottom. The tab sits 1px over the panel's top edge with its own bottom edge
+        in the panel's colour, so no line is drawn between them. Only the selected panel is shown,
+        so every panel carries the outline and the selected class alone moves it. The selector is
+        (0,4,0) against the secondary kind's (0,3,0) hover rule, so a hover cannot draw the bottom
+        edge back wherever either rule sits. A hovered tab that is not selected draws no bottom edge,
+        which would lie on the panel's teal top. The sub-tab strip wraps on a narrow panel, and a
+        selected sub-tab on any row but the last then sits above the next row rather than its panel:
+        scrolling the strip instead would clip the 1px overlap that joins every tab to its panel.
+    */
+    .treeTabs .treeTab.selected.sdtButton, .troubleshootingSubTabs .troubleshootingSubTab.selected.sdtButton {
+        z-index: 1;
+        margin-bottom: -1px;
+        border-color: var(--sdt-action-edge);
+        border-bottom-color: var(--sdt-surface);
+        background-color: var(--sdt-surface);
+    }
+    .treeTabPanel, .troubleshootingSubPanel {
+        border: 1px solid var(--sdt-action-edge);
+        border-radius: 0 6px 6px 6px;
+        background-color: var(--sdt-surface);
+    }
+    .treeTabPanel { margin: 0 0.6rem 0.6rem; }
+    /*
+        The bar moves to the selected tab (#227), along its TOP edge since #373 so nothing is drawn
+        between the tab and its panel: the outgoing tab's shrinks TOWARD the incoming one while the
+        incoming tab's grows FROM the outgoing side. The panel names the direction;
+        a tab chosen by anything but a click carries noMotion, so it is not animated.
+    */
+    .treeTab { position: relative; }
+    .treeTab::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -1px;
+        height: 3px;
+        border-radius: 6px 6px 0 0;
+        background-color: var(--sdt-action);
+        transform: scaleX(0);
+        transition: transform var(--sdt-motion-reveal) ease;
+        pointer-events: none;
+    }
+    .treeTab.selected::after { transform: scaleX(1); }
+    .treeTabs.movingRight .treeTab::after, .treeTabs.movingLeft .treeTab.selected::after { transform-origin: right; }
+    .treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }
+    .treeTabs.noMotion .treeTab::after { transition: none; }
+    /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
+    .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; }
+    .troubleshootingSubTab { color: var(--sdt-muted); background-color: var(--sdt-row-hover); border-color: transparent; border-radius: 6px 6px 0 0; }
+    .troubleshootingSubTab::before { content: attr(data-label) / ''; display: block; height: 0; overflow: hidden; visibility: hidden; font-weight: 600; }
+    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { border-color: transparent; font-weight: 600; text-decoration: underline; }
+    .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
+    .troubleshootingSubTab { position: relative; }
+    .troubleshootingSubTab::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -1px;
+        height: 3px;
+        border-radius: 6px 6px 0 0;
+        background-color: var(--sdt-action);
+        transform: scaleX(0);
+        transition: transform var(--sdt-motion-reveal) ease;
+        pointer-events: none;
+    }
+    .troubleshootingSubTab.selected::after { transform: scaleX(1); }
+    .troubleshootingSubTabs.movingRight .troubleshootingSubTab::after, .troubleshootingSubTabs.movingLeft .troubleshootingSubTab.selected::after { transform-origin: right; }
+    .troubleshootingSubTabs.movingLeft .troubleshootingSubTab::after, .troubleshootingSubTabs.movingRight .troubleshootingSubTab.selected::after { transform-origin: left; }
+    .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
+    .treeObjectHeader { padding: 0.35rem var(--sdt-tree-object-header-padding); align-items: center; }
+    .treeObject { position: relative; }
+    .treeObject.treeObjectNested { border-left: 2px solid var(--sdt-border); }
+    .treeObject.treeObjectDepth1 { margin-left: calc(var(--sdt-nesting-indent) * 1); }
+    .treeObject.treeObjectDepth2 { margin-left: calc(var(--sdt-nesting-indent) * 2); }
+    .treeObject.treeObjectDepth3 { margin-left: calc(var(--sdt-nesting-indent) * 3); }
+    .treeObject.treeObjectDepth4 { margin-left: calc(var(--sdt-nesting-indent) * 4); }
+    .treeObject.treeObjectDepth5 { margin-left: calc(var(--sdt-nesting-indent) * 5); }
+    .treeObject.treeObjectDepth6 { margin-left: calc(var(--sdt-nesting-indent) * 6); }
+    .treeObject.treeObjectDepth7 { margin-left: calc(var(--sdt-nesting-indent) * 7); }
+    .treeObject.treeObjectDepth8 { margin-left: calc(var(--sdt-nesting-indent) * 8); }
+    .treeObject.excluded::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-color: var(--sdt-excluded-overlay);
+        pointer-events: none;
+        z-index: 1;
+    }
+    .treeObjectInclude, .treeObjectIncludeSpacer {
+        box-sizing: border-box;
+        flex: none;
+        width: var(--sdt-tree-object-include-width);
+        height: var(--sdt-tree-object-include-width);
+    }
+    .treeObjectInclude { position: relative; z-index: 2; padding: 0.15rem; }
+    .treeObjectIncludeSpacer { display: inline-block; }
+    .treeGlyph { display: block; width: 2.1rem; height: 2.1rem; }
+    .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
+    .treeGlyph.noFieldsSelected path { stroke: var(--sdt-removed); stroke-width: 3; }
+    .treeGlyph.autoExcluded path { stroke-dasharray: 2 2.5; }
+    .treeGlyph.impacted path { stroke: var(--sdt-changed); }
+    .treeExclusion { font-size: 0.85em; }
+    .treeField { position: relative; }
+    .treeField.fieldExcluded::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background-color: var(--sdt-excluded-overlay);
+        pointer-events: none;
+        z-index: 1;
+    }
+    .treeObject.excluded .treeField.fieldExcluded::after { display: none; }
+    /* AN ANIMATING BODY IS ITS OWN STACKING CONTEXT, WHICH WOULD DRAW ITS CONTROLS UNDER THE OVERLAY MID-FADE */
+    .treeObject.excluded .motionReveal { animation: none; }
+    .treeObject.excluded .hidden.motionConceal { display: none !important; }
+    /* include: ../../CockpitKit/panel/CockpitButtonKinds.check.css */
+    /* THE TREECIPE TAB'S FILTER TILE (#490): ONE ROW PER CHECK, THEN "Manage record types" */
+    .treecipeFilterTile {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin: 0 0.6rem 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+    }
+    .treecipeFilterRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .recordTypesManageRow.disabled .recordTypesSectionSummary { font-size: 0.9em; }
+    .recordTypesSectionBody { margin: 0 0.6rem 0.5rem; padding: 0 0.75rem 0.75rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
+    .recordTypesIntro { margin: 0.5rem 0; }
+    .recordTypeObject { margin: 0.6rem 0; }
+    .recordTypeObjectHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-weight: 600; }
+    .recordTypeObjectStatus { font-weight: 400; }
+    .recordTypeRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.25rem 0 0.25rem 1rem; }
+    .recordTypeImpact { flex-basis: 100%; margin-left: 1.65em; }
+    .recordTypesRememberRow { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.75rem; }
+    .recordTypesRememberLabel { cursor: pointer; }
+    .treeFieldFixedValue { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
+    .fixedValueGlyph { display: block; width: 1.1em; height: 1.1em; }
+    .fixedValueGlyph-large { width: 1.4em; height: 1.4em; }
+    .fixedValueGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .treeFieldFixedValue[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
+    .treeFieldFixedValue:disabled .fixedValueGlyph path { stroke: var(--sdt-muted); stroke-dasharray: 2 2.5; }
+    .fixedValueBadge {
+        position: relative;
+        z-index: 2;
+        padding: 0 0.35em;
+        font-size: 0.85em;
+        font-weight: 600;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 3px;
+    }
+    .treeDatasetRecordTypes { padding: 0 0.35em; font-size: 0.85em; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 3px; }
+    .recordTypeChip {
+        position: relative;
+        z-index: 2;
+        padding: 0 0.35em;
+        font-size: 0.85em;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border: 1px dashed var(--sdt-chip-text);
+        border-radius: 3px;
+    }
+    .treeRecordTypeFieldsNote { font-size: 0.9em; }
+    .treeRecordTypeFieldsCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .treeRecordTypeFieldsLabel { cursor: pointer; }
+    .treeRecordTypeFieldsCheck.disabled .treeRecordTypeFieldsLabel { color: var(--sdt-muted); cursor: not-allowed; }
+    .treeTodosCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .treeTodosLabel { cursor: pointer; }
+    .treeTodosCheck.disabled .treeTodosLabel { color: var(--sdt-muted); cursor: not-allowed; }
+    .treeTodosNote { font-size: 0.9em; }
+    .treeTodos { position: relative; z-index: 2; margin: 0.15rem 0 0.25rem 0; }
+    .treeTodo { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.85em; }
+    .treeTodoText { white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
+    .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
+    .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
+    .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
+    .constrainedExpression {
+        margin: 0.15rem 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+    }
+    .fixedValue {
+        margin: 0.15rem 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+    }
+    .fieldEditor {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin: 0.3rem 0 0.2rem 0;
+        padding: 0.4rem 0.5rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+    }
+    .fieldEditorInputs, .fieldEditorActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+    .fieldEditorBound { display: inline-flex; align-items: baseline; gap: 0.3rem; }
+    .fieldEditorInput {
+        flex: 1 1 12rem;
+        min-width: 0;
+        padding: 0.15rem 0.3rem;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .fieldEditorBound .fieldEditorInput { flex: 0 1 12rem; }
+    .fieldEditorInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .fieldEditorHint { font-size: 0.85em; }
+    .fieldEditorRefusal { color: var(--sdt-removed); font-size: 0.9em; }
+    .treeFieldNote { position: relative; z-index: 2; font-size: 0.85em; }
+    .treeNoFieldsSelected { color: var(--sdt-removed); font-weight: bold; }
+    .noFieldsSelectedHidden { display: none !important; }
+    .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject { min-height: 1.9rem; padding: 0.2rem 0.6rem; }
+    .treeUseOrgRecord { min-height: 1.9rem; padding: 0.2rem 0.6rem; }
+    .treeLookupDecision { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+    .fixedValueBadge.orgRecordBadge { border: 1px dashed var(--sdt-chip-text); }
+    .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
+    .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
+    .treeObjectName { font-weight: 600; }
+    .treeNicknameSlot { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .treeFriendsButton { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
+    .treeNickname { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
+    .treeNicknameMenu {
+        flex-basis: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.2rem;
+        margin-left: 1.5rem;
+        padding: 0.3rem 0.6rem;
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-accent);
+        border-radius: 4px;
+        position: relative;
+        z-index: 2;
+    }
+    .treeNicknameMenuHint { color: var(--sdt-muted); }
+    .treeNicknameMenuItems { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+    .treeNicknameBackLink { font-size: 0.85em; }
+    .treeFriendSlot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+    .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
+    .treeChipEmoji { flex: none; }
+    .treeObjectBody { padding-bottom: 0.25rem; }
+    .treeFieldSelectAllRow, .treeFieldsBox {
+        box-sizing: border-box;
+        margin: 0.35rem var(--sdt-tree-object-header-padding) 0.35rem var(--sdt-tree-field-box-margin-left);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .treeFieldSelectAllRow:not(:has(> :not(.hidden))), .treeFieldsBox:not(:has(> .treeField:not(.hidden))) { display: none; }
+    .treeFieldsBox { padding: var(--sdt-tree-field-box-padding); }
+    .treeField { padding: 0.25rem 0.35rem 0.25rem var(--sdt-tree-field-row-inset); border-radius: 3px; }
+    .treeFieldSelectAllRow { padding: calc(var(--sdt-tree-field-box-padding) + var(--sdt-tree-field-row-inset)); display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.2rem; }
+    .treeFieldSelectAllCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .treeFieldSelectAllLabel { cursor: pointer; }
+    .treeFieldSelectAllCheck.disabled .treeFieldSelectAllLabel { color: var(--sdt-muted); cursor: not-allowed; }
+    .treeFieldHeader .fieldType {
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .sdtRowHeader { display: flex; flex-direction: column; gap: 0.2rem; }
+    .sdtRowHeaderPrimary, .sdtRowHeaderDetail { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDatasetName { font-weight: 600; }
+    .nameEditor { display: inline-flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+    .nameEditorInput {
+        width: 18rem;
+        max-width: 100%;
+        padding: 0.15rem 0.3rem;
+        font: inherit;
+        font-weight: 600;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .nameEditorInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .treeHeader .nameEditorInput:focus { outline-color: var(--sdt-action); }
+    .nameEditorRefusal { font-size: 0.9em; color: var(--sdt-removed); }
+    .treeNameEditor .nameEditorRefusal { font-weight: 600; color: var(--sdt-on-header); }
+    .treeDatasetFavorite, .treeDatasetRename { font-size: 1.1em; line-height: 1; }
+    .treeRename, .treeDatasetRename { display: inline-flex; align-items: center; justify-content: center; }
+    .treeDatasetRename { align-self: center; }
+    .treeDataset { padding: 0.3rem 0.6rem; }
+    .treeDataset:hover { background-color: var(--sdt-row-hover); }
+    .treeDatasetDate { font-weight: 600; }
+    .treeDatasetInsertSlot { display: contents; }
+    .treeDatasetInsertStatus {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
+    .treeDatasetJourney { margin: 0.4rem 0 0.2rem 0; }
+    .treeDatasetJourneyTableWrap { max-height: 24rem; }
+    .treeDatasetJourneyTable { width: 100%; }
+    .treeDatasetJourneyTime { white-space: nowrap; }
+    .treeDatasetJourneyKind { font-weight: 600; }
+    .treeDatasetJourneyStatus {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .treeDatasetJourneySummary, .treeDatasetJourneyError { margin: 0.1rem 0 0 0; word-break: break-word; }
+    .treeDatasetJourneyError { color: var(--sdt-removed); }
+    .treeDatasetJourneyFile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDatasetJourneyFile + .treeDatasetJourneyFile { margin: 0.2rem 0 0 0; }
+    .treeDatasetJourneyPath { font-family: var(--vscode-editor-font-family, monospace); font-size: 0.85em; word-break: break-all; }
+    .treeDatasetJourneyNote { margin: 0.2rem 0; }
+    /* include: ../../CockpitKit/panel/CockpitOrgPicker.css */
+    .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
+    /* include: ../../CockpitKit/panel/CockpitOrgPicker.pinnedSection.css */
+    .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+    /*
+        The sub-panel pads its contents off its teal border (#393), and its search box drops its own
+        side padding so the search, the TODO's views, the cards and the lists all start one inset in.
+    */
+    .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; padding: 0 0.6rem 0.6rem; }
+    .troubleshootingSubPanel .tabSearch { padding-left: 0; padding-right: 0; }
+    /*
+        The Troubleshooting actions' cards (#381) share one fixed size and wrap in a grid; in a
+        panel narrower than two cards they take the full width. Text that does not fit is clamped,
+        never allowed to grow the card; the tooltip keeps the whole detail and reason.
+    */
+    .troubleshootingCards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--sdt-action-card-width)), 1fr));
+        gap: 0.6rem;
+        margin-top: 0.5rem;
+    }
+    .troubleshootingAction { min-width: 0; }
+    /* THE SAME CARDS ELSEWHERE IN THE COCKPIT (#384): THE EMPTY STATE, THE RECORD TYPES SECTION, EACH QUERY AND THE TREECIPE UPDATER */
+    .actionCards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--sdt-action-card-width)), 1fr));
+        gap: 0.6rem;
+        margin: 0.5rem 0;
+    }
+    .actionCards > .sdtButton-card { min-width: 0; }
+    .updaterCards.actionCards { margin: 0.5rem 0.6rem; }
+    .sdtButton.treeInsert::before { content: var(--sdt-verb-emoji-generateData) / ''; margin-right: 0.35em; }
+    .sdtButton.dataOrgNewScratch::before { content: var(--sdt-verb-emoji-create) / ''; margin-right: 0.35em; }
+    .sdtButton.dataOrgAuthorize::before { content: var(--sdt-verb-emoji-authorize) / ''; margin-right: 0.35em; }
+    .actionCardHeading { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; font-weight: 600; font-size: 1.05em; }
+    .actionCardEmoji { flex: none; font-size: 1.25em; line-height: 1; }
+    .actionCardTitle { min-width: 0; color: var(--sdt-accent); }
+    .actionCardTitle, .actionCardWhy, .actionCardDetail, .actionCardReason {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-size: 0.95em;
+    }
+    .actionCardTitle { -webkit-line-clamp: 2; font-size: inherit; }
+    .actionCardWhy, .actionCardDetail { -webkit-line-clamp: 2; }
+    .actionCardReason { -webkit-line-clamp: 1; }
+    .actionCardReason { font-style: italic; }
+    .treeQueryIntro, .updaterIntro { margin: 0.25rem 0.6rem 0.5rem; }
+    .updaterSummary { margin: 0 0.6rem 0.5rem; font-weight: 600; }
+    /* THE TREECIPE UPDATER TAB (#415) DRAWS ITS ROWS AS THE TREECIPE TAB DOES, UNDER ITS OWN CLASSES */
+    .updaterObjectHeader, .updaterFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .updaterObjectHeader { padding: 0.35rem 0.6rem; }
+    .updaterObjectHeader, .updaterField { transition: background-color var(--sdt-motion-hover) ease; }
+    .updaterObjectHeader:hover, .updaterField:hover, .updaterObjectHeader:focus-within, .updaterField:focus-within { background-color: var(--sdt-row-hover); }
+    .updaterObjectName { font-weight: 600; }
+    .updaterObjectBody { padding-bottom: 0.25rem; }
+    .updaterField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterFieldHeader .fieldType { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 0.6rem; }
+    .updaterFieldNote { font-size: 0.85em; }
+    .updaterLoadRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0.6rem 0.5rem; }
+    .updaterSnapshots { margin: 0.75rem 0.6rem 0.5rem; }
+    .updaterSnapshotsHeading { font-weight: 600; margin-bottom: 0.25rem; }
+    .updaterSnapshot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+    .updaterSnapshotName { font-family: var(--vscode-editor-font-family), monospace; overflow-wrap: anywhere; }
+    .updaterWhere, .updaterRecords, .updaterValues { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterFieldEdit { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
+    .updaterFieldEdit[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
+    .updaterWhereInput, .updaterParentWhereInput {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 0.2rem 0.4rem;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .updaterWhereInput:focus, .updaterParentWhereInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .updaterParentStep { margin: 0.5rem 0.6rem; }
+    .updaterStepHeadingRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0.6rem 0.25rem; }
+    .updaterStepHeading { font-weight: 600; overflow-wrap: anywhere; }
+    .updaterParentStep .updaterStepHeading { margin-bottom: 0.4rem; }
+    .updaterParentFields { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .updaterParentSelectLabel { font-weight: 600; }
+    .updaterParentSelect {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+        padding: 0.3rem;
+        max-width: 100%;
+    }
+    .updaterParentSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .updaterParentWhereInput { width: auto; flex: 1 1 16rem; min-width: 0; }
+    .updaterParentWhereNote { margin: 0 0.6rem 0.25rem; overflow-wrap: anywhere; }
+    .updaterFilterRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .updaterFilterRow .tabSearch { flex: 1 1 16rem; min-width: 0; }
+    .updaterFilterRow .updaterRetrieveMetadata { margin-right: 0.6rem; }
+    .updaterOrgChangesNote { margin: 0 0.6rem 0.25rem; overflow-wrap: anywhere; }
+    .updaterApplyRetrieved { margin: 0 0.6rem 0.4rem; }
+    .updaterOrgHints { margin: 0 0.6rem 0.5rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 4px; }
+    .updaterOrgHintsHeading { font-weight: 600; margin-bottom: 0.2rem; }
+    .updaterOrgHintList { margin-top: 0.25rem; }
+    .updaterOrgHintListHeading { font-weight: 600; font-size: 0.92em; }
+    .updaterOrgHint { display: flex; flex-wrap: wrap; gap: 0.5rem; overflow-wrap: anywhere; }
+    .updaterOrgHintObject { font-weight: 600; }
+    .updaterOrgChangeChip, .adapterChildRequired { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border: 1px dashed var(--sdt-accent); border-radius: 0.6rem; }
+    .adapterChildAdd { margin-left: auto; }
+    .adapterChildEditor { margin: 0.35rem 0 0.25rem 2.1rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-left: 3px solid var(--sdt-accent); border-radius: 4px; }
+    .adapterChildHeading { font-weight: 600; overflow-wrap: anywhere; }
+    .adapterChildCount { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.35rem 0; }
+    .adapterChildCountInput { box-sizing: border-box; width: 5em; padding: 0.15rem 0.35rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 4px; }
+    .adapterChildCountInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .adapterChildFields { margin: 0.25rem 0 0.4rem; }
+    .adapterChildFields .updaterField { padding-left: 0; }
+    .adapterChildRefusal { color: var(--sdt-removed); font-size: 0.9em; margin-bottom: 0.3rem; }
+    .adapterChildPreviewNote, .adapterChildUnreadable { font-size: 0.9em; margin: 0.25rem 0; }
+    .adapterChildPreview { margin-top: 0.3rem; overflow-x: auto; }
+    .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
+    .treeQueryTitle { font-weight: 600; }
+    .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+    .treeQueryNote { font-size: 0.9em; }
+    .treeQueryEdited { margin-left: 0.4rem; font-weight: normal; font-size: 0.85em; }
+    .treeQueryText {
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        margin-top: 0.3rem;
+        padding: 0.3rem 0.4rem;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+        resize: vertical;
+    }
+    .treeQueryText:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .treeQueryResult { margin-top: 0.4rem; }
+    .sdtRowTableWrap { overflow: auto; max-width: 100%; margin-top: 0.2rem; }
+    .sdtRowTable { border-collapse: collapse; font-size: 0.9em; }
+    .sdtRowTable th, .sdtRowTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; }
+    .sdtRowTable th { white-space: nowrap; }
+    .treeQueryTableWrap { max-height: 24rem; }
+    .historyTableWrap { max-height: 28rem; }
+    .historyTable { width: 100%; }
+    .historyStatus {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        white-space: nowrap;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .historyDetail { display: block; margin-top: 0.1rem; word-break: break-word; }
+    .historyFiles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; }
+    .historyHiddenNote { margin-top: 0.3rem; }
+    .treeQueryTable td .treeQueryRecordLink { font: inherit; padding: 0; }
+    .treeQueryTable th, .treeQueryTable td { white-space: pre-wrap; }
+    /*
+        A TODO or validation rule group is a card (#383): the action cards' surface, border and
+        radius around a header that is the card kind's button. Closed, the header button fills the
+        card's fixed height and the groups tile like the action cards; open, the header shrinks to
+        its content, the card takes the grid's full width and grows to hold its rows. A text header
+        (nothing to open) neither fills the card nor turns its border accent on hover.
+    */
+    .troubleshootingGroupCards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--sdt-action-card-width)), 1fr));
+        align-items: start;
+        gap: 0.6rem;
+        margin-top: 0.5rem;
+    }
+    .troubleshootingGroupCards > :not(.troubleshootingGroupCard) { grid-column: 1 / -1; }
+    .troubleshootingGroupCard {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: var(--sdt-action-card-height);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+    }
+    .troubleshootingGroupCard.expanded { grid-column: 1 / -1; }
+    .troubleshootingGroupCard:has(> button.troubleshootingGroupCardHeader:hover) { border-color: var(--sdt-accent); }
+    .troubleshootingGroupCard > .troubleshootingGroupCardHeader {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        flex: 0 0 auto;
+        width: 100%;
+        height: auto;
+        padding: 0.6rem 0.75rem;
+        border: none;
+        border-radius: 7px;
+    }
+    .troubleshootingGroupCard:not(.expanded) > button.troubleshootingGroupCardHeader { flex-grow: 1; }
+    .troubleshootingGroupCard.expanded > .troubleshootingGroupCardHeader { border-radius: 7px 7px 0 0; }
+    .troubleshootingGroupCardLabel { min-width: 0; overflow-wrap: anywhere; color: var(--sdt-accent); }
+    .troubleshootingGroupCardHeading .troubleshootingTodoCount, .troubleshootingGroupCardHeading .validationRuleCount { margin-left: auto; flex: none; font-weight: normal; }
+    .validationRuleDetail { font-size: 0.95em; }
+    .troubleshootingTodoRows, .validationRuleRows { padding: 0 0.75rem 0.6rem; }
+    .validationRuleEmpty, .validationRuleUnread { padding: 0 0.75rem 0.6rem; }
+    .validationRuleCount { font-size: 0.9em; }
+    .validationRule { margin: 0.3rem 0 0 0; padding: 0.3rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; font-size: 0.9em; }
+    .validationRuleHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .validationRuleName { font-family: var(--vscode-editor-font-family); font-weight: 600; }
+    .validationRuleStatus { font-weight: 600; }
+    .validationRuleMessage, .validationRuleReason, .validationRuleFormula { white-space: pre-wrap; word-break: break-word; margin-top: 0.15rem; }
+    .validationRuleFormula { font-family: var(--vscode-editor-font-family); }
+    .validationRuleFormulaToggle { margin-top: 0.25rem; }
+    .troubleshootingTodoCount { font-size: 0.9em; }
+    .troubleshootingTodo { margin: 0.3rem 0 0 0; font-size: 0.9em; }
+    .troubleshootingTodoHead { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+    .troubleshootingTodoField { font-family: var(--vscode-editor-font-family); font-weight: 600; color: var(--sdt-accent); }
+    .troubleshootingTodoField.muted { font-weight: normal; color: var(--sdt-muted); }
+    .troubleshootingTodoAction { margin-left: auto; }
+    .troubleshootingTodoText { display: block; margin: 0.1rem 0 0 0; white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); color: var(--sdt-muted); }
+    .todosViews { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.2rem 0; }
+    .todosViews .todosView.selected.sdtButton { color: var(--sdt-text); background-color: var(--sdt-row-hover); font-weight: 600; }
+    .treeRecordCount { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .treeRecordCountButton { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; }
+    .treeRecordCountButton.changed:not(:disabled) { border-color: var(--sdt-changed); }
+    .treeRecordCountChanged { font-weight: normal; font-size: 0.85em; color: var(--sdt-muted); }
+    .sdtButton-secondary:disabled .fixedValueGlyph path { stroke: var(--sdt-disabled-text); }
+    .treeRecordCountButton:disabled .treeRecordCountChanged { color: var(--sdt-disabled-text); }
+    .treeRecordCountInput {
+        width: 4.5rem;
+        padding: 0.15rem 0.3rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .treeRecordCountError { color: var(--sdt-removed); }
+    .picklistValues { margin: 0.2rem 0 0 1.4rem; }
+    .picklistEditor {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin-left: 0;
+        padding: 0.4rem 0.5rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+    }
+    .picklistEditor.hidden { display: none; }
+    .picklistEditorHeader { display: flex; align-items: flex-start; gap: 0.4rem; }
+    .picklistEditorHeader .fieldEditorHint { flex: 1 1 auto; }
+    .picklistEditorClose { flex: none; padding: 0 0.3rem; font-size: 1.2em; line-height: 1; }
+    .picklistEditorBody { display: flex; flex-direction: column; gap: 0.3rem; }
+    .picklistTiles { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .picklistTile {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        max-width: 100%;
+        padding: 0.2rem 0.5rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .picklistTile.chosen { border-color: var(--sdt-action-edge); }
+    .picklistTile .picklistValue { padding-left: 0; }
+    .picklistEditorNote, .picklistEditorReason { font-size: 0.85em; }
+    .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
+    .picklistValue { padding-left: 0.6rem; word-break: break-word; }
+    .expression, .updaterEditedValue {
+        margin: 0.15rem 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-muted);
+    }
+    /* THE TITLE BAR RUNS THE PANEL'S FULL WIDTH (#434): ITS SIDE MARGINS UNDO THE BODY'S 1rem PADDING */
+    .cockpitHeader {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin: 0 -1rem;
+        padding: 0.6rem 1rem;
+        color: var(--sdt-on-header);
+        background-color: var(--sdt-header);
+    }
+    .cockpitHeader h1 { margin: 0; }
+    .cockpitMeta { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; margin-left: auto; color: var(--sdt-on-header-muted); }
+    .cockpitChangelog { box-sizing: border-box; height: 2rem; gap: 0.4rem; padding: 0 0.5rem; font: inherit; color: var(--sdt-on-header-muted); }
+    .cockpitChangelog:hover:not(:disabled) { color: var(--sdt-on-header); background-color: transparent; border-color: var(--sdt-on-header-muted); }
+    .githubGlyph { display: block; width: 18px; height: 18px; }
+    .githubGlyph path { fill: var(--sdt-on-header-muted); }
+    .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }
+    /* include: ../../CockpitKit/panel/CockpitConfirmDialog.css */
+    /* include: treecipe/objectRefresh/ObjectRefreshDialog.css */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            transition: none !important;
+            animation: none !important;
+        }
+    }

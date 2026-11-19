@@ -3,3 +3,7 @@ src/treecipe/src/ExtensionCommandService/tests/golden/** -text
 
 # The stale-bundle test compares the committed panel bundle with esbuild's LF output byte for byte (#637)
 src/treecipe/src/RecipeCockpitService/RecipeCockpitPanelBundle.generated.ts text eol=lf
+
+# The stale-stylesheet test compares the committed stylesheet with the .css files it is built from, byte for byte (#644)
+src/treecipe/src/RecipeCockpitService/RecipeCockpitPanelStylesheet.generated.ts text eol=lf
+src/treecipe/src/**/panel/**/*.css text eol=lf
