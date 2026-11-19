@@ -59,3 +59,13 @@ export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS = 'Show less';
 // HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
+
+export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
+
+/*
+    A nickname YAML loads as a boolean or null names no record (#151, #380): the insert's whole-string
+    swap never matches it. The rule is RecipeCockpitRecipeWriter's YAML_NON_STRING_PLAIN_SCALAR_PATTERN,
+    spelled out here because the writer imports nothing and the panel cannot take it whole;
+    RecipeCockpitPanelBundle.test.ts fails when the two differ.
+*/
+export const RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;

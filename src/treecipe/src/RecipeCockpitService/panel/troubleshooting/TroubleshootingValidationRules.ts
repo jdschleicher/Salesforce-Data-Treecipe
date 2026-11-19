@@ -13,16 +13,14 @@ import {
 import { applyTroubleshootingFilter, buildTroubleshootingGroupCard, drawTroubleshootingGroupExpanded } from './TroubleshootingTab';
 import { ITroubleshootingSubTabState, ITroubleshootingTreeState, IValidationRule, IValidationRuleEntry, IValidationRuleGroupState, IValidationRulesMessage } from './TroubleshootingTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { findTreeState, renderedSequence } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
 
 /*
     The Validation Rules sub-tab (#327, #560, #639): per tree object, each rule the project holds and
-    what generation did with it, read by the host when the sub-tab first opens. These names are the
-    panel script's own, read when a function runs.
+    what generation did with it, read by the host when the sub-tab first opens.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare function findTreeState(treeKey: unknown): ITroubleshootingTreeState | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 type ValidationRuleStatus = keyof typeof RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS;
 

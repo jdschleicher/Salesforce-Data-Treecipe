@@ -2,7 +2,7 @@
 //
 // The panel runs in a webview whose CSP admits only the nonced inline script, so the bundle is not
 // a file the webview loads: it is written as a string constant into a generated .ts file, and
-// buildWebviewShellHtml interpolates that string inside the panel script's outer function. The
+// buildWebviewShellHtml makes that string the whole of the panel's script (#657). The
 // generated file is committed, so ts-jest and the panel harness run it with no build step, and
 // RecipeCockpitPanelBundle.test.ts fails when it no longer matches what this script writes.
 
@@ -13,9 +13,6 @@ const path = require('path');
 const PANEL_ENTRY_POINT = 'src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanel.ts';
 const PANEL_BUNDLE_FILE = 'src/treecipe/src/RecipeCockpitService/RecipeCockpitPanelBundle.generated.ts';
 const PANEL_BUNDLE_CONSTANT = 'RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT';
-
-// THE NAME THE PANEL SCRIPT READS THE MODULES' EXPORTS FROM; A LOCAL OF ITS OUTER FUNCTION, NEVER A WINDOW GLOBAL
-const PANEL_MODULES_NAME = 'recipeCockpitPanelModules';
 
 // VS Code 1.94 (the engines floor) ships Chromium 124; es2020 keeps the output close to the source
 const PANEL_TARGET = 'es2020';
@@ -33,8 +30,8 @@ class PanelBundler {
             bundle: true,
             write: false,
             platform: 'browser',
+            // NO globalName (#657): THE ENTRY STARTS THE PANEL ITSELF, SO THE BUNDLE LEAVES NOTHING ON window
             format: 'iife',
-            globalName: PANEL_MODULES_NAME,
             target: PANEL_TARGET,
             // NOT MINIFIED: the source-scanning suites (button kinds, textContent only, createElementNS
             // glyphs, no .style.) read the shell's script, bundle included, as they read the string before
@@ -49,7 +46,7 @@ class PanelBundler {
     static async buildScript() {
 
         const result = await esbuild.build(this.buildOptions());
-        // esbuild opens a strict-mode IIFE with "use strict"; inlined mid-function it is only a stray string
+        // esbuild opens the IIFE with "use strict"; dropped, the panel runs in the mode its template-literal script always ran in
         return this.refuseClosingScriptTag(result.outputFiles[0].text.replace(/^"use strict";\n/, ''));
 
     }
@@ -104,7 +101,7 @@ class PanelBundler {
 
 }
 
-module.exports = { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE, PANEL_BUNDLE_CONSTANT, PANEL_MODULES_NAME, REGENERATE_COMMAND };
+module.exports = { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE, PANEL_BUNDLE_CONSTANT, REGENERATE_COMMAND };
 
 // THE COMMAND-LINE ENTRY ONLY: JEST REQUIRES THIS FILE, SO run() IS TESTED DIRECTLY IN esbuild.panel.test.js
 /* istanbul ignore next */

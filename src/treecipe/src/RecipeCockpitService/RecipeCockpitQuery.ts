@@ -5,6 +5,10 @@ import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { ISOQLTreeQuery, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RunArtifacts/RecipeCockpitRunArtifacts';
+import { RECIPE_COCKPIT_QUERY_MAX_LENGTH } from './RecipeCockpitQueryTabConstants';
+
+// THE PANEL HOLDS A QUERY TO THE SAME LIMIT, SO IT LIVES IN AN IMPORT-FREE FILE (#657)
+export { RECIPE_COCKPIT_QUERY_MAX_LENGTH };
 
 /*
     The Query tab (#367): a tree's generated SOQL, the check an edited query is held to before it is
@@ -17,9 +21,6 @@ import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '.
     about what it may read. Everything the org answers is untrusted: it is type-checked here, and the
     panel writes it with textContent.
 */
-
-// SOQL'S OWN LIMIT: A WIDE OBJECT'S GENERATED BASE QUERY PASSES 10,000 CHARACTERS AT ABOUT 400 FIELDS
-export const RECIPE_COCKPIT_QUERY_MAX_LENGTH = 100000;
 
 // THE MOST RECORDS ONE RUN FETCHES: PAST IT THE RUN STOPS AND SAYS THE RESULT WAS TRUNCATED
 export const RECIPE_COCKPIT_QUERY_RECORD_CAP = 50000;

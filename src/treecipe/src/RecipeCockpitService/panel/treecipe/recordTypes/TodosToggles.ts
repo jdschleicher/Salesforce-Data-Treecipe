@@ -9,15 +9,13 @@ import {
 import { IRecipeTodo, IRecordTypesTreeObjectState, IRecordTypesTreeState } from './RecordTypeTypes';
 import { displayTitleOf } from '../navigation/TreePicker';
 import { applyStructureFilter, drawStructureMatchCount, filterTreeObjectRows } from '../navigation/StructureFilter';
+import { buildSourceLink, pluralize } from '../../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../../shell/PanelPlace';
 
 /*
     The Treecipe tab's "TODOs only" checks: the card's (#354) and each object's (#477), and the list
-    of a field's or an object's TODO comments. These names are the panel script's own, read when a
-    function runs.
+    of a field's or an object's TODO comments.
 */
-declare function buildSourceLink(className: string, labelText: string, filePath: string, lineNumber: number): HTMLElement;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
 
 /*
     The card's "TODOs only" (#354): per card and panel-only, kept in the reader's place. It narrows

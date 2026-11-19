@@ -3,6 +3,7 @@ import { ObjectInfo } from "../ObjectInfoWrapper/ObjectInfo";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { RelationshipDetail, RelationshipTree, OrderedRecipeStructure, OrderedRelationshipTree, RecipeLevel, RecipeInfo, RecipeFileOutput } from "../ObjectInfoWrapper/RelationshipTypes";
 import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
+import { REFERENCE_ID_REQUIRED_TODO } from "./ReferenceIdRequiredTodo";
 
 export class RelationshipService {
 
@@ -451,7 +452,7 @@ export class RelationshipService {
 
   }
 
-  static readonly referenceIdRequiredTodo = '### TODO -- REFERENCE ID REQUIRED';
+  static readonly referenceIdRequiredTodo = REFERENCE_ID_REQUIRED_TODO;
 
   /*
     The parent an object is nested under in a faker-js recipe (#46): of its parents in the same tree

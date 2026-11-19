@@ -16,26 +16,18 @@ import { drawDataOrgViews } from '../treecipe/dataOrg/DataOrgView';
 import { drawTreeInserts, listTreeInsertObjectApiNames } from '../treecipe/dataOrg/TreeInsert';
 import { applyTroubleshootingFilter, describeRunningInsert } from './TroubleshootingTab';
 import { ITroubleshootingSummaryMessage, ITroubleshootingTreeState } from './TroubleshootingTypes';
+import { renderedSequence } from '../shell/PanelRender';
+import { drawActionCardState, pluralize, setTextShown } from '../RecipeCockpitPanelShared';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
+import { dataOrgPicker } from '../treecipe/dataOrg/DataOrgPickerState';
 
 /*
     The Troubleshooting tab's actions (#274, #306, #326, #346, #382, #639): each deploy and retrieve
     card, and the two permission set cards. A click posts the tree's KEY and an org index at most;
-    the host plans, confirms and runs. These names are the panel script's own: the run locks a
-    click takes are its variables, which drawTreeInserts reads for every other button.
+    the host plans, confirms and runs. The run locks a click takes are runLocks', which
+    drawTreeInserts reads for every other button.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare const dataOrgSelectedIndex: number | null;
-declare const insertRunningTreeKey: string | null;
-declare const isScratchOrgRunning: boolean;
-declare let isMetadataDeployRunning: boolean;
-declare let metadataDeployRunningKey: string | null;
-declare let isMetadataRetrieveRunning: boolean;
-declare let metadataRetrieveRunningKey: string | null;
-declare let isPermissionSetAssignRunning: boolean;
-declare function drawActionCardState(actionCard: IActionCardView, reason: string, title: string): void;
-declare function setTextShown(element: HTMLElement, text: string): void;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 // WHAT AN ACTION CARD SAYS BELOW ITS WHY LINE, AND WHY IT CANNOT RUN ('' WHEN IT CAN)
 interface IActionSummary {
@@ -52,12 +44,12 @@ export function buildDeployAction(treeState: ITroubleshootingTreeState, deployKi
 
     buttonElement.addEventListener('click', function () {
         if (buttonElement.disabled || renderedSequence === null) { return; }
-        isMetadataDeployRunning = true;
-        metadataDeployRunningKey = treeState.tree.treeKey + '\n' + deployKind;
+        runLocks.isMetadataDeployRunning = true;
+        runLocks.metadataDeployRunningKey = treeState.tree.treeKey + '\n' + deployKind;
         drawTreeInserts();
         drawDataOrgViews();
         const deployMessage: { command: string; treeKey: string; orgIndex?: number } = { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: treeState.tree.treeKey };
-        if (dataOrgSelectedIndex !== null) { deployMessage.orgIndex = dataOrgSelectedIndex; }
+        if (dataOrgPicker.dataOrgSelectedIndex !== null) { deployMessage.orgIndex = dataOrgPicker.dataOrgSelectedIndex; }
         vscodeApi.postMessage(deployMessage);
     });
 
@@ -123,8 +115,8 @@ export function buildRetrieveAction(treeState: ITroubleshootingTreeState, retrie
     const retrieveButtonElement = actionCard.buttonElement;
     retrieveButtonElement.addEventListener('click', function () {
         if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
-        isMetadataRetrieveRunning = true;
-        metadataRetrieveRunningKey = treeState.tree.treeKey + '\n' + retrieveKind;
+        runLocks.isMetadataRetrieveRunning = true;
+        runLocks.metadataRetrieveRunningKey = treeState.tree.treeKey + '\n' + retrieveKind;
         drawTreeInserts();
         drawDataOrgViews();
         vscodeApi.postMessage({ command: RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[retrieveKind], treeKey: treeState.tree.treeKey });
@@ -188,12 +180,12 @@ export function buildAssignPermissionSetCard(treeState: ITroubleshootingTreeStat
 
     buttonElement.setAttribute('title', RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
     buttonElement.addEventListener('click', function () {
-        if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
-        isPermissionSetAssignRunning = true;
+        if (runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning || runLocks.insertRunningTreeKey !== null || runLocks.isScratchOrgRunning || renderedSequence === null) { return; }
+        runLocks.isPermissionSetAssignRunning = true;
         drawTreeInserts();
         drawDataOrgViews();
         const permissionSetMessage: { command: string; treeKey: string; orgIndex?: number } = { command: 'assignTreePermissionSets', treeKey: treeState.tree.treeKey };
-        if (dataOrgSelectedIndex !== null) { permissionSetMessage.orgIndex = dataOrgSelectedIndex; }
+        if (dataOrgPicker.dataOrgSelectedIndex !== null) { permissionSetMessage.orgIndex = dataOrgPicker.dataOrgSelectedIndex; }
         vscodeApi.postMessage(permissionSetMessage);
     });
 
@@ -228,10 +220,10 @@ export function drawTreePermissionSet(treeState: ITroubleshootingTreeState): voi
 
     const permissionSetCard = treeState.permissionSetCard;
     if (permissionSetCard) {
-        const assignReason = isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : isMetadataDeployRunning ? 'Metadata is being deployed.'
-            : insertRunningTreeKey !== null ? describeRunningInsert()
-            : isScratchOrgRunning ? 'A scratch org is being set up.'
+        const assignReason = runLocks.isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+            : runLocks.isMetadataDeployRunning ? 'Metadata is being deployed.'
+            : runLocks.insertRunningTreeKey !== null ? describeRunningInsert()
+            : runLocks.isScratchOrgRunning ? 'A scratch org is being set up.'
             : '';
         drawActionCardState(permissionSetCard, assignReason, RECIPE_COCKPIT_ASSIGN_PERMISSION_SETS_TITLE);
     }
@@ -239,8 +231,8 @@ export function drawTreePermissionSet(treeState: ITroubleshootingTreeState): voi
     const generateCard = treeState.generatePermissionSetCard;
     if (generateCard) {
         const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
-            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : isMetadataDeployRunning ? 'Metadata is being deployed.'
+            : runLocks.isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+            : runLocks.isMetadataDeployRunning ? 'Metadata is being deployed.'
             : '';
         drawActionCardState(generateCard, generateReason, 'Write a permission set granting Create and Read on this tree\'s objects and access to its fields into this project\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
     }
@@ -250,12 +242,12 @@ export function drawTreePermissionSet(treeState: ITroubleshootingTreeState): voi
 
         const retrieveCard = retrieveCards[retrieveKind] as IActionCardView;
         const described = describeRetrieveSummary(treeState, retrieveKind);
-        const busyReason = isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
-            : insertRunningTreeKey !== null ? describeRunningInsert()
-            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : isMetadataDeployRunning ? 'Metadata is being deployed.'
+        const busyReason = runLocks.isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
+            : runLocks.insertRunningTreeKey !== null ? describeRunningInsert()
+            : runLocks.isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+            : runLocks.isMetadataDeployRunning ? 'Metadata is being deployed.'
             : '';
-        const title = metadataRetrieveRunningKey === treeState.tree.treeKey + '\n' + retrieveKind ? 'Retrieving…' : RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind];
+        const title = runLocks.metadataRetrieveRunningKey === treeState.tree.treeKey + '\n' + retrieveKind ? 'Retrieving…' : RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS[retrieveKind];
 
         setTextShown(retrieveCard.detailElement, described.text);
         if (retrieveCard.titleElement.textContent !== title) { retrieveCard.titleElement.textContent = title; }
@@ -270,14 +262,14 @@ export function drawTreePermissionSet(treeState: ITroubleshootingTreeState): voi
 
         const deployCard = deployCards[deployKind] as IActionCardView;
         const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
-        const busyReason = isMetadataDeployRunning ? 'Metadata is being deployed.'
-            : insertRunningTreeKey !== null ? describeRunningInsert()
-            : isScratchOrgRunning ? 'A scratch org is being set up.'
-            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
+        const busyReason = runLocks.isMetadataDeployRunning ? 'Metadata is being deployed.'
+            : runLocks.insertRunningTreeKey !== null ? describeRunningInsert()
+            : runLocks.isScratchOrgRunning ? 'A scratch org is being set up.'
+            : runLocks.isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+            : runLocks.isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
             : '';
         const deployReason = described.emptyReason || busyReason;
-        const title = metadataDeployRunningKey === treeState.tree.treeKey + '\n' + deployKind ? 'Deploying…' : RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind];
+        const title = runLocks.metadataDeployRunningKey === treeState.tree.treeKey + '\n' + deployKind ? 'Deploying…' : RECIPE_COCKPIT_DEPLOY_ACTION_LABELS[deployKind];
 
         setTextShown(deployCard.detailElement, described.text);
         if (deployCard.titleElement.textContent !== title) { deployCard.titleElement.textContent = title; }
@@ -293,7 +285,7 @@ export function drawTreePermissionSet(treeState: ITroubleshootingTreeState): voi
 
 export function renderPermissionSetAssignState(hostMessage: { isRunning?: unknown }): void {
 
-    isPermissionSetAssignRunning = !!hostMessage.isRunning;
+    runLocks.isPermissionSetAssignRunning = !!hostMessage.isRunning;
 
     drawDataOrgViews();
     drawTreeInserts();

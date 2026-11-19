@@ -15,22 +15,19 @@ import { applyTreeFocus, clearStructureFilters } from './StructureFilter';
 import { applyFavoritesFilter, chooseTree, displayTitleOf, isHiddenByFavorites } from './TreePicker';
 import { asNavigationObjectState, asNavigationTreeState } from './NavigationTypes';
 import type { INavigationObjectState, INavigationTreeState, ITreeObjectStateView, ITreeStateView, ITreecipesSearch, ITreecipesSearchEntry, ITreecipesSearchTree, ScriptTreeState } from './NavigationTypes';
+import { treeStates } from '../../shell/PanelRender';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { selectTreeTab } from '../card/TreeCardTabs';
+import { setTreeObjectExpanded } from '../card/TreeObjectRow';
+import { navigationState } from './NavigationState';
 
 /*
     The Treecipes section's search across every card (#374): its index, built once per model from
     what the model already holds, its result rows, and opening what a result names. The search text,
-    its index and matches are the panel script's lets, declare let here: it keeps the text with the
-    reader's place and empties the index for every model.
+    its index and matches are navigationState's: the place keeps the text, and every model empties
+    the index.
 */
-declare let treecipesSearch: ITreecipesSearch | null;
-declare let treecipesSearchText: string;
-declare let treecipesSearchIndex: ITreecipesSearchTree[] | null;
-declare let treecipesMatchedTreeKeys: Record<string, true> | null;
-declare const treeStates: ScriptTreeState[];
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
-declare function selectTreeTab(treeState: ScriptTreeState | INavigationTreeState, tab: string, isAnimated?: boolean): void;
-declare function setTreeObjectExpanded(treeObjectState: INavigationObjectState, isExpanded: boolean, isAnimated?: boolean): void;
 
 const TREECIPES_SEARCH_KINDS: Array<{ kind: ITreecipesSearchEntry['kind']; label: string }> = [
     { kind: 'treecipe', label: 'treecipe' },
@@ -110,9 +107,9 @@ export function buildTreecipesSearch(): ITreecipesSearch {
     inputElement.setAttribute('type', 'search');
     inputElement.setAttribute('placeholder', RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER);
     inputElement.setAttribute('aria-label', RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER);
-    inputElement.value = treecipesSearchText;
+    inputElement.value = navigationState.treecipesSearchText;
     inputElement.addEventListener('input', function () {
-        treecipesSearchText = String(inputElement.value || '');
+        navigationState.treecipesSearchText = String(inputElement.value || '');
         applyTreecipesSearch();
         savePanelPlace();
     });
@@ -127,7 +124,7 @@ export function buildTreecipesSearch(): ITreecipesSearch {
         matchCountElement: createElement('span', 'treecipesSearchCount muted'),
         resultsElement: createElement('div', 'treecipesSearchResults hidden')
     };
-    treecipesSearch = search;
+    navigationState.treecipesSearch = search;
     search.resultsElement.setAttribute('role', 'list');
     search.resultsElement.setAttribute('aria-label', 'Search results');
     searchElement.appendChild(search.matchCountElement);
@@ -142,35 +139,35 @@ export function buildTreecipesSearch(): ITreecipesSearch {
 */
 export function applyTreecipesSearch(): void {
 
-    const search = treecipesSearch;
+    const search = navigationState.treecipesSearch;
     if (!search) {
         applyFavoritesFilter();
         return;
     }
 
-    const searchQuery = treecipesSearchText.trim().toLowerCase();
+    const searchQuery = navigationState.treecipesSearchText.trim().toLowerCase();
     const isQualifiedQuery = searchQuery.indexOf('.') !== -1;
     const resultsElement = search.resultsElement;
 
     resultsElement.textContent = '';
 
     if (!searchQuery) {
-        treecipesMatchedTreeKeys = null;
+        navigationState.treecipesMatchedTreeKeys = null;
         search.matchCountElement.textContent = '';
         resultsElement.classList.add('hidden');
         applyFavoritesFilter();
         return;
     }
 
-    if (treecipesSearchIndex === null) { treecipesSearchIndex = buildTreecipesSearchIndex(); }
+    if (navigationState.treecipesSearchIndex === null) { navigationState.treecipesSearchIndex = buildTreecipesSearchIndex(); }
 
     const matchedTreeKeys: Record<string, true> = Object.create(null);
-    treecipesMatchedTreeKeys = matchedTreeKeys;
+    navigationState.treecipesMatchedTreeKeys = matchedTreeKeys;
     let matchedTreeCount = 0;
     let drawnResultCount = 0;
     let hiddenResultCount = 0;
 
-    treecipesSearchIndex.forEach(function (indexedTree) {
+    navigationState.treecipesSearchIndex.forEach(function (indexedTree) {
 
         if (isHiddenByFavorites(indexedTree.treeState)) { return; }
 

@@ -21,31 +21,19 @@ import { findObjectFieldSelection, indexObjectExclusions, isTreeFieldUnticked, o
 import { displayTitleOf } from '../navigation/TreePicker';
 import { applyTreeFocus, buildTreeObjectKey } from '../navigation/StructureFilter';
 import { revealTreeObjectRow } from '../navigation/TreecipesSearch';
+import { renderedSequence, treeStates } from '../../shell/PanelRender';
+import { setTextShown } from '../../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { vscodeApi } from '../../RecipeCockpitPanelConnection';
+import { runLocks } from '../../RecipeCockpitRunLocks';
+import { dataOrgPicker } from './DataOrgPickerState';
+import { recordTypesState } from '../recordTypes/RecordTypesState';
 
 /*
     A tree's one insert button (#255, #375) and why it cannot run (#539). The host decides each
     object's readiness and checks every reason again on the click; the button only draws that
-    answer. The run locks are the panel script's variables, which a reopened panel's replay sets.
+    answer. The run locks are runLocks', which a reopened panel's replay sets.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare const treeStates: Array<IDataOrgTreeState & ITroubleshootingTreeState>;
-declare const dataOrgLabels: string[] | null;
-declare const dataOrgSelectedIndex: number | null;
-declare const dataOrgRequestSequence: number | null;
-declare const dataOrgSelectionFailureMessage: string;
-declare const dataOrgReadinessByObject: Record<string, IDataOrgReadiness>;
-declare const dataOrgReadinessByTreeObjectKey: Record<string, IDataOrgReadiness>;
-declare const isDataOrgChecking: boolean;
-declare const isScratchOrgRunning: boolean;
-declare const isPermissionSetAssignRunning: boolean;
-declare const isMetadataDeployRunning: boolean;
-declare const recordTypeObjects: unknown[];
-declare const isRecordTypeSelectionRemembered: boolean;
-declare let insertRunningTreeKey: string | null;
-declare let insertRunningDatasetFolderName: string | null;
-declare function setTextShown(element: HTMLElement, text: string): void;
-declare function savePanelPlace(): void;
 
 // WHAT THE CLICK POSTS: THE TREE'S KEY, AND THE RECORD TYPES TICKED UNDER Manage record types (#623) WHEN THEY DIFFER OR ARE REMEMBERED
 interface IInsertTreeMessage {
@@ -78,9 +66,9 @@ export function buildTreeInsertElement(treeState: IDataOrgTreeState): HTMLElemen
         const insertMessage: IInsertTreeMessage = { command: 'insertTree', treeKey: treeKey };
         const recordTypeSelection = buildRecordTypeSelection();
         // WITH "Remember this selection" TICKED THE TICKS ARE SENT EVEN WHEN NONE DIFFERS, SO A SAVED CHOICE IS FORGOTTEN
-        if (Object.keys(recordTypeSelection).length > 0 || (isRecordTypeSelectionRemembered && recordTypeObjects.length > 0)) {
+        if (Object.keys(recordTypeSelection).length > 0 || (recordTypesState.isRecordTypeSelectionRemembered && recordTypesState.recordTypeObjects.length > 0)) {
             insertMessage.recordTypeSelection = recordTypeSelection;
-            if (isRecordTypeSelectionRemembered) { insertMessage.isRemembered = true; }
+            if (recordTypesState.isRecordTypeSelectionRemembered) { insertMessage.isRemembered = true; }
         }
         vscodeApi.postMessage(insertMessage);
     });
@@ -102,7 +90,7 @@ export function buildTreeInsertElement(treeState: IDataOrgTreeState): HTMLElemen
 }
 
 function isTreeRunning(treeKey: string): boolean {
-    return insertRunningTreeKey === treeKey;
+    return runLocks.insertRunningTreeKey === treeKey;
 }
 
 /*
@@ -133,25 +121,25 @@ function findTreeInsertBlock(treeState: IDataOrgTreeState): ITreeInsertBlock {
 
     const blockedBy = function (reason: string): ITreeInsertBlock { return { reason: reason, readiness: null }; };
 
-    if (isDataOrgChecking) { return blockedBy(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON); }
-    if (insertRunningDatasetFolderName !== null) { return blockedBy(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON); }
-    if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return blockedBy('Another tree is being inserted.'); }
-    if (isScratchOrgRunning) { return blockedBy('A scratch org is being set up.'); }
-    if (isPermissionSetAssignRunning) { return blockedBy('Permission sets are being assigned.'); }
-    if (isMetadataDeployRunning) { return blockedBy('Metadata is being deployed.'); }
+    if (dataOrgPicker.isDataOrgChecking) { return blockedBy(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON); }
+    if (runLocks.insertRunningDatasetFolderName !== null) { return blockedBy(RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON); }
+    if (runLocks.insertRunningTreeKey !== null && runLocks.insertRunningTreeKey !== treeState.tree.treeKey) { return blockedBy('Another tree is being inserted.'); }
+    if (runLocks.isScratchOrgRunning) { return blockedBy('A scratch org is being set up.'); }
+    if (runLocks.isPermissionSetAssignRunning) { return blockedBy('Permission sets are being assigned.'); }
+    if (runLocks.isMetadataDeployRunning) { return blockedBy('Metadata is being deployed.'); }
 
     const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
     if (insertObjectApiNames.length === 0) { return blockedBy('Every object of this tree is excluded.'); }
 
     // THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): THE CLICK ASKS FOR THE ORG
-    if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return blockedBy(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON); }
-    if (dataOrgSelectionFailureMessage) { return blockedBy(dataOrgSelectionFailureMessage); }
+    if (dataOrgPicker.dataOrgRequestSequence === null || dataOrgPicker.dataOrgSelectedIndex === null) { return blockedBy(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON); }
+    if (dataOrgPicker.dataOrgSelectionFailureMessage) { return blockedBy(dataOrgPicker.dataOrgSelectionFailureMessage); }
 
     for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
         const objectApiName = insertObjectApiNames[objectIndex];
         const treeObjectKey = buildTreeObjectKey(treeState.tree.treeKey, objectApiName);
-        const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey]
-            : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName]
+        const readiness = hasOwnKey(dataOrgPicker.dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgPicker.dataOrgReadinessByTreeObjectKey[treeObjectKey]
+            : hasOwnKey(dataOrgPicker.dataOrgReadinessByObject, objectApiName) ? dataOrgPicker.dataOrgReadinessByObject[objectApiName]
             : null;
         if (!readiness) { return blockedBy('checking whether this tree can be inserted…'); }
         if (readiness.disabledReason) { return { reason: readiness.disabledReason, readiness: readiness }; }
@@ -240,12 +228,12 @@ export function drawTreeInsert(treeState: IDataOrgTreeState): void {
     const insertBlock = findTreeInsertBlock(treeState);
     const insertReason = insertBlock.reason;
     const isOrgToChoose = insertReason === RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON;
-    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
+    const orgLabel = dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgSelectedIndex !== null && dataOrgPicker.dataOrgLabels[dataOrgPicker.dataOrgSelectedIndex] ? dataOrgPicker.dataOrgLabels[dataOrgPicker.dataOrgSelectedIndex] : '';
     const actionLabel = RECIPE_COCKPIT_INSERT_ACTION_LABEL + (insertReason === '' && orgLabel ? ' into ' + orgLabel : '');
 
     insert.buttonElement.disabled = isTreeRunning(tree.treeKey) || (insertReason !== '' && !isOrgToChoose);
 
-    insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : actionLabel;
+    insert.buttonElement.textContent = runLocks.insertRunningTreeKey === tree.treeKey ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : actionLabel;
     insert.buttonElement.setAttribute('aria-label', actionLabel + ' for ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
     insert.buttonElement.setAttribute('title', isOrgToChoose
         ? 'Choose the org to insert into, then generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' and insert it, parents first'
@@ -267,8 +255,8 @@ export function drawTreeInserts(): void {
 // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER IS DISABLED; ITS insertState GIVES THEM BACK
 export function setInsertRunning(runningTreeKey: string | null, runningDatasetFolderName?: unknown): void {
 
-    insertRunningTreeKey = runningTreeKey;
-    insertRunningDatasetFolderName = runningTreeKey !== null && typeof runningDatasetFolderName === 'string' ? runningDatasetFolderName : null;
+    runLocks.insertRunningTreeKey = runningTreeKey;
+    runLocks.insertRunningDatasetFolderName = runningTreeKey !== null && typeof runningDatasetFolderName === 'string' ? runningDatasetFolderName : null;
     drawTreeInserts();
     drawDataOrgViews();
     drawRecordTypeChoices();

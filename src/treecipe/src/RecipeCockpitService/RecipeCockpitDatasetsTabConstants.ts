@@ -4,8 +4,8 @@ import type { RunHistoryRowStatus } from './RecipeCockpitTroubleshootingConstant
     What the Previously Used Data Sets tab's panel modules draw with (#642): a data set row's name,
     star, record types, newest insert and insert journey. It imports only a type from a host-free
     file, so the panel bundle can import it; RecipeCockpitService.ts re-exports every name. The
-    favourite words are also drawn by code still in the panel script, which the shell passes them
-    to; the insert-running and connection-check words, by the tree insert's module too (#654).
+    favourite words are also drawn by a tree card's header (#657); the insert-running and
+    connection-check words, by the tree insert's module too (#654).
 */
 
 /*

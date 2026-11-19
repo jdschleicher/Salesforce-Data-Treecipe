@@ -10,12 +10,15 @@ import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { findFixedValue } from './FieldRowFixedValue';
 import { findObjectExclusion, findObjectFieldSelection, isSameOccurrence, occurrenceNicknameOf } from './SelectionCascade';
 import type { FieldRowsPanelMessage, IFieldRowField, IFieldRowFieldState, IFieldRowObjectState, IFieldValidationRules, ISelectionTree } from './FieldRowTypes';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void } = cockpitVscodeApi;
 
 /*
     A field row's validation-rule box (#325), or the note naming rules #324 could not apply. The box
     posts names and the state asked for; the host decides, may ask first, and re-derives the lock.
 */
-declare const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void };
 
 export function hasSwitchableValidationRules(field: IFieldRowField): boolean {
     return !!field.lineNumber && !!field.validationRules && Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0;

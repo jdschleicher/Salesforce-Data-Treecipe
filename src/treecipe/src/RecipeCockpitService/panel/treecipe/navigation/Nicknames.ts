@@ -1,22 +1,21 @@
 import { createButton, createElement } from '../../../../CockpitKit/panel/CockpitPanelElements';
-import { RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT, RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI, RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT } from '../../../RecipeCockpitNavigationConstants';
+import { RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT, RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI, RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT, RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN } from '../../../RecipeCockpitNavigationConstants';
 import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import type { IFieldRowFieldState } from '../fieldRows/FieldRowTypes';
 import { buildChipEmoji, drawFriendsButton } from './Friends';
 import { revealTreeObjectRow } from './TreecipesSearch';
 import { asNavigationObjectState, asNavigationTreeState } from './NavigationTypes';
 import type { INavigationObject, INavigationObjectState, INavigationTreeState, INicknameIndex, INicknameUsage, IOpenReferenceMenu, IReferenceMenuEntry, IReferenceMenuOwner, ITreeObjectStateView, ITreeStateView } from './NavigationTypes';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { navigationState } from './NavigationState';
 
 /*
     Nicknames as references (#380, #491): the one row each nickname names, the fields pointing to
     it, and the lists that move between them, kept to one open at a time with the keys a menu takes.
-    The open list is the panel script's let, declare let here, since a new model and a click
-    anywhere else close it there. YAML_NON_STRING_NICKNAME_PATTERN stays injected into the script,
-    since RecipeCockpitRecipeWriter, which keeps the rule beside the writer, is no panel module.
+    The open list is navigationState's, since a new model and a click anywhere else close it.
+    RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN is the recipe writer's rule, spelled out where
+    the panel can import it and held to the writer's by a test (#657).
 */
-declare let openNicknameMenu: IOpenReferenceMenu | null;
-declare const YAML_NON_STRING_NICKNAME_PATTERN: RegExp;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 let nicknameMenuHintSequence = 0;
 
@@ -26,7 +25,7 @@ export function nicknameOfObject(object: { nickname?: string; recipeNickname?: s
 }
 
 function isReferenceableNickname(nickname: string): boolean {
-    return /^[A-Za-z][A-Za-z0-9_]*$/.test(nickname) && !YAML_NON_STRING_NICKNAME_PATTERN.test(nickname);
+    return /^[A-Za-z][A-Za-z0-9_]*$/.test(nickname) && !RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN.test(nickname);
 }
 
 // A VALUE THAT IS ONE NICKNAME AND NOTHING ELSE, BUT FOR COMMENT LINES UNDER IT (#194'S RECORD TYPE BLOCKS NOTE); ELSE null
@@ -162,7 +161,7 @@ export function drawObjectNickname(treeObjectState: INavigationObjectState): voi
     chipElement.setAttribute('aria-label', nickname + ': ' + pluralize(usages.length, 'field points', 'fields point') + ' to it');
     chipElement.setAttribute('title', 'Show the fields that point to ' + nickname);
     chipElement.addEventListener('click', function () {
-        if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState) {
+        if (navigationState.openNicknameMenu && navigationState.openNicknameMenu.menuOwner === treeObjectState) {
             closeNicknameMenu(true);
             return;
         }
@@ -244,7 +243,7 @@ export function openReferenceMenu(menuOwner: IReferenceMenuOwner, hostElement: H
     const openerElement = openerOf();
     if (openerElement) { openerElement.setAttribute('aria-expanded', 'true'); }
 
-    openNicknameMenu = { menuOwner: menuOwner, menuElement: menuElement, itemElements: itemElements, entries: entries, openerOf: openerOf };
+    navigationState.openNicknameMenu = { menuOwner: menuOwner, menuElement: menuElement, itemElements: itemElements, entries: entries, openerOf: openerOf };
 
     if (itemElements.length > 0) { itemElements[0].focus(); }
 
@@ -252,10 +251,10 @@ export function openReferenceMenu(menuOwner: IReferenceMenuOwner, hostElement: H
 
 export function closeNicknameMenu(isFocusReturned: boolean): void {
 
-    if (!openNicknameMenu) { return; }
+    if (!navigationState.openNicknameMenu) { return; }
 
-    const closingMenu = openNicknameMenu;
-    openNicknameMenu = null;
+    const closingMenu = navigationState.openNicknameMenu;
+    navigationState.openNicknameMenu = null;
 
     closingMenu.menuElement.textContent = '';
     closingMenu.menuElement.classList.add('hidden');
@@ -284,9 +283,9 @@ function chooseNicknameUsage(usage: INicknameUsage): void {
 
 function handleNicknameMenuKey(event: KeyboardEvent, usageIndex: number): void {
 
-    if (!openNicknameMenu) { return; }
+    if (!navigationState.openNicknameMenu) { return; }
 
-    const itemElements = openNicknameMenu.itemElements;
+    const itemElements = navigationState.openNicknameMenu.itemElements;
     let nextIndex: number | null = null;
 
     if (event.key === 'ArrowDown') { nextIndex = (usageIndex + 1) % itemElements.length; }
@@ -305,7 +304,7 @@ function handleNicknameMenuKey(event: KeyboardEvent, usageIndex: number): void {
     if (event.key === 'Enter' || event.key === ' ') {
         // THE BROWSER WOULD CLICK THE BUTTON TOO; ONE CHOICE, NOT TWO
         if (typeof event.preventDefault === 'function') { event.preventDefault(); }
-        openNicknameMenu.entries[usageIndex].choose();
+        navigationState.openNicknameMenu.entries[usageIndex].choose();
         return;
     }
 
@@ -359,7 +358,7 @@ export function buildNicknameBackLink(treeStateView: ITreeStateView, ownerState:
     backLinkElement.setAttribute('aria-label', nickname + ': show the ' + ownerState.object.objectApiName + ' this field points to');
     backLinkElement.addEventListener('click', function () {
 
-        if (openNicknameMenu && openNicknameMenu.menuOwner === menuOwner) {
+        if (navigationState.openNicknameMenu && navigationState.openNicknameMenu.menuOwner === menuOwner) {
             closeNicknameMenu(true);
             return;
         }

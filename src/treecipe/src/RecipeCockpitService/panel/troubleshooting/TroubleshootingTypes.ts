@@ -3,8 +3,8 @@ import type { MetadataDeployKind, MetadataRetrieveKind, RecipeCockpitHistorySort
 
 /*
     The shapes the Troubleshooting tab's panel modules work on (#639). A tree card's state is built by
-    the panel script, which is not type checked yet, so ITroubleshootingTreeState names only what
-    these modules read and write on it. What the host posts is typed as the host sends it.
+    the card (treecipe/card/, #657) as one object that is every tab's view, so
+    ITroubleshootingTreeState names only what these modules read and write on it. What the host posts is typed as the host sends it.
 */
 
 // THE PARTS OF A TREE'S MODEL THE TAB READS

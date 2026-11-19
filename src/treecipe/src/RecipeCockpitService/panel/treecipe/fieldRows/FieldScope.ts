@@ -12,16 +12,18 @@ import { buildObjectTodosToggle } from '../recordTypes/TodosToggles';
 import { drawFieldRowSelection, drawNoFieldsSelected, findFieldLockingExclusion, findObjectExclusion, findObjectFieldSelection, isTreeFieldUnticked, occurrenceNicknameOf } from './SelectionCascade';
 import type { FieldRowsPanelMessage, FieldScopeCheckedState, IFieldRowObjectState, IFieldRowTreeState, IHideUnselectedState } from './FieldRowTypes';
 import { drawStructureMatchCount, filterTreeObjectRows } from '../navigation/StructureFilter';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../../shell/PanelPlace';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void } = cockpitVscodeApi;
 
 /*
     An object's field scope boxes and its own filter (#410, #477, #483): "All fields", "Standard
     fields" and "Hide unselected". A box posts names only, and which fields it touches is the host's
-    decision; "Hide unselected" posts nothing. filterTreeObjectRows, drawStructureMatchCount and
-    savePanelPlace are the panel script's, declared here.
+    decision; "Hide unselected" posts nothing.
 */
-declare const vscodeApi: { postMessage(message: FieldRowsPanelMessage): void };
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
 
 type FieldScopeCheckedStateKey = 'selectAllCheckedState' | 'selectStandardCheckedState';
 

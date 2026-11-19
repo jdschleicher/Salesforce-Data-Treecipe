@@ -1,7 +1,7 @@
 /*
     The shapes the Record types section and the Treecipe tab's toggles work on (#652). A tree card's
-    state is built by the panel script, which is not type checked yet, so these name only what the
-    modules read and write on it. An object and its record types come from the posted model.
+    state is built by the card (treecipe/card/, #657) as one object that is every tab's view, so
+    these name only what the modules read and write on it. An object and its record types come from the posted model.
 */
 import type { RecipeCockpitRecordTypeImpactKind } from '../../../RecipeCockpitRecordTypesConstants';
 
@@ -44,7 +44,7 @@ export interface IRecordTypeObjectState {
     searchText: string;
 }
 
-// ONE RECORD TYPE'S BOX; THE SCRIPT EMPTIES THE LIST FOR EVERY NEW MODEL
+// ONE RECORD TYPE'S BOX; resetRecordTypesState EMPTIES THE LIST FOR EVERY NEW MODEL
 export interface IRecordTypeRowState {
     objectApiName: string;
     developerName: string;
@@ -62,7 +62,7 @@ export interface IRecordTypesTreeObjectState {
     todosToggleElement?: HTMLButtonElement;
 }
 
-// THE PARTS OF A TREE CARD'S STATE THESE MODULES READ AND WRITE; THE SCRIPT BUILDS THE REST
+// THE PARTS OF A TREE CARD'S STATE THESE MODULES READ AND WRITE; THE CARD BUILDS THE REST
 export interface IRecordTypesTreeState {
     tree: { treeKey: string };
     objectStates: IRecordTypesTreeObjectState[];

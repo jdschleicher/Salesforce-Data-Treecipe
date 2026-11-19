@@ -29,21 +29,19 @@ import type {
 } from './AdapterTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
 import { findObjectExclusion } from '../treecipe/fieldRows/SelectionCascade';
+import { findTreeState, renderedSequence, treeStates } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { vscodeApi as cockpitVscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: AdapterPanelMessage): void } = cockpitVscodeApi;
 
 /*
     "Add to data set" (#447, #641): a custom child object only the org holds, added under the loaded
-    records with a block of its own and a preview the host generates. These names are the panel
-    script's own, read when a function runs; the run locks are also set by the script's
-    updaterLoadState message.
+    records with a block of its own and a preview the host generates. The run locks are runLocks', also
+    set by the host's updaterLoadState message.
 */
-declare const vscodeApi: { postMessage(message: AdapterPanelMessage): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IAdapterTreeState[];
-declare let updaterLoadRunningTreeKey: string | null;
-declare let updaterRunKind: string;
-declare let adapterChildPreparingKey: string;
-declare function findTreeState(treeKey: unknown): IAdapterTreeState | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 export function isAdapterChildOf(adapterChild: IAdapterChild | null, parentObjectApiName: string, childObject: IAdapterNewChildObject | null): boolean {
     return !!adapterChild && !!childObject
@@ -59,7 +57,7 @@ export function isAdapterChildOf(adapterChild: IAdapterChild | null, parentObjec
 */
 function findAdapterChildAddReason(treeState: IAdapterTreeState, parentObjectApiName: string): string {
 
-    if (updaterLoadRunningTreeKey !== null) { return 'Records are being loaded, generated, updated or restored.'; }
+    if (runLocks.updaterLoadRunningTreeKey !== null) { return 'Records are being loaded, generated, updated or restored.'; }
     if (findObjectExclusion(treeState.tree, parentObjectApiName)) { return RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX + parentObjectApiName + '.'; }
     if (!treeState.updaterRecordsMessage) { return RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON; }
 
@@ -77,7 +75,7 @@ export function drawAdapterChildAddButton(treeState: IAdapterTreeState, updaterO
 
     const parentObjectApiName = updaterObjectState.object.objectApiName;
     const reason = findAdapterChildAddReason(treeState, parentObjectApiName);
-    const isPreparing = updaterRunKind === 'prepareChild' && updaterLoadRunningTreeKey === treeState.tree.treeKey && adapterChildPreparingKey === adapterChildKeyOf(parentObjectApiName, orgOnlyFieldState.childObject);
+    const isPreparing = runLocks.updaterRunKind === 'prepareChild' && runLocks.updaterLoadRunningTreeKey === treeState.tree.treeKey && runLocks.adapterChildPreparingKey === adapterChildKeyOf(parentObjectApiName, orgOnlyFieldState.childObject);
 
     addElement.textContent = isPreparing ? 'Retrieving…' : RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL;
     addElement.disabled = reason !== '';
@@ -100,10 +98,10 @@ export function drawAdapterChildControls(treeState: IAdapterTreeState): void {
     const adapterChild = treeState.adapterChild;
     if (!adapterChild) { return; }
 
-    const isGenerating = updaterRunKind === 'generateChild' && updaterLoadRunningTreeKey === treeState.tree.treeKey;
+    const isGenerating = runLocks.updaterRunKind === 'generateChild' && runLocks.updaterLoadRunningTreeKey === treeState.tree.treeKey;
     adapterChild.generateElement.textContent = isGenerating ? 'Generating…' : RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_LABEL;
-    adapterChild.generateElement.disabled = updaterLoadRunningTreeKey !== null;
-    adapterChild.generateElement.setAttribute('title', updaterLoadRunningTreeKey !== null
+    adapterChild.generateElement.disabled = runLocks.updaterLoadRunningTreeKey !== null;
+    adapterChild.generateElement.setAttribute('title', runLocks.updaterLoadRunningTreeKey !== null
         ? 'Records are being loaded, generated, updated or restored.'
         : 'Generate the new ' + adapterChild.childObjectApiName + ' records with the recipe’s own backend and show a preview. Nothing is written to the org.');
 
@@ -111,11 +109,11 @@ export function drawAdapterChildControls(treeState: IAdapterTreeState): void {
 
 export function requestAdapterChild(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState, childObject: IAdapterNewChildObject): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'prepareChild';
-    adapterChildPreparingKey = adapterChildKeyOf(updaterObjectState.object.objectApiName, childObject);
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'prepareChild';
+    runLocks.adapterChildPreparingKey = adapterChildKeyOf(updaterObjectState.object.objectApiName, childObject);
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({
         command: 'prepareAdapterChild',
@@ -301,7 +299,7 @@ export function buildAdapterChildBlock(treeState: IAdapterTreeState): void {
 
 function requestAdapterChildPreview(treeState: IAdapterTreeState, adapterChild: IAdapterChild): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || treeState.adapterChild !== adapterChild) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || treeState.adapterChild !== adapterChild) { return; }
 
     const countText = String(adapterChild.countInputElement.value || '').trim();
     const countPerParent = Number(countText);
@@ -322,8 +320,8 @@ function requestAdapterChildPreview(treeState: IAdapterTreeState, adapterChild: 
         fields.push(fieldRequest);
     });
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'generateChild';
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'generateChild';
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({
         command: 'generateAdapterChild',

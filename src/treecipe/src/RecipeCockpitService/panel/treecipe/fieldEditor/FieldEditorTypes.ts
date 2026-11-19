@@ -3,8 +3,8 @@ import type { IFieldRowTreeObject, ISelectionTree } from '../fieldRows/FieldRowT
 
 /*
     The shapes the Treecipe tab's field editor, picklist tiles and lookup wiring work on (#653). A
-    tree card and its object rows are built by the panel script, which is not type checked yet, so
-    these interfaces name only what these modules read and write. A tree, object and field come from
+    tree card and its object rows are built by the card (treecipe/card/, #657), one object per row
+    that is every tab's view, so these interfaces name only what these modules read and write. A tree, object and field come from
     the posted model (IRecipeCockpitTreeViewModel and the view models it holds).
 */
 
@@ -67,7 +67,7 @@ export interface ILookupDecision {
     selectionReason?: string;
 }
 
-// ONE FIELD ROW'S STATE; buildTreeFieldState FILLS EVERY KEY, THE FIELD ROW BUILDER IN THE SCRIPT SETS THE ELEMENTS
+// ONE FIELD ROW'S STATE; buildTreeFieldState FILLS EVERY KEY, buildTreeFieldRow (fieldRows/FieldRow.ts) SETS THE ELEMENTS
 export interface ITreeFieldState {
     field: ITreecipeField;
     typeSearchText: string;

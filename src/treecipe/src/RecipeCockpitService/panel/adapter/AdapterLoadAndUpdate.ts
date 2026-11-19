@@ -35,27 +35,24 @@ import type {
     IUpdaterValuesMessage
 } from './AdapterTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { findTreeState, renderedSequence, treeStates } from '../shell/PanelRender';
+import { drawActionCardState, pluralize, setTextShown } from '../RecipeCockpitPanelShared';
+import { vscodeApi as cockpitVscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: AdapterPanelMessage): void } = cockpitVscodeApi;
 
 /*
     The Treecipe Adapter's runs on records (#416 … #419, #641): load, generate values, update and
-    restore, each one run per window, with what each drew. These names are the panel script's own,
-    read when a function runs; the run locks are also set by the script's updaterLoadState message.
+    restore, each one run per window, with what each drew. The run locks are runLocks', also set
+    by the host's updaterLoadState message.
 */
-declare const vscodeApi: { postMessage(message: AdapterPanelMessage): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IAdapterTreeState[];
-declare let updaterLoadRunningTreeKey: string | null;
-declare let updaterRunKind: string;
-declare let updaterRestoringSnapshotName: string;
-declare function findTreeState(treeKey: unknown): IAdapterTreeState | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function setTextShown(element: HTMLElement, text: string): void;
-declare function drawActionCardState(actionCard: IActionCardView, reason: string, title: string): void;
 
 // EVERY OBJECT STEP 2 DRAWS, ITS CHOSEN FIELDS IN ROW ORDER AND ITS WHERE (THE PARENT'S IS STEP 1'S); NAMES ONLY, AND THE HOST MATCHES THEM AGAINST THE CARD IT DREW
 export function requestUpdaterRecords(treeState: IAdapterTreeState): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) { return; }
 
     const objects: IUpdaterObjectRequest[] = treeState.updaterObjectStates.map(function (updaterObjectState) {
         const objectApiName = updaterObjectState.object.objectApiName;
@@ -71,8 +68,8 @@ export function requestUpdaterRecords(treeState: IAdapterTreeState): void {
 
     if (objects.length === 0) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'load';
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'load';
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({ command: 'loadUpdaterRecords', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects: objects });
 
@@ -85,7 +82,7 @@ export function requestUpdaterRecords(treeState: IAdapterTreeState): void {
 */
 export function requestUpdaterValues(treeState: IAdapterTreeState): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) { return; }
 
     const fields: IUpdaterFieldValueRequest[] = [];
     treeState.updaterObjectStates.forEach(function (updaterObjectState) {
@@ -99,8 +96,8 @@ export function requestUpdaterValues(treeState: IAdapterTreeState): void {
 
     if (fields.length === 0) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'generate';
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'generate';
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({ command: 'generateUpdaterValues', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields: fields });
 
@@ -112,10 +109,10 @@ export function requestUpdaterValues(treeState: IAdapterTreeState): void {
 */
 export function requestUpdaterUpdate(treeState: IAdapterTreeState): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'update';
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'update';
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({ command: 'updateUpdaterRecords', treeKey: treeState.tree.treeKey });
 
@@ -180,11 +177,11 @@ export function renderUpdaterSnapshots(snapshotsMessage: IUpdaterSnapshotsMessag
 */
 function requestUpdaterRestore(treeState: IAdapterTreeState, snapshotName: string): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'restore';
-    updaterRestoringSnapshotName = snapshotName;
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'restore';
+    runLocks.updaterRestoringSnapshotName = snapshotName;
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({ command: 'restoreUpdaterSnapshot', treeKey: treeState.tree.treeKey, snapshotName: snapshotName });
 
@@ -281,25 +278,25 @@ export function drawUpdaterLoadButtons(): void {
         if (!treeState.updaterLoadButtonElement) { return; }
         const updaterObjectStates = treeState.updaterObjectStates || [];
         drawAdapterChildControls(treeState);
-        const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
-        const busyReason = updaterLoadRunningTreeKey !== null ? 'Records are being loaded, generated, updated or restored.' : '';
-        setTextShown(treeState.updaterLoadCard.titleElement, isThisCardLoading && updaterRunKind === 'load' ? RECIPE_COCKPIT_UPDATER_LOADING_LABEL : RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+        const isThisCardLoading = runLocks.updaterLoadRunningTreeKey === treeState.tree.treeKey;
+        const busyReason = runLocks.updaterLoadRunningTreeKey !== null ? 'Records are being loaded, generated, updated or restored.' : '';
+        setTextShown(treeState.updaterLoadCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === 'load' ? RECIPE_COCKPIT_UPDATER_LOADING_LABEL : RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
         if (treeState.updaterRetrieveMetadataElement) {
-            treeState.updaterRetrieveMetadataElement.textContent = isThisCardLoading && updaterRunKind === 'retrieve' ? RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL : RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL;
-            treeState.updaterRetrieveMetadataElement.disabled = updaterLoadRunningTreeKey !== null;
+            treeState.updaterRetrieveMetadataElement.textContent = isThisCardLoading && runLocks.updaterRunKind === 'retrieve' ? RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL : RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL;
+            treeState.updaterRetrieveMetadataElement.disabled = runLocks.updaterLoadRunningTreeKey !== null;
             treeState.updaterRetrieveMetadataElement.setAttribute('title', busyReason || RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE);
         }
         if (treeState.updaterApplyRetrievedElement) {
             const applyReason = busyReason || (countAdapterFileChanges(treeState) === 0 ? RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON : '');
-            treeState.updaterApplyRetrievedElement.textContent = isThisCardLoading && updaterRunKind === 'apply' ? RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL : RECIPE_COCKPIT_ADAPTER_APPLY_LABEL;
+            treeState.updaterApplyRetrievedElement.textContent = isThisCardLoading && runLocks.updaterRunKind === 'apply' ? RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL : RECIPE_COCKPIT_ADAPTER_APPLY_LABEL;
             treeState.updaterApplyRetrievedElement.disabled = applyReason !== '';
             treeState.updaterApplyRetrievedElement.setAttribute('title', applyReason || RECIPE_COCKPIT_ADAPTER_APPLY_TITLE);
         }
         drawActionCardState(treeState.updaterLoadCard, busyReason || (updaterObjectStates.length === 0 ? 'This tree has no object to load.' : ''),
             'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads.');
         (treeState.updaterSnapshotButtonElements || []).forEach(function (snapshotButton) {
-            const isThisRestoring = isThisCardLoading && updaterRunKind === 'restore' && updaterRestoringSnapshotName === snapshotButton.snapshotName;
-            snapshotButton.element.disabled = updaterLoadRunningTreeKey !== null;
+            const isThisRestoring = isThisCardLoading && runLocks.updaterRunKind === 'restore' && runLocks.updaterRestoringSnapshotName === snapshotButton.snapshotName;
+            snapshotButton.element.disabled = runLocks.updaterLoadRunningTreeKey !== null;
             snapshotButton.element.textContent = isThisRestoring ? RECIPE_COCKPIT_UPDATER_RESTORING_LABEL : RECIPE_COCKPIT_UPDATER_RESTORE_LABEL;
             snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to RunArtifacts in the tree folder first.');
         });
@@ -310,7 +307,7 @@ export function drawUpdaterLoadButtons(): void {
             : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON
             : !hasChosenField ? 'Choose a field to fill first.'
             : '';
-        setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && updaterRunKind === 'generate' ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL : RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
+        setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === 'generate' ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL : RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
         drawActionCardState(treeState.updaterGenerateCard, generateReason || busyReason,
             'Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org.');
 
@@ -321,7 +318,7 @@ export function drawUpdaterLoadButtons(): void {
             : !treeState.updaterValuesMessage ? 'Generate values first: the update writes the values the last Generate values made.'
             : valueRecordCount === 0 ? 'There are no new values to write: the last load read no records.'
             : '';
-        setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && updaterRunKind === 'update'
+        setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === 'update'
             ? RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
             : valueRecordCount > 0
                 ? 'Update ' + pluralize(valueRecordCount, 'record', 'records') + (orgLabel ? ' in ' + orgLabel : '')

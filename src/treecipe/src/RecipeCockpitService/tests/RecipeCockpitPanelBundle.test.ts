@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 jest.mock('vscode', () => ({
     workspace: { workspaceFolders: undefined, getConfiguration: jest.fn().mockReturnValue({ get: jest.fn(), update: jest.fn(), inspect: jest.fn() }) },
     env: { openExternal: jest.fn() },
@@ -22,10 +23,17 @@ import * as RecipeCockpitTreecipeFieldEditorConstants from '../RecipeCockpitTree
 import * as RecipeCockpitDataOrgConstants from '../RecipeCockpitDataOrgConstants';
 import * as RecipeCockpitFieldRowsConstants from '../RecipeCockpitFieldRowsConstants';
 import * as RecipeCockpitNavigationConstants from '../RecipeCockpitNavigationConstants';
+import * as RecipeCockpitHelpConstants from '../RecipeCockpitHelpConstants';
+import * as RecipeCockpitShellConstants from '../RecipeCockpitShellConstants';
+import * as RecipeCockpitObjectRefreshConstants from '../RecipeCockpitObjectRefreshConstants';
+import * as RecipeCockpitObjectRefreshModule from '../RecipeCockpitObjectRefresh';
+import { YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
+import { REFERENCE_ID_REQUIRED_TODO } from '../../RelationshipService/ReferenceIdRequiredTodo';
+import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import * as RecipeCockpitOrgAuthorizeModule from '../RecipeCockpitOrgAuthorize';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
 
-const { PanelBundler, PANEL_BUNDLE_FILE, PANEL_MODULES_NAME, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
+const { PanelBundler, PANEL_BUNDLE_FILE, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '../../../../..');
 
@@ -58,110 +66,62 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
-    it('is inlined once, inside the nonced script\'s outer function, before the cockpit reads its exports', () => {
+    // #657: THE TEMPLATE-LITERAL SCRIPT AND ITS BRIDGE ARE GONE; THE BUNDLE STARTS THE PANEL ITSELF AND LEAVES NOTHING ON window
+    it('is the shell\'s whole script, and starts the panel itself with nothing left on window (#657)', () => {
 
         const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
-        const scriptStart = html.indexOf('<script nonce="bundleNonce">');
-        const outerFunctionStart = html.indexOf('(function () {', scriptStart);
-        const bundleStart = html.indexOf(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT);
+        const scriptOpeningTag = '<script nonce="bundleNonce">';
+        const scriptText = html.substring(html.indexOf(scriptOpeningTag) + scriptOpeningTag.length, html.indexOf('</script>'));
 
-        expect(html.split(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT)).toHaveLength(2);
-        expect(scriptStart).toBeGreaterThan(-1);
-        expect(bundleStart).toBeGreaterThan(outerFunctionStart);
-        expect(bundleStart).toBeLessThan(html.indexOf('</script>', scriptStart));
-        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT.startsWith(`var ${PANEL_MODULES_NAME} = (() => {`)).toBe(true);
-        expect(html.indexOf(`} = ${PANEL_MODULES_NAME};`)).toBeGreaterThan(bundleStart);
+        expect(html.split(scriptOpeningTag)).toHaveLength(2);
+        expect(scriptText).toBe(`\n${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}`);
+        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT.startsWith('(() => {')).toBe(true);
+        expect(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT.trimEnd().endsWith('startRecipeCockpitPanel();\n})();')).toBe(true);
 
     });
 
-    it('binds every export of the bundle under its own name, and no moved function is defined again in the script (#638)', () => {
+    it('holds no panel module that declares a name from a script around it: each imports what it reads (#657)', () => {
 
-        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
-        const exportedNames = Object.keys(new Function(`${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}\nreturn ${PANEL_MODULES_NAME};`)()).sort();
-        const bridge = /const \{([^}]*)\} = recipeCockpitPanelModules;/.exec(html);
-        const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
-
-        expect(exportedNames).toEqual(expect.arrayContaining(['buildActionCard', 'buildRowTable', 'buildTabSearch', 'createButton', 'createElement', 'renderConfirmRequest', 'setShownWithMotion']));
-        expect(bridge).not.toBeNull();
-        expect((bridge as RegExpExecArray)[1].split(',').map(boundName => boundName.trim()).filter(Boolean).sort()).toEqual(exportedNames);
-        exportedNames.forEach(exportedName =>
-            expect({ exportedName, isDefinedAgain: new RegExp(`function ${exportedName}\\(`).test(scriptOutsideBundle) }).toEqual({ exportedName, isDefinedAgain: false }));
-
-    });
-
-    it('finds every name a panel module declares from the script around it declared in that script (#638)', () => {
-
-        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
-        const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
-        // EVERY FOLDER UNDER A panel/ FOLDER, SO A NEW ONE (#639's troubleshooting/) IS READ WITHOUT BEING LISTED HERE
+        // EVERY FOLDER UNDER A panel/ FOLDER, SO A NEW ONE IS READ WITHOUT BEING LISTED HERE
         const panelModulePaths = ['CockpitKit/panel', 'RecipeCockpitService/panel'].flatMap(panelDirectory =>
             (fs.readdirSync(path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory), { recursive: true }) as string[]).filter(fileName => fileName.endsWith('.ts')).map(fileName => path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory, fileName)));
         const ambientNames = panelModulePaths.flatMap(panelModulePath =>
             Array.from(fs.readFileSync(panelModulePath, 'utf8').matchAll(/^declare (?:const|let|function) ([A-Za-z_$][\w$]*)/gm), match => ({ panelModule: path.basename(panelModulePath), ambientName: match[1] })));
 
-        expect(panelModulePaths.map(panelModulePath => path.basename(panelModulePath))).toEqual(expect.arrayContaining(['TroubleshootingTab.ts', 'TroubleshootingHistory.ts']));
-        expect(ambientNames.map(ambient => ambient.ambientName)).toEqual(expect.arrayContaining(['savePanelPlace', 'vscodeApi', 'confirmDialog', 'findTreeState', 'versionLabelOf', 'isMetadataDeployRunning', 'isTreeQueryRunning', 'QUERY_MAX_LENGTH',
-            'updaterLoadRunningTreeKey', 'updaterRunKind', 'adapterChildPreparingKey', 'UPDATER_WHERE_MAX_LENGTH', 'answeredDatasetCounts', 'buildNameEditor', 'isDataOrgChecking',
-            'pendingPicklistValueElements', 'isAddFriendRunning', 'isWireLookupRunning', 'lookupDecisions',
-            'dataOrgViews', 'dataOrgPickerBeforeCheck', 'dataOrgUnansweredListingCount', 'insertRunningTreeKey', 'isOrgAuthorizeRunning', 'recordTypeChoices', 'recordTypeRowStates', 'isRecordTypeSelectionRemembered', 'fieldSearchTexts', 'drawRecordCount', 'treePickerShownTreeState',
-            'isFavoritesOnly', 'selectedTreeKey', 'treecipesSearchText', 'openNicknameMenu', 'YAML_NON_STRING_NICKNAME_PATTERN', 'ensureTreeBodyBuilt', 'hasString']));
-        ambientNames.forEach(ambient =>
-            expect({ ...ambient, isDeclared: new RegExp(`(?:function ${ambient.ambientName}\\(|(?:const|let) ${ambient.ambientName}\\b)`).test(scriptOutsideBundle) })
-                .toEqual({ ...ambient, isDeclared: true }));
+        expect(panelModulePaths.map(panelModulePath => path.basename(panelModulePath))).toEqual(expect.arrayContaining(['RecipeCockpitPanelHost.ts', 'PanelRender.ts', 'PanelPlace.ts', 'TreeCard.ts', 'ObjectRefreshDialog.ts']));
+        // THE WEBVIEW DEFINES acquireVsCodeApi, AND ONLY THE CONNECTION CALLS IT
+        expect(ambientNames).toEqual([{ panelModule: 'RecipeCockpitPanelConnection.ts', ambientName: 'acquireVsCodeApi' }]);
 
     });
 
-    // A MOVED FUNCTION, EXPORTED OR NOT, LEFT IN THE STRING TOO WOULD SHADOW OR BE SHADOWED UNCHECKED (#639, #640, #641, #642, #652, #653, #654)
-    it('defines no function of the bundle again in the script around it, the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs\' and the Treecipe tab\'s Record types section, field editor and Target Org Manager, field rows and selection cascade and navigation included (#639, #640, #641, #642, #652, #653, #654, #655, #656)', () => {
+    it('holds no function or arrow in any template literal of the service, and no JSON.stringify in the shell\'s, so no panel logic or injected value is left in a string (#657)', () => {
 
-        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
-        const scriptOutsideBundle = html.substring(html.indexOf('<script nonce="bundleNonce">'), html.indexOf('</script>')).replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
-        const definedFunctionNamesOf = (scriptText: string): string[] => Array.from(scriptText.matchAll(/function ([A-Za-z_$][\w$]*)\(/g), match => match[1]);
-        const bundleFunctionNames = definedFunctionNamesOf(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT);
-        const scriptFunctionNames = new Set(definedFunctionNamesOf(scriptOutsideBundle));
+        const servicePath = path.join(REPOSITORY_ROOT, 'src/treecipe/src/RecipeCockpitService/RecipeCockpitService.ts');
+        const sourceFile = ts.createSourceFile(servicePath, fs.readFileSync(servicePath, 'utf8'), ts.ScriptTarget.Latest, true);
+        const templateTexts: string[] = [];
+        const rawTemplateTexts: string[] = [];
+        const visit = (node: ts.Node) => {
+            if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) { rawTemplateTexts.push(node.getText(sourceFile)); }
+            // THE LITERAL TEXT ONLY: AN EXPRESSION INSIDE ${…} IS THE HOST'S OWN CHECKED CODE
+            if (ts.isNoSubstitutionTemplateLiteral(node)) { templateTexts.push(node.text); }
+            if (ts.isTemplateExpression(node)) { templateTexts.push([node.head.text, ...node.templateSpans.map(span => span.literal.text)].join('${…}')); }
+            ts.forEachChild(node, visit);
+        };
+        visit(sourceFile);
 
-        expect(bundleFunctionNames).toEqual(expect.arrayContaining(['buildTroubleshootingTab', 'buildRemovedTodos', 'buildDeployAction', 'buildValidationRuleRow', 'sortTroubleshootingHistory',
-            'buildQueryTab', 'buildTreeQuery', 'describeQueryRefusal', 'renderTreeQueryResult', 'applyQueryFilter',
-            'buildRecordTable', 'acknowledgeRecordLinks', 'buildUpdaterTab', 'drawUpdaterStructure', 'buildUpdaterFieldRow', 'openUpdaterFieldEditor', 'requestUpdaterRecords',
-            'requestUpdaterUpdate', 'drawUpdaterLoadButtons', 'requestAdapterMetadataRetrieve', 'applyAdapterMetadataChanges', 'buildAdapterChildBlock', 'requestAdapterChildPreview', 'drawAdapterOrgHints',
-            'buildDatasetsTab', 'buildDatasetRowState', 'drawDatasetJourney', 'buildDatasetLastInsertElements', 'formatDatasetRecordTypes', 'applyRowSearch',
-            'toggleFieldEditor', 'closeFieldEditor', 'describeFixedValueForm', 'buildFieldEditorInput', 'openFieldEditor', 'renderFieldEditResult', 'buildTreeFieldState',
-            'appendPicklistValueList', 'buildPicklistKey', 'requestPicklistValues', 'renderPicklistValues', 'findPicklistChoiceLockReason', 'drawPicklistValueEditor', 'drawTile', 'renderPicklistChoiceResult',
-            'appendAddFriendControls', 'setAddFriendRunning', 'lookupWiringKeyOf', 'findLookupWiring', 'buildWireLookupElement', 'findAddableParent', 'findEmptyLookup', 'buildLookupDecisionElement',
-            'drawFieldRowLookupDecision', 'describeCreateParentRefusal', 'drawLookupDecisionButtons', 'buildWireAllLookupsElement', 'setWireLookupRunning',
-            'buildDataOrgView', 'drawDataOrgView', 'drawDataOrgViews', 'buildTreeInsertElement', 'isTreeRunning', 'listTreeInsertObjectApiNames', 'findTreeInsertReason', 'findTreeInsertBlock',
-            'findInsertReasonLink', 'followInsertReasonLink', 'drawTreeInsert', 'drawTreeInserts', 'setInsertRunning', 'renderScratchOrgState', 'renderDataOrgReadiness', 'setDataOrgStatus',
-            'requestDataOrgs', 'renderDataOrgList', 'clearDataOrgSelection', 'showDataOrgConnectionCheck', 'holdDataOrgPickerBeforeCheck', 'renderDataOrgListingRefused', 'startDataOrgCheck',
-            'renderDataOrgProvisional', 'renderDataOrgSelection',
-            'hasRecordTypeObjects', 'isRecordTypeFieldsOnlyIn', 'appendRecordTypeFieldsToggle', 'drawRecordTypeFieldsToggle', 'indexRecordTypeFields',
-            'todoCountOf', 'isTodosOnlyIn', 'appendTodosToggle', 'drawTodosToggle', 'buildTodoListElement', 'isObjectTodosOnlyIn', 'buildObjectTodosToggle', 'drawObjectTodosToggle',
-            'listRecordTypeObjects', 'describeRecordTypeImpacts', 'buildRecordTypesSection', 'appendUnavailableRecordTypesButton', 'setRecordTypesExpanded', 'recordTypeObjectSearchText',
-            'drawRecordTypesSummary', 'buildRecordTypesRows', 'applyRecordTypesFilter', 'toggleRecordTypeChoice', 'toggleRecordTypeSelectionRemembered', 'isSameChoice',
-            'buildRecordTypeSelection', 'drawRecordTypeChoices',
-            'hasOwnKey', 'searchTextOf', 'isFieldTextMatch', 'formatParentLookups', 'buildIncludeElement',
-            'indexObjectExclusions', 'indexObjectImpacts', 'describeObjectImpact', 'findObjectExclusion', 'findFieldLockingExclusion', 'drawNoFieldsSelected', 'formatTreeCount',
-            'drawObjectSelection', 'indexFieldSelection', 'findObjectFieldSelection', 'occurrenceNicknameOf', 'isSameOccurrence', 'isTreeFieldUnticked', 'drawFieldRowSelection',
-            'findFixedValue', 'indexTreeLookupFields', 'isLookupField', 'findFixedValueLockReason', 'findFixedValueOrgRecord', 'isExpressionValue', 'unquoteExpressionLine', 'findEditorStartValue', 'drawFieldRowFixedValue',
-            'hasSwitchableValidationRules', 'isValidationRuleOff', 'findValidationRuleLockReason', 'drawFieldRowValidationRule', 'buildFieldValidationRuleElement', 'buildValidationRuleNotAppliedElement', 'buildFieldFixedValueElement',
-            'drawObjectFieldSelection', 'buildSelectAllFieldsElement', 'buildFieldScopeCheck', 'isStandardFieldApiName', 'drawSelectAllFields', 'drawFieldScopeCheck',
-            'countUnselectedFields', 'describeExcludedObjectFields', 'readHideUnselectedState', 'findHideUnselectedReason', 'isObjectHidingUnselectedIn', 'buildHideUnselectedToggle', 'drawHideUnselectedToggle', 'refreshHideUnselectedFields',
-            'drawFieldSelection', 'hasTreeSelection', 'drawResetSelection', 'renderObjectSelection', 'buildFieldIncludeElement', 'buildTreeFieldRow', 'applyTreeFieldVisibility',
-            'describeTreeDifferences', 'renderFavoritesToggle', 'displayTitleOf', 'isHiddenByFavorites', 'applyFavoritesFilter', 'treePickerLabelOf', 'applyTreePicker', 'drawTreePickerObjects',
-            'releaseTreePickerObjectsList', 'scheduleTreePickerObjectsToggle', 'drawTreePickerObjectsToggle', 'chooseTree', 'buildTreePicker', 'buildTreecipesSearchIndex', 'buildTreecipesSearch', 'applyTreecipesSearch',
-            'buildTreecipesResult', 'openTreecipesResult', 'openTreeObjectRow', 'revealTreeObjectRow', 'nicknameOfObject', 'isReferenceableNickname', 'readReferencedNickname', 'nicknameKeyOf',
-            'ensureNicknameIndex', 'findReferencedOwnerState', 'listNicknameUsages', 'drawObjectNickname', 'describeMenuObject', 'describeExclusion', 'describeNicknameUsage', 'openNicknameMenuOf',
-            'openReferenceMenu', 'closeNicknameMenu', 'chooseNicknameUsage', 'handleNicknameMenuKey', 'isElementWithin', 'findDescendantWithClass', 'buildNicknameBackLink', 'readNestingParent',
-            'drawFriendsButton', 'openFriendsMenuOf', 'ensureFriendIndex', 'listFriendChips', 'listFriendsOf', 'listFriendLabelsByObjectApiName', 'buildChipEmoji', 'drawFriendChips',
-            'clearStructureFilters', 'expandMatchesWithinBudget', 'applyStructureFilter', 'isStructureFilteredIn', 'filterTreeObjectRows', 'drawStructureMatchCount', 'buildTreeObjectKey', 'applyTreeFocus',
-            'focusTreeInPlace', 'setTreeExpanded']));
-        expect(bundleFunctionNames.filter(functionName => scriptFunctionNames.has(functionName))).toEqual([]);
+        expect(templateTexts.some(templateText => templateText.includes('<script nonce='))).toBe(true);
+        expect(templateTexts.filter(templateText => /\bfunction\b[\s\w$]*\(|=>/.test(templateText))).toEqual([]);
+        // THE SHELL'S OWN ${…} EXPRESSIONS TOO: A VALUE STRINGIFIED INTO THE DOCUMENT IS AN INJECTION, WHEREVER IN IT
+        expect(rawTemplateTexts.filter(rawTemplateText => rawTemplateText.includes('<script nonce=') && rawTemplateText.includes('JSON.stringify('))).toEqual([]);
+        const shellTemplate = templateTexts.find(templateText => templateText.includes('<script nonce=')) as string;
+        expect(shellTemplate.substring(shellTemplate.indexOf('<script nonce='))).toBe('<script nonce="${…}">\n${…}</script>\n</body>\n</html>\n');
 
     });
 
     // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654, #655, #656)
-    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows and navigation, as the same value (#639, #640, #641, #642, #652, #653, #654, #655, #656)', () => {
+    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows, navigation, help and the frame, as the same value (#639, #640, #641, #642, #652, #653, #654, #655, #656, #657)', () => {
 
-        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants, ...RecipeCockpitNavigationConstants };
+        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants, ...RecipeCockpitNavigationConstants, ...RecipeCockpitHelpConstants, ...RecipeCockpitShellConstants };
         const constantNames = Object.keys(tabConstants);
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
 
@@ -172,10 +132,34 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON', 'RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS', 'RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL',
             'RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL', 'RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE',
             'RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON', 'RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES', 'RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL', 'RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX',
-            'RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET', 'RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL', 'RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER', 'RECIPE_COCKPIT_FRIENDS_MENU_HINT']));
+            'RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET', 'RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL', 'RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER', 'RECIPE_COCKPIT_FRIENDS_MENU_HINT',
+            'RECIPE_COCKPIT_QUERY_MAX_LENGTH', 'RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH', 'RECIPE_COCKPIT_HELP_SECTIONS', 'RECIPE_COCKPIT_PANEL_PLACE_VERSION', 'RECIPE_COCKPIT_TREE_TABS', 'RECIPE_COCKPIT_NO_FAVORITES_MESSAGE', 'RECIPE_COCKPIT_RESET_SELECTION_LABEL']));
         constantNames.forEach(constantName =>
             expect({ constantName, isSameValue: serviceExports[constantName] === tabConstants[constantName] })
                 .toEqual({ constantName, isSameValue: true }));
+
+    });
+
+    // THE OBJECT REFRESH DIALOG'S WORDS ARE THE PANEL'S TOO (#657); THE HOST AND ITS TESTS KEEP READING THEM WHERE THEY DID
+    it('gives the Object refresh words from the service and RecipeCockpitObjectRefresh as the same values the panel draws (#657)', () => {
+
+        const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
+        const objectRefreshExports: Record<string, unknown> = RecipeCockpitObjectRefreshModule;
+        const objectRefreshConstants: Record<string, unknown> = RecipeCockpitObjectRefreshConstants;
+
+        ['RECIPE_COCKPIT_OBJECT_REFRESH_LABEL', 'RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH'].forEach(constantName =>
+            expect({ constantName, isSameValue: serviceExports[constantName] === objectRefreshConstants[constantName] }).toEqual({ constantName, isSameValue: true }));
+        ['OBJECT_REFRESH_KINDS', 'OBJECT_REFRESH_KIND_LABELS'].forEach(constantName =>
+            expect({ constantName, isSameValue: objectRefreshExports[constantName] === objectRefreshConstants[constantName] }).toEqual({ constantName, isSameValue: true }));
+
+    });
+
+    // THE WRITER IMPORTS NOTHING, SO THE PANEL SPELLS THE NICKNAME RULE OUT; THE TWO MUST NOT DRIFT (#657)
+    it('holds the panel\'s nickname pattern to the recipe writer\'s, and the reference TODO to RelationshipService\'s (#657)', () => {
+
+        expect(RecipeCockpitNavigationConstants.RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN.source).toBe(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source);
+        expect(RecipeCockpitNavigationConstants.RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN.flags).toBe(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.flags);
+        expect(REFERENCE_ID_REQUIRED_TODO).toBe(RelationshipService.referenceIdRequiredTodo);
 
     });
 

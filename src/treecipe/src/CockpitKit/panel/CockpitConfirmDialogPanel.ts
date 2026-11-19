@@ -1,5 +1,5 @@
 import { COCKPIT_CONFIRM_CHANGE_ORG_LABEL, COCKPIT_CONFIRM_WARNINGS_LABEL, ICockpitConfirmRecordTypeSetMode } from '../CockpitConfirmLabels';
-import { SVG_NAMESPACE, createButton, createElement, drawToggle, isMotionReduced, setShownWithMotion } from './CockpitPanelElements';
+import { SVG_NAMESPACE, createButton, createElement, drawToggle, focusElement, isMotionReduced, setShownWithMotion } from './CockpitPanelElements';
 
 /*
     The panel half of the in-panel confirmation every cockpit asks with (#349, #402, #457, #480,
@@ -8,22 +8,38 @@ import { SVG_NAMESPACE, createButton, createElement, drawToggle, isMotionReduced
     textContent only and answers with the INDEX of a button it was given, and the host's
     CockpitConfirmDialog.readAnswer turns that back into a label or Cancel.
 
-    The bundle is inlined inside the cockpit script's outer function, so the names below are the
-    cockpit's own locals, read when a request is drawn. Each one is in
-    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES, which a test holds to this list.
+    A cockpit connects the dialog once, before its first message is handled (#657): the kit cannot
+    import a cockpit, so the cockpit hands it what it posts through, the model on screen, where the
+    dialog is drawn, what it makes inert behind it, and the chevron it draws a section toggle with.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare function focusElement(element: Element | null): void;
-declare const TREE_GLYPH_VIEW_BOX: string;
-declare const TOGGLE_COLLAPSED_GLYPH_PATH: string;
-declare const cockpitDialogHostElement: HTMLElement;
-declare const cockpitBodyElement: HTMLElement | null;
-declare const cockpitMetaElement: HTMLElement | null;
-declare const loadStatusElement: HTMLElement | null;
+export interface ICockpitConfirmDialogHost {
+    postMessage(message: unknown): void;
+    readRenderedSequence(): number | null;
+    dialogHostElement: HTMLElement;
+    backgroundElements: Array<HTMLElement | null>;
+    toggleGlyphViewBox: string;
+    toggleCollapsedGlyphPath: string;
+}
 
-// THE ONE CONFIRMATION ON SCREEN, OR null: DECLARED BY THE KIT'S STATE SCRIPT, BECAUSE THE OBJECT REFRESH DIALOG READS IT TOO
-declare let confirmDialog: ICockpitConfirmDialogState | null;
+let confirmDialogHost: ICockpitConfirmDialogHost | null = null;
+
+// THE ONE CONFIRMATION ON SCREEN, OR null
+let confirmDialog: ICockpitConfirmDialogState | null = null;
+
+export function connectConfirmDialog(host: ICockpitConfirmDialogHost): void {
+    confirmDialogHost = host;
+    confirmDialog = null;
+}
+
+// A COCKPIT'S OWN DIALOG (THE OBJECT REFRESH DIALOG, #612) STEPS ASIDE WHILE A CONFIRMATION ASKS
+export function isConfirmDialogOpen(): boolean {
+    return confirmDialog !== null;
+}
+
+function connectedHost(): ICockpitConfirmDialogHost {
+    if (!confirmDialogHost) { throw new Error('The confirmation dialog was used before its cockpit connected it: call connectConfirmDialog when the panel starts.'); }
+    return confirmDialogHost;
+}
 
 export interface ICockpitConfirmDialogState {
     confirmationId: string;
@@ -97,8 +113,8 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
     const content = readConfirmContent(hostMessage);
     const buttonLabels = Array.isArray(hostMessage.buttons) ? (hostMessage.buttons as unknown[]).filter(function (label: unknown): label is string { return typeof label === 'string' && !!label; }) : null;
 
-    if (hostMessage.renderSequence !== renderedSequence || typeof hostMessage.title !== 'string' || !content || !buttonLabels || buttonLabels.length === 0) {
-        vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
+    if (hostMessage.renderSequence !== connectedHost().readRenderedSequence() || typeof hostMessage.title !== 'string' || !content || !buttonLabels || buttonLabels.length === 0) {
+        connectedHost().postMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
         return;
     }
 
@@ -225,12 +241,12 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
     });
 
     // THE REST OF THE COCKPIT IS OUT OF REACH WHILE THE DIALOG IS OPEN
-    [cockpitBodyElement, cockpitMetaElement, loadStatusElement].forEach(function (backgroundElement) {
+    connectedHost().backgroundElements.forEach(function (backgroundElement) {
         if (backgroundElement) { backgroundElement.setAttribute('inert', ''); }
     });
 
     if (!isMotionReduced()) { dialogElement.classList.add('motionReveal'); }
-    cockpitDialogHostElement.appendChild(overlayElement);
+    connectedHost().dialogHostElement.appendChild(overlayElement);
 
     confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement, checkState: checkElement ? checkState : null, modeState: modeGroupElement ? modeState : null };
 
@@ -405,10 +421,10 @@ function drawConfirmContent(bodyElement: HTMLElement, content: IConfirmContent, 
         let isSectionExpanded = false;
 
         glyphElement.setAttribute('class', 'toggleGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('viewBox', connectedHost().toggleGlyphViewBox);
         glyphElement.setAttribute('aria-hidden', 'true');
         glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', TOGGLE_COLLAPSED_GLYPH_PATH);
+        pathElement.setAttribute('d', connectedHost().toggleCollapsedGlyphPath);
         glyphElement.appendChild(pathElement);
         toggleElement.appendChild(glyphElement);
         toggleElement.appendChild(createElement('span', 'confirmSectionTitle', section.title));
@@ -445,7 +461,7 @@ function answerConfirmChangeOrg(): void {
 
     if (!confirmDialog) { return; }
     const response: IConfirmResponse = { command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: null, changeOrg: true };
-    vscodeApi.postMessage(response);
+    connectedHost().postMessage(response);
     closeConfirmDialog(true);
 
 }
@@ -456,7 +472,7 @@ function answerConfirm(choice: number | null): void {
     const response: IConfirmResponse = { command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: choice };
     if (confirmDialog.checkState) { response.isChecked = choice !== null && confirmDialog.checkState.isChecked; }
     if (confirmDialog.modeState && choice !== null) { response.recordTypeSetMode = confirmDialog.modeState.chosenName; }
-    vscodeApi.postMessage(response);
+    connectedHost().postMessage(response);
     closeConfirmDialog(true);
 
 }
@@ -467,10 +483,10 @@ export function closeConfirmDialog(isFocusReturned: boolean): void {
     if (!confirmDialog) { return; }
 
     const openerElement = confirmDialog.openerElement;
-    cockpitDialogHostElement.textContent = '';
+    connectedHost().dialogHostElement.textContent = '';
     confirmDialog = null;
 
-    [cockpitBodyElement, cockpitMetaElement, loadStatusElement].forEach(function (backgroundElement) {
+    connectedHost().backgroundElements.forEach(function (backgroundElement) {
         if (backgroundElement) { backgroundElement.removeAttribute('inert'); }
     });
 

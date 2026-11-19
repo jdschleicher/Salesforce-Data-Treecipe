@@ -4,14 +4,14 @@ import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { closeNicknameMenu, describeExclusion, describeMenuObject, ensureNicknameIndex, findReferencedOwnerState, nicknameKeyOf, nicknameOfObject, openReferenceMenu, readNestingParent } from './Nicknames';
 import { revealTreeObjectRow } from './TreecipesSearch';
 import type { IFriend, IFriendChip, IFriendIndex, INavigationObjectState, INavigationTreeState, IOpenReferenceMenu } from './NavigationTypes';
+import { pluralize } from '../../RecipeCockpitPanelShared';
+import { navigationState } from './NavigationState';
 
 /*
     Friend rows (#411, #492): the chips naming the parents a friend row is nested under or points
     to, numbered the same on every row, and a parent row's 👥 N list of its friends. The open list
-    is the panel script's let, shared with the nickname lists; this module only reads it.
+    is navigationState's, shared with the nickname lists; this module only reads it.
 */
-declare const openNicknameMenu: IOpenReferenceMenu | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 interface IFriendParent {
     parentKey: string;
@@ -36,7 +36,7 @@ export function drawFriendsButton(treeObjectState: INavigationObjectState): void
     buttonElement.setAttribute('aria-label', objectApiName + ': ' + pluralize(friends.length, 'friend', 'friends'));
     buttonElement.setAttribute('title', 'Show the friends of ' + nicknameOfObject(treeObjectState.object));
     buttonElement.addEventListener('click', function () {
-        if (openNicknameMenu && openNicknameMenu.menuOwner === treeObjectState.friendsMenuOwner) {
+        if (navigationState.openNicknameMenu && navigationState.openNicknameMenu.menuOwner === treeObjectState.friendsMenuOwner) {
             closeNicknameMenu(true);
             return;
         }

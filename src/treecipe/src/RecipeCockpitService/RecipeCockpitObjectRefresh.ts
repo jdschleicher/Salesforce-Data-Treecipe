@@ -7,6 +7,12 @@ import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { IMetadataDeployComponent, METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import { IOrgMetadataFileCopy, IOrgStagedFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
+import { OBJECT_REFRESH_KINDS, OBJECT_REFRESH_KIND_LABELS } from './RecipeCockpitObjectRefreshConstants';
+import type { ObjectRefreshKind } from './RecipeCockpitObjectRefreshConstants';
+
+// THE KINDS ARE THE PANEL'S WORDS TOO, SO THEY LIVE IN AN IMPORT-FREE FILE (#657); THE HOST'S NAMES STAY
+export { OBJECT_REFRESH_KINDS, OBJECT_REFRESH_KIND_LABELS };
+export type { ObjectRefreshKind };
 
 /*
     "Get latest object detail from target org" (#612): ONE object of a Treecipe tab row, retrieved
@@ -16,18 +22,6 @@ import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWr
     is read without following a link, held to a size, parsed with no prototype trust, and every name
     held to SalesforceApiName. Imports no vscode.
 */
-
-export type ObjectRefreshKind = 'fields' | 'validationRules' | 'recordTypes' | 'globalValueSets';
-
-export const OBJECT_REFRESH_KINDS: readonly ObjectRefreshKind[] = Object.freeze(['fields', 'validationRules', 'recordTypes', 'globalValueSets'] as ObjectRefreshKind[]);
-
-// THE SAME LABELS AS THE TROUBLESHOOTING TAB'S RETRIEVES, SO A KIND READS THE SAME IN BOTH PLACES
-export const OBJECT_REFRESH_KIND_LABELS: Readonly<Record<ObjectRefreshKind, string>> = Object.freeze({
-    fields: 'Fields',
-    validationRules: 'Validation rules',
-    recordTypes: 'Record types',
-    globalValueSets: 'Global value sets'
-});
 
 export const OBJECT_REFRESH_OPERATION_NAME = 'object-refresh';
 

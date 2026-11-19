@@ -2,13 +2,16 @@ import { createButton, createElement } from '../../CockpitKit/panel/CockpitPanel
 import { RECIPE_COCKPIT_RECORD_LINK_TITLE } from '../RecipeCockpitAdapterConstants';
 import { buildRowTable } from './RecipeCockpitPanelBuilders';
 import type { IRecordLinksMessage } from './adapter/AdapterTypes';
+import { renderedSequence } from './shell/PanelRender';
+import { vscodeApi as cockpitVscodeApi } from './RecipeCockpitPanelConnection';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: RecordLinkPanelMessage): void } = cockpitVscodeApi;
 
 /*
     A preview of records as text (#641): the Query tab's (#367) and the Treecipe Adapter's (#416,
-    #417, #447). These names are the panel script's own, read when a function runs.
+    #417, #447).
 */
-declare const vscodeApi: { postMessage(message: RecordLinkPanelMessage): void };
-declare const renderedSequence: number | null;
 
 // WHAT A PREVIEW POSTS; THE HOST'S ROUTER CHECKS EACH FIELD AGAIN (routePanelMessage)
 type RecordLinkPanelMessage =

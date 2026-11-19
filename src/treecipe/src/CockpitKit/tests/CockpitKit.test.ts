@@ -20,8 +20,6 @@ import { COCKPIT_PALETTE, CockpitPalette, CockpitPaletteToken } from '../Cockpit
 import { COCKPIT_BUTTON_KINDS, CockpitButtonKinds } from '../CockpitButtonKinds';
 import { CockpitOrgPicker } from '../CockpitOrgPicker';
 import {
-    COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES,
-    COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT,
     COCKPIT_KIT_CONFIRM_DIALOG_STYLE_REQUIRES,
     COCKPIT_KIT_CONFIRM_DIALOG_STYLES,
     CockpitConfirmDialog
@@ -84,7 +82,6 @@ describe('CockpitKit (#524)', () => {
                 'COCKPIT_KIT_BUTTON_KIND_PRIMARY_STYLES',
                 'COCKPIT_KIT_BUTTON_KIND_STATE_STYLES',
                 'COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP',
-                'COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT',
                 'COCKPIT_KIT_CONFIRM_DIALOG_STYLES',
                 'COCKPIT_KIT_ORG_PICKER_REFRESH_STYLES',
                 'COCKPIT_KIT_ORG_PICKER_STYLES',
@@ -202,20 +199,16 @@ describe('CockpitKit (#524)', () => {
 
     describe('confirmation dialog', () => {
 
-        it('lists exactly the names the dialog\'s panel module declares from the cockpit, and the Recipe Cockpit declares each', () => {
+        // THE KIT CANNOT IMPORT A COCKPIT (#657): A COCKPIT HANDS IT WHAT IT POSTS THROUGH AND DRAWS ON, ONCE, WHEN ITS PANEL STARTS
+        it('declares nothing from a cockpit, and the Recipe Cockpit connects it before it routes a message', () => {
 
             const recipePanelScript = panelScriptOf(recipeShell());
+            const recipeStartSource = fs.readFileSync(path.join(KIT_DIRECTORY, '..', 'RecipeCockpitService', 'panel', 'RecipeCockpitPanelHost.ts'), 'utf8');
 
-            expect(new Set(Array.from(ambientNamesOf(confirmDialogPanelSource())).filter(name => name !== 'confirmDialog')))
-                .toEqual(new Set(COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES));
-            expect(ambientNamesOf(confirmDialogPanelSource())).toContain('confirmDialog');
-            expect(COCKPIT_KIT_CONFIRM_DIALOG_STATE_SCRIPT).toMatch(/\blet confirmDialog = null;/);
+            expect(ambientNamesOf(confirmDialogPanelSource())).toEqual(new Set());
             expect(countOccurrences(recipePanelScript, RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT)).toBe(1);
-
-            const cockpitScript = recipePanelScript.replace(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT, '');
-            COCKPIT_KIT_CONFIRM_DIALOG_SCRIPT_REQUIRES.forEach(requiredName =>
-                expect({ requiredName, isDeclared: new RegExp(`(?:function ${requiredName}\\(|(?:const|let) ${requiredName}\\b)`).test(cockpitScript) })
-                    .toEqual({ requiredName, isDeclared: true }));
+            expect(recipeStartSource.indexOf('connectConfirmDialog(')).toBeGreaterThan(-1);
+            expect(recipeStartSource.indexOf('connectConfirmDialog(')).toBeLessThan(recipeStartSource.indexOf("window.addEventListener('message'"));
 
         });
 

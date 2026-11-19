@@ -29,20 +29,19 @@ import type {
     IUpdaterObjectState
 } from './AdapterTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { findTreeState, renderedSequence, treeStates } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { vscodeApi as cockpitVscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: AdapterPanelMessage): void } = cockpitVscodeApi;
 
 /*
     The Treecipe Adapter's "Retrieve latest metadata" (#445), "Apply retrieved files to project",
-    the fields only the org holds (#446) and the org's recent changes (#641). These names are the
-    panel script's own, read when a function runs; the run locks are also set by the script's
-    updaterLoadState message.
+    the fields only the org holds (#446) and the org's recent changes (#641). The run locks are
+    runLocks', also set by the host's updaterLoadState message.
 */
-declare const vscodeApi: { postMessage(message: AdapterPanelMessage): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IAdapterTreeState[];
-declare let updaterLoadRunningTreeKey: string | null;
-declare let updaterRunKind: string;
-declare function findTreeState(treeKey: unknown): IAdapterTreeState | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
 
 /*
     "Retrieve latest metadata" (#445): posts the card and the parent step 1 chose, nothing
@@ -52,10 +51,10 @@ declare function pluralize(count: number, singular: string, plural: string): str
 */
 export function requestAdapterMetadataRetrieve(treeState: IAdapterTreeState): void {
 
-    if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterParentObjectApiName) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterParentObjectApiName) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'retrieve';
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'retrieve';
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({ command: 'retrieveAdapterMetadata', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
 
@@ -63,10 +62,10 @@ export function requestAdapterMetadataRetrieve(treeState: IAdapterTreeState): vo
 
 export function requestAdapterRetrievedFilesApply(treeState: IAdapterTreeState): void {
 
-    if (renderedSequence === null || !treeState.adapterChangesMessage || updaterLoadRunningTreeKey !== null) { return; }
+    if (renderedSequence === null || !treeState.adapterChangesMessage || runLocks.updaterLoadRunningTreeKey !== null) { return; }
 
-    updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    updaterRunKind = 'apply';
+    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
+    runLocks.updaterRunKind = 'apply';
     drawUpdaterLoadButtons();
     vscodeApi.postMessage({ command: 'applyAdapterRetrievedFiles', treeKey: treeState.tree.treeKey, renderSequence: treeState.adapterChangesMessage.renderSequence });
 
@@ -126,7 +125,7 @@ export function applyAdapterMetadataChanges(treeState: IAdapterTreeState): void 
     treeState.updaterObjectStates.forEach(function (updaterObjectState) {
 
         const objectChanges = hasOwnKey(objectChangesByName, updaterObjectState.object.objectApiName) ? objectChangesByName[updaterObjectState.object.objectApiName] : null;
-        // THE SCRIPT READ EVERY ENTRY AS A CHANGE; A null ONE FAILED THERE AS IT DOES HERE
+        // EVERY ENTRY IS READ AS A CHANGE, AS THE TEMPLATE-LITERAL SCRIPT READ IT BEFORE #641; A null ONE FAILS HERE AS IT DID THERE
         const fieldChanges = (objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges : []) as IAdapterFieldChange[];
         const fieldChangesByLowerName: Record<string, IAdapterFieldChange> = Object.create(null);
         fieldChanges.forEach(function (fieldChange) {

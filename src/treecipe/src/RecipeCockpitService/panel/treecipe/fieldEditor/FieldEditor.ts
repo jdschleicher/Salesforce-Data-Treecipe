@@ -10,14 +10,16 @@ import type { FieldEditorPanelMessage, IFieldEditResultMessage, ISetFieldFixedVa
 import { renderPicklistChoiceResult } from './PicklistTiles';
 import { drawFieldRowFixedValue, findEditorStartValue, findFixedValue, isExpressionValue, isLookupField } from '../fieldRows/FieldRowFixedValue';
 import { occurrenceNicknameOf } from '../fieldRows/SelectionCascade';
+import { findTreeState, renderedSequence } from '../../shell/PanelRender';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void } = cockpitVscodeApi;
 
 /*
-    The Treecipe tab's inline field editor (#337, #356, #653). These names are the panel script's
-    own, read when a function runs; the field row that opens the editor is drawn there (#643's 3e-4).
+    The Treecipe tab's inline field editor (#337, #356, #653); the field row that opens it is
+    fieldRows/FieldRow.ts (#655).
 */
-declare const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void };
-declare const renderedSequence: number | null;
-declare function findTreeState(treeKey: unknown): ITreeState | null;
 
 /*
     A field's inline editor (#337, one box since #356) under the row, with Save, Clear and

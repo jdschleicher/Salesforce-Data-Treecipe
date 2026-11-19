@@ -16,18 +16,16 @@ import { applyRemovedTodosFilter, buildTodosViewFrame, buildTroubleshootingTodos
 import { IShownState, ITroubleshootingSubTabState, ITroubleshootingSummaryMessage, ITroubleshootingTreeState } from './TroubleshootingTypes';
 import { buildTroubleshootingValidationRules, requestTreeValidationRules, setValidationRuleGroupExpanded } from './TroubleshootingValidationRules';
 import { expandMatchesWithinBudget } from '../treecipe/navigation/StructureFilter';
+import { renderedSequence, treeStates } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../shell/PanelPlace';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
 
 /*
     The Troubleshooting tab's frame (#346, #365, #639): its sub-tabs, their searches and the summary of
-    what each deploy and retrieve would do. These names are the panel script's own, read when a
-    function runs.
+    what each deploy and retrieve would do.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare const treeStates: ITroubleshootingTreeState[];
-declare const insertRunningDatasetFolderName: string | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
 
 // WHICH SUB-TABS A FILTER REDRAWS: ONE BY NAME, EVERY ACTION SUB-TAB AFTER A SUMMARY, OR ALL OF THEM
 export type TroubleshootingFilterScope = RecipeCockpitTroubleshootingSubTab | 'actions' | undefined;
@@ -366,5 +364,5 @@ function collectElementText(element: Element): string[] {
 
 
 export function describeRunningInsert(): string {
-    return insertRunningDatasetFolderName !== null ? RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON : 'A tree is being inserted.';
+    return runLocks.insertRunningDatasetFolderName !== null ? RECIPE_COCKPIT_DATASET_INSERT_RUNNING_REASON : 'A tree is being inserted.';
 }

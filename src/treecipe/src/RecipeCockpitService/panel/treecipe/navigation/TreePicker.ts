@@ -21,32 +21,16 @@ import { listFriendLabelsByObjectApiName } from './Friends';
 import { setTreeExpanded } from './StructureFilter';
 import { applyTreecipesSearch } from './TreecipesSearch';
 import type { ScriptTreeState } from './NavigationTypes';
+import { findTreeState, renderedSequence, treeStates } from '../../shell/PanelRender';
+import { isRestoringPlace, savePanelPlace } from '../../shell/PanelPlace';
+import { hasString, pluralize, toStringSet } from '../../RecipeCockpitPanelShared';
+import { navigationState } from './NavigationState';
 
 /*
     The Treecipes section's dropdown, Favorites only, and the shown card's insert order line
     (#235, #374, #385, #464). The choice, the favourites filter and the elements a new model
-    replaces are the panel script's lets, declare let here: it keeps them with the reader's place
-    and resets them for every model. The insert order line's measuring state is this module's own.
+    replaces are navigationState's: the place keeps the first two, and every model resets the rest. The insert order line's measuring state is this module's own.
 */
-declare let isFavoritesOnly: boolean;
-declare let favoritesToggleElement: HTMLButtonElement | null;
-declare let favoritesCountElement: HTMLElement | null;
-declare const noFavoritesElement: HTMLElement | null;
-declare let selectedTreeKey: string | null;
-declare let treePickerElement: HTMLSelectElement | null;
-declare const treePickerObjectsElement: HTMLElement | null;
-declare let treePickerTreeStates: ScriptTreeState[];
-declare let treePickerShownTreeState: ScriptTreeState | null;
-declare let isTreePickerObjectsExpanded: boolean;
-declare let treecipesMatchedTreeKeys: Record<string, true> | null;
-declare const treeStates: ScriptTreeState[];
-declare const renderedSequence: number | null;
-declare const isRestoringPlace: boolean;
-declare function findTreeState(treeKey: unknown): ScriptTreeState | null;
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
-declare function toStringSet(values: unknown[]): Record<string, true>;
-declare function hasString(stringSet: Record<string, true>, value: unknown): boolean;
 
 let treePickerObjectsListElement: HTMLElement | null = null;
 let treePickerObjectsToggleElement: HTMLButtonElement | null = null;
@@ -86,16 +70,16 @@ function renderFavoritesToggle(containerElement: HTMLElement): void {
     const favoritesElement = createElement('span', 'favoritesControls');
 
     const toggleElement = createButton('primary', 'favoritesToggle');
-    favoritesToggleElement = toggleElement;
+    navigationState.favoritesToggleElement = toggleElement;
     toggleElement.setAttribute('title', 'Show only the trees marked as favorites');
     toggleElement.addEventListener('click', function () {
-        isFavoritesOnly = !isFavoritesOnly;
+        navigationState.isFavoritesOnly = !navigationState.isFavoritesOnly;
         applyTreecipesSearch();
         savePanelPlace();
     });
 
     const countElement = createElement('span', 'favoritesCount muted hidden');
-    favoritesCountElement = countElement;
+    navigationState.favoritesCountElement = countElement;
 
     favoritesElement.appendChild(toggleElement);
     favoritesElement.appendChild(countElement);
@@ -111,7 +95,7 @@ export function displayTitleOf(tree: unknown): string {
 
 // ONLY WHILE ITS TOGGLE IS DRAWN: A MODEL WITH NO CARD TO MARK WOULD OTHERWISE HIDE EVERY CARD WITH NO WAY TO TURN IT OFF
 export function isHiddenByFavorites(treeState: ScriptTreeState): boolean {
-    return isFavoritesOnly && favoritesToggleElement !== null && treeState.tree.isFavorite !== true;
+    return navigationState.isFavoritesOnly && navigationState.favoritesToggleElement !== null && treeState.tree.isFavorite !== true;
 }
 
 /*
@@ -125,18 +109,18 @@ export function applyFavoritesFilter(isAnimated?: boolean): void {
 
     applyTreePicker(isAnimated);
 
-    if (favoritesToggleElement) {
-        favoritesToggleElement.textContent = (isFavoritesOnly ? RECIPE_COCKPIT_FAVORITE_TREE_LABEL : RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL) + ' ' + RECIPE_COCKPIT_FAVORITES_ONLY_LABEL;
-        favoritesToggleElement.setAttribute('aria-pressed', isFavoritesOnly ? 'true' : 'false');
+    if (navigationState.favoritesToggleElement) {
+        navigationState.favoritesToggleElement.textContent = (navigationState.isFavoritesOnly ? RECIPE_COCKPIT_FAVORITE_TREE_LABEL : RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL) + ' ' + RECIPE_COCKPIT_FAVORITES_ONLY_LABEL;
+        navigationState.favoritesToggleElement.setAttribute('aria-pressed', navigationState.isFavoritesOnly ? 'true' : 'false');
     }
 
-    if (favoritesCountElement) {
-        favoritesCountElement.textContent = shownCount + ' of ' + pluralize(treeStates.length, 'tree', 'trees');
-        if (isFavoritesOnly) { favoritesCountElement.classList.remove('hidden'); } else { favoritesCountElement.classList.add('hidden'); }
+    if (navigationState.favoritesCountElement) {
+        navigationState.favoritesCountElement.textContent = shownCount + ' of ' + pluralize(treeStates.length, 'tree', 'trees');
+        if (navigationState.isFavoritesOnly) { navigationState.favoritesCountElement.classList.remove('hidden'); } else { navigationState.favoritesCountElement.classList.add('hidden'); }
     }
 
-    if (noFavoritesElement) {
-        if (isFavoritesOnly && favoritesToggleElement !== null && shownCount === 0) { noFavoritesElement.classList.remove('hidden'); } else { noFavoritesElement.classList.add('hidden'); }
+    if (navigationState.noFavoritesElement) {
+        if (navigationState.isFavoritesOnly && navigationState.favoritesToggleElement !== null && shownCount === 0) { navigationState.noFavoritesElement.classList.remove('hidden'); } else { navigationState.noFavoritesElement.classList.add('hidden'); }
     }
 
 }
@@ -153,23 +137,23 @@ function treePickerLabelOf(treeState: ScriptTreeState): string {
 */
 function applyTreePicker(isAnimated?: boolean): void {
 
-    const pickerElement = treePickerElement;
+    const pickerElement = navigationState.treePickerElement;
     if (!pickerElement) { return; }
 
     const pickableTreeStates = treeStates.filter(function (treeState) { return !isHiddenByFavorites(treeState); });
-    const chosenTreeState = findTreeState(selectedTreeKey);
+    const chosenTreeState = findTreeState(navigationState.selectedTreeKey);
     const shownTreeState = chosenTreeState && !isHiddenByFavorites(chosenTreeState) ? chosenTreeState : (pickableTreeStates[0] || null);
 
-    if (shownTreeState) { selectedTreeKey = shownTreeState.tree.treeKey; }
+    if (shownTreeState) { navigationState.selectedTreeKey = shownTreeState.tree.treeKey; }
 
-    const matchedTreeKeys = treecipesMatchedTreeKeys;
+    const matchedTreeKeys = navigationState.treecipesMatchedTreeKeys;
     const listedTreeStates = matchedTreeKeys === null
         ? pickableTreeStates
         : pickableTreeStates.filter(function (treeState) { return hasString(matchedTreeKeys, treeState.tree.treeKey); });
     const isShownUnlisted = !!shownTreeState && listedTreeStates.indexOf(shownTreeState) === -1;
 
     const pickedTreeStates = isShownUnlisted && shownTreeState ? [shownTreeState].concat(listedTreeStates) : listedTreeStates;
-    treePickerTreeStates = pickedTreeStates;
+    navigationState.treePickerTreeStates = pickedTreeStates;
     pickerElement.textContent = '';
     pickedTreeStates.forEach(function (treeState, optionIndex) {
         const label = treePickerLabelOf(treeState) + (isShownUnlisted && optionIndex === 0 ? RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX : '');
@@ -195,9 +179,9 @@ function applyTreePicker(isAnimated?: boolean): void {
     if (shownTreeState && !shownTreeState.isExpanded) { setTreeExpanded(shownTreeState, true); }
 
     // A KEYSTROKE IN THE SECTION SEARCH COMES THROUGH HERE TOO, SO THE LINE IS REDRAWN ONLY FOR ANOTHER CARD
-    if (shownTreeState !== treePickerShownTreeState) {
-        treePickerShownTreeState = shownTreeState;
-        isTreePickerObjectsExpanded = false;
+    if (shownTreeState !== navigationState.treePickerShownTreeState) {
+        navigationState.treePickerShownTreeState = shownTreeState;
+        navigationState.isTreePickerObjectsExpanded = false;
         drawTreePickerObjects();
     }
 
@@ -210,12 +194,12 @@ function applyTreePicker(isAnimated?: boolean): void {
 */
 export function drawTreePickerObjects(): void {
 
-    const objectsElement = treePickerObjectsElement;
+    const objectsElement = navigationState.treePickerObjectsElement;
     if (!objectsElement) { return; }
 
     releaseTreePickerObjectsList();
     objectsElement.textContent = '';
-    const shownTreeState = treePickerShownTreeState;
+    const shownTreeState = navigationState.treePickerShownTreeState;
     if (!shownTreeState) {
         objectsElement.classList.add('hidden');
         return;
@@ -231,7 +215,7 @@ export function drawTreePickerObjects(): void {
     });
 
     objectsElement.appendChild(createElement('span', 'treePickerObjectsLabel', RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL));
-    const listElement = createElement('span', isTreePickerObjectsExpanded ? 'treePickerObjectsList expanded' : 'treePickerObjectsList');
+    const listElement = createElement('span', navigationState.isTreePickerObjectsExpanded ? 'treePickerObjectsList expanded' : 'treePickerObjectsList');
     listElement.setAttribute('id', 'treePickerObjectsList');
     objectsElement.appendChild(listElement);
     treePickerObjectsListElement = listElement;
@@ -260,8 +244,8 @@ export function drawTreePickerObjects(): void {
     const toggleElement = createButton('secondary', 'treePickerObjectsToggle hidden', RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL, 'compact');
     toggleElement.setAttribute('aria-controls', 'treePickerObjectsList');
     toggleElement.addEventListener('click', function () {
-        isTreePickerObjectsExpanded = !isTreePickerObjectsExpanded;
-        if (isTreePickerObjectsExpanded) { listElement.classList.add('expanded'); } else { listElement.classList.remove('expanded'); }
+        navigationState.isTreePickerObjectsExpanded = !navigationState.isTreePickerObjectsExpanded;
+        if (navigationState.isTreePickerObjectsExpanded) { listElement.classList.add('expanded'); } else { listElement.classList.remove('expanded'); }
         drawTreePickerObjectsToggle();
     });
     objectsElement.appendChild(toggleElement);
@@ -316,10 +300,10 @@ export function drawTreePickerObjectsToggle(): void {
 
     if (!treePickerObjectsToggleElement || !treePickerObjectsListElement) { return; }
 
-    treePickerObjectsToggleElement.textContent = isTreePickerObjectsExpanded ? RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS : RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL;
-    treePickerObjectsToggleElement.setAttribute('aria-expanded', isTreePickerObjectsExpanded ? 'true' : 'false');
+    treePickerObjectsToggleElement.textContent = navigationState.isTreePickerObjectsExpanded ? RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS : RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL;
+    treePickerObjectsToggleElement.setAttribute('aria-expanded', navigationState.isTreePickerObjectsExpanded ? 'true' : 'false');
     const isCut = treePickerObjectsListElement.scrollWidth > treePickerObjectsListElement.clientWidth;
-    if (isTreePickerObjectsExpanded || isCut) {
+    if (navigationState.isTreePickerObjectsExpanded || isCut) {
         treePickerObjectsToggleElement.classList.remove('hidden');
     } else {
         treePickerObjectsToggleElement.classList.add('hidden');
@@ -330,8 +314,8 @@ export function drawTreePickerObjectsToggle(): void {
 // THE READER'S PICK, OR A RESULT THEY CLICKED: OPENING A CARD ON ITS TREECIPE TAB LISTS THE ORGS ITS INSERT OFFERS, AS IT ALWAYS HAS
 export function chooseTree(treeState: ScriptTreeState, isByReader: boolean): void {
 
-    if (isHiddenByFavorites(treeState)) { isFavoritesOnly = false; }
-    selectedTreeKey = treeState.tree.treeKey;
+    if (isHiddenByFavorites(treeState)) { navigationState.isFavoritesOnly = false; }
+    navigationState.selectedTreeKey = treeState.tree.treeKey;
     applyFavoritesFilter(isByReader);
 
     if (isByReader && treeState.selectedTab === 'treecipe' && renderedSequence !== null && !isRestoringPlace) { requestDataOrgs(); }
@@ -344,13 +328,13 @@ export function buildTreePicker(trees: Array<{ folderName?: string }>): HTMLElem
     const labelElement = createElement('label', 'treePickerLabel', RECIPE_COCKPIT_TREECIPE_PICKER_LABEL);
 
     const treePickerSelectElement = createElement('select', 'treePickerSelect');
-    treePickerElement = treePickerSelectElement;
+    navigationState.treePickerElement = treePickerSelectElement;
     treePickerSelectElement.setAttribute('id', 'treePickerSelect');
     treePickerSelectElement.setAttribute('aria-label', RECIPE_COCKPIT_TREECIPE_PICKER_LABEL);
     labelElement.setAttribute('for', 'treePickerSelect');
     treePickerSelectElement.addEventListener('change', function () {
         const optionIndex = /^[0-9]+$/.test(String(treePickerSelectElement.value)) ? Number(treePickerSelectElement.value) : -1;
-        const treeState = treePickerTreeStates[optionIndex];
+        const treeState = navigationState.treePickerTreeStates[optionIndex];
         if (!treeState) { return; }
         chooseTree(treeState, true);
         savePanelPlace();

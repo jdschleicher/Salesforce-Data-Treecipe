@@ -13,19 +13,17 @@ import type { RunHistoryRowStatus } from '../../RecipeCockpitTroubleshootingCons
 import { buildRowTable, buildToggleElement } from '../RecipeCockpitPanelBuilders';
 import { DatasetJourneySortColumn, IDatasetJourneyEntry, IDatasetJourneyFile, IDatasetJourneyMessage, IDatasetJourneySort, IDatasetRowState, IDatasetsTreeState } from './DatasetTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { renderedSequence, treeStates } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../shell/PanelPlace';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
 
 /*
     A data set's insert journey (#471): a ▸ on every row. A row never inserted opens to "No
     inserts yet" without asking the host; any other asks for its timeline the first time it opens
     for a model (loadDatasetJourney), which is never posted with the model. Every value is written
-    with textContent, and a file opens by its index in the entries the host posted. These names
-    are the panel script's own, read when a function runs.
+    with textContent, and a file opens by its index in the entries the host posted.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IDatasetsTreeState[];
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
 
 let datasetJourneyCount = 0;
 

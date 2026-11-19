@@ -4,17 +4,15 @@ import { ITabSearchView, buildTabSearch } from '../RecipeCockpitPanelBuilders';
 import { setDatasetJourneyExpanded } from './DatasetJourney';
 import { buildDatasetRowState, drawDatasetLastInsert, drawDatasetName } from './DatasetRow';
 import { IDataset, IDatasetLastInsert, IDatasetRowState, IDatasetsTreeState } from './DatasetTypes';
+import { renderedSequence, treeStates } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { savePanelPlace } from '../shell/PanelPlace';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
 
 /*
     The Previously Used Data Sets tab (#226, #312, #642): a card's data sets, its search and
-    Favorites only, and the host's updates to a row drawn in place. These names are the panel
-    script's own, read when a function runs.
+    Favorites only, and the host's updates to a row drawn in place.
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IDatasetsTreeState[];
-declare function pluralize(count: number, singular: string, plural: string): string;
-declare function savePanelPlace(): void;
 
 // WHAT THE HOST POSTS (datasetAdded, datasetPreferences, datasetLastInsert): ITS SEQUENCES AND NAMES ARE CHECKED HERE, AND A DATA SET OR LAST INSERT IS A MODEL ROW, DRAWN AS THE MODEL'S ARE
 interface IDatasetAddedMessage {

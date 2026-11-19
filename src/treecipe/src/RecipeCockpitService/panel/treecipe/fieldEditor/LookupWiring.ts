@@ -13,19 +13,28 @@ import type { FieldEditorPanelMessage, IAddableParent, IEmptyLookup, ILookupDeci
 import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { findObjectExclusion, findObjectFieldSelection, occurrenceNicknameOf } from '../fieldRows/SelectionCascade';
 import { RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON, RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON, RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON } from '../../../RecipeCockpitFieldRowsConstants';
+import { vscodeApi as cockpitVscodeApi } from '../../RecipeCockpitPanelConnection';
+import { runLocks } from '../../RecipeCockpitRunLocks';
+
+// THIS MODULE POSTS ONLY ITS OWN COMMANDS: THE TYPE HOLDS EVERY MESSAGE TO THEM
+const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void } = cockpitVscodeApi;
 
 /*
     A lookup row's "Wire to…", an empty lookup's two decisions, "Wire TODO lookups" and a self-lookup
-    iteration's "+ Add friend" (#151, #197, #294, #421, #653). The run locks and button lists are the
-    panel script's lets, declare let here: it empties the lists for every new model, and its
-    wireLookupState and addIterationFriendState handlers give the locks back.
+    iteration's "+ Add friend" (#151, #197, #294, #421, #653). The run locks are runLocks', given back
+    by the host's wireLookupState and addFriendState; the button lists belong to one model.
 */
-declare const vscodeApi: { postMessage(message: FieldEditorPanelMessage): void };
-declare let isAddFriendRunning: boolean;
-declare let addFriendButtonElements: HTMLButtonElement[];
-declare let isWireLookupRunning: boolean;
-declare let wireLookupButtonElements: HTMLButtonElement[];
-declare let lookupDecisions: ILookupDecision[];
+// EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL; THE SAME FOR "Wire to…" AND "Wire TODO lookups" (#151)
+let addFriendButtonElements: HTMLButtonElement[] = [];
+export let wireLookupButtonElements: HTMLButtonElement[] = [];
+// EVERY EMPTY LOOKUP'S TWO BUTTONS (#421): THE ONE-WRITE LOCK GIVES THEM BACK, BUT NEVER PAST THE REASON EACH IS DISABLED FOR
+let lookupDecisions: ILookupDecision[] = [];
+
+export function resetLookupButtons(): void {
+    addFriendButtonElements = [];
+    wireLookupButtonElements = [];
+    lookupDecisions = [];
+}
 
 // EACH CARD'S lookupWirings BY OBJECT, OCCURRENCE AND FIELD, BUILT ONCE PER CARD RATHER THAN SCANNED PER ROW
 const lookupWiringIndexByTree = new WeakMap<ITreecipeTree, Record<string, ILookupWiring>>();
@@ -62,7 +71,7 @@ export function appendAddFriendControls(treeKey: string, object: ITreecipeObject
         const choiceElement = createButton('secondary', 'treeAddFriendChoice', '+ ' + friendObjectApiName);
         choiceElement.setAttribute('aria-label', 'Add ' + friendObjectApiName + ' under ' + object.nickname);
         choiceElement.addEventListener('click', function () {
-            if (isAddFriendRunning) { return; }
+            if (runLocks.isAddFriendRunning) { return; }
             setAddFriendRunning(true);
             vscodeApi.postMessage({
                 command: 'addIterationFriend',
@@ -72,7 +81,7 @@ export function appendAddFriendControls(treeKey: string, object: ITreecipeObject
                 friendObjectApiName: friendObjectApiName
             });
         });
-        choiceElement.disabled = isAddFriendRunning;
+        choiceElement.disabled = runLocks.isAddFriendRunning;
         addFriendButtonElements.push(choiceElement);
         addFriendsElement.appendChild(choiceElement);
     });
@@ -81,13 +90,13 @@ export function appendAddFriendControls(treeKey: string, object: ITreecipeObject
     objectHeaderElement.appendChild(addFriendElement);
     objectHeaderElement.appendChild(addFriendsElement);
     // ONLY THIS ROW'S BUTTONS -- SETTING EVERY ONE DRAWN SO FAR, PER ROW, IS QUADRATIC IN THE ROWS
-    addFriendElement.disabled = isAddFriendRunning;
+    addFriendElement.disabled = runLocks.isAddFriendRunning;
 
 }
 
 export function setAddFriendRunning(isRunning: boolean): void {
 
-    isAddFriendRunning = isRunning;
+    runLocks.isAddFriendRunning = isRunning;
     addFriendButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
 
 }
@@ -131,13 +140,13 @@ export function buildWireLookupElement(tree: ITreecipeTree, wiring: ILookupWirin
         : 'Choose which of ' + wiring.candidateNicknames.join(', ') + ' this lookup points at in the recipe file');
     wireElement.setAttribute('aria-label', 'Wire ' + fieldLabel);
     wireElement.addEventListener('click', function () {
-        if (isWireLookupRunning) { return; }
+        if (runLocks.isWireLookupRunning) { return; }
         setWireLookupRunning(true);
         const wireMessage: ILookupDecisionMessage = { command: 'wireLookup', treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
         if (wiring.objectNickname) { wireMessage.objectNickname = wiring.objectNickname; }
         vscodeApi.postMessage(wireMessage);
     });
-    wireElement.disabled = isWireLookupRunning;
+    wireElement.disabled = runLocks.isWireLookupRunning;
     wireLookupButtonElements.push(wireElement);
 
     return wireElement;
@@ -200,7 +209,7 @@ export function buildLookupDecisionElement(treeObjectState: ITreeObjectState, fi
     const createParentElement = createButton('secondary', 'treeAddParentObject', RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX);
     const useOrgRecordElement = createButton('secondary', 'treeUseOrgRecord', RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX + emptyLookup.parentObjectApiName + RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX);
     const postDecision = function (command: 'addParentObject' | 'useOrgRecordForLookup'): void {
-        if (isWireLookupRunning) { return; }
+        if (runLocks.isWireLookupRunning) { return; }
         setWireLookupRunning(true);
         const decisionMessage: ILookupDecisionMessage = { command: command, treeKey: tree.treeKey, objectApiName: emptyLookup.objectApiName, fieldApiName: emptyLookup.fieldApiName };
         if (emptyLookup.objectNickname) { decisionMessage.objectNickname = emptyLookup.objectNickname; }
@@ -276,11 +285,11 @@ function drawLookupDecisionButtons(decision: ILookupDecision): void {
     const parentObjectApiName = decision.emptyLookup.parentObjectApiName;
     const useReason = decision.useReason || decision.selectionReason || '';
 
-    decision.createParentElement.disabled = isWireLookupRunning || !!decision.createReason;
+    decision.createParentElement.disabled = runLocks.isWireLookupRunning || !!decision.createReason;
     decision.createParentElement.setAttribute('title', decision.createReason
         ? 'Cannot be created: ' + decision.createReason
         : 'Add a ' + parentObjectApiName + ' block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation');
-    decision.useOrgRecordElement.disabled = isWireLookupRunning || !!useReason;
+    decision.useOrgRecordElement.disabled = runLocks.isWireLookupRunning || !!useReason;
     decision.useOrgRecordElement.setAttribute('title', useReason
         ? 'Cannot use an org record: ' + useReason
         : 'Choose an org, then search ' + parentObjectApiName + ' or enter a record Id; the Id is written into the recipe file after a confirmation');
@@ -296,11 +305,11 @@ export function buildWireAllLookupsElement(tree: ITreecipeTree): HTMLButtonEleme
     const wireAllElement = createButton('secondary', 'treeWireAllLookups', RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL + ' (' + singleCandidateCount + ')');
     wireAllElement.setAttribute('title', 'Point every TODO lookup of this tree that has exactly one record to choose from at that record\'s nickname, in the recipe file, after a confirmation that lists them');
     wireAllElement.addEventListener('click', function () {
-        if (isWireLookupRunning) { return; }
+        if (runLocks.isWireLookupRunning) { return; }
         setWireLookupRunning(true);
         vscodeApi.postMessage({ command: 'wireAllLookups', treeKey: tree.treeKey });
     });
-    wireAllElement.disabled = isWireLookupRunning;
+    wireAllElement.disabled = runLocks.isWireLookupRunning;
     wireLookupButtonElements.push(wireAllElement);
 
     return wireAllElement;
@@ -309,7 +318,7 @@ export function buildWireAllLookupsElement(tree: ITreecipeTree): HTMLButtonEleme
 
 export function setWireLookupRunning(isRunning: boolean): void {
 
-    isWireLookupRunning = isRunning;
+    runLocks.isWireLookupRunning = isRunning;
     wireLookupButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
     lookupDecisions.forEach(drawLookupDecisionButtons);
 

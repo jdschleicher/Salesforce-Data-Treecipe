@@ -3,8 +3,8 @@ import type { IActionCardView, ITabSearchView } from '../RecipeCockpitPanelBuild
 
 /*
     The shapes the Treecipe Adapter tab's panel modules work on (#641). A tree card's state is built
-    by the panel script, which is not type checked yet, so IAdapterTreeState names only what these
-    modules read and write on it. What the host posts is read as untrusted: every leaf is unknown,
+    by the card (treecipe/card/, #657) as one object that is every tab's view, so IAdapterTreeState
+    names only what these modules read and write on it. What the host posts is read as untrusted: every leaf is unknown,
     and each is checked or converted where it is drawn. A tree's fixedValues is the field rows'
     IFixedValue[] (#655), since findFixedValue reads it for both tabs and converts each value with String.
 */
@@ -308,9 +308,9 @@ export interface IUpdaterSnapshotButton {
 }
 
 /*
-    The parts of a tree card's state this tab reads and writes; the script builds the rest. The
+    The parts of a tree card's state this tab reads and writes; the card builds the rest. The
     elements are made by buildUpdaterTab, and every function that can run before it checks the
-    element it draws on first, as the script did.
+    element it draws on first.
 */
 export interface IAdapterTreeState extends IUpdaterFieldTreeState {
     tree: IAdapterTree;

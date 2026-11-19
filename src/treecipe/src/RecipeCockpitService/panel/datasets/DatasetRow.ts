@@ -17,40 +17,28 @@ import { buildPencilGlyph } from '../RecipeCockpitPanelBuilders';
 import { buildDatasetJourneyToggle, setDatasetJourneyExpanded } from './DatasetJourney';
 import { IDataset, IDatasetRecordCount, IDatasetRecordCountsMessage, IDatasetRecordTypes, IDatasetRowState, IDatasetsTreeState, INameEditor } from './DatasetTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
+import { renderedSequence, treeStates } from '../shell/PanelRender';
+import { pluralize } from '../RecipeCockpitPanelShared';
+import { versionLabelOf } from '../treecipe/card/TreeCard';
+import { buildNameEditor } from '../treecipe/card/NameEditor';
+import { vscodeApi } from '../RecipeCockpitPanelConnection';
+import { runLocks } from '../RecipeCockpitRunLocks';
+import { dataOrgPicker } from '../treecipe/dataOrg/DataOrgPickerState';
 
 /*
     One row of the Previously Used Data Sets tab (#226, #312, #469, #621, #642): its name and star,
-    record types, record counts, newest insert and Insert…. These names are the panel script's own,
-    read when a function runs.
+    record types, record counts, newest insert and Insert….
 */
-declare const vscodeApi: { postMessage(message: unknown): void };
-declare const renderedSequence: number | null;
-declare const treeStates: IDatasetsTreeState[];
-declare const dataOrgLabels: string[] | null;
-declare const dataOrgSelectedIndex: number | null;
-declare const insertRunningTreeKey: string | null;
-declare const insertRunningDatasetFolderName: string | null;
-declare const isDataOrgChecking: boolean;
-declare const isScratchOrgRunning: boolean;
-declare const isPermissionSetAssignRunning: boolean;
-declare const isMetadataDeployRunning: boolean;
-// THE SCRIPT EMPTIES BOTH FOR EVERY NEW MODEL, SO THEY ARE READ FROM IT AT EACH CALL
-declare let pendingDatasetCountElements: Record<string, HTMLElement[]>;
-declare let answeredDatasetCounts: Record<string, IDatasetRecordCountsMessage>;
-declare function pluralize(count: number, singular: string, plural: string): string;
+// DATA SET COUNT ROWS WAITING ON THE HOST, AND THE ANSWERS ALREADY HAD -- KEYED BY FOLDER NAMES FROM DISK, SO NO PROTOTYPE
+let pendingDatasetCountElements: Record<string, HTMLElement[]> = Object.create(null);
+let answeredDatasetCounts: Record<string, IDatasetRecordCountsMessage> = Object.create(null);
+
+// BOTH BELONG TO ONE MODEL: A NEW ONE ASKS FOR ITS COUNTS AGAIN
+export function resetDatasetRecordCounts(): void {
+    pendingDatasetCountElements = Object.create(null);
+    answeredDatasetCounts = Object.create(null);
+}
 // THE TREECIPE TAB AND THE HISTORY SUB-TAB USE THESE TOO, SO THEY MOVE WITH THE TREECIPE TAB (#643)
-declare function versionLabelOf(treeState: IDatasetsTreeState, runFolderName: string | null): string;
-declare function buildNameEditor(nameEditorOptions: {
-    nameTarget: string;
-    nameKey: string;
-    maxLength: number;
-    openerElement: HTMLElement;
-    displayElement: HTMLElement;
-    placeholderText: string;
-    readCustomName: () => string;
-    readDisplayName: () => string;
-    onClose: () => void;
-}): INameEditor;
 
 function formatRecordCounts(recordCounts: IDatasetRecordCount[]): string {
 
@@ -187,7 +175,7 @@ export function buildDatasetRowState(treeState: IDatasetsTreeState, dataset: IDa
     rowState.insertElement = createButton('secondary', 'historyAction treeDatasetInsert', 'Insert…');
     rowState.insertElement.addEventListener('click', function () {
         const insertMessage: { command: string; orgIndex?: number } = Object.assign({ command: 'insertDataset' }, actionMessage);
-        if (dataOrgSelectedIndex !== null) { insertMessage.orgIndex = dataOrgSelectedIndex; }
+        if (dataOrgPicker.dataOrgSelectedIndex !== null) { insertMessage.orgIndex = dataOrgPicker.dataOrgSelectedIndex; }
         vscodeApi.postMessage(insertMessage);
     });
     primaryLineElement.appendChild(rowState.insertElement);
@@ -241,11 +229,11 @@ function drawDatasetInsert(rowState: IDatasetRowState): void {
     const insertElement = rowState.insertElement;
     if (!insertElement) { return; }
 
-    const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
+    const orgLabel = dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgSelectedIndex !== null && dataOrgPicker.dataOrgLabels[dataOrgPicker.dataOrgSelectedIndex] ? dataOrgPicker.dataOrgLabels[dataOrgPicker.dataOrgSelectedIndex] : '';
     // WHILE THE ORGS ARE CHECKED THE SELECTION IS CLEARED, SO A CLICK WOULD ASK FOR AN ORG BESIDE THE LISTING IN FLIGHT
-    insertElement.disabled = insertRunningTreeKey !== null || isDataOrgChecking || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
-    insertElement.textContent = insertRunningDatasetFolderName === rowState.dataset.datasetFolderName ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : 'Insert…';
-    insertElement.setAttribute('title', isDataOrgChecking ? RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
+    insertElement.disabled = runLocks.insertRunningTreeKey !== null || dataOrgPicker.isDataOrgChecking || runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
+    insertElement.textContent = runLocks.insertRunningDatasetFolderName === rowState.dataset.datasetFolderName ? RECIPE_COCKPIT_INSERT_RUNNING_LABEL : 'Insert…';
+    insertElement.setAttribute('title', dataOrgPicker.isDataOrgChecking ? RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
         : orgLabel ? 'Insert this data set into ' + orgLabel + ', the org selected in the Target Org Manager'
         : 'Choose the org to insert this data set into');
 

@@ -10,9 +10,8 @@ import { occurrenceNicknameOf } from '../treecipe/fieldRows/SelectionCascade';
 import { RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL } from '../../RecipeCockpitFieldRowsConstants';
 
 /*
-    The Treecipe Adapter's field editor (#417, #641). These names are the panel script's own, read
-    when a function runs. The editor shares no editor code with the Treecipe tab's (openFieldEditor):
-    it imports that tab's input and form hint (#653), and calls its expression helpers, still the script's.
+    The Treecipe Adapter's field editor (#417, #641). The editor shares no editor code with the
+    Treecipe tab's (openFieldEditor): it imports that tab's input, form hint (#653) and expression helpers.
 */
 
 /*
