@@ -30,6 +30,8 @@ const STYLESHEET_ENTRY = 'src/treecipe/src/RecipeCockpitService/panel/RecipeCock
 const STYLESHEET_FILE = 'src/treecipe/src/RecipeCockpitService/RecipeCockpitPanelStylesheet.generated.ts';
 const STYLESHEET_CONSTANT = 'RECIPE_COCKPIT_PANEL_STYLESHEET';
 const STYLESHEET_INCLUDE_PATTERN = /^\s*\/\* include: (\S+\.css) \*\/$/;
+// ANYTHING THAT LOOKS LIKE AN INCLUDE, IN ANY CASE OR SPACING: ONE THE PATTERN ABOVE DOES NOT TAKE WOULD OTHERWISE BE KEPT AS A COMMENT, ITS FILE SILENTLY LEFT OUT
+const STYLESHEET_INCLUDE_LOOKALIKE_PATTERN = /\/\*\s*include\s*:/i;
 
 // WHAT NO STYLESHEET MAY HOLD: AN END TO ITS <style>, A FILE OR ADDRESS TO LOAD, OR A TEMPLATE INTERPOLATION LEFT IN IT
 const STYLESHEET_REFUSALS = [
@@ -91,19 +93,43 @@ class PanelBundler {
     static buildStylesheet(readFile = (filePath) => fs.readFileSync(filePath, 'utf8')) {
 
         const entryPath = path.resolve(__dirname, STYLESHEET_ENTRY);
-        const stylesheet = readFile(entryPath).split('\n').map(line => {
-            const includeMatch = STYLESHEET_INCLUDE_PATTERN.exec(line);
-            if (!includeMatch) { return line; }
-            return readFile(path.resolve(path.dirname(entryPath), includeMatch[1])).replace(/\n$/, '');
-        }).join('\n');
+        const entryDirectory = path.dirname(entryPath);
+        const nameOf = (filePath) => path.relative(__dirname, filePath).split(path.sep).join('/');
 
-        const refusal = STYLESHEET_REFUSALS.find(candidate => stylesheet.toLowerCase().includes(candidate.text.toLowerCase()));
-        if (refusal) {
-            throw new Error(`${STYLESHEET_ENTRY} builds to a stylesheet holding "${refusal.text}", ${refusal.reason}.`);
-        }
-        if (stylesheet.split('\n').some(line => /\/\* include:/.test(line))) {
-            throw new Error(`${STYLESHEET_ENTRY} holds an include line inside an included file, or one not on a line of its own. Include each file from ${STYLESHEET_ENTRY}, on its own line.`);
-        }
+        // EVERY FILE IS CHECKED ON ITS OWN, SO A REFUSAL NAMES THE FILE AND LINE THAT HOLDS IT
+        const refuseIn = (fileName, fileLines) => fileLines.forEach((line, lineIndex) => {
+            const refusal = STYLESHEET_REFUSALS.find(candidate => line.toLowerCase().includes(candidate.text.toLowerCase()));
+            if (refusal) {
+                throw new Error(`${fileName}:${lineIndex + 1} builds to a stylesheet holding "${refusal.text}", ${refusal.reason}.`);
+            }
+        });
+
+        const entryLines = readFile(entryPath).split('\n');
+        const stylesheet = entryLines.map((line, lineIndex) => {
+            const includeMatch = STYLESHEET_INCLUDE_PATTERN.exec(line);
+            if (!includeMatch) {
+                if (STYLESHEET_INCLUDE_LOOKALIKE_PATTERN.test(line)) {
+                    throw new Error(`${STYLESHEET_ENTRY}:${lineIndex + 1} looks like an include but is not one, so its file would be left out. Write it on a line of its own as: /* include: <relative path>.css */`);
+                }
+                refuseIn(STYLESHEET_ENTRY, [line]);
+                return line;
+            }
+            const includedPath = path.resolve(entryDirectory, includeMatch[1]);
+            let includedText;
+            try {
+                includedText = readFile(includedPath);
+            } catch (readError) {
+                throw new Error(`${STYLESHEET_ENTRY}:${lineIndex + 1} includes ${includeMatch[1]}, which could not be read (${readError.message}). Fix the path, or add the file.`);
+            }
+            const includedLines = includedText.replace(/\n$/, '').split('\n');
+            includedLines.forEach((includedLine, includedLineIndex) => {
+                if (STYLESHEET_INCLUDE_LOOKALIKE_PATTERN.test(includedLine)) {
+                    throw new Error(`${nameOf(includedPath)}:${includedLineIndex + 1} holds an include line inside an included file. Include each file from ${STYLESHEET_ENTRY}, where its rules belong in the cascade.`);
+                }
+            });
+            refuseIn(nameOf(includedPath), includedLines);
+            return includedLines.join('\n');
+        }).join('\n');
 
         return stylesheet;
 

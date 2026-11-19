@@ -374,7 +374,7 @@ describe('RecipeCockpitService', () => {
             text or surface and appear only inside a box-shadow.
         */
         const findHardCodedColours = (styleSheet: string): string[] => {
-            const shadowTintFree = styleSheet.replace(/box-shadow:[^;]*;/g, '');
+            const shadowTintFree = styleSheet.replace(/box-shadow:[^;]*;/g, shadowDeclaration => shadowDeclaration.replace(/rgba\(15, 23, 42, 0\.0[68]\)/g, ''));
             const colourLiterals = shadowTintFree.match(/#[0-9A-Fa-f]{3,8}(?![\w-])|\b(?:rgba?|hsla?)\([^)]*\)/g) ?? [];
             const namedColours = Array.from(shadowTintFree.matchAll(/(?:^|[\s;{])(?:color|background(?:-color)?|border(?:-[a-z]+)*|fill|stroke|outline(?:-color)?|text-decoration(?:-color)?|caret-color|accent-color)\s*:\s*([^;}]*)/g), match => match[1])
                 .flatMap(value => value.match(/\b(?:white|black|red|green|blue|gray|grey|yellow|orange|navy|teal|purple|pink|silver)\b/g) ?? []);
@@ -393,6 +393,8 @@ describe('RecipeCockpitService', () => {
             expect(findHardCodedColours('    .treeCard { border: 1px solid navy; }')).toEqual(['navy']);
             expect(findHardCodedColours('    .treeCard { border-color: navy; }')).toEqual(['navy']);
             expect(findHardCodedColours('    #cockpitOrgSection { color: var(--sdt-text); white-space: nowrap; }')).toEqual([]);
+            expect(findHardCodedColours('    .a { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }')).toEqual([]);
+            expect(findHardCodedColours('    .a { box-shadow: 0 0 0 2px #FF0000; }')).toEqual(['#FF0000']);
 
         });
 

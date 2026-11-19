@@ -110,20 +110,47 @@ describe('PanelBundler.buildStylesheet (#644)', () => {
         ['<!--', '    /* <!-- */'],
         ['url(', '    .a { background: url(https://example.com/a.png); }'],
         ['@import', '    @import "other.css";'],
-        ['${', '    .a { width: ${WIDTH}; }']
+        ['${', '    .a { width: ${WIDTH}; }'],
+        // THE MATCH IGNORES CASE: A BROWSER READS URL( AND @IMPORT, AND THE HTML TOKENIZER </STYLE, AS IT READS THEM IN LOWER CASE
+        ['url(', '    .a { background: URL(https://example.com/a.png); }'],
+        ['@import', '    @IMPORT "other.css";'],
+        ['</style', '    .a::before { content: "</STYLE>"; }']
     ])('refuses a stylesheet holding %s and says why', (forbiddenText, cssLine) => {
 
         expect(() => PanelBundler.buildStylesheet(readFrom({ [ENTRY]: cssLine + '\n' }))).toThrow(`builds to a stylesheet holding "${forbiddenText}"`);
 
     });
 
-    it('refuses an include line inside an included file, and fails on an include that is not there', () => {
+    it('refuses an include line inside an included file, and names the include that is not there', () => {
 
         expect(() => PanelBundler.buildStylesheet(readFrom({
             [ENTRY]: '    /* include: Kit.css */\n',
             [path.resolve(path.dirname(ENTRY), 'Kit.css')]: '    /* include: Other.css */\n'
-        }))).toThrow('holds an include line inside an included file');
-        expect(() => PanelBundler.buildStylesheet(readFrom({ [ENTRY]: '    /* include: Missing.css */\n' }))).toThrow('ENOENT');
+        }))).toThrow('Kit.css:1 holds an include line inside an included file');
+        expect(() => PanelBundler.buildStylesheet(readFrom({ [ENTRY]: '    .a { color: var(--sdt-text); }\n    /* include: Missing.css */\n' })))
+            .toThrow(`${STYLESHEET_ENTRY}:2 includes Missing.css, which could not be read (ENOENT`);
+
+    });
+
+    // ONE WRITTEN ANY OTHER WAY WOULD BE KEPT AS A COMMENT, AND ITS FILE SILENTLY LEFT OUT OF THE PANEL
+    it.each([
+        ['    /* Include: Kit.css */'],
+        ['    /*include: Kit.css*/'],
+        ['    /* include: Kit.css */ .a { color: var(--sdt-text); }'],
+        ['    /* include: Kit with space.css */']
+    ])('refuses a line that looks like an include but is not one: %s', (cssLine) => {
+
+        expect(() => PanelBundler.buildStylesheet(readFrom({ [ENTRY]: cssLine + '\n' })))
+            .toThrow(`${STYLESHEET_ENTRY}:1 looks like an include but is not one, so its file would be left out.`);
+
+    });
+
+    it('names the included file and line that holds a refused text', () => {
+
+        expect(() => PanelBundler.buildStylesheet(readFrom({
+            [ENTRY]: '    /* include: kit/Kit.css */\n',
+            [path.resolve(path.dirname(ENTRY), 'kit/Kit.css')]: '    .a { color: var(--sdt-text); }\n    .b { background: url(x.png); }\n'
+        }))).toThrow('RecipeCockpitService/panel/kit/Kit.css:2 builds to a stylesheet holding "url("');
 
     });
 

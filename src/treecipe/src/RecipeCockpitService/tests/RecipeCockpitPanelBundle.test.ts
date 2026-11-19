@@ -94,6 +94,24 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
+    // A .css FILE NO INCLUDE NAMES WOULD BE LEFT OUT OF THE PANEL WITH EVERY OTHER SUITE STILL PASSING
+    it('includes every .css file under RecipeCockpitService/panel/ and CockpitKit/panel/ exactly once (#644)', () => {
+
+        const entryFileName = 'RecipeCockpitPanel.css';
+        const cssFilePaths = ['RecipeCockpitService/panel', 'CockpitKit/panel'].flatMap(panelDirectory =>
+            (fs.readdirSync(path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory), { recursive: true }) as string[])
+                .filter(fileName => fileName.endsWith('.css') && path.basename(fileName) !== entryFileName)
+                .map(fileName => path.join(REPOSITORY_ROOT, 'src/treecipe/src', panelDirectory, fileName)));
+
+        expect(cssFilePaths.map(cssFilePath => path.basename(cssFilePath))).toEqual(expect.arrayContaining(['ObjectRefreshDialog.css', 'CockpitConfirmDialog.css']));
+        cssFilePaths.forEach(cssFilePath => {
+            const cssText = fs.readFileSync(cssFilePath, 'utf8').replace(/\n$/, '');
+            expect({ cssFile: path.basename(cssFilePath), count: RECIPE_COCKPIT_PANEL_STYLESHEET.split(cssText).length - 1 })
+                .toEqual({ cssFile: path.basename(cssFilePath), count: 1 });
+        });
+
+    });
+
     it('holds no template, file, address or other stylesheet in its .css, and one depth rule per level and one emoji rule per verb button (#644)', () => {
 
         const verbButtonVerbs: Record<string, string> = RecipeCockpitServiceModule.RECIPE_COCKPIT_VERB_BUTTON_VERBS;
