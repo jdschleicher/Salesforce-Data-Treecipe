@@ -1,0 +1,28 @@
+    .dataOrgControls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .dataOrgSelect {
+        padding: 0.3rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .dataOrgType {
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    @keyframes sdtSpin { to { transform: rotate(360deg); } }
+    /* A RING, NOT A GLYPH: ITS COLOURS ARE THE PALETTE'S, AND REDUCED MOTION LEAVES IT DRAWN BUT STILL */
+    .dataOrgSpinner {
+        display: inline-block;
+        width: 0.9rem;
+        height: 0.9rem;
+        border: 2px solid var(--sdt-border);
+        border-top-color: var(--sdt-accent);
+        border-radius: 50%;
+        animation: sdtSpin var(--sdt-spinner-rotation) linear infinite;
+    }
+    .dataOrgStatus { margin: 0.4rem 0; }
+    .dataOrgStatus.failed { color: var(--sdt-removed); }

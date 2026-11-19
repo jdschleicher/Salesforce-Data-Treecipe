@@ -1,0 +1,21 @@
+    /*
+        THE BUTTON KINDS (#363): every button the panel makes carries sdtButton and exactly one
+        sdtButton-<kind>, and these rules are the only place a button's colours, border and states
+        are set. A button's own class adds size and layout only, so a new button is styled by its
+        kind or fails the button-kind test; it is never a browser default.
+    */
+    .sdtButton-primary, .sdtButton-secondary {
+        min-height: 2.25rem;
+        min-width: 2.25rem;
+        padding: 0.4rem 0.8rem;
+        font: inherit;
+        font-size: 1.1em;
+        color: var(--sdt-accent);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .sdtButton-secondary:hover:not(:disabled) {
+        border-color: var(--sdt-accent);
+    }

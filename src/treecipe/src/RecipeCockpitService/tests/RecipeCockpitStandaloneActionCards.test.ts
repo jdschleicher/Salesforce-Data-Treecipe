@@ -23,6 +23,7 @@ import {
     RECIPE_COCKPIT_VERB_BUTTON_VERBS
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
 /*
     #384: the standalone actions outside the Troubleshooting tab are #381's cards too, and the two
@@ -35,7 +36,7 @@ const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 type Panel = ReturnType<typeof runPanelScript>;
 
 const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
-const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
+const styleSheetOf = (html: string) => withCustomPropertyValues(html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>')));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 
 const loadTreeRecipe = () => {

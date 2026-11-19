@@ -1,0 +1,6 @@
+    .cockpitSection { margin: 0.6rem 0; }
+    .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: default; border-bottom: 2px solid var(--sdt-header); }
+    #cockpitOrgSection { position: sticky; top: 0; z-index: 10; margin: 0; padding: 0.6rem; background-color: var(--sdt-org-section); border-bottom: 1px solid var(--sdt-border); }
+    html:has(#cockpitOrgSection) { scroll-padding-top: var(--sdt-pinned-org-section-scroll-padding); }
+    .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; color: var(--sdt-header); }
+    #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }

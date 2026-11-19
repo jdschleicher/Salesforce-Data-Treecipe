@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.202.11] - The Recipe Cockpit's stylesheet is .css files, inlined at build time (#644, slice 4 of #565)
+
+Nothing a user sees changes. With every new custom property set back to its value, the stylesheet the shell writes is byte for byte what 3.202.10 wrote. Every journey and the rendered baselines pass with no expectation changed.
+
+- **The stylesheet is .css files.**
+  - `RecipeCockpitService/panel/RecipeCockpitPanel.css` is the cockpit's stylesheet: 872 lines that were a template literal in `buildWebviewShellHtml`.
+  - The kit's style strings are now eight `CockpitKit/panel/*.css` files: the four button-kind pieces, the three org picker pieces, and the confirmation dialog.
+  - The Object refresh dialog's styles are `panel/treecipe/objectRefresh/ObjectRefreshDialog.css`. The leftover `RecipeCockpitObjectRefreshDialog.ts` is deleted.
+- **`RecipeCockpitService.ts` went from 22,804 lines to 21,956.**
+- **The build inlines it.** `npm run bundle-panel` writes `RecipeCockpitPanelStylesheet.generated.ts` beside the panel bundle.
+  - It replaces each line that holds only an `include: <path>` comment with that file, verbatim and where it stands, so the cascade keeps its order.
+  - It refuses `</style`, `<!--`, `url(`, `@import` and `${`.
+  - The shell's `<style>` is now `:root` plus that one constant. The CSP, the nonced `<style>`, `localResourceRoots: []` and "no external file" are unchanged.
+- **A value the TypeScript also reads is a custom property, never a number in a .css file.** There are 17, written into `:root` beside the palette from the same constants:
+  - motion timings: hover, reveal and conceal, the last two being what `setShownWithMotion` waits for;
+  - the tree's rem sizes;
+  - the action card size;
+  - the org section's scroll padding;
+  - the spinner's rotation;
+  - the nesting indent;
+  - the three verb-button emoji.
+
+  `COCKPIT_KIT_CUSTOM_PROPERTIES` holds the kit's five, and `RECIPE_COCKPIT_CUSTOM_PROPERTIES` holds the cockpit's. The eight nesting-depth rules are written out as `calc(var(--sdt-nesting-indent) * N)`.
+- **Tests.**
+  - The stale-bundle test now covers the stylesheet. Another test holds the shell's `<style>` to exactly `:root` plus the stylesheet.
+  - The palette check reads the .css files. It fails on a `--sdt-` name that nothing writes, on a value that is written but never read, and on a colour set outside the palette.
+  - `CockpitKit.test.ts` fails when a kit .css file is missing from `COCKPIT_KIT_STYLESHEET_FILES`, or is not included once and in order.
+  - Suites that pin a constant inside a rule read the stylesheet with the values put back (`tests/RecipeCockpitStylesheetValues.ts`), so their expectations are unchanged.
+  - `esbuild.panel.test.js` covers includes and each refusal.
+- **`.gitattributes`** keeps the .css files and the generated stylesheet LF, since the stale-stylesheet test compares bytes.
+
 ## [3.202.10] - The Recipe Cockpit's panel is checked TypeScript modules, with no script left in a string (#657, slice 3e-6 of #565)
 
 Nothing a user sees changes. Every cockpit suite passes, including place persistence and restore, help, motion, Object refresh, extension version and tree preferences. So do every journey (#577, #578, #579, #580) and the rendered baselines. No expectation changed; one source scan now accepts esbuild's double quotes.

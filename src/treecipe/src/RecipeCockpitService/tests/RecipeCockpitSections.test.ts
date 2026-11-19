@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
 } from '../RecipeCockpitService';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
+import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
 /*
     #348: the org controls are one section under the toolbar, and every tree card is in a
@@ -211,7 +212,7 @@ describe('RecipeCockpitService, the Target Org Manager and Treecipes sections (#
 
         it('pins the org section to the top of the panel over the cards, on its own opaque light tint (#433), and pads a scrolled-to row below it (#364)', () => {
 
-            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('nonce');
+            const shellHtml = withCustomPropertyValues(RecipeCockpitService.buildWebviewShellHtml('nonce'));
             const pinnedRule = shellHtml.split('\n').find(line => line.trim().startsWith('#cockpitOrgSection {'));
 
             expect(pinnedRule).toBeDefined();

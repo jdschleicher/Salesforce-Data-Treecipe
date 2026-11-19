@@ -23,6 +23,7 @@ import {
     RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
 /*
     #494: an expanded object's controls row and its field rows are each a bordered, padded box, and
@@ -40,7 +41,7 @@ const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loa
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
 
-const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
+const shellHtml = () => withCustomPropertyValues(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
 // EVERY RULE WRITTEN FOR EXACTLY THIS SELECTOR, JOINED
 const ruleBody = (selector: string): string => {

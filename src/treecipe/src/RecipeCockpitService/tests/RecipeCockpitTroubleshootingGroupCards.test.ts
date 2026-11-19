@@ -13,6 +13,7 @@ import {
     RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
 /*
     The TODO's and Validation Rules lists draw each object group as a card (#383), on #381's card
@@ -47,7 +48,7 @@ const drawRecipe = (recipe: IRecipeCockpitRecipeViewModel): Panel => {
 
 const styleSheet = () => {
     const html = RecipeCockpitService.buildWebviewShellHtml('testNonce');
-    return html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
+    return withCustomPropertyValues(html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>')));
 };
 const ruleFor = (selector: string) => {
     const match = styleSheet().match(new RegExp('\\n\\s*' + selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' \\{([^}]*)\\}'));

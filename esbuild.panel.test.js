@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE } = require('./esbuild.panel.js');
+const { PanelBundler, PANEL_ENTRY_POINT, PANEL_BUNDLE_FILE, STYLESHEET_ENTRY, STYLESHEET_FILE } = require('./esbuild.panel.js');
 
 describe('PanelBundler.buildOptions (#637)', () => {
 
@@ -81,6 +81,75 @@ describe('PanelBundler.run (#637)', () => {
 
         expect(writeFileSpy).not.toHaveBeenCalled();
         expect(output.error).toHaveBeenCalledWith('Bundling the panel failed: bundles to a script holding "</script"');
+
+    });
+
+});
+
+describe('PanelBundler.buildStylesheet (#644)', () => {
+
+    const ENTRY = path.resolve(__dirname, STYLESHEET_ENTRY);
+    const readFrom = (filesByPath) => (filePath) => {
+        if (!Object.prototype.hasOwnProperty.call(filesByPath, filePath)) { throw new Error(`ENOENT: ${filePath}`); }
+        return filesByPath[filePath];
+    };
+
+    it('replaces an include line with that file, verbatim and where it stands, so the cascade keeps its order', () => {
+
+        const stylesheet = PanelBundler.buildStylesheet(readFrom({
+            [ENTRY]: '    .first { color: var(--sdt-text); }\n    /* include: kit/Kit.css */\n    .last { color: var(--sdt-muted); }\n',
+            [path.resolve(path.dirname(ENTRY), 'kit/Kit.css')]: '    .kit { color: var(--sdt-accent); }\n'
+        }));
+
+        expect(stylesheet).toBe('    .first { color: var(--sdt-text); }\n    .kit { color: var(--sdt-accent); }\n    .last { color: var(--sdt-muted); }\n');
+
+    });
+
+    it.each([
+        ['</style', '    .a::before { content: "</style>"; }'],
+        ['<!--', '    /* <!-- */'],
+        ['url(', '    .a { background: url(https://example.com/a.png); }'],
+        ['@import', '    @import "other.css";'],
+        ['${', '    .a { width: ${WIDTH}; }']
+    ])('refuses a stylesheet holding %s and says why', (forbiddenText, cssLine) => {
+
+        expect(() => PanelBundler.buildStylesheet(readFrom({ [ENTRY]: cssLine + '\n' }))).toThrow(`builds to a stylesheet holding "${forbiddenText}"`);
+
+    });
+
+    it('refuses an include line inside an included file, and fails on an include that is not there', () => {
+
+        expect(() => PanelBundler.buildStylesheet(readFrom({
+            [ENTRY]: '    /* include: Kit.css */\n',
+            [path.resolve(path.dirname(ENTRY), 'Kit.css')]: '    /* include: Other.css */\n'
+        }))).toThrow('holds an include line inside an included file');
+        expect(() => PanelBundler.buildStylesheet(readFrom({ [ENTRY]: '    /* include: Missing.css */\n' }))).toThrow('ENOENT');
+
+    });
+
+    it('writes the stylesheet beside the bundle, so npm run bundle-panel and vscode:prepublish refresh both', async () => {
+
+        jest.spyOn(PanelBundler, 'buildScript').mockResolvedValue('(() => {})();\n');
+        jest.spyOn(PanelBundler, 'buildStylesheet').mockReturnValue('    .a { color: var(--sdt-text); }\n');
+        const writeFileSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+
+        await expect(PanelBundler.run({ log: jest.fn(), error: jest.fn() })).resolves.toBe(0);
+
+        expect(writeFileSpy).toHaveBeenCalledWith(path.resolve(__dirname, STYLESHEET_FILE), PanelBundler.buildGeneratedStylesheetFileText('    .a { color: var(--sdt-text); }\n'));
+
+    });
+
+    it('writes neither file when the stylesheet is refused', async () => {
+
+        jest.spyOn(PanelBundler, 'buildScript').mockResolvedValue('(() => {})();\n');
+        jest.spyOn(PanelBundler, 'buildStylesheet').mockImplementation(() => { throw new Error('builds to a stylesheet holding "url("'); });
+        const writeFileSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+        const output = { log: jest.fn(), error: jest.fn() };
+
+        await expect(PanelBundler.run(output)).resolves.toBe(1);
+
+        expect(writeFileSpy).not.toHaveBeenCalled();
+        expect(output.error).toHaveBeenCalledWith('Bundling the panel failed: builds to a stylesheet holding "url("');
 
     });
 

@@ -1,0 +1,8 @@
+    .sdtButton-primary {
+        color: var(--sdt-on-action);
+        background-color: var(--sdt-action);
+        border-color: var(--sdt-action);
+        font-weight: 600;
+    }
+    .sdtButton-primary:hover:not(:disabled) { filter: brightness(0.92); }
+    .sdtButton-primary:active:not(:disabled) { filter: brightness(0.84); }

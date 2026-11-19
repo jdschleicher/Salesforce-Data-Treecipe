@@ -32,8 +32,11 @@ import { REFERENCE_ID_REQUIRED_TODO } from '../../RelationshipService/ReferenceI
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import * as RecipeCockpitOrgAuthorizeModule from '../RecipeCockpitOrgAuthorize';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.generated';
+import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../RecipeCockpitPanelStylesheet.generated';
+import { CockpitKitStylesheet } from '../../CockpitKit/CockpitKitStylesheet';
+import { CockpitPalette } from '../../CockpitKit/CockpitPalette';
 
-const { PanelBundler, PANEL_BUNDLE_FILE, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
+const { PanelBundler, PANEL_BUNDLE_FILE, STYLESHEET_FILE, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '../../../../..');
 
@@ -63,6 +66,46 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
         expect(evaluateGeneratedFileText(PanelBundler.buildGeneratedFileText(script))).toBe(script);
         expect(evaluateGeneratedFileText(fs.readFileSync(path.join(REPOSITORY_ROOT, PANEL_BUNDLE_FILE), 'utf8'))).toBe(RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT);
+
+    });
+
+    // #644: THE STYLESHEET IS .css FILES; A .css FILE CHANGED WITHOUT npm run bundle-panel WOULD SHIP THE OLD LOOK
+    it('holds the stylesheet esbuild.panel.js builds from the .css files today (#644)', () => {
+
+        const committedFileText = fs.readFileSync(path.join(REPOSITORY_ROOT, STYLESHEET_FILE), 'utf8');
+        const builtFileText = PanelBundler.buildGeneratedStylesheetFileText(PanelBundler.buildStylesheet());
+
+        expect({ isStylesheetCurrent: committedFileText === builtFileText, toRegenerate: REGENERATE_COMMAND })
+            .toEqual({ isStylesheetCurrent: true, toRegenerate: 'npm run bundle-panel' });
+        expect(evaluateGeneratedFileText(committedFileText)).toBe(RECIPE_COCKPIT_PANEL_STYLESHEET);
+
+    });
+
+    it('is the shell\'s whole <style> after :root, and :root holds the palette and the values the .css reads, nothing else (#644)', () => {
+
+        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
+        const styleOpeningTag = '<style nonce="bundleNonce">';
+        const styleText = html.substring(html.indexOf(styleOpeningTag) + styleOpeningTag.length, html.indexOf('</style>'));
+        const rootBlock = ['    :root {', CockpitPalette.buildCustomProperties(), CockpitKitStylesheet.buildCustomProperties(),
+            CockpitKitStylesheet.buildCustomProperties(RecipeCockpitServiceModule.RECIPE_COCKPIT_CUSTOM_PROPERTIES), '        color-scheme: light;', '    }'].join('\n');
+
+        expect(html.split(styleOpeningTag)).toHaveLength(2);
+        expect(styleText).toBe(`\n${rootBlock}\n${RECIPE_COCKPIT_PANEL_STYLESHEET}`);
+
+    });
+
+    it('holds no template, file, address or other stylesheet in its .css, and one depth rule per level and one emoji rule per verb button (#644)', () => {
+
+        const verbButtonVerbs: Record<string, string> = RecipeCockpitServiceModule.RECIPE_COCKPIT_VERB_BUTTON_VERBS;
+        const depthRules = RECIPE_COCKPIT_PANEL_STYLESHEET.match(/\.treeObject\.treeObjectDepth(\d+) \{ margin-left: calc\(var\(--sdt-nesting-indent\) \* \1\); \}/g) ?? [];
+
+        ['${', 'url(', '@import', '<link', '</style', '<!--', '/* include:'].forEach(forbiddenText =>
+            expect({ forbiddenText, isHeld: RECIPE_COCKPIT_PANEL_STYLESHEET.includes(forbiddenText) }).toEqual({ forbiddenText, isHeld: false }));
+        expect(depthRules).toHaveLength(RecipeCockpitServiceModule.RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH);
+        Object.entries(verbButtonVerbs).forEach(([className, verb]) =>
+            expect(RECIPE_COCKPIT_PANEL_STYLESHEET).toContain(`    .sdtButton.${className}::before { content: var(--sdt-verb-emoji-${verb}) / ''; margin-right: 0.35em; }`));
+        expect(RecipeCockpitServiceModule.RECIPE_COCKPIT_CUSTOM_PROPERTIES['--sdt-verb-emoji-generateData'])
+            .toBe(`'${RecipeCockpitServiceModule.RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData}'`);
 
     });
 
