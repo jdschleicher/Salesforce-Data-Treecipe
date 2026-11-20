@@ -146,6 +146,7 @@ import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTree
 import {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
@@ -561,6 +562,7 @@ export type { IRecipeCockpitHelpSection, RecipeCockpitTreeTab };
 export {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
@@ -3526,8 +3528,8 @@ export class RecipeCockpitService {
     /*
         Why a field cannot be given a fixed value (#262), or undefined when it can. A field the tree or
         the insert decides -- RecordTypeId, a dependent picklist whose value a controlling value
-        chooses, a field Salesforce sets from another lookup (#680) -- keeps its expression, and so does any field a #220 lock holds or the reader
-        unticked: a fixed value on a field generation leaves out would never be written. A lookup is
+        chooses, a field Salesforce sets from another lookup (#680) -- keeps its expression, and so
+        does any field a #220 lock holds or the reader unticked: a fixed value on a field generation leaves out would never be written. A lookup is
         open (#627): it takes a record's Id (findLookupValueRefusal). The panel draws the same rule
         from the same model.
     */

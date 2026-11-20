@@ -64,6 +64,16 @@ describe('RelationshipService.writeDerivedFieldValues (#680)', () => {
 
     });
 
+    test('a field whose name only starts with AccountId is left as it was', () => {
+
+        const quoteLines = [...buildQuoteLines('Opportunity_NickName', 'Account_NickName'), '    AccountIdNote__c: kept'];
+        const writtenLines = RelationshipService.writeDerivedFieldValues('Quote', quoteLines, noNicknames);
+
+        expect(writtenLines[writtenLines.length - 1]).toBe('    AccountIdNote__c: kept');
+        expect(writtenLines[4]).toBe('    AccountId: Opportunity_NickName.AccountId');
+
+    });
+
     test('a Quote without an AccountId line is left as it was', () => {
 
         const quoteLines = buildQuoteLines('Opportunity_NickName', 'unused').filter(quoteLine => !quoteLine.startsWith('    AccountId:'));

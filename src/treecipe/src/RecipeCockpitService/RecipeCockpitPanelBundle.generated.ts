@@ -848,6 +848,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = "depends on ";
   var RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX = "set by Salesforce from ";
   var RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL = "read only";
+  var RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX = ", so it is never inserted";
   var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
   var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
   var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
@@ -6866,7 +6867,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (derivedField) {
       const derivedReason = RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
       const derivedBadgeElement = createElement("span", "fixedValueBadge derivedFieldBadge", RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL);
-      derivedBadgeElement.setAttribute("title", "Salesforce sets " + field.fieldApiName + " from " + derivedField.throughFieldApiName + ", so it is never inserted");
+      derivedBadgeElement.setAttribute("title", "Salesforce sets " + field.fieldApiName + " from " + derivedField.throughFieldApiName + RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX);
       fieldHeaderElement.appendChild(derivedBadgeElement);
       const copiedNickname = referencedOwnerState ? readSourceFieldNickname(referencedOwnerState, derivedField.sourceFieldApiName) : null;
       fieldHeaderElement.appendChild(createElement("span", "treeFieldNote derivedFieldNote muted", copiedNickname ? derivedReason + " → " + copiedNickname : derivedReason));
