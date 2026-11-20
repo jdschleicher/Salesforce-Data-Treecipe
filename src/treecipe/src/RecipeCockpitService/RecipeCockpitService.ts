@@ -780,7 +780,7 @@ import { IOrgNewFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCoc
 import { RecipeService } from '../RecipeService/RecipeService';
 import { IObjectRefreshComparisonRequest, IObjectRefreshItem, IObjectRefreshPlannedItem, OBJECT_REFRESH_KIND_LABELS, OBJECT_REFRESH_KINDS, OBJECT_REFRESH_OPERATION_NAME, ObjectRefreshKind, RecipeCockpitObjectRefresh } from './RecipeCockpitObjectRefresh';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
-import { ICustomTreecipeDefinition, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME, RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION, RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH, RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
+import { ICustomTreecipeDefinition, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME, RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES, RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION, RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH, RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
 import { RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES, RECIPE_COCKPIT_CUSTOM_TREECIPE_OPEN_RECIPE_LABEL } from './RecipeCockpitCustomTreecipeConstants';
 export * from './RecipeCockpitCustomTreecipeConstants';
 
@@ -5794,7 +5794,8 @@ export class RecipeCockpitService {
 
         const definitionFilePath = path.join(treeFolderPath, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME);
         try {
-            if ( !fs.lstatSync(definitionFilePath).isFile() ) {
+            const definitionFileStats = fs.lstatSync(definitionFilePath);
+            if ( !definitionFileStats.isFile() || definitionFileStats.size > RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES ) {
                 return undefined;
             }
             return RecipeCockpitCustomTreecipe.readDefinition(fs.readFileSync(definitionFilePath, 'utf8'));
@@ -5925,9 +5926,11 @@ export class RecipeCockpitService {
             };
 
             const writtenFilePaths: string[] = [];
+            let isFolderMade = false;
             try {
                 // NOT recursive: AN EXISTING FOLDER FAILS HERE, SO A COPY NEVER WRITES INTO ONE IT DID NOT MAKE
                 fs.mkdirSync(customTreeFolderPath);
+                isFolderMade = true;
                 if ( !SfdxProjectService.isPathContainedInWorkspace(customTreeFolderPath, workspaceRoot) ) {
                     throw new Error(`${location.folderName} is not inside this workspace`);
                 }
@@ -5938,10 +5941,13 @@ export class RecipeCockpitService {
                 writtenFilePaths.push(definitionFilePath);
             } catch (writeError) {
                 writtenFilePaths.forEach(writtenFilePath => fs.rmSync(writtenFilePath, { force: true }));
-                try {
-                    fs.rmdirSync(customTreeFolderPath);
-                } catch {
-                    // NOT MADE HERE, OR NOT EMPTY: LEFT AS IT IS
+                // ONLY A FOLDER THIS SAVE MADE: ANOTHER WINDOW'S, MADE A MOMENT EARLIER, IS ITS OWN
+                if ( isFolderMade ) {
+                    try {
+                        fs.rmdirSync(customTreeFolderPath);
+                    } catch {
+                        // NOT EMPTY: LEFT AS IT IS
+                    }
                 }
                 refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)}: ${this.describeThrown(writeError)}. Nothing was left behind.`);
                 return;

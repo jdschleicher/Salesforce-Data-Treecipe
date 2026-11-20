@@ -368,6 +368,28 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         });
 
+        it('leaves a folder it did not make when another save made it first', async () => {
+
+            const recipeDataMessage = await openAndDraw();
+            const mkdirSync = fs.mkdirSync;
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(((folderPath: fs.PathLike, ...rest: unknown[]) => {
+                if ( String(folderPath).endsWith(CUSTOM_FOLDER_NAME) ) {
+                    (mkdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest);
+                    throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+                }
+                return (mkdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest);
+            }) as typeof fs.mkdirSync);
+
+            await receivedMessageHandler({
+                command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, name: '',
+                ...removal({ removedObjectApiNames: ['OtherChildObject__c'] })
+            });
+
+            expect(fs.existsSync(path.join(runFolderPath, CUSTOM_FOLDER_NAME))).toBeTrue();
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)?.[0]).toContain('could not be written');
+
+        });
+
         it('takes the folder back out when a write fails, and says so once', async () => {
 
             const recipeDataMessage = await openAndDraw();
@@ -411,6 +433,23 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
             expect(RecipeCockpitService.planCustomTreecipeLocation(path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), { folderName: SOURCE_TREE_KEY } as any))
                 .toEqual({ refusal: `${RUN_FOLDER_NAME} already holds every custom copy number of ${SOURCE_TREE_KEY}. Remove one you no longer need.` });
+
+        });
+
+    });
+
+    describe('readCustomTreecipeDefinition', () => {
+
+        it('does not read a customTreecipe.json over 64 KB', () => {
+
+            const treeFolderPath = path.join(runFolderPath, CUSTOM_FOLDER_NAME);
+            fs.mkdirSync(treeFolderPath);
+            fs.writeFileSync(path.join(treeFolderPath, 'customTreecipe.json'), RecipeCockpitCustomTreecipe.buildDefinitionText({
+                version: 1, sourceRunFolderName: RUN_FOLDER_NAME, sourceTreeFolderName: SOURCE_TREE_KEY, sourceRecipeFileName: SOURCE_RECIPE_FILE_NAME,
+                originalTreeFolderName: SOURCE_TREE_KEY, removedObjectApiNames: [], removedFields: [], outOfRunObjectApiNames: [], savedAt: '2026-11-20T22:24:09.000Z'
+            }).replace('{', '{' + ' '.repeat(65 * 1024)));
+
+            expect(RecipeCockpitService.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
 
         });
 
