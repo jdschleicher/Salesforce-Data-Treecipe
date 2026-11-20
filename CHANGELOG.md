@@ -1,5 +1,13 @@
 # Change Log
 
+## [3.202.16] - Initiate Configuration File shows only its directory picker, and never offers a folder inside a hidden one (#676)
+
+- **No more progress notification beside the picker.** Initiate Configuration File used to open a "Treecipe: Initiate Configuration File" notification that listed every directory the scan found. Now only the picker shows.
+  - While the scan runs, the picker is busy and its placeholder reads `Scanning directories… press Esc to cancel`. When the scan ends, the placeholder goes back to asking for the objects directory.
+  - Esc on the picker stops the scan and writes no configuration file, as before. Accepting a directory mid-scan still returns at once.
+- **A `packageDirectories` entry inside a hidden folder is skipped.** An `sfdx-project.json` path with any `.`-prefixed part, such as `.sfdx/pkg`, is no longer scanned or offered. The other entries still seed the picker; when none is left, the whole workspace is scanned.
+- **Hidden folders and `node_modules` are held by a test on a real folder tree.** The scan already skipped them; the test now checks nothing inside `.git`, `.sfdx`, `.sf`, `.vscode` or `node_modules` is read or offered.
+
 ## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

@@ -37,7 +37,8 @@ import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 */
 
 const OBJECTS_DIRECTORY_LABEL = './force-app/main/default/objects/';
-const OBJECTS_DIRECTORY_PROMPT = 'Select directory that contains the Salesforce objects';
+// THE OBJECTS PICKER OPENS WHILE IT SCANS, SO THIS IS WHAT IT SAYS WHEN IT APPEARS (#676)
+const OBJECTS_DIRECTORY_PROMPT = 'Scanning directories… press Esc to cancel';
 const FAKER_SERVICE_PROMPT = 'Select Data Faker Service';
 const MISSING_CONFIGURATION_MESSAGE = 'Expected treecipe and config file missing';
 const RUN_INITIATION_SETUP_BUTTON = 'Run Treecipe Initiation Setup';
@@ -132,10 +133,6 @@ describe('treecipe.config.json prompts and notices, at the vscode API (#575)', (
             update: updateSettingMock,
             inspect: jest.fn(() => ({ workspaceValue: storedConfigurationPath }))
         });
-        (vscode.window.withProgress as jest.Mock).mockImplementation((_progressOptions, runTask) => runTask(
-            { report: jest.fn() },
-            { isCancellationRequested: false, onCancellationRequested: jest.fn() }
-        ));
         // jest.fn()s FROM THE vscode MOCK FACTORY ARE NOT SPIES, SO restoreMocks LEAVES THEIR CALLS IN PLACE
         (vscode.window.showQuickPick as jest.Mock).mockReset();
         (vscode.window.showWarningMessage as jest.Mock).mockReset();
