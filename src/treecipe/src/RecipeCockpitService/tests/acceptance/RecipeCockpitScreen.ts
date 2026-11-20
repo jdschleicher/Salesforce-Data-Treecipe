@@ -151,9 +151,12 @@ export class RecipeCockpitScreen {
             // A NAMED-BY-CONTENT CONTROL'S TEXT IS ITS NAME, SO IT IS NOT REPEATED UNDER IT
             children: ROLES_NAMED_BY_CONTENT.has(role) ? childNodes.filter(childNode => childNode.role !== 'text') : childNodes
         };
-        if ( role === 'combobox' ) {
+        // A NATIVE select SHOWS ITS CHOSEN OPTION; A BUTTON WITH role="combobox" (#678) SHOWS ITS OWN TEXT
+        if ( role === 'combobox' && element.tagName === 'select' ) {
             const shownOption = element.children.find(optionElement => String(optionElement.value) === String(element.value));
             node.value = shownOption ? this.shownTextOf(shownOption) : '';
+        } else if ( role === 'combobox' ) {
+            node.value = this.shownTextOf(element);
         }
         if ( role === 'textbox' || role === 'searchbox' ) { node.value = String(element.value); }
         if ( element.attributes['aria-describedby'] ) {

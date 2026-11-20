@@ -1,12 +1,27 @@
 # Change Log
 
-## [3.202.16] - Initiate Configuration File shows only its directory picker, and never offers a folder inside a hidden one (#676)
+## [3.203.1] - Initiate Configuration File shows only its directory picker, and never offers a folder inside a hidden one (#676)
 
 - **No more progress notification beside the picker.** Initiate Configuration File used to open a "Treecipe: Initiate Configuration File" notification that listed every directory the scan found. Now only the picker shows.
   - While the scan runs, the picker is busy and its placeholder reads `Scanning directories… press Esc to cancel`. When the scan ends, the placeholder goes back to asking for the objects directory.
   - Esc on the picker stops the scan and writes no configuration file, as before. Accepting a directory mid-scan still returns at once.
 - **A `packageDirectories` entry inside a hidden folder is skipped.** An `sfdx-project.json` path with any `.`-prefixed part, such as `.sfdx/pkg`, is no longer scanned or offered. The other entries still seed the picker; when none is left, the whole workspace is scanned.
 - **Hidden folders and `node_modules` are held by a test on a real folder tree.** The scan already skipped them; the test now checks nothing inside `.git`, `.sfdx`, `.sf`, `.vscode` or `node_modules` is read or offered.
+
+## [3.203.0] - Target Org Manager's dropdown opens with a "Search for org" box and lists each org as "alias -- instance url" (#678)
+
+- **The org dropdown can be searched or chosen from.** Clicking it opens a **Search for org** box, then the line **or choose org**, then every org.
+  - Typing narrows the list, ignoring case, to orgs whose alias (or username) or instance URL holds what was typed. Nothing is sent to the extension while you type.
+  - When nothing matches, the list says `No org matches "<what you typed>"`.
+  - Up and Down move through the orgs, Enter chooses, and Escape or a click outside closes the list without changing the org. The search is empty each time it opens.
+  - While the orgs load, when none is listed, and while a scratch org, an authorization, a deploy or a permission set assignment holds the org, the dropdown does not open.
+- **Each org shows as its alias, two dashes and its instance URL,** such as `qa -- https://acme--qa.sandbox.my.salesforce.com`, in the list and on the closed dropdown. An org with no alias shows its username instead, an org whose authorization has no usable https:// URL shows the alias alone, and the CLI's default org still ends in ` (default)`.
+  - Everything else that names the org keeps the alias alone: the Query tab's **Run in …**, a data set's **Insert…** and every notification.
+  - The panel still sends only the chosen org's position in the list; the extension holds the usernames.
+  - The closed dropdown names the org the extension holds: a choice shows once the extension takes it, so a choice it turns down while an insert or a prompt holds the org never shows as chosen.
+- **The dropdown is a kit piece any cockpit can use,** `CockpitKit/panel/CockpitSearchableSelect.ts` with its stylesheet, so the Picklist Cockpit (#525) can take it.
+- **Tests:** `RecipeCockpitOrgSearch.test.ts` covers the search, the keyboard, the closed states, markup in a label and the host's labels; `SalesforceOrgService.test.ts` covers which instance URLs are carried; the panel suites read the dropdown through `RecipeCockpitOrgPickerProbe.ts`; and the acceptance journeys pick an org by typing its alias into **Search for org**.
+- The **?** help and the guide say how to search or choose an org.
 
 ## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
 

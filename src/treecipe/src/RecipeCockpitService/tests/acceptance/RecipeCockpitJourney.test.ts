@@ -164,11 +164,11 @@ describe('RecipeCockpitJourney (#577)', () => {
     test('pickOrg selects an org in Target Org Manager, and the fake org records the calls on it', async () => {
 
         await journey.chooseTree('Lead-ONLY');
-        expect(journey.optionLabelsOf(JOURNEY_ORG_PICKER_NAME)).toEqual(['Choose org…', 'qa', 'activeScratch']);
+        expect(journey.optionLabelsOf(JOURNEY_ORG_PICKER_NAME)).toEqual(['qa -- https://acme--qa.sandbox.my.salesforce.com', 'activeScratch -- https://ability-active-3.scratch.my.salesforce.com']);
 
         await journey.pickOrg('qa');
 
-        expect(journey.screen().get('combobox', JOURNEY_ORG_PICKER_NAME).value).toBe('qa');
+        expect(journey.screen().get('combobox', JOURNEY_ORG_PICKER_NAME).value).toBe('qa -- https://acme--qa.sandbox.my.salesforce.com');
         expect(journey.org.calls).toContainEqual({ username: 'qa@example.com.qa', call: 'connection.query', args: ['SELECT IsSandbox, OrganizationType FROM Organization'] });
         // A CONNECTION CALL THE FAKE HAS NO ANSWER FOR NAMES ITSELF, AND THE COCKPIT SAYS SO ON SCREEN
         expect(journey.screen().findAll('text', /The journey's fake org has no answer for connection\.describe on qa@example\.com\.qa/)).toHaveLength(1);

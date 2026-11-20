@@ -78,7 +78,7 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
             });
 
             await journey.step('newsbx is the org selected, and the workspace\'s default org', () => {
-                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'newsbx (default)', 'The org chosen');
+                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'newsbx -- https://acme--newsbx.sandbox.my.salesforce.com (default)', 'The org chosen');
                 expectEqual(JSON.parse(fs.readFileSync(workspaceConfigPath(journey), 'utf8')), { 'target-org': 'newsbx' }, '.sf/config.json');
             });
 
@@ -99,7 +99,7 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
             await journey.waitFor('button', 'Authorize org', undefined, { isEnabled: true });
 
             await journey.step('newsbx is offered, not chosen, and no workspace config was written', () => {
-                expectEqual(journey.optionLabelsOf(ORG_PICKER_NAME).includes('newsbx'), true, `newsbx is among the orgs offered: ${JSON.stringify(journey.optionLabelsOf(ORG_PICKER_NAME))}`);
+                expectEqual(journey.optionLabelsOf(ORG_PICKER_NAME).some(optionLabel => optionLabel.startsWith('newsbx -- ')), true, `newsbx is among the orgs offered: ${JSON.stringify(journey.optionLabelsOf(ORG_PICKER_NAME))}`);
                 expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value.startsWith('newsbx'), false, 'newsbx is the org chosen');
                 expectEqual(fs.existsSync(workspaceConfigPath(journey)), false, '.sf/config.json exists');
                 expectEqual(notificationsShown(journey), [{ kind: 'information', text: 'newsbx · new@example.com.newsbx is authorized and listed in Target Org Manager.' }], 'The notifications');
@@ -124,7 +124,7 @@ export const AUTHORIZE_ORG_JOURNEYS: Array<{ name: string; run(journey: RecipeCo
             });
 
             await journey.step('newsbx is the org selected, and the workspace\'s default org', () => {
-                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'newsbx (default)', 'The org chosen');
+                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'newsbx -- https://acme--newsbx.sandbox.my.salesforce.com (default)', 'The org chosen');
                 expectEqual(JSON.parse(fs.readFileSync(workspaceConfigPath(journey), 'utf8')), { 'target-org': 'newsbx' }, '.sf/config.json');
                 expectEqual(notificationsShown(journey),
                     [{ kind: 'information', text: 'newsbx · new@example.com.newsbx is authorized, selected in Target Org Manager, and this workspace\'s default org.' }], 'The notifications');

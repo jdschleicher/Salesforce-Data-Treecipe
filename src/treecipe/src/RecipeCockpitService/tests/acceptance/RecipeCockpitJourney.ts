@@ -8,6 +8,7 @@ import { activate } from '../../../../../extension';
 import {
     RecipeCockpitService,
     IRecipeCockpitWorkspaceState,
+    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
     RECIPE_COCKPIT_TREECIPE_PICKER_LABEL
 } from '../../RecipeCockpitService';
@@ -431,10 +432,27 @@ export class RecipeCockpitJourney implements IJourneyHost {
 
     }
 
-    async pickOrg(orgLabel: string): Promise<void> {
+    /*
+        As a reader picks an org (#678): types its alias into "Search for org", then chooses the one
+        option the search leaves for it -- "alias -- instance url", or the alias alone when the
+        authorization has no instance URL, either followed by " (default)".
+    */
+    async pickOrg(orgAlias: string): Promise<void> {
 
-        await this.step(`pick the org "${orgLabel}"`, async () => {
-            await this.chooseOptionIn(JOURNEY_ORG_PICKER_NAME, orgLabel);
+        await this.step(`pick the org "${orgAlias}"`, async () => {
+            const optionLabel = await this.untilOnScreen(() => {
+                this.openSearchableDropdown(JOURNEY_ORG_PICKER_NAME);
+                const openScreen = this.screen();
+                const searchBoxElement = openScreen.elementOf(openScreen.get('searchbox', RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER));
+                searchBoxElement.value = orgAlias;
+                searchBoxElement.dispatch('input');
+                const shownLabels = this.optionLabelsOf(JOURNEY_ORG_PICKER_NAME).filter(shownLabel => shownLabel === orgAlias || shownLabel.startsWith(orgAlias + ' '));
+                if ( shownLabels.length !== 1 ) {
+                    throw new Error(`searching "${orgAlias}" left ${shownLabels.length} orgs named so: ${JSON.stringify(shownLabels)}.`);
+                }
+                return shownLabels[0];
+            });
+            await this.chooseOptionIn(JOURNEY_ORG_PICKER_NAME, optionLabel);
         });
 
     }
@@ -544,9 +562,22 @@ export class RecipeCockpitJourney implements IJourneyHost {
         );
     }
 
+    // A SEARCHABLE DROPDOWN (#678) LISTS ITS OPTIONS ONLY WHILE OPEN, SO IT IS OPENED TO READ THEM AND CLOSED AGAIN, AS A READER WOULD
     optionLabelsOf(comboboxName: string): string[] {
         const screen = this.screen();
-        return screen.findAll('option', undefined, screen.get('combobox', comboboxName)).map(option => option.name);
+        const combobox = screen.get('combobox', comboboxName);
+        const comboboxElement = screen.elementOf(combobox);
+        if ( comboboxElement.tagName === 'select' ) {
+            return screen.findAll('option', undefined, combobox).map(option => option.name);
+        }
+        if ( combobox.states.includes('disabled') ) { return []; }
+        const wasCollapsed = combobox.states.includes('collapsed');
+        if ( wasCollapsed ) { comboboxElement.dispatch('click'); }
+        const openScreen = this.screen();
+        const listbox = openScreen.findAll('listbox', comboboxName)[0];
+        const optionLabels = listbox ? openScreen.findAll('option', undefined, listbox).map(option => option.name) : [];
+        if ( wasCollapsed ) { comboboxElement.dispatch('click'); }
+        return optionLabels;
     }
 
     /*
@@ -808,16 +839,32 @@ export class RecipeCockpitJourney implements IJourneyHost {
             }
             const options = screen.findAll('option', undefined, combobox);
             const chosenOption = options.find(option => option.name === optionLabel);
-            if ( !chosenOption ) {
-                throw new Error(`the "${comboboxName}" dropdown offers no "${optionLabel}". It offers: ${options.map(option => `"${option.name}"`).join(', ') || 'nothing'}.`);
+            const offeredLabels = screen.elementOf(combobox).tagName === 'select' ? options.map(option => option.name) : this.optionLabelsOf(comboboxName);
+            if ( !offeredLabels.includes(optionLabel) ) {
+                throw new Error(`the "${comboboxName}" dropdown offers no "${optionLabel}". It offers: ${offeredLabels.map(offeredLabel => `"${offeredLabel}"`).join(', ') || 'nothing'}.`);
             }
             return { screen, combobox, chosenOption };
         });
         const comboboxElement = screen.elementOf(combobox);
-        comboboxElement.value = screen.elementOf(chosenOption).value;
-        comboboxElement.dispatch('change');
+        if ( comboboxElement.tagName === 'select' && chosenOption ) {
+            comboboxElement.value = screen.elementOf(chosenOption).value;
+            comboboxElement.dispatch('change');
+        } else {
+            this.openSearchableDropdown(comboboxName);
+            const openScreen = this.screen();
+            const openListbox = openScreen.get('listbox', comboboxName);
+            const optionToClick = openScreen.findAll('option', undefined, openListbox).find(option => option.name === optionLabel);
+            if ( !optionToClick ) { throw new Error(`the "${comboboxName}" dropdown opened without "${optionLabel}".`); }
+            openScreen.elementOf(optionToClick).dispatch('click');
+        }
         await this.settle();
 
+    }
+
+    private openSearchableDropdown(comboboxName: string): void {
+        const screen = this.screen();
+        const combobox = screen.get('combobox', comboboxName);
+        if ( combobox.states.includes('collapsed') ) { screen.elementOf(combobox).dispatch('click'); }
     }
 
     /*
