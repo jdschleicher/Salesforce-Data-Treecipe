@@ -31,6 +31,7 @@ import {
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
+import { RecipeCockpitRecordLinks } from './RecipeCockpitRecordLinks';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForQueryTab
 import type {
     IRecipeCockpitPanelMessage,
@@ -145,7 +146,6 @@ export type IRecipeCockpitHubForQueryTab = Readonly<Pick<typeof RecipeCockpitSer
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
-    'registerRecordLinkPreview' |
     'resolveSelectedReadOrg' |
     'resolveTreeRunArtifactsLocation'>>;
 
@@ -687,7 +687,7 @@ export class RecipeCockpitQueryHost {
                 rows: preview.rows,
                 hiddenColumnCount: preview.hiddenColumnCount
             };
-            const recordLinkSequence = hub.registerRecordLinkPreview(hub.recipeCockpitPanelState, {
+            const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(hub.recipeCockpitPanelState, {
                 previewKind: 'query',
                 renderSequence: renderSequence,
                 treeKey: treeKey,

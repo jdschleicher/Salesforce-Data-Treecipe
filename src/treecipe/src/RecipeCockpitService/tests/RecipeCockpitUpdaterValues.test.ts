@@ -45,15 +45,19 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), exec
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATE_LABEL,
-    RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE,
     RECIPE_COCKPIT_UPDATER_GENERATING_LABEL,
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
-    RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE,
+    RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL,
+    RecipeCockpitAdapterRecords
+} from '../RecipeCockpitAdapterRecords';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
@@ -185,7 +189,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 return { fieldApiName: fieldApiName, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: expression!, kind: 'expression' }) };
             });
 
-            const generation = await RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Gadget__c', 5, fields);
+            const generation = await RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Gadget__c', 5, fields);
 
             const records = (generation as { records: Record<string, unknown>[] }).records;
             expect(records).toHaveLength(5);
@@ -211,7 +215,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
         it('keeps the fields asked for, in order, with a value only where one was typed', () => {
 
-            expect(RecipeCockpitService.readUpdaterFieldValueRequests([
+            expect(RecipeCockpitAdapterState.readUpdaterFieldValueRequests([
                 { objectApiName: 'Contact', fieldApiName: 'LastName' },
                 { objectApiName: 'Account', fieldApiName: 'Rating__c', value: 'Hot' }
             ], treeObjects)).toEqual({ requests: [
@@ -236,7 +240,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             ['an object name that is not text', [{ objectApiName: 7, fieldApiName: 'Name' }]]
         ])('refuses the whole request for %s', (_description, fields) => {
 
-            expect(RecipeCockpitService.readUpdaterFieldValueRequests(fields, treeObjects)).toHaveProperty('refusal');
+            expect(RecipeCockpitAdapterState.readUpdaterFieldValueRequests(fields, treeObjects)).toHaveProperty('refusal');
 
         });
 
@@ -307,7 +311,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             const tree = recipe.trees.find((recipeTree: any) => recipeTree.treeKey === ACCOUNT_TREE_KEY)!;
             const reasonOf = (objectApiName: string, fieldApiName: string) => {
                 const field = recipe.objects.find((object: any) => object.objectApiName === objectApiName)!.fields.find((candidate: any) => candidate.fieldApiName === fieldApiName)!;
-                return RecipeCockpitService.findUpdaterFieldLockReason(tree, objectApiName, field);
+                return RecipeCockpitAdapterState.findUpdaterFieldLockReason(tree, objectApiName, field);
             };
 
             expect(reasonOf('Account', 'Legacy_Code__c')).toBeUndefined();
@@ -315,9 +319,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             expect(reasonOf('Account', 'OwnerId')).toMatch(/lookup/);
             expect(reasonOf('Account', 'Sub_Rating__c')).toBe('depends on Rating__c');
             expect(reasonOf('Contact', 'AccountId')).toMatch(/lookup/);
-            expect(RecipeCockpitService.findUpdaterFieldLockReason(tree, 'Account', { fieldApiName: 'RecordTypeId', fieldType: 'Text' } as any)).toMatch(/record type/);
-            expect(RecipeCockpitService.findUpdaterFieldLockReason(tree, 'Account', { fieldApiName: 'Name', isOnlyInRecipeFile: true } as any)).toMatch(/recipe file/);
-            expect(RecipeCockpitService.findUpdaterFieldLockReason(tree, 'Account', { fieldApiName: 'Number__c', fieldType: 'AutoNumber' } as any)).toMatch(/Salesforce sets/);
+            expect(RecipeCockpitAdapterState.findUpdaterFieldLockReason(tree, 'Account', { fieldApiName: 'RecordTypeId', fieldType: 'Text' } as any)).toMatch(/record type/);
+            expect(RecipeCockpitAdapterState.findUpdaterFieldLockReason(tree, 'Account', { fieldApiName: 'Name', isOnlyInRecipeFile: true } as any)).toMatch(/recipe file/);
+            expect(RecipeCockpitAdapterState.findUpdaterFieldLockReason(tree, 'Account', { fieldApiName: 'Number__c', fieldType: 'AutoNumber' } as any)).toMatch(/Salesforce sets/);
 
         });
 
@@ -335,7 +339,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 return await this.generateFakeDataBySelectedRecipeFile(recipePath);
             });
 
-            const generation = await RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', 7, [
+            const generation = await RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', 7, [
                 { fieldApiName: 'Legacy_Code__c', valueText: '${{ faker.lorem.word() }}' },
                 { fieldApiName: 'Annual_Budget__c', valueText: new FakerJSRecipeFakerService().buildNumericRecipeValueWithPrecisionAndScale(2) },
                 { fieldApiName: 'Amount__c', valueText: new FakerJSRecipeFakerService().buildNumericRecipeValueWithPrecisionAndScale(4, 2) }
@@ -384,7 +388,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 ].join('\n'), recipeText));
             });
 
-            const generation = await RecipeCockpitService.generateUpdaterObjectValues('snowfakery', 'Account', 6, [
+            const generation = await RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'snowfakery', 'Account', 6, [
                 { fieldApiName: 'Legacy_Code__c', valueText: '${{fake.Word}}' },
                 { fieldApiName: 'Annual_Budget__c', valueText: '${{ random_number(min=0, max=9999999999999999) }}' },
                 { fieldApiName: 'Rating__c', valueText: '${{ random_choice(\'Hot\',\'Warm\',\'Cold\') }}' }
@@ -406,7 +410,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
         it('generates a large load in runs of the chunk size, reports each, and stops between runs on a cancel', async () => {
 
             const askedCounts: number[] = [];
-            jest.spyOn(RecipeCockpitService, 'createUpdaterRecipeProcessor').mockReturnValue({
+            jest.spyOn(RecipeCockpitAdapterRecords, 'createUpdaterRecipeProcessor').mockReturnValue({
                 generateFakeDataBySelectedRecipeFile: async (recipePath: string) => fs.readFileSync(recipePath, 'utf8'),
                 transformFakerJsonDataToCollectionApiFormattedFilesBySObject: (recipeText: string) => {
                     const [recipe] = yaml.load(recipeText) as any[];
@@ -416,7 +420,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             } as any);
             const reported: number[] = [];
 
-            const generation = await RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE * 2 + 5, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }], () => false, generatedCount => reported.push(generatedCount));
+            const generation = await RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE * 2 + 5, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }], () => false, generatedCount => reported.push(generatedCount));
 
             expect(askedCounts).toEqual([RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE, RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE, 5]);
             expect(reported).toEqual([RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE, RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE * 2, RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE * 2 + 5]);
@@ -425,7 +429,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             expect(records[RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE].Name).toBe('N2-0');
 
             askedCounts.length = 0;
-            await expect(RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE * 3, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }], () => askedCounts.length >= 1))
+            await expect(RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE * 3, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }], () => askedCounts.length >= 1))
                 .resolves.toEqual({ isCancelled: true });
             expect(askedCounts).toEqual([RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE]);
 
@@ -435,7 +439,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
             jest.spyOn(FakerJSRecipeProcessor.prototype, 'generateFakeDataBySelectedRecipeFile').mockResolvedValue(JSON.stringify([{ object: 'Contact', nickname: 'Contact_NickName', fields: { LastName: 'One' } }]));
 
-            await expect(RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', 1, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }]))
+            await expect(RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', 1, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }]))
                 .resolves.toEqual({ refusal: 'faker-js generated 0 Account records for 1 asked for.' });
 
         });
@@ -444,7 +448,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
             jest.spyOn(FakerJSRecipeProcessor.prototype, 'generateFakeDataBySelectedRecipeFile').mockResolvedValue(JSON.stringify([{ object: 'Account', nickname: 'Account_Updater_NickName', fields: { Name: 'One' } }]));
 
-            await expect(RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', 2, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }]))
+            await expect(RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', 2, [{ fieldApiName: 'Name', valueText: '${{ faker.company.name() }}' }]))
                 .resolves.toEqual({ refusal: 'faker-js generated 1 Account record for 2 asked for.' });
 
         });
@@ -457,11 +461,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 throw new Error('bad expression');
             });
 
-            await expect(RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', 2, [{ fieldApiName: 'Name', valueText: '${{ faker.nothing() }}' }]))
+            await expect(RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', 2, [{ fieldApiName: 'Name', valueText: '${{ faker.nothing() }}' }]))
                 .resolves.toEqual({ refusal: 'faker-js could not generate the values of Account: bad expression' });
             expect(fs.existsSync(path.dirname(recipePaths[0]))).toBe(false);
 
-            await expect(RecipeCockpitService.generateUpdaterObjectValues('faker-js', 'Account', 2, [{ fieldApiName: 'Name', valueText: 'x\n- object: Contact' }]))
+            await expect(RecipeCockpitAdapterRecords.generateUpdaterObjectValues(RecipeCockpitService, 'faker-js', 'Account', 2, [{ fieldApiName: 'Name', valueText: 'x\n- object: Contact' }]))
                 .resolves.toHaveProperty('refusal');
             expect(recipePaths).toHaveLength(1);
 
@@ -513,9 +517,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
 
             postedPanelMessages = [];
             generatedRecipeTexts = [];
@@ -583,7 +587,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                     return new Map([[recipe.object, { allOrNone: true, records: processorAnswer(recipeText) }]]);
                 }
             } as unknown as IFakerRecipeProcessor;
-            processorSpy = jest.spyOn(RecipeCockpitService, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
+            processorSpy = jest.spyOn(RecipeCockpitAdapterRecords, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -610,7 +614,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 [{ object: 'Contact', nickname: 'Contact_Updater_NickName', count: 2, fields: { LastName: '${{ fake.FirstName }}' } }]
             ]);
 
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toEqual([
                 { recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0' } },
                 { recordId: fakeRecordId('Account', 1), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-1' } },
                 { recordId: fakeRecordId('Account', 2), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-2' } }
@@ -668,7 +672,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             ]);
 
             expect(generatedRecipeTexts).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
             expect(postedNamed('updaterValues')).toEqual([]);
             expect(postedNamed('updaterLoadState').at(-1)).toEqual({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' });
 
@@ -684,7 +688,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             ]));
 
             expect(generatedRecipeTexts).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([fakeRecordId('Account', 0), fakeRecordId('Account', 1), fakeRecordId('Account', 2)].map(recordId => ({
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toEqual([fakeRecordId('Account', 0), fakeRecordId('Account', 1), fakeRecordId('Account', 2)].map(recordId => ({
                 recordId: recordId,
                 fieldValues: { Rating__c: 'Hot', Annual_Budget__c: 1250.5 }
             })));
@@ -701,7 +705,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             ]));
 
             expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Legacy_Code__c: '${{fake.Word}}' }]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')![1]).toEqual({ recordId: fakeRecordId('Account', 1), fieldValues: { Rating__c: 'Cold', Legacy_Code__c: 'Legacy_Code__c-new-1' } });
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')![1]).toEqual({ recordId: fakeRecordId('Account', 1), fieldValues: { Rating__c: 'Cold', Legacy_Code__c: 'Legacy_Code__c-new-1' } });
 
         });
 
@@ -730,7 +734,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
         it('refuses a field that was not chosen when the records were loaded, since its current value was not read', async () => {
 
             await openCockpitAndLoad();
-            (RecipeCockpitService as any).heldUpdaterRecords.loadedFieldApiNamesByObjectApiName.set('Account', ['Legacy_Code__c']);
+            (RecipeCockpitAdapterState as any).heldUpdaterRecords.loadedFieldApiNamesByObjectApiName.set('Account', ['Legacy_Code__c']);
 
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Account', fieldApiName: 'Rating__c', value: 'Hot' }]));
 
@@ -752,7 +756,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
         it('says when the last load read none of the objects chosen', async () => {
 
             await openCockpitAndLoad();
-            (RecipeCockpitService as any).heldUpdaterRecords.recordsByObjectApiName.set('Account', []);
+            (RecipeCockpitAdapterState as any).heldUpdaterRecords.recordsByObjectApiName.set('Account', []);
 
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]));
 
@@ -768,7 +772,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]));
 
             expect(warnings().at(-1)).toBe('No values were generated: snowfakery generated 0 Account records for 3 asked for.');
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
             expect(postedNamed('updaterValues')).toEqual([]);
 
         });
@@ -778,7 +782,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             await openCockpitAndLoad();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation((_message: string, options?: { inPanel?: boolean }) => {
                 if ( options?.inPanel ) {
-                    RecipeCockpitService.clearHeldUpdaterRecords();
+                    RecipeCockpitAdapterState.clearHeldUpdaterRecords();
                     return Promise.resolve(RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL);
                 }
                 return Promise.resolve(undefined);
@@ -803,7 +807,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]));
 
             expect(warnings().at(-1)).toMatch(/were not kept: the run on screen or its records changed/);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
 
         });
 
@@ -811,12 +815,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
             await openCockpitAndLoad();
             const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY' };
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
 
             postedPanelMessages = [];
             const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
-            await (RecipeCockpitService as any).generateUpdaterValuesFromPanel(cockpitPanel, panelState(), { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fieldRequests: [] });
+            await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, panelState(), { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fieldRequests: [] });
 
             expect(postedPanelMessages).toEqual([runningState]);
 
@@ -835,8 +839,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             await send({ command: 'rendered', renderSequence: lastRenderSequence() });
             panelState().dataOrgSelection = { orgIndex: 0, orgDetail: SANDBOX_ORG, requestSequence: 2, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
             await send(loadRequest(lastRenderSequence()));
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(5);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(5);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
             postedPanelMessages = [];
             await send({ command: 'ready' });
             expect(postedNamed('updaterValues')).toEqual([]);
@@ -848,7 +852,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             await openCockpitAndLoad();
             const renderSequence = lastRenderSequence();
             const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
-            const runGenerate = async () => await (RecipeCockpitService as any).generateUpdaterValuesFromPanel(cockpitPanel, panelState(), {
+            const runGenerate = async () => await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, panelState(), {
                 kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: renderSequence, fieldRequests: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]
             });
 
@@ -865,7 +869,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             expect(warnings().at(-1)).toMatch(/no single recipe file/);
 
             // A FIELD THE MODEL NO LONGER LISTS, AND A STALE MODEL, GENERATE NOTHING
-            await (RecipeCockpitService as any).generateUpdaterValuesFromPanel(cockpitPanel, panelState(), {
+            await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, panelState(), {
                 kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: renderSequence - 1, fieldRequests: []
             });
             expect(generatedRecipeTexts).toEqual([]);
@@ -875,7 +879,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
         it('names a renamed card by its name, counts one record as one, says an object with none generates nothing, and gives a field the backend wrote no value for none', async () => {
 
             await openCockpitAndLoad();
-            const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
+            const heldRecords = (RecipeCockpitAdapterState as any).heldUpdaterRecords;
             heldRecords.recordsByObjectApiName.set('Account', heldRecords.recordsByObjectApiName.get('Account').slice(0, 1));
             heldRecords.recordsByObjectApiName.delete('Contact');
             panelState().recipeDataMessage!.recipe.trees.find((tree: any) => tree.treeKey === ACCOUNT_TREE_KEY)!.customName = 'My Accounts';
@@ -899,7 +903,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 '  LastName -- recipe expression: ${{fake.LastName}}'
             ]);
             expect(generatedRecipeTexts).toHaveLength(1);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([{ recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: null } }]);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toEqual([{ recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: null } }]);
             expect(postedNamed('updaterValues')[0].objects[1]).toEqual({ objectApiName: 'Contact', recordCount: 0, fieldApiNames: ['LastName'], columns: [], rows: [], hiddenColumnCount: 0 });
             expect(informations().at(-1)).toBe('Generated new values for 1 record of My Accounts. Nothing was written to the org.');
 
@@ -909,13 +913,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
             await openCockpitAndLoad();
             const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
-            (RecipeCockpitService as any).heldUpdaterRecords.loadedFieldApiNamesByObjectApiName.delete('Contact');
+            (RecipeCockpitAdapterState as any).heldUpdaterRecords.loadedFieldApiNamesByObjectApiName.delete('Contact');
 
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Contact', fieldApiName: 'LastName' }]));
             expect(warnings().at(-1)).toMatch(/Contact\.LastName was not chosen when the records were loaded/);
 
             const emptyPanelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
-            await (RecipeCockpitService as any).generateUpdaterValuesFromPanel(cockpitPanel, emptyPanelState, { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1, fieldRequests: [] });
+            await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, emptyPanelState, { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1, fieldRequests: [] });
             expect(confirmations()).toEqual([]);
 
         });
@@ -923,11 +927,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
         it('answers a generation while one is in flight with no stored state as not running', async () => {
 
             await openCockpitAndLoad();
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
 
             postedPanelMessages = [];
-            await (RecipeCockpitService as any).generateUpdaterValuesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fieldRequests: [] });
+            await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fieldRequests: [] });
 
             expect(postedPanelMessages).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' }]);
 
@@ -951,7 +955,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
                 '  Annual_Budget__c -- fixed value in the recipe file: 99'
             ]);
             expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Legacy_Code__c: '${{ fake.Word ~ \'!\' }}' }]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')![0]).toEqual({ recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0', Annual_Budget__c: 99 } });
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')![0]).toEqual({ recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0', Annual_Budget__c: 99 } });
 
         });
 
@@ -959,12 +963,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
             await openCockpitAndLoad();
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, { isCancellationRequested: true }));
-            jest.spyOn(RecipeCockpitService, 'generateUpdaterObjectValues').mockResolvedValue({ isCancelled: true });
+            jest.spyOn(RecipeCockpitAdapterRecords, 'generateUpdaterObjectValues').mockResolvedValue({ isCancelled: true });
 
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]));
 
             expect(warnings().at(-1)).toBe('Generating new values for Account-thru-OtherChildObject__c was cancelled, so none were kept.');
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
             expect(postedNamed('updaterValues')).toEqual([]);
 
         });
@@ -974,13 +978,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             await openCockpitAndLoad();
             const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
 
-            await (RecipeCockpitService as any).generateUpdaterValuesFromPanel(cockpitPanel, panelState(), {
+            await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, panelState(), {
                 kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fieldRequests: [{ objectApiName: 'Account', fieldApiName: 'Gone__c' }]
             });
 
             expect(warnings().at(-1)).toBe('No values were generated: Account.Gone__c is not a field of this treecipe.');
 
-            await (RecipeCockpitService as any).generateUpdaterValuesFromPanel(cockpitPanel, panelState(), {
+            await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, panelState(), {
                 kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fieldRequests: [{ objectApiName: 'Gone__c', fieldApiName: 'Name' }]
             });
 
@@ -994,12 +998,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
         it('gives a number as a number unless a double would round it, a boolean as a boolean, and text as typed', () => {
 
-            expect(RecipeCockpitService.toUpdaterFixedValue('42', 'number')).toBe(42);
-            expect(RecipeCockpitService.toUpdaterFixedValue('-3.25', 'number')).toBe(-3.25);
-            expect(RecipeCockpitService.toUpdaterFixedValue('123456789012345678', 'number')).toBe('123456789012345678');
-            expect(RecipeCockpitService.toUpdaterFixedValue('true', 'boolean')).toBe(true);
-            expect(RecipeCockpitService.toUpdaterFixedValue('false', 'boolean')).toBe(false);
-            expect(RecipeCockpitService.toUpdaterFixedValue('007', 'text')).toBe('007');
+            expect(RecipeCockpitAdapterState.toUpdaterFixedValue('42', 'number')).toBe(42);
+            expect(RecipeCockpitAdapterState.toUpdaterFixedValue('-3.25', 'number')).toBe(-3.25);
+            expect(RecipeCockpitAdapterState.toUpdaterFixedValue('123456789012345678', 'number')).toBe('123456789012345678');
+            expect(RecipeCockpitAdapterState.toUpdaterFixedValue('true', 'boolean')).toBe(true);
+            expect(RecipeCockpitAdapterState.toUpdaterFixedValue('false', 'boolean')).toBe(false);
+            expect(RecipeCockpitAdapterState.toUpdaterFixedValue('007', 'text')).toBe('007');
 
         });
 

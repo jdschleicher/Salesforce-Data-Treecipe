@@ -44,15 +44,19 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL,
-    RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON,
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
+    RECIPE_COCKPIT_UPDATER_TAB_LABEL
+} from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON,
     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX,
     RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RecipeCockpitAdapterRecords
+} from '../RecipeCockpitAdapterRecords';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
 import { RECIPE_COCKPIT_QUERY_MAX_LENGTH, RECIPE_COCKPIT_QUERY_RECORD_CAP, RECIPE_COCKPIT_QUERY_VALUE_BUDGET } from '../RecipeCockpitQuery';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -281,9 +285,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
 
             postedPanelMessages = [];
             sentQueries = [];
@@ -357,7 +361,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             selectSandbox();
             await send(loadRequest(lastRenderSequence()));
 
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(29);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(29);
 
             const [recordsMessage] = postedNamed('updaterRecords');
             expect(recordsMessage).toMatchObject({ command: 'updaterRecords', renderSequence: lastRenderSequence(), treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa · qa@example.com.qa' });
@@ -423,7 +427,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             expect(warnings()).toEqual([expect.stringMatching(/^Records were not loaded: qa · qa@example\.com\.qa could not be connected to\./)]);
             expect(warnings()[0]).not.toContain('secret');
             expect(postedNamed('updaterRecords')).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
 
         });
 
@@ -507,13 +511,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             await openCockpit();
             selectSandbox();
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
             await send(loadRequest(lastRenderSequence()));
             expect(sentQueries).toEqual([]);
             expect(postedNamed('updaterLoadState')).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
 
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
             await send(loadRequest(lastRenderSequence()));
             expect(postedNamed('updaterLoadState').at(-1)).toEqual(runningState);
 
@@ -542,7 +546,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             await send(loadRequest(lastRenderSequence()));
 
             expect(queryMoreSpy).toHaveBeenCalledTimes(3);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(9);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(9);
 
             queryAnswer = async (soql: string) => {
                 cancellationToken.isCancellationRequested = true;
@@ -551,7 +555,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             (vscode.window.showWarningMessage as jest.Mock).mockClear();
             await send(loadRequest(lastRenderSequence()));
 
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
             expect(warnings()).toEqual([expect.stringContaining('was cancelled, so none were kept')]);
 
         });
@@ -596,7 +600,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 ['Contact', RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON],
                 ['OtherChildObject__c', RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON]
             ]);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(RECIPE_COCKPIT_QUERY_RECORD_CAP);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(RECIPE_COCKPIT_QUERY_RECORD_CAP);
             expect(warnings()).toEqual([expect.stringContaining('and stopped there')]);
 
         });
@@ -717,7 +721,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             expect(sentQueries.some(query => query.includes('FROM OtherChildObject__c'))).toBe(false);
             expect(postedNamed('updaterRecords')).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
             expect(warnings()).toEqual([expect.stringContaining('was cancelled, so none were kept')]);
 
         });
@@ -742,11 +746,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             await openCockpit();
             selectSandbox();
             await send(loadRequest(lastRenderSequence()));
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBeGreaterThan(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBeGreaterThan(0);
 
             cancellationToken.isCancellationRequested = true;
             await send(loadRequest(lastRenderSequence()));
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
 
             postedPanelMessages = [];
             await send({ command: 'ready' });
@@ -766,7 +770,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             await send(loadRequest(lastRenderSequence()));
 
             expect(postedNamed('updaterRecords')).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
             expect(warnings()).toEqual([expect.stringContaining('were not kept: the run or the org on screen changed')]);
 
         });
@@ -775,7 +779,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             await openCockpit();
             const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
-            const runLoad = async (overrides: Record<string, unknown>) => await (RecipeCockpitService as any).loadUpdaterRecordsFromPanel(cockpitPanel, panelState(), {
+            const runLoad = async (overrides: Record<string, unknown>) => await (RecipeCockpitAdapterRecords as any).loadUpdaterRecordsFromPanel(RecipeCockpitService, cockpitPanel, panelState(), {
                 kind: 'loadUpdaterRecords',
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: lastRenderSequence(),
@@ -845,7 +849,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             expect(postedNamed('updaterLoadState')).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
 
             await openCockpit();
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
             postedPanelMessages = [];
             await send({ command: 'ready' });
             expect(postedNamed('updaterRecords')).toEqual([]);

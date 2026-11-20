@@ -21,6 +21,22 @@ import {
 import { RecipeCockpitQueryHost } from '../RecipeCockpitQueryHost';
 import { RecipeCockpitTroubleshootingHost } from '../RecipeCockpitTroubleshootingHost';
 import * as RecipeCockpitDatasetsHostModule from '../RecipeCockpitDatasetsHost';
+import * as RecipeCockpitAdapterHostModule from '../RecipeCockpitAdapterHost';
+import * as RecipeCockpitAdapterMetadataModule from '../RecipeCockpitAdapterMetadata';
+import * as RecipeCockpitAdapterRecordsModule from '../RecipeCockpitAdapterRecords';
+import * as RecipeCockpitAdapterStateModule from '../RecipeCockpitAdapterState';
+import * as RecipeCockpitRecordLinksHostModule from '../RecipeCockpitRecordLinksHost';
+import * as RecipeCockpitRecordLinksModule from '../RecipeCockpitRecordLinks';
+import {
+    RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
+    RECIPE_COCKPIT_ADAPTER_COMMANDS,
+    RecipeCockpitAdapterHost
+} from '../RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_RECORD_LINKS_ACTION_KINDS,
+    RECIPE_COCKPIT_RECORD_LINKS_COMMANDS,
+    RecipeCockpitRecordLinksHost
+} from '../RecipeCockpitRecordLinksHost';
 import {
     RECIPE_COCKPIT_DATASETS_ACTION_KINDS,
     RECIPE_COCKPIT_DATASETS_COMMANDS,
@@ -88,12 +104,28 @@ const TAB_HOSTS: ITabHost[] = [
         actionKinds: RECIPE_COCKPIT_QUERY_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitQueryHost.routePanelMessage(panelMessage, panelState),
         pureModuleFileNames: ['RecipeCockpitQuery.ts'],
-        hubUsesStillOwed: [
+        hubUsesStillOwed: [],
+        sharedWithHosts: [
             {
                 pureModuleFileName: 'RecipeCockpitQuery.ts',
-                importedNames: ['IRecipeCockpitPreviewRecordLinks', 'RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
+                hostFileName: 'RecipeCockpitAdapterHost.ts',
+                importedNames: ['IRecipeCockpitPreviewRecordLinks'],
+                members: [],
+                reason: 'an Adapter preview posts the same record links a query preview does'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitQuery.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitQuery'],
+                members: ['buildPreview'],
+                reason: 'Add to data set previews its child records with the same preview'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitQuery.ts',
+                hostFileName: 'RecipeCockpitAdapterRecords.ts',
+                importedNames: ['RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
                 members: ['buildPreview', 'countValues', 'fetchQueryRecords'],
-                owedBy: '#668, the Treecipe Adapter host: its load, update and restore read through the same pages and preview'
+                reason: 'the Adapter\'s load, update and restore read records through the same pages, limits and preview'
             }
         ]
     },
@@ -120,8 +152,8 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
                 importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject', 'RecipeCockpitMetadataDeploy'],
-                members: ['describeCappedList', 'readApiVersion', 'toManifestRelativePath', 'writePackageXml'],
-                owedBy: '#668 (the Adapter\'s retrieve, child and apply) and #669 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
+                members: ['readApiVersion', 'toManifestRelativePath', 'writePackageXml'],
+                owedBy: '#669 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
             },
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeployPackage.ts',
@@ -151,7 +183,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
                 importedNames: ['RecipeCockpitPermissionSetGenerate'],
                 members: ['resolveDefaultPackageDirectoryPath'],
-                owedBy: '#668 (the Adapter\'s apply) and #669 (Get latest object detail)'
+                owedBy: '#669 (Get latest object detail)'
             },
             {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
@@ -167,6 +199,20 @@ const TAB_HOSTS: ITabHost[] = [
             }
         ],
         sharedWithHosts: [
+            {
+                pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitMetadataDeploy'],
+                members: ['describeCappedList', 'toManifestRelativePath', 'writePackageXml'],
+                reason: 'the Adapter\'s retrieve and child write the same package.xml, and its apply lists files the same way'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitPermissionSetGenerate'],
+                members: ['resolveDefaultPackageDirectoryPath'],
+                reason: 'Apply retrieved files writes into the same default package directory'
+            },
             {
                 pureModuleFileName: 'RecipeCockpitRunHistory.ts',
                 hostFileName: 'RecipeCockpitDatasetsHost.ts',
@@ -193,6 +239,53 @@ const TAB_HOSTS: ITabHost[] = [
                 owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from'
             }
         ]
+    },
+    {
+        tabName: 'Treecipe Adapter',
+        hostClassName: 'RecipeCockpitAdapterHost',
+        hostFileNames: ['RecipeCockpitAdapterHost.ts', 'RecipeCockpitAdapterMetadata.ts', 'RecipeCockpitAdapterRecords.ts', 'RecipeCockpitAdapterState.ts'],
+        hostModules: [RecipeCockpitAdapterHostModule, RecipeCockpitAdapterMetadataModule, RecipeCockpitAdapterRecordsModule, RecipeCockpitAdapterStateModule],
+        commands: RECIPE_COCKPIT_ADAPTER_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitAdapterHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: ['RecipeCockpitTreeUpdaterQuery.ts', 'RecipeCockpitRecordUpdate.ts', 'RecipeCockpitOrgChangeDetection.ts', 'RecipeCockpitAdaptedDataset.ts'],
+        hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitTreeUpdaterQuery.ts',
+                importedNames: ['RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH'],
+                members: [],
+                owedBy: '#670: the reader\'s place keeps a card\'s WHERE text to the same limit'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitRecordUpdate.ts',
+                importedNames: ['IUpdateSnapshotObject'],
+                members: [],
+                owedBy: '#669: buildOrgOnlyFieldsResult, which the Adapter reads through the hub, is shared with Get latest object detail'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
+                importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
+                members: ['buildPackageXmlFilePath', 'buildRetrieveArguments', 'buildStagingFolderPath', 'copyMetadataFiles', 'makeStagingFolder', 'readRetrieveSucceeded', 'toOutputDirectoryArgument'],
+                owedBy: '#669: Get latest object detail stages and copies through the same retrieve, and offerStagedField is shared with it'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitAdaptedDataset.ts',
+                importedNames: ['RecipeCockpitAdaptedDataset'],
+                members: ['isAdaptedRecipeFileName'],
+                owedBy: 'the hub lists a run\'s recipes when it loads the model, and leaves an adapted recipe out'
+            }
+        ]
+    },
+    {
+        tabName: 'record links',
+        hostClassName: 'RecipeCockpitRecordLinksHost',
+        hostFileNames: ['RecipeCockpitRecordLinksHost.ts', 'RecipeCockpitRecordLinks.ts'],
+        hostModules: [RecipeCockpitRecordLinksHostModule, RecipeCockpitRecordLinksModule],
+        commands: RECIPE_COCKPIT_RECORD_LINKS_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_RECORD_LINKS_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitRecordLinksHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: [],
+        hubUsesStillOwed: []
     }
 ];
 

@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **The Treecipe Adapter's host half left the hub.** It is four files, which load one way: Host, then Metadata, then Records, then State.
+  - `RecipeCockpitAdapterHost.ts`: the tab's message and action types, its 9 commands and 10 action kinds, the pure router and the executor.
+  - `RecipeCockpitAdapterMetadata.ts`: Retrieve latest metadata, Apply retrieved files, the fields only the org holds, and Add to data set.
+  - `RecipeCockpitAdapterRecords.ts`: load, generate values, update, snapshots and restore.
+  - `RecipeCockpitAdapterState.ts`: the one load per window, and the records, values and child block a run left.
+  - One file would have been about 3,900 lines.
+- **A preview row's record links are now in two shared modules,** since the Query and Adapter tabs both use them.
+  - `RecipeCockpitRecordLinks.ts` is the registry both hosts post a preview through.
+  - `RecipeCockpitRecordLinksHost.ts` owns the `openPreviewRecord` command, and opens a row's record only while the data it came from is still held.
+  - The Query host now posts its preview through the registry rather than the hub.
+- **Some Adapter code stays in the hub, because the hub or other tabs use it:**
+  - The three acks that promote allow-lists.
+  - The selection and apply checks other tabs' routers read.
+  - The snapshot locations History and the journey read.
+  - The shared retrieve runner, locks and retrieve notification.
+- **The hub no longer uses `RecipeCockpitQuery`.** It also drops most of what it took from `RecipeCockpitMetadataDeploy` and `RecipeCockpitPermissionSetGenerate`; what remains is Get latest object detail's (#669).
+- **Two button labels moved.** `RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL` and `RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL` are now in `RecipeCockpitDataOrgConstants.ts`, since the tree insert's and the Adapter update's notifications both say them.
+- **`RecipeCockpitTabHosts.test.ts` has Adapter and record-links rows.**
+  - The Query and Troubleshooting modules the Adapter imports are listed exactly as shared.
+  - The hub's owed lists are shorter.
+- **Tests changed only to reach code where it now lives.**
+  - They import the moved names from the new files.
+  - Spies such as `createUpdaterRecipeProcessor` sit on the new classes.
+  - A call to a moved method passes the hub first.
+  - The confirmation count reads the Adapter files too.
+- **`RecipeCockpitService.ts` went from 17,885 lines to 14,092.**
+
 ## [3.202.14] - The Previously Used Data Sets tab's host code is its own module, handed its messages by the hub (#667, slice 3 of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
