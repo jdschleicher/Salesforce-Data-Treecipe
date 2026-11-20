@@ -151,6 +151,53 @@ describe('RecipeCockpitService, row presentation (#558)', () => {
 
     });
 
+    describe('the "Customize and create new recipe" modal (#677)', () => {
+
+        const openCustomizeModal = (): Panel => {
+            const panel = runPanelScript({});
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3 });
+            panel.postToPanel({ command: 'rendered' });
+            const accountCard = panel.treeCards()[0];
+            panel.chooseTreeCard(accountCard);
+            panel.findAll(accountCard, 'treeCustomize')[0].dispatch('click');
+            return panel;
+        };
+
+        it('draws each object as a two-line row header: ✕, the chain, the chevron, the name and its count first, then its lookups', () => {
+
+            const panel = openCustomizeModal();
+            const objectRows = panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeObject');
+            const hasClass = (element: any, className: string) => element.className.split(' ').includes(className);
+
+            expect(objectRows.map((rowElement: any) => panel.findAll(rowElement, 'customTreecipeObjectName')[0].textContent)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            objectRows.forEach((rowElement: any) => {
+                expect(hasClass(rowElement, 'sdtRowHeader')).toBe(true);
+                const [primaryLine, detailLine] = rowElement.children;
+                expect(hasClass(primaryLine, 'sdtRowHeaderPrimary')).toBe(true);
+                expect(primaryLine.children.map((childElement: any) => childElement.className.split(' ').find((className: string) => className.startsWith('customTreecipe'))))
+                    .toEqual(['customTreecipeRemove', 'customTreecipeChain', 'customTreecipeChevron', 'customTreecipeObjectName', 'customTreecipeFieldCount']);
+                expect(hasClass(detailLine, 'sdtRowHeaderDetail')).toBe(true);
+                expect(panel.findAll(detailLine, 'customTreecipeLookups')).toHaveLength(1);
+            });
+
+        });
+
+        it('draws an open object\'s fields in a bordered row box, one treeField per field, ✕ first', () => {
+
+            const panel = openCustomizeModal();
+            const [fieldsBox] = panel.findAll(panel.cockpitDialogHostElement, 'treeFieldsBox');
+
+            expect(fieldsBox.tagName).toBe('ul');
+            expect(fieldsBox.children.length).toBeGreaterThan(0);
+            fieldsBox.children.forEach((fieldElement: any) => {
+                expect(fieldElement.className.split(' ')).toContain('treeField');
+                expect(fieldElement.children[0].className.split(' ')).toContain('customTreecipeRemove');
+            });
+
+        });
+
+    });
+
     describe('a Previously Used Data Sets row', () => {
 
         it('is two lines: ☆, ✎, the name and the actions first, then the ▸ with when and how it was made', () => {

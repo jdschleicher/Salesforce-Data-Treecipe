@@ -78,11 +78,13 @@ describe('RecipeCockpitCustomTreecipe (#677)', () => {
 
     });
 
-    test('the recipe file name is the folder name and Generate Treecipe\'s UTC stamp, keeping the source extension', () => {
+    test('the recipe file name is the folder name and Generate Treecipe\'s UTC stamp, keeping the source\'s backend prefix and extension', () => {
 
-        expect(RecipeCockpitCustomTreecipe.buildRecipeFileName('custom-Lead-ONLY', '.yml', new Date('2026-11-20T22:24:09.512Z')))
+        expect(RecipeCockpitCustomTreecipe.buildRecipeFileName('custom-Lead-ONLY', 'recipe--Lead-ONLY-2026-09-20T10-00-00.yml', new Date('2026-11-20T22:24:09.512Z')))
             .toBe('recipe--custom-Lead-ONLY-2026-11-20T22-24-09.yml');
-        expect(RecipeCockpitCustomTreecipe.buildRecipeFileName('custom-Lead-ONLY', '.yaml', new Date('2026-01-02T03:04:05Z')))
+        expect(RecipeCockpitCustomTreecipe.buildRecipeFileName('custom-Lead-ONLY', 'recipe-fakerjs--Lead-ONLY-2026-09-20T10-00-00.yml', new Date('2026-11-20T22:24:09Z')))
+            .toBe('recipe-fakerjs--custom-Lead-ONLY-2026-11-20T22-24-09.yml');
+        expect(RecipeCockpitCustomTreecipe.buildRecipeFileName('custom-Lead-ONLY', 'recipe--Lead-ONLY-2026-09-20T10-00-00.yaml', new Date('2026-01-02T03:04:05Z')))
             .toBe('recipe--custom-Lead-ONLY-2026-01-02T03-04-05.yaml');
 
     });

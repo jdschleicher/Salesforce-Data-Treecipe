@@ -17,6 +17,7 @@ jest.mock('vscode', () => ({
 import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RecipeCockpitCustomTreecipe } from '../RecipeCockpitCustomTreecipe';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const FIXTURE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -130,6 +131,22 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             await receivedMessageHandler({ command: 'previewCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, previewSequence: 1, ...postedRemoval });
 
             expect(lastPosted('customTreecipePreview')).toBeUndefined();
+
+        });
+
+        it.each([
+            ['a preview sequence that is not a whole number', { command: 'previewCustomTreecipe', previewSequence: -1 }],
+            ['a save name longer than 80 characters', { command: 'saveCustomTreecipe', name: 'x'.repeat(81) }],
+            ['a card with no recipe of its own', { command: 'previewCustomTreecipe', previewSequence: 1, treeKey: 'Account-thru-Contact' }]
+        ])('routes nothing for %s', (_, postedFields) => {
+
+            const panelState = {
+                recipeDataMessage: { renderSequence: 2, recipe: { trees: [] } },
+                treeHistoryAllowLists: { nameableTreeKeys: new Set([SOURCE_TREE_KEY, 'Account-thru-Contact']), selectableObjectKeys: new Set(), selectableFieldKeys: new Set() },
+                treeHistoryTargets: { runFakerRecipeFilePathsByTreeKey: new Map([[SOURCE_TREE_KEY, '/recipe.yml']]) }
+            } as any;
+
+            expect(RecipeCockpitService.routePanelMessage({ treeKey: SOURCE_TREE_KEY, renderSequence: 2, ...removal(), ...postedFields } as any, panelState)).toBeUndefined();
 
         });
 
@@ -255,6 +272,102 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         });
 
+        it.each([
+            ['a name over two lines', { name: 'two\nlines', ...removal({ removedObjectApiNames: ['OtherChildObject__c'] }) }, 'the name must be one line'],
+            ['every object removed', { name: '', ...removal({ removedObjectApiNames: ['Account'] }) }, 'every object was removed']
+        ])('refuses %s, and writes nothing', async (_, postedSave, expectedReason) => {
+
+            const recipeDataMessage = await openAndDraw();
+
+            await receivedMessageHandler({ command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, ...postedSave });
+
+            expect(fs.existsSync(path.join(runFolderPath, CUSTOM_FOLDER_NAME))).toBeFalse();
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)?.[0]).toContain(expectedReason);
+
+        });
+
+        it('opens the new recipe from the notification\'s button', async () => {
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Open recipe');
+            const openResultFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openWorkspaceResultFile').mockResolvedValue(undefined as any);
+            const recipeDataMessage = await openAndDraw();
+
+            await receivedMessageHandler({
+                command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, name: '',
+                ...removal({ removedObjectApiNames: ['OtherChildObject__c'] })
+            });
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(openResultFileSpy).toHaveBeenCalledWith(expect.stringContaining(path.join(CUSTOM_FOLDER_NAME, `recipe--${CUSTOM_FOLDER_NAME}-`)), workspaceRoot, expect.any(String));
+
+        });
+
+        describe('refuses, writes nothing and names why, when', () => {
+
+            const saveOtherChildRemoved = async () => {
+                const recipeDataMessage = await openAndDraw();
+                await receivedMessageHandler({
+                    command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, name: '',
+                    ...removal({ removedObjectApiNames: ['OtherChildObject__c'] })
+                });
+            };
+            const lastWarning = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)?.[0];
+
+            it('the source recipe cannot be read', async () => {
+                const readFileSync = fs.readFileSync;
+                jest.spyOn(fs, 'readFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+                    if ( String(filePath).endsWith(SOURCE_RECIPE_FILE_NAME) && RecipeCockpitService.recipeCockpitPanelState.isPanelReady ) {
+                        throw Object.assign(new Error('locked'), { code: 'EBUSY' });
+                    }
+                    return (readFileSync as (...args: unknown[]) => unknown)(filePath, ...rest);
+                }) as typeof fs.readFileSync);
+                await saveOtherChildRemoved();
+                expect(lastWarning()).toContain('could not be read: EBUSY.');
+                expect(fs.existsSync(path.join(runFolderPath, CUSTOM_FOLDER_NAME))).toBeFalse();
+            });
+
+            it('the run folder cannot be listed', async () => {
+                const recipeDataMessage = await openAndDraw();
+                const readdirSync = fs.readdirSync;
+                jest.spyOn(fs, 'readdirSync').mockImplementation(((folderPath: fs.PathLike, ...rest: unknown[]) => {
+                    if ( String(folderPath) === runFolderPath ) {
+                        throw Object.assign(new Error('denied'), { code: 'EACCES' });
+                    }
+                    return (readdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest);
+                }) as typeof fs.readdirSync);
+                await receivedMessageHandler({ command: 'previewCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, previewSequence: 2, ...removal({ removedObjectApiNames: ['OtherChildObject__c'] }) });
+                expect(lastPosted('customTreecipePreview')).toMatchObject({ refusal: expect.stringContaining('could not be read: EACCES.') });
+                expect(lastPosted('customTreecipePreview').folderName).toBeUndefined();
+                await receivedMessageHandler({ command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, name: '', ...removal({ removedObjectApiNames: ['OtherChildObject__c'] }) });
+                expect(lastWarning()).toContain('could not be read: EACCES.');
+            });
+
+            it('the filtered copy is refused', async () => {
+                jest.spyOn(RecipeCockpitService, 'buildRunFakerFilteredRecipe').mockReturnValue({ refusalMessage: 'a recipe line no longer reads back.' });
+                await saveOtherChildRemoved();
+                expect(lastWarning()).toContain('a recipe line no longer reads back.');
+            });
+
+            it.each([
+                ['the source recipe is outside the workspace', (candidatePath: string) => candidatePath.endsWith(SOURCE_RECIPE_FILE_NAME), 'is not inside this workspace'],
+                ['the run folder is outside the workspace', (candidatePath: string) => candidatePath === runFolderPath, 'is not inside this workspace'],
+                ['the new folder resolves outside the workspace', (candidatePath: string) => candidatePath.endsWith(CUSTOM_FOLDER_NAME), 'Nothing was left behind']
+            ])('%s', async (_, isOutside, expectedReason) => {
+                const isPathContainedInWorkspace = SfdxProjectService.isPathContainedInWorkspace;
+                const recipeDataMessage = await openAndDraw();
+                jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockImplementation((candidatePath: string, root: string) => (
+                    isOutside(candidatePath) ? false : isPathContainedInWorkspace.call(SfdxProjectService, candidatePath, root)
+                ));
+                await receivedMessageHandler({
+                    command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, name: '',
+                    ...removal({ removedObjectApiNames: ['OtherChildObject__c'] })
+                });
+                expect(lastWarning()).toContain(expectedReason);
+                expect(fs.existsSync(path.join(runFolderPath, CUSTOM_FOLDER_NAME))).toBeFalse();
+            });
+
+        });
+
         it('takes the folder back out when a write fails, and says so once', async () => {
 
             const recipeDataMessage = await openAndDraw();
@@ -274,6 +387,30 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             expect(fs.existsSync(path.join(runFolderPath, CUSTOM_FOLDER_NAME))).toBeFalse();
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)?.[0]).toContain('Nothing was left behind');
             expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    describe('planCustomTreecipeLocation', () => {
+
+        it('refuses a card whose recipe is not in a tree folder of its own', () => {
+
+            expect(RecipeCockpitService.planCustomTreecipeLocation(path.join(runFolderPath, 'Lead-ONLY', 'recipe--Lead-ONLY.yml'), { folderName: SOURCE_TREE_KEY } as any))
+                .toEqual({ refusal: 'its recipe recipe--Lead-ONLY.yml is not in a tree folder of its own.' });
+
+        });
+
+        it('refuses once every copy number of the original is taken', () => {
+
+            const readdirSync = fs.readdirSync;
+            const takenFolderNames = [CUSTOM_FOLDER_NAME, ...Array.from({ length: 998 }, (_, index) => `${CUSTOM_FOLDER_NAME}-${index + 2}`)];
+            jest.spyOn(fs, 'readdirSync').mockImplementation(((folderPath: fs.PathLike, ...rest: unknown[]) => (
+                String(folderPath) === runFolderPath ? takenFolderNames : (readdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest)
+            )) as typeof fs.readdirSync);
+
+            expect(RecipeCockpitService.planCustomTreecipeLocation(path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), { folderName: SOURCE_TREE_KEY } as any))
+                .toEqual({ refusal: `${RUN_FOLDER_NAME} already holds every custom copy number of ${SOURCE_TREE_KEY}. Remove one you no longer need.` });
 
         });
 
@@ -304,6 +441,21 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
             await receivedMessageHandler({ command: 'selectRun', runFolderName: RUN_FOLDER_NAME });
             expect((await drawLatestModel()).recipe.trees.map((tree: any) => tree.folderName)).toEqual([SOURCE_TREE_KEY, 'Lead-ONLY']);
+
+        });
+
+        it('loads a custom tree whose customTreecipe.json does not read back, naming its original from the folder', async () => {
+
+            fs.mkdirSync(path.join(runFolderPath, `${CUSTOM_FOLDER_NAME}-3`, 'customTreecipe.json'), { recursive: true });
+            fs.writeFileSync(
+                path.join(runFolderPath, `${CUSTOM_FOLDER_NAME}-3`, `recipe--${CUSTOM_FOLDER_NAME}-3-2026-11-20T22-24-09.yml`),
+                fs.readFileSync(path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), 'utf8')
+            );
+            await openAndDraw();
+
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: RUN_FOLDER_NAME, customTreeFolderName: `${CUSTOM_FOLDER_NAME}-3` });
+
+            expect((await drawLatestModel()).recipe.trees.map((tree: any) => [tree.folderName, tree.customCopyOf])).toEqual([[`${CUSTOM_FOLDER_NAME}-3`, SOURCE_TREE_KEY]]);
 
         });
 

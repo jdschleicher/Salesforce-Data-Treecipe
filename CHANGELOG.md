@@ -1,8 +1,25 @@
 # Change Log
 
-## [3.202.16] - Recipe Cockpit: unticking a lookup field cuts its object off when that was its only link into the tree (foundation for #677)
+## [3.202.16] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
-This is the cascade rule #677's "Customize and create new recipe" modal relies on: there, a red ✕ on a lookup field removes what the field linked. The modal and its Save as new Treecipe come in a later change.
+### Customize and create new recipe
+
+- **A new button on each card's Treecipe tab** opens the card's objects in a modal.
+  - Each object row reads left to right: a big red **✕**, the chain link, the chevron, then the name, its lookups and its kept field count. The chevron opens its fields, each with its own red **✕**.
+  - **✕** takes an object or a field out of the new recipe, by the card's own rules: children with no other parent go with an object, and an object goes with its only lookup into the tree (the rule below). **↺** brings back exactly what it took.
+  - A field the card holds ticked (`RecordTypeId` under a record type section, a controlling field with a dependent kept) has its ✕ off, with the reason. A field your org requires is still caught by the insert's own check.
+  - Removing the first object asks first, since nothing would be left. **Cancel**, the modal's ✕ and Escape write nothing.
+  - The chain link keeps its meaning: the object stays in the recipe but is left out of a run. The new tree starts with those chain links.
+- **Save as new Treecipe**, bottom right, writes beside the source tree, in the same run:
+  - `custom-<original tree>/<prefix>--custom-<original tree>-<UTC stamp>.yml`: Run Faker's own filtered copy of the source, so every kept line is byte-identical, and the card's record counts, fixed values and switched-off validation rules are carried. The prefix (`recipe-fakerjs` or `recipe`) is the source's, which Run Faker and the insert read the backend from.
+  - `customTreecipe.json`: names only. It records the source run, tree and recipe file, the original generated tree, what was removed, the chain links, the optional name and when.
+  - A second copy is `-2`, `-3` and so on. Folders are made non-recursively and files written `wx`; a failed write takes them back out.
+  - The source recipe and its folder are never written.
+- **A custom tree is its own entry in the run list**, under its run (`<run> · custom-<tree>`). Choosing it shows that one card, marked `custom copy of <tree>`, which generates, inserts, keeps its own data sets and can be customized again (as `custom-<original tree>-2`, never `custom-custom-`).
+  - A run leaves its `custom-` folders out, because a run keeps one view model per object and a custom recipe holds the same objects again.
+- The ? help and the guide say so, and two of the guide's pictures were re-taken.
+
+### An unticked lookup cuts off what it linked
 
 - **An unticked lookup field is no longer an edge of the tree.** Before, an object whose only lookup into the tree was unticked stayed included, with no link to its parent. Now it is cut off with its subtree, and its row says `cut off — Contact.AccountId removed`.
   - An object that still has another lookup to an included parent stays included.
@@ -14,6 +31,11 @@ This is the cascade rule #677's "Customize and create new recipe" modal relies o
 - **"No fields selected" outranks a removed lookup.** Unticking every field also unticks the lookup, and the object still reads as `no fields selected`.
 - **The insert confirmation's Left out section** says `not generated, cut off by removing <Object>.<Field>`.
 - **Changed expectations:** two #611 tests and the #611 journey. A child whose second lookup is unticked now follows its no-fields parent out, and the journey ticks the lookup again to bring Contact back.
+
+### Tests
+
+- New: `RecipeCockpitCustomTreecipe.test.ts` (names, file names, `customTreecipe.json` read back), `RecipeCockpitCustomTreecipeHost.test.ts` (preview, router refusals, save, a copy of a copy, counts carried, rollback, loading and switching entries), `CustomTreecipeJourneys.test.ts` (the modal end to end on a faker-js tree, then generate and insert from the custom tree), and the modal's row types in `RecipeCockpitRowPresentation.test.ts`.
+- Changed: the rendered baselines gain the card's new button; the primary-button inventory gains the modal's two Save buttons, which a dialog owns.
 
 ## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
 

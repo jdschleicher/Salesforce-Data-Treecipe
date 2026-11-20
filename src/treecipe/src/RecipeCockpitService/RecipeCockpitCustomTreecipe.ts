@@ -13,6 +13,8 @@ import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 */
 
 export const RECIPE_COCKPIT_CUSTOM_TREE_FOLDER_PREFIX = 'custom-';
+// DirectoryProcessor'S faker-js RECIPE PREFIX (VSCodeWorkspaceService's FAKER_JS_RECIPE_INDICATOR), KEPT HERE SO THIS FILE STAYS vscode-FREE
+const RECIPE_COCKPIT_FAKER_JS_RECIPE_PREFIX = 'recipe-fakerjs';
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME = 'customTreecipe.json';
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION = 1;
 export const RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH = 80;
@@ -94,8 +96,16 @@ export class RecipeCockpitCustomTreecipe {
         return savedAt.toISOString().split('.')[0].replace(/:/g, '-');
     }
 
-    static buildRecipeFileName(customTreeFolderName: string, recipeFileExtension: string, savedAt: Date): string {
-        return `recipe--${customTreeFolderName}-${this.buildRecipeTimestamp(savedAt)}${recipeFileExtension}`;
+    /*
+        "<prefix>--<custom folder>-<stamp><extension>", the prefix and extension the source recipe's
+        own: Generate Treecipe names a faker-js recipe "recipe-fakerjs--" and a snowfakery one
+        "recipe--", and Run Faker and the insert tell the two apart by that name.
+    */
+    static buildRecipeFileName(customTreeFolderName: string, sourceRecipeFileName: string, savedAt: Date): string {
+        const sourcePrefix = sourceRecipeFileName.split('--')[0];
+        const recipePrefix = sourcePrefix === RECIPE_COCKPIT_FAKER_JS_RECIPE_PREFIX ? RECIPE_COCKPIT_FAKER_JS_RECIPE_PREFIX : 'recipe';
+        const extensionMatch = /\.[A-Za-z]+$/.exec(sourceRecipeFileName);
+        return `${recipePrefix}--${customTreeFolderName}-${this.buildRecipeTimestamp(savedAt)}${extensionMatch ? extensionMatch[0] : '.yml'}`;
     }
 
     // ONE LINE, TRIMMED, NO CONTROL CHARACTER, AT MOST 80 CHARACTERS; undefined FOR NO NAME

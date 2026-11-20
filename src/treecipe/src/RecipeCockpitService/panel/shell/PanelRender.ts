@@ -35,6 +35,8 @@ import type { IFocusTree } from '../treecipe/navigation/NavigationTypes';
 // THE renderSequence OF THE MODEL ON SCREEN, OR null WHILE NONE IS DRAWN; EVERY ACTION A READER TAKES NAMES IT
 export let renderedSequence: number | null = null;
 export let renderedRunFolderName = '';
+// THE PICKER ENTRY ON SCREEN: THE RUN, OR "<run>/<custom tree>" (#677) -- A FOLDER NAME NEVER HOLDS A "/"
+let renderedRunPickerKey = '';
 export let treeStates: CardTreeState[] = [];
 export let treesViewElement: HTMLElement | null = null;
 let runSelectElement: HTMLSelectElement | null = null;
@@ -44,6 +46,10 @@ let orgSection: ICockpitSection | null = null;
 interface ICockpitSection {
     element: HTMLElement;
     bodyElement: HTMLElement;
+}
+
+function buildRunPickerKey(runFolderName: string, customTreeFolderName?: string): string {
+    return customTreeFolderName === undefined ? runFolderName : runFolderName + '/' + customTreeFolderName;
 }
 
 // THE DATED RUNS, WITH A VISIBLE LABEL THAT NAMES THE DROPDOWN (#533); NOTHING WITHOUT A RUN
@@ -59,16 +65,21 @@ function buildRunPicker(recipe: ICardModel): HTMLElement | null {
     selectElement.setAttribute('id', 'runSelect');
     labelElement.setAttribute('for', 'runSelect');
 
+    const selectedRunPickerKey = buildRunPickerKey(recipe.selectedRunFolderName, recipe.selectedCustomTreeFolderName);
     recipe.runs.forEach(function (run) {
         const runOptionElement = createElement('option', '', run.label);
-        runOptionElement.value = run.runFolderName;
-        runOptionElement.selected = run.runFolderName === recipe.selectedRunFolderName;
+        runOptionElement.value = buildRunPickerKey(run.runFolderName, run.customTreeFolderName);
+        runOptionElement.selected = runOptionElement.value === selectedRunPickerKey;
         selectElement.appendChild(runOptionElement);
     });
 
-    selectElement.value = recipe.selectedRunFolderName;
+    selectElement.value = selectedRunPickerKey;
     selectElement.addEventListener('change', function () {
-        vscodeApi.postMessage({ command: 'selectRun', runFolderName: selectElement.value });
+        const chosenRun = recipe.runs.find(function (run) { return buildRunPickerKey(run.runFolderName, run.customTreeFolderName) === selectElement.value; });
+        if (!chosenRun) { return; }
+        vscodeApi.postMessage(chosenRun.customTreeFolderName
+            ? { command: 'selectRun', runFolderName: chosenRun.runFolderName, customTreeFolderName: chosenRun.customTreeFolderName }
+            : { command: 'selectRun', runFolderName: chosenRun.runFolderName });
     });
 
     pickerElement.appendChild(labelElement);
@@ -82,7 +93,7 @@ function buildRunPicker(recipe: ICardModel): HTMLElement | null {
 export function restoreRunSelection(): void {
 
     if (runSelectElement) {
-        runSelectElement.value = renderedRunFolderName;
+        runSelectElement.value = renderedRunPickerKey;
     }
 
 }
@@ -91,6 +102,7 @@ function renderPanel(recipe: ICardModel): void {
 
     resetPanelState();
     renderedRunFolderName = recipe.selectedRunFolderName;
+    renderedRunPickerKey = buildRunPickerKey(recipe.selectedRunFolderName, recipe.selectedCustomTreeFolderName);
 
     const hasObjects = recipe.objects.length > 0;
 

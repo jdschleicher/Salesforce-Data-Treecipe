@@ -5778,7 +5778,7 @@ export class RecipeCockpitService {
         try {
             takenFolderNames = new Set(fs.readdirSync(runFolderPath));
         } catch (readError) {
-            return { refusal: `its run folder ${path.basename(runFolderPath)} could not be read (${String(readError?.code ?? readError)}).` };
+            return { refusal: `its run folder ${path.basename(runFolderPath)} could not be read: ${String(readError?.code ?? readError)}.` };
         }
 
         const folderName = RecipeCockpitCustomTreecipe.planCustomTreeFolderName(originalTreeFolderName, takenFolderNames);
@@ -5888,7 +5888,7 @@ export class RecipeCockpitService {
             try {
                 recipeText = fs.readFileSync(recipeFilePath, 'utf8');
             } catch (readError) {
-                refuse(`its recipe ${path.basename(recipeFilePath)} could not be read (${String(readError?.code ?? readError)}).`);
+                refuse(`its recipe ${path.basename(recipeFilePath)} could not be read: ${String(readError?.code ?? readError)}.`);
                 return;
             }
 
@@ -5910,7 +5910,7 @@ export class RecipeCockpitService {
 
             const savedAt = new Date();
             const customTreeFolderPath = path.join(location.runFolderPath, location.folderName);
-            const customRecipeFilePath = path.join(customTreeFolderPath, RecipeCockpitCustomTreecipe.buildRecipeFileName(location.folderName, path.extname(recipeFilePath), savedAt));
+            const customRecipeFilePath = path.join(customTreeFolderPath, RecipeCockpitCustomTreecipe.buildRecipeFileName(location.folderName, path.basename(recipeFilePath), savedAt));
             const definition: ICustomTreecipeDefinition = {
                 version: RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION,
                 sourceRunFolderName: path.basename(location.runFolderPath),
@@ -5943,7 +5943,7 @@ export class RecipeCockpitService {
                 } catch {
                     // NOT MADE HERE, OR NOT EMPTY: LEFT AS IT IS
                 }
-                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)} (${this.describeThrown(writeError)}). Nothing was left behind.`);
+                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)}: ${this.describeThrown(writeError)}. Nothing was left behind.`);
                 return;
             }
 

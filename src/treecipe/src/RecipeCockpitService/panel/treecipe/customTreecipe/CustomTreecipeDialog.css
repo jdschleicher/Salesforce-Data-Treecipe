@@ -1,0 +1,46 @@
+    /* "Customize and create new recipe" (#677): the modal's rows, its big red ✕ and round ↺, and its save step; every colour a tested --sdt-* pair */
+    .customTreecipeDialog { width: min(56rem, 100%); }
+    .customTreecipeHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+    .customTreecipeSource { margin: 0.15rem 0 0; }
+    .customTreecipeSummary { margin: 0.35rem 0 0.5rem; font-variant-numeric: tabular-nums; }
+    .customTreecipeBody { display: flex; flex-direction: column; gap: 0.4rem; }
+    .customTreecipeObject { padding: 0.35rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; background-color: var(--sdt-surface); }
+    .sdtRowHeaderPrimary.customTreecipeObjectPrimary { align-items: center; }
+    .sdtRowHeaderDetail.customTreecipeObjectDetail { flex-direction: column; gap: 0.1rem; }
+    .customTreecipeFieldCount { margin-left: auto; }
+    .customTreecipeObject.isRemoved { background-color: var(--sdt-page); }
+    .customTreecipeObject.isRemoved .customTreecipeObjectName, .customTreecipeField.isRemoved .customTreecipeFieldApiName, .customTreecipeField.isCut .customTreecipeFieldApiName { text-decoration: line-through; color: var(--sdt-muted); }
+    .customTreecipeObject.isOutOfRun { background-image: linear-gradient(var(--sdt-excluded-overlay), var(--sdt-excluded-overlay)); }
+    .customTreecipeObjectName { font-weight: 600; color: var(--sdt-text); min-width: 0; overflow-wrap: anywhere; }
+    .customTreecipeLookups, .customTreecipeFieldType, .customTreecipeFieldState { font-size: 0.85em; }
+    .customTreecipeState { font-size: 0.85em; color: var(--sdt-text); }
+    .customTreecipeObject.isRemoved .customTreecipeState { color: var(--sdt-removed); }
+    .customTreecipeFieldCount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .customTreecipeSlot { width: 2.2rem; }
+    .sdtButton.customTreecipeRemove, .sdtButton.customTreecipeRestore { width: 2.2rem; height: 2.2rem; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; font-size: 1.1rem; font-weight: 700; line-height: 1; background-color: var(--sdt-surface); }
+    .sdtButton.customTreecipeRemove { color: var(--sdt-removed); border: 2px solid var(--sdt-removed); }
+    .sdtButton.customTreecipeRemove:hover:not(:disabled) { background-color: var(--sdt-row-hover); }
+    .sdtButton.customTreecipeRestore { color: var(--sdt-text); border: 2px solid var(--sdt-muted); }
+    .sdtButton.customTreecipeRestore:hover:not(:disabled) { background-color: var(--sdt-row-hover); }
+    .sdtButton.customTreecipeRemove.isSmall, .sdtButton.customTreecipeRestore.isSmall { width: 1.7rem; height: 1.7rem; font-size: 0.95rem; }
+    .sdtButton.customTreecipeRemove:disabled { color: var(--sdt-disabled-text); border-color: var(--sdt-border); background-color: var(--sdt-disabled-bg); }
+    .customTreecipeChain .treeGlyph, .customTreecipeChevronGlyph { width: 1.3rem; height: 1.3rem; }
+    .customTreecipeChain .treeGlyph path, .customTreecipeChevronGlyph path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .customTreecipeChevron.isExpanded .customTreecipeChevronGlyph { transform: rotate(90deg); }
+    .treeFieldsBox.customTreecipeFields { list-style: none; margin: 0 0 0.2rem 3.4rem; display: flex; flex-direction: column; gap: 0.15rem; }
+    .treeField.customTreecipeField { display: grid; grid-template-columns: 1.9rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
+    .customTreecipeFieldName { display: flex; flex-wrap: wrap; gap: 0 0.4rem; min-width: 0; overflow-wrap: anywhere; }
+    .customTreecipeFieldApiName { font-family: var(--vscode-editor-font-family); color: var(--sdt-text); }
+    .customTreecipeAsk, .customTreecipeSaveForm { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.75rem; border: 1px solid var(--sdt-border); border-radius: 6px; background-color: var(--sdt-page); color: var(--sdt-text); }
+    .customTreecipeAskTitle { font-weight: 600; }
+    .customTreecipeAsk .customTreecipeAskTitle { color: var(--sdt-removed); }
+    .customTreecipeAskActions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .customTreecipeSaveDetails { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.3rem 0.8rem; margin: 0; }
+    .customTreecipeSaveDetails dd { margin: 0; overflow-wrap: anywhere; }
+    .customTreecipeNameInput { width: 100%; box-sizing: border-box; font: inherit; padding: 0.3rem 0.45rem; border: 1px solid var(--sdt-border); border-radius: 4px; color: var(--sdt-text); background-color: var(--sdt-surface); }
+    .customTreecipeFooter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .customTreecipeStatus { flex: 1 1 16rem; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    .treeCustomCopyOf { font-size: 0.85em; }
+    @media (max-width: 560px) {
+        .treeFieldsBox.customTreecipeFields { margin-left: 0.6rem; }
+    }
