@@ -44,8 +44,6 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL,
-    RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL,
     RECIPE_COCKPIT_ADAPTER_APPLY_LABEL,
     RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON,
     RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
@@ -58,12 +56,18 @@ import {
     RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL,
     RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
-    RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL,
-    RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL,
+    RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL,
+    RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER,
+    RecipeCockpitAdapterMetadata
+} from '../RecipeCockpitAdapterMetadata';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
@@ -368,8 +372,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             fs.mkdirSync(localFieldsFolder, { recursive: true });
             fs.writeFileSync(path.join(localFieldsFolder, 'Legacy_Code__c.field-meta.xml'), fieldXml('Legacy_Code__c', 'Text', '    <length>50</length>'));
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
@@ -546,17 +550,17 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
             await openCockpit();
             selectSandbox();
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
             await send(retrieveRequest(lastRenderSequence()));
 
             expect(cliCalls).toEqual([]);
             expect(postedNamed('updaterLoadState')).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
 
             const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY', runKind: 'generate' };
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
             await send(retrieveRequest(lastRenderSequence()));
             expect(postedNamed('updaterLoadState').at(-1)).toEqual(runningState);
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
 
         });
 
@@ -949,13 +953,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             it('answers with the state it is not running when the window was held without one', async () => {
 
                 await retrieveFirst();
-                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-                (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
 
-                await (RecipeCockpitService as any).applyAdapterRetrievedFilesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
+                await (RecipeCockpitAdapterMetadata as any).applyAdapterRetrievedFilesFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
 
                 expect(postedNamed('updaterLoadState')).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
-                (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
 
             });
 
@@ -1065,10 +1069,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
                 await retrieveFirst();
                 const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' };
-                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-                (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
 
-                await (RecipeCockpitService as any).applyAdapterRetrievedFilesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
+                await (RecipeCockpitAdapterMetadata as any).applyAdapterRetrievedFilesFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
 
                 expect(postedNamed('updaterLoadState')).toEqual([runningState]);
                 expect(confirmSpy).not.toHaveBeenCalled();
@@ -1079,7 +1083,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
                 await retrieveFirst();
 
-                await (RecipeCockpitService as any).applyAdapterRetrievedFilesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: 'Lead-ONLY', renderSequence: panelState().recipeDataMessage!.renderSequence });
+                await (RecipeCockpitAdapterMetadata as any).applyAdapterRetrievedFilesFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: 'Lead-ONLY', renderSequence: panelState().recipeDataMessage!.renderSequence });
 
                 expect(confirmSpy).not.toHaveBeenCalled();
 

@@ -21,6 +21,22 @@ import {
 import { RecipeCockpitQueryHost } from '../RecipeCockpitQueryHost';
 import { RecipeCockpitTroubleshootingHost } from '../RecipeCockpitTroubleshootingHost';
 import * as RecipeCockpitDatasetsHostModule from '../RecipeCockpitDatasetsHost';
+import * as RecipeCockpitAdapterHostModule from '../RecipeCockpitAdapterHost';
+import * as RecipeCockpitAdapterMetadataModule from '../RecipeCockpitAdapterMetadata';
+import * as RecipeCockpitAdapterRecordsModule from '../RecipeCockpitAdapterRecords';
+import * as RecipeCockpitAdapterStateModule from '../RecipeCockpitAdapterState';
+import * as RecipeCockpitRecordLinksHostModule from '../RecipeCockpitRecordLinksHost';
+import * as RecipeCockpitRecordLinksModule from '../RecipeCockpitRecordLinks';
+import {
+    RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
+    RECIPE_COCKPIT_ADAPTER_COMMANDS,
+    RecipeCockpitAdapterHost
+} from '../RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_RECORD_LINKS_ACTION_KINDS,
+    RECIPE_COCKPIT_RECORD_LINKS_COMMANDS,
+    RecipeCockpitRecordLinksHost
+} from '../RecipeCockpitRecordLinksHost';
 import {
     RECIPE_COCKPIT_DATASETS_ACTION_KINDS,
     RECIPE_COCKPIT_DATASETS_COMMANDS,
@@ -58,7 +74,7 @@ interface IHubUseStillOwed {
 interface ITabHost {
     tabName: string;
     hostClassName: string;
-    // THE FILES THE TAB'S HOST HALF IS: THE FIRST HOLDS ITS ROUTER AND EXECUTOR
+    // THE FILES THE TAB'S HOST HALF IS, IN LOAD ORDER: THE FIRST HOLDS ITS ROUTER AND EXECUTOR, AND EACH LOADS ONLY THE ONES AFTER IT
     hostFileNames: string[];
     hostModules: Record<string, unknown>[];
     commands: readonly string[];
@@ -69,6 +85,8 @@ interface ITabHost {
     hubUsesStillOwed: IHubUseStillOwed[];
     // ANOTHER TAB'S HOST THAT MAY IMPORT ONE OF THIS TAB'S PURE MODULES TOO: EXACTLY WHICH NAMES AND MEMBERS, AND WHY
     sharedWithHosts?: { pureModuleFileName: string; hostFileName: string; importedNames: string[]; members: string[]; reason: string }[];
+    // ANOTHER TAB'S HOST FILE ONE OF THIS TAB'S FILES LOADS AT RUN TIME, AND WHY
+    loadsOtherHosts?: { fileName: string; otherHostFileName: string; reason: string }[];
 }
 
 const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays in the hub';
@@ -83,17 +101,36 @@ const TAB_HOSTS: ITabHost[] = [
         tabName: 'Query',
         hostClassName: 'RecipeCockpitQueryHost',
         hostFileNames: ['RecipeCockpitQueryHost.ts'],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitQueryHost.ts', otherHostFileName: 'RecipeCockpitRecordLinks.ts', reason: 'a query preview\'s rows link the records they show (#556)' }
+        ],
         hostModules: [RecipeCockpitQueryHostModule],
         commands: RECIPE_COCKPIT_QUERY_COMMANDS,
         actionKinds: RECIPE_COCKPIT_QUERY_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitQueryHost.routePanelMessage(panelMessage, panelState),
         pureModuleFileNames: ['RecipeCockpitQuery.ts'],
-        hubUsesStillOwed: [
+        hubUsesStillOwed: [],
+        sharedWithHosts: [
             {
                 pureModuleFileName: 'RecipeCockpitQuery.ts',
-                importedNames: ['IRecipeCockpitPreviewRecordLinks', 'RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
+                hostFileName: 'RecipeCockpitAdapterHost.ts',
+                importedNames: ['IRecipeCockpitPreviewRecordLinks'],
+                members: [],
+                reason: 'an Adapter preview posts the same record links a query preview does'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitQuery.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitQuery'],
+                members: ['buildPreview'],
+                reason: 'Add to data set previews its child records with the same preview'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitQuery.ts',
+                hostFileName: 'RecipeCockpitAdapterRecords.ts',
+                importedNames: ['RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
                 members: ['buildPreview', 'countValues', 'fetchQueryRecords'],
-                owedBy: '#668, the Treecipe Adapter host: its load, update and restore read through the same pages and preview'
+                reason: 'the Adapter\'s load, update and restore read records through the same pages, limits and preview'
             }
         ]
     },
@@ -120,8 +157,8 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
                 importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject', 'RecipeCockpitMetadataDeploy'],
-                members: ['describeCappedList', 'readApiVersion', 'toManifestRelativePath', 'writePackageXml'],
-                owedBy: '#668 (the Adapter\'s retrieve, child and apply) and #669 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
+                members: ['readApiVersion', 'toManifestRelativePath', 'writePackageXml'],
+                owedBy: '#669 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
             },
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeployPackage.ts',
@@ -151,7 +188,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
                 importedNames: ['RecipeCockpitPermissionSetGenerate'],
                 members: ['resolveDefaultPackageDirectoryPath'],
-                owedBy: '#668 (the Adapter\'s apply) and #669 (Get latest object detail)'
+                owedBy: '#669 (Get latest object detail)'
             },
             {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
@@ -167,6 +204,20 @@ const TAB_HOSTS: ITabHost[] = [
             }
         ],
         sharedWithHosts: [
+            {
+                pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitMetadataDeploy'],
+                members: ['describeCappedList', 'toManifestRelativePath', 'writePackageXml'],
+                reason: 'the Adapter\'s retrieve and child write the same package.xml, and its apply lists files the same way'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitPermissionSetGenerate'],
+                members: ['resolveDefaultPackageDirectoryPath'],
+                reason: 'Apply retrieved files writes into the same default package directory'
+            },
             {
                 pureModuleFileName: 'RecipeCockpitRunHistory.ts',
                 hostFileName: 'RecipeCockpitDatasetsHost.ts',
@@ -192,6 +243,61 @@ const TAB_HOSTS: ITabHost[] = [
                 members: ['buildEmptyTargets', 'buildTreeHistories', 'buildUnmatchedDatasetsNotice'],
                 owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from'
             }
+        ]
+    },
+    {
+        tabName: 'Treecipe Adapter',
+        hostClassName: 'RecipeCockpitAdapterHost',
+        hostFileNames: ['RecipeCockpitAdapterHost.ts', 'RecipeCockpitAdapterMetadata.ts', 'RecipeCockpitAdapterRecords.ts', 'RecipeCockpitAdapterState.ts'],
+        hostModules: [RecipeCockpitAdapterHostModule, RecipeCockpitAdapterMetadataModule, RecipeCockpitAdapterRecordsModule, RecipeCockpitAdapterStateModule],
+        commands: RECIPE_COCKPIT_ADAPTER_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitAdapterHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: ['RecipeCockpitTreeUpdaterQuery.ts', 'RecipeCockpitRecordUpdate.ts', 'RecipeCockpitOrgChangeDetection.ts', 'RecipeCockpitAdaptedDataset.ts'],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitDatasetsHost.ts', reason: 'a landed update adds its adapted data set to Previously Used Data Sets (#448)' },
+            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitRecordLinks.ts', reason: 'a loaded or updated preview\'s rows link the records they show (#556)' }
+        ],
+        hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitTreeUpdaterQuery.ts',
+                importedNames: ['RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH'],
+                members: [],
+                owedBy: '#670: the reader\'s place keeps a card\'s WHERE text to the same limit'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitRecordUpdate.ts',
+                importedNames: ['IUpdateSnapshotObject'],
+                members: [],
+                owedBy: '#669: buildOrgOnlyFieldsResult, which the Adapter reads through the hub, is shared with Get latest object detail'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
+                importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
+                members: ['buildPackageXmlFilePath', 'buildRetrieveArguments', 'buildStagingFolderPath', 'copyMetadataFiles', 'makeStagingFolder', 'readRetrieveSucceeded', 'toOutputDirectoryArgument'],
+                owedBy: '#669: Get latest object detail stages and copies through the same retrieve, and offerStagedField is shared with it'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitAdaptedDataset.ts',
+                importedNames: ['RecipeCockpitAdaptedDataset'],
+                members: ['isAdaptedRecipeFileName'],
+                owedBy: 'the hub lists a run\'s recipes when it loads the model, and leaves an adapted recipe out'
+            }
+        ]
+    },
+    {
+        tabName: 'record links',
+        hostClassName: 'RecipeCockpitRecordLinksHost',
+        hostFileNames: ['RecipeCockpitRecordLinksHost.ts', 'RecipeCockpitRecordLinks.ts'],
+        hostModules: [RecipeCockpitRecordLinksHostModule, RecipeCockpitRecordLinksModule],
+        commands: RECIPE_COCKPIT_RECORD_LINKS_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_RECORD_LINKS_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitRecordLinksHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: [],
+        hubUsesStillOwed: [],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitQueryHost.ts', reason: 'a query preview\'s row is opened from the result the Query host holds' },
+            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitAdapterState.ts', reason: 'a loaded preview\'s row is opened from the records the Adapter holds' }
         ]
     }
 ];
@@ -480,6 +586,49 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
             }
 
             expect(hubLoadChain).toEqual([]);
+
+        });
+
+        test.each(tabHost.hostFileNames)('%s loads only its own files listed after it, and another tab\'s host only as listed', hostFileName => {
+
+            const hostFileIndex = tabHost.hostFileNames.indexOf(hostFileName);
+            const loadedHostFileNames = runtimeImportPaths(parse(path.join(COCKPIT_FOLDER, hostFileName)))
+                .filter(loadedPath => path.dirname(loadedPath) === COCKPIT_FOLDER && HOST_FILE_NAMES.includes(path.basename(loadedPath)))
+                .map(loadedPath => path.basename(loadedPath));
+
+            const ownFilesLoadedOutOfOrder = loadedHostFileNames.filter(loadedFileName => tabHost.hostFileNames.includes(loadedFileName)
+                && tabHost.hostFileNames.indexOf(loadedFileName) <= hostFileIndex);
+            const otherHostsLoaded = loadedHostFileNames.filter(loadedFileName => !tabHost.hostFileNames.includes(loadedFileName));
+            const otherHostsListed = ( tabHost.loadsOtherHosts ?? [] ).filter(loadsOther => loadsOther.fileName === hostFileName).map(loadsOther => loadsOther.otherHostFileName);
+
+            expect(ownFilesLoadedOutOfOrder).toEqual([]);
+            expect([...new Set(otherHostsLoaded)].sort()).toEqual([...otherHostsListed].sort());
+
+        });
+
+        test('has its classes\' state written only by its own files', () => {
+
+            const tabClassNames = tabHost.hostModules.flatMap(hostModule => Object.entries(hostModule))
+                .filter(([, exportedValue]) => typeof exportedValue === 'function')
+                .map(([exportedName]) => exportedName);
+            const isTabClassMember = (node: ts.Node) => ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && tabClassNames.includes(node.expression.text);
+
+            const writesFromOutside: string[] = [];
+            hostSideFiles.filter(filePath => !hostFilePaths.includes(filePath)).forEach(filePath => {
+                visit(parse(filePath), node => {
+                    const isAssignment = ts.isBinaryExpression(node)
+                        && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+                        && isTabClassMember(node.left);
+                    const isIncrement = ( ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node) )
+                        && ( node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken )
+                        && isTabClassMember(node.operand);
+                    if ( isAssignment || isIncrement ) {
+                        writesFromOutside.push(`${path.basename(filePath)}: ${node.getText()}`);
+                    }
+                });
+            });
+
+            expect(writesFromOutside).toEqual([]);
 
         });
 

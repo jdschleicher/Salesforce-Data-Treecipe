@@ -47,16 +47,22 @@ import { Org } from '@salesforce/core';
 
 import {
     IRecipeCockpitPanelState,
-    RecipeCockpitRecordLinkPreviewKind,
     RecipeCockpitService,
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
-    RECIPE_COCKPIT_RECORD_LINK_BUSY_REFUSAL,
-    RECIPE_COCKPIT_RECORD_LINK_OPEN_RUNNING_REFUSAL,
-    RECIPE_COCKPIT_RECORD_LINK_ORG_GONE_REFUSAL,
-    RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL,
     RECIPE_COCKPIT_RECORD_LINK_TITLE,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import {
+    RecipeCockpitRecordLinkPreviewKind,
+    RecipeCockpitRecordLinks
+} from '../RecipeCockpitRecordLinks';
+import {
+    RECIPE_COCKPIT_RECORD_LINK_BUSY_REFUSAL,
+    RECIPE_COCKPIT_RECORD_LINK_OPEN_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_RECORD_LINK_ORG_GONE_REFUSAL,
+    RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL
+} from '../RecipeCockpitRecordLinksHost';
 import { RecipeCockpitQueryHost } from '../RecipeCockpitQueryHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
@@ -102,7 +108,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
             panelState.recipeDataMessage = { command: 'recipeData', recipe: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: '' }, renderSequence: 3 };
             panelState.acknowledgedRenderSequence = 3;
             panelState.dataOrgDetails = [QA_ORG, UAT_ORG];
-            const recordLinkSequence = RecipeCockpitService.registerRecordLinkPreview(panelState,
+            const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState,
                 previewDetail('updaterRecords', heldSource, 3, new Map([['Account', [ACCOUNT_ID, undefined]], ['Contact', [CONTACT_ID]]])))!;
             return { panelState, recordLinkSequence };
         };
@@ -180,7 +186,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: 2, recordLinkSequence, objectApiName: 'Account', rowIndex: 0 }, panelState)).toEqual(stale);
 
-            RecipeCockpitService.registerRecordLinkPreview(panelState, previewDetail('updaterRecords', {}, 3, new Map([['Account', [ACCOUNT_ID]]])));
+            RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('updaterRecords', {}, 3, new Map([['Account', [ACCOUNT_ID]]])));
             expect(panelState.openableRecordPreviews.has(recordLinkSequence)).toBe(false);
             expect(RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: 3, recordLinkSequence, objectApiName: 'Account', rowIndex: 0 }, panelState)).toEqual(stale);
 
@@ -190,11 +196,11 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
 
-            const querySequence = RecipeCockpitService.registerRecordLinkPreview(panelState, previewDetail('query', {}, 1, new Map([['', [ACCOUNT_ID]]])));
-            const valuesSequence = RecipeCockpitService.registerRecordLinkPreview(panelState, previewDetail('updaterValues', {}, 1, new Map([['Account', [ACCOUNT_ID]]])));
+            const querySequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('query', {}, 1, new Map([['', [ACCOUNT_ID]]])));
+            const valuesSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('updaterValues', {}, 1, new Map([['Account', [ACCOUNT_ID]]])));
             expect([...panelState.pendingOpenableRecordPreviews.keys()]).toEqual([querySequence, valuesSequence]);
 
-            expect(RecipeCockpitService.registerRecordLinkPreview(panelState, previewDetail('query', {}, 1, new Map([['', [undefined]]])))).toBeUndefined();
+            expect(RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('query', {}, 1, new Map([['', [undefined]]])))).toBeUndefined();
             expect([...panelState.pendingOpenableRecordPreviews.keys()]).toEqual([valuesSequence]);
 
         });
@@ -270,8 +276,8 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
         const drawPreview = async (previewKind: RecipeCockpitRecordLinkPreviewKind, recordIdsByObjectApiName: Map<string, (string | undefined)[]>) => {
             const heldSource = { records: [] };
             const heldField = { query: 'heldTreeQueryResult', updaterRecords: 'heldUpdaterRecords', updaterValues: 'heldUpdaterValues' }[previewKind];
-            ( previewKind === 'query' ? RecipeCockpitQueryHost as any : RecipeCockpitService as any )[heldField] = heldSource;
-            const recordLinkSequence = RecipeCockpitService.registerRecordLinkPreview(panelState(), previewDetail(previewKind, heldSource, lastRenderSequence(), recordIdsByObjectApiName))!;
+            ( previewKind === 'query' ? RecipeCockpitQueryHost as any : RecipeCockpitAdapterState as any )[heldField] = heldSource;
+            const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState(), previewDetail(previewKind, heldSource, lastRenderSequence(), recordIdsByObjectApiName))!;
             await receivedMessageHandler({ command: 'recordLinksRendered', renderSequence: lastRenderSequence(), recordLinkSequence });
             return recordLinkSequence;
         };
@@ -321,7 +327,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
         afterEach(() => {
             RecipeCockpitQueryHost.clearHeldTreeQueryResult();
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
@@ -379,7 +385,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
             const querySequence = await drawPreview('query', new Map([['', [ACCOUNT_ID]]]));
 
             // AN UPDATE THAT SENT A REQUEST LETS THE RECORDS AND THEIR VALUES GO (isRecordsSpent), AND A RUN LETS THE LAST RESULT GO
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             RecipeCockpitQueryHost.clearHeldTreeQueryResult();
 
             await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: recordsSequence, objectApiName: 'Account', rowIndex: 0 });
@@ -397,7 +403,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
             answerOrgOpen(async () => ({ frontdoor_uri: FRONT_DOOR_URI }));
             await openCockpit();
             const valuesSequence = await drawPreview('updaterValues', new Map([['Account', [ACCOUNT_ID]]]));
-            (RecipeCockpitService as any).heldUpdaterValues = { records: [] };
+            (RecipeCockpitAdapterState as any).heldUpdaterValues = { records: [] };
 
             await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: valuesSequence, objectApiName: 'Account', rowIndex: 0 });
 
@@ -410,8 +416,8 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             await openCockpit();
             const heldRecords = { records: [{ Id: ACCOUNT_ID }] };
-            (RecipeCockpitService as any).heldUpdaterRecords = heldRecords;
-            const recordLinkSequence = RecipeCockpitService.registerRecordLinkPreview(panelState(), previewDetail('updaterRecords', heldRecords, lastRenderSequence(), new Map([['Account', [ACCOUNT_ID]]])))!;
+            (RecipeCockpitAdapterState as any).heldUpdaterRecords = heldRecords;
+            const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState(), previewDetail('updaterRecords', heldRecords, lastRenderSequence(), new Map([['Account', [ACCOUNT_ID]]])))!;
 
             const storedPreview = panelState().pendingOpenableRecordPreviews.get(recordLinkSequence)!;
             expect(Object.values(storedPreview)).not.toContain(heldRecords);

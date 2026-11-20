@@ -47,21 +47,25 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), exec
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
-    RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+    RECIPE_COCKPIT_UPDATER_TAB_LABEL,
+    RECIPE_COCKPIT_UPDATER_UPDATE_LABEL,
+    RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
+} from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
+    RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL,
     RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
     RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL,
-    RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL,
     RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_UPDATER_UPDATE_LABEL,
-    RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
-} from '../RecipeCockpitService';
+    RecipeCockpitAdapterRecords
+} from '../RecipeCockpitAdapterRecords';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { IUpdateObjectDescribe, IUpdateRequestRecord, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
 import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 import { RecipeCockpitRunArtifacts } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
@@ -409,9 +413,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             SalesforceOrgService.clearDescribeCache();
 
             postedPanelMessages = [];
@@ -513,7 +517,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                     }]]);
                 }
             } as unknown as IFakerRecipeProcessor;
-            jest.spyOn(RecipeCockpitService, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
+            jest.spyOn(RecipeCockpitAdapterRecords, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -688,7 +692,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' },
                 { command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update', isRecordsSpent: true }
             ]);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
             expect(panelState().updaterValuesMessage).toBeUndefined();
             expect(panelState().updatableTreeKeys.size).toBe(0);
 
@@ -1053,7 +1057,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
-            const heldValues = (RecipeCockpitService as any).heldUpdaterValues;
+            const heldValues = (RecipeCockpitAdapterState as any).heldUpdaterValues;
             delete heldValues.valuesByObjectApiName.get('Account')[1].fieldValues.Rating__c;
             await requestUpdate();
 
@@ -1138,7 +1142,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(updateConfirmations()).toHaveLength(2);
             expect(updateCalls).toEqual([]);
             expect(attemptFiles()).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(5);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(5);
             expect(postedNamed('updaterLoadState').at(-1)).toEqual({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' });
 
         });
@@ -1165,7 +1169,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             expect(updateCalls).toEqual([]);
             expect(warnings().at(-1)).toBe(RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL);
-            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(5);
+            expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(5);
 
         });
 
@@ -1202,7 +1206,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(warnings().at(-1)).toBe('Nothing was updated: the records of Account-thru-OtherChildObject__c were loaded from qa@example.com.qa, not uat · uat@example.com.uat. Load them again from the org selected now.');
 
             selectOrg(SANDBOX_ORG);
-            RecipeCockpitService.clearHeldUpdaterValues();
+            RecipeCockpitAdapterState.clearHeldUpdaterValues();
             await requestUpdate();
             expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL));
             expect(updateCalls).toEqual([]);
@@ -1246,7 +1250,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             updateAnswer = () => Promise.reject('socket hang up');
             await openCockpitLoadAndGenerate([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, { objectApiName: 'Contact', fieldApiName: 'LastName' }]);
             // LOADED FROM, AND WRITTEN TO, AN ORG WITH NO ALIAS
-            (RecipeCockpitService as any).heldUpdaterRecords.orgUsername = NO_ALIAS_ORG.username;
+            (RecipeCockpitAdapterState as any).heldUpdaterRecords.orgUsername = NO_ALIAS_ORG.username;
             selectOrg(NO_ALIAS_ORG);
             panelState().recipeDataMessage!.recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY)!.customName = 'My accounts';
             jest.spyOn(RecipeCockpitRecordUpdate, 'writeResults').mockReturnValue(false);
@@ -1293,7 +1297,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
-            const runUpdate = (treeKey = ACCOUNT_TREE_KEY) => (RecipeCockpitService as any).updateUpdaterRecordsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: treeKey });
+            const runUpdate = (treeKey = ACCOUNT_TREE_KEY) => (RecipeCockpitAdapterRecords as any).updateUpdaterRecordsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: treeKey });
 
             // A CARD THE MODEL ON SCREEN NO LONGER DRAWS: NOTHING ASKED, NOTHING SAID
             const warningCount = warnings().length;
@@ -1306,7 +1310,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(warnings().at(-1)).toBe('Nothing was updated: the org selected in Target Org Manager has not answered that it is a sandbox or scratch org.');
 
             selectOrg(SANDBOX_ORG);
-            const heldValues = (RecipeCockpitService as any).heldUpdaterValues;
+            const heldValues = (RecipeCockpitAdapterState as any).heldUpdaterValues;
             heldValues.valuesByObjectApiName = new Map([['Account', [heldValues.valuesByObjectApiName.get('Account')[0]]]]);
             await runUpdate();
             expect(warnings().at(-1)).toBe('Nothing was updated: there are no new values for the loaded records of Account-thru-OtherChildObject__c.');
@@ -1323,11 +1327,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
         it('answers an update while one is in flight with no stored state as not running', async () => {
 
             await openCockpitLoadAndGenerate();
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
             postedPanelMessages = [];
 
-            await (RecipeCockpitService as any).updateUpdaterRecordsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
+            await (RecipeCockpitAdapterRecords as any).updateUpdaterRecordsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
             expect(postedPanelMessages).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' }]);
 
@@ -1338,11 +1342,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
             const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' };
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
             postedPanelMessages = [];
 
-            await (RecipeCockpitService as any).updateUpdaterRecordsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
+            await (RecipeCockpitAdapterRecords as any).updateUpdaterRecordsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
             expect(postedPanelMessages).toEqual([runningState]);
             expect(updateCalls).toEqual([]);

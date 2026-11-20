@@ -46,16 +46,23 @@ import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL,
-    RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
-    RECIPE_COCKPIT_ADAPTER_CHILD_OTHER_LOOKUP_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
-    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_LOOKUP_REASON_PREFIX,
-    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
     RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_ADAPTER_CHILD_OTHER_LOOKUP_REASON,
+    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_LOOKUP_REASON_PREFIX,
+    RecipeCockpitAdapterMetadata
+} from '../RecipeCockpitAdapterMetadata';
+import {
+    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
+    RecipeCockpitAdapterRecords
+} from '../RecipeCockpitAdapterRecords';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitRecordCreation } from '../RecipeCockpitRecordCreation';
 import { IOrgStagedFieldDetail, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
@@ -279,7 +286,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             ['snowfakery' as const, '${{fake.text(max_nb_chars=40)}}']
         ])('offers each field with the %s backend\'s expression, the lookup to the parent and any other lookup locked', (fakerService, carrierExpression) => {
 
-            const offer = RecipeCockpitService.offerAdapterChildFields(stagedFields, 'Account', CHILD_OBJECT, 'Account__c', tree, fakerService);
+            const offer = RecipeCockpitAdapterMetadata.offerAdapterChildFields(RecipeCockpitService, stagedFields, 'Account', CHILD_OBJECT, 'Account__c', tree, fakerService);
             const offersByName = Object.fromEntries(offer.fieldViewModels.map(fieldViewModel => [fieldViewModel.fieldApiName, fieldViewModel]));
 
             expect(offer.fieldViewModels.map(fieldViewModel => fieldViewModel.fieldApiName)).toEqual(['Name', 'Account__c', 'Carrier__c', 'Contact__c', 'Mood__c', 'Total__c']);
@@ -356,9 +363,9 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }], sourceApiVersion: '62.0' }));
             fs.mkdirSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields'), { recursive: true });
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             SalesforceOrgService.clearDescribeCache();
 
             postedPanelMessages = [];
@@ -449,7 +456,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                     }]]);
                 }
             } as unknown as IFakerRecipeProcessor;
-            processorSpy = jest.spyOn(RecipeCockpitService, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
+            processorSpy = jest.spyOn(RecipeCockpitAdapterRecords, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -552,7 +559,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 '  Mood__c -- fixed value: Calm'
             ]);
 
-            const records = RecipeCockpitService.readHeldAdapterChildRecords()!;
+            const records = RecipeCockpitAdapterState.readHeldAdapterChildRecords()!;
             expect(records).toHaveLength(6);
             expect(records.map(record => record.Account__c)).toEqual([0, 0, 1, 1, 2, 2].map(recordIndex => fakeRecordId('Account', recordIndex)));
             expect(records.map(record => record.Mood__c)).toEqual(Array(6).fill('Calm'));
@@ -575,7 +582,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             await send(generateMessage(1000, [{ fieldApiName: 'Carrier__c' }]));
 
             expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].count)).toEqual([2000, 1000]);
-            const records = RecipeCockpitService.readHeldAdapterChildRecords()!;
+            const records = RecipeCockpitAdapterState.readHeldAdapterChildRecords()!;
             const referenceIds = records.map(record => (record.attributes as any).referenceId);
             expect(records).toHaveLength(3000);
             expect(new Set(referenceIds).size).toBe(3000);
@@ -593,7 +600,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             await send(generateMessage(2, [{ fieldApiName: 'Carrier__c' }]));
 
             expect(warnings().at(-1)).toBe(`No ${CHILD_OBJECT} records were generated: snowfakery generated 5 ${CHILD_OBJECT} records for 6 asked for.`);
-            expect(RecipeCockpitService.readHeldAdapterChildRecords()).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldAdapterChildRecords()).toBeUndefined();
             expect(postedNamed('adapterChildPreview')).toEqual([]);
 
         });
@@ -607,12 +614,12 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             expect(postedNamed('adapterChildBlock')[0].fields.find((field: any) => field.fieldApiName === 'Carrier__c').expression).toBe('${{ faker.lorem.text(40).substring(0, 40) }}');
 
             await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
-            const records = RecipeCockpitService.readHeldAdapterChildRecords()!;
+            const records = RecipeCockpitAdapterState.readHeldAdapterChildRecords()!;
             expect(records.map(record => record.Account__c)).toEqual([0, 1, 2].map(recordIndex => fakeRecordId('Account', recordIndex)));
             records.forEach(record => expect(String(record.Carrier__c).length).toBeWithin(1, 41));
 
             await send(generateMessage(2, []));
-            expect(RecipeCockpitService.readHeldAdapterChildRecords()!.map(record => record.Account__c)).toEqual([0, 0, 1, 1, 2, 2].map(recordIndex => fakeRecordId('Account', recordIndex)));
+            expect(RecipeCockpitAdapterState.readHeldAdapterChildRecords()!.map(record => record.Account__c)).toEqual([0, 0, 1, 1, 2, 2].map(recordIndex => fakeRecordId('Account', recordIndex)));
 
         });
 
@@ -641,16 +648,16 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             const cockpitPanel = () => (RecipeCockpitService as any).recipeCockpitPanel;
             const prepareAction = (overrides: Record<string, unknown> = {}) => ({ kind: 'prepareAdapterChild', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), parentObjectApiName: 'Account', childObjectApiName: CHILD_OBJECT, lookupFieldApiName: 'Account__c', ...overrides });
             const generateAction = (overrides: Record<string, unknown> = {}) => ({ kind: 'generateAdapterChild', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), childObjectApiName: CHILD_OBJECT, countPerParent: 1, fieldRequests: [], ...overrides });
-            const prepareDirectly = (overrides: Record<string, unknown> = {}) => (RecipeCockpitService as any).prepareAdapterChildFromPanel(cockpitPanel(), panelState(), prepareAction(overrides));
-            const generateDirectly = (overrides: Record<string, unknown> = {}) => (RecipeCockpitService as any).generateAdapterChildFromPanel(cockpitPanel(), panelState(), generateAction(overrides));
+            const prepareDirectly = (overrides: Record<string, unknown> = {}) => (RecipeCockpitAdapterMetadata as any).prepareAdapterChildFromPanel(RecipeCockpitService, cockpitPanel(), panelState(), prepareAction(overrides));
+            const generateDirectly = (overrides: Record<string, unknown> = {}) => (RecipeCockpitAdapterMetadata as any).generateAdapterChildFromPanel(RecipeCockpitService, cockpitPanel(), panelState(), generateAction(overrides));
             const lastWarning = () => warnings().at(-1);
 
             it('answers a run in flight with its state, and starts nothing', async () => {
 
                 await openRetrieveAndLoad();
                 const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
-                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-                (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
                 const cliCallCount = cliArgumentLists.length;
 
                 await prepareDirectly();
@@ -775,10 +782,10 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
                 expect(generatedRecipeTexts).toHaveLength(1);
 
-                const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
+                const heldRecords = (RecipeCockpitAdapterState as any).heldUpdaterRecords;
                 processorSpy.mockImplementationOnce(() => ({
                     generateFakeDataBySelectedRecipeFile: async (recipePath: string) => {
-                        (RecipeCockpitService as any).heldUpdaterRecords = { ...heldRecords };
+                        (RecipeCockpitAdapterState as any).heldUpdaterRecords = { ...heldRecords };
                         return fs.readFileSync(recipePath, 'utf8');
                     },
                     transformFakerJsonDataToCollectionApiFormattedFilesBySObject: (recipeText: string) => {
@@ -788,7 +795,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 }));
                 await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
                 expect(lastWarning()).toBe(`The ${CHILD_OBJECT} records were not kept: the run on screen or its records changed while they were generated. Generate them again.`);
-                expect(RecipeCockpitService.readHeldAdapterChildRecords()).toBeUndefined();
+                expect(RecipeCockpitAdapterState.readHeldAdapterChildRecords()).toBeUndefined();
                 expect(postedNamed('adapterChildPreview')).toEqual([]);
 
             });
@@ -842,20 +849,20 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 'x'.repeat(40000) }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('Carrier__c is not one') });
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 'Acme' }]), panelState())).toMatchObject({ kind: 'generateAdapterChild', fieldRequests: [{ fieldApiName: 'Carrier__c', value: 'Acme' }] });
 
-                const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
-                (RecipeCockpitService as any).heldUpdaterRecords = { ...heldRecords, resultKey: 'another load' };
+                const heldRecords = (RecipeCockpitAdapterState as any).heldUpdaterRecords;
+                (RecipeCockpitAdapterState as any).heldUpdaterRecords = { ...heldRecords, resultKey: 'another load' };
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual(notRouted);
-                (RecipeCockpitService as any).heldUpdaterRecords = undefined;
+                (RecipeCockpitAdapterState as any).heldUpdaterRecords = undefined;
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual(notRouted);
-                (RecipeCockpitService as any).heldUpdaterRecords = heldRecords;
+                (RecipeCockpitAdapterState as any).heldUpdaterRecords = heldRecords;
 
                 // AN EXECUTOR CALLED FOR A CHILD THE HOST DOES NOT HOLD, OR BEFORE ANY RUN STATE WAS STORED, DOES NOTHING
-                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-                (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
                 await prepareDirectly();
                 await generateDirectly();
                 expect(postedNamed('updaterLoadState').slice(-2).map((stateMessage: any) => stateMessage.runKind)).toEqual(['prepareChild', 'generateChild']);
-                (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
                 await generateDirectly({ childObjectApiName: 'Gadget__c' });
                 expect(generatedRecipeTexts).toEqual([]);
 
@@ -881,7 +888,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                     // #457: AN EDITED EXPRESSION THE BACKEND WILL RUN IS A WARNING ON SCREEN, NEVER ONLY IN THE FOLDED FIELDS SECTION
                     expect((RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.at(-1)[1].warnings).toEqual([`Runs the edited expression ${CHILD_OBJECT}.Name: \${{ fake.Word }}`]);
                     expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Name: '${{ fake.Word }}' }]);
-                    expect(RecipeCockpitService.readHeldAdapterChildRecords()![0]).toMatchObject({ Name: 'Name-new-0', Tier__c: 'Gold' });
+                    expect(RecipeCockpitAdapterState.readHeldAdapterChildRecords()![0]).toMatchObject({ Name: 'Name-new-0', Tier__c: 'Gold' });
                 } finally {
                     delete CHILD_FIELD_FILES.Tier__c;
                     Object.assign(CHILD_FIELD_FILES, ORIGINAL_CHILD_FIELD_FILES);
@@ -905,7 +912,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
 
                 expect(confirmations().at(-1)[0]).toBe(`Generate 1 ${CHILD_OBJECT} record under the loaded Account records?`);
-                expect(RecipeCockpitService.readHeldAdapterChildRecords()).toEqual([{ attributes: { referenceId: `${CHILD_OBJECT}_Adapter_Reference_1` }, Account__c: fakeRecordId('Account', 0), Carrier__c: null }]);
+                expect(RecipeCockpitAdapterState.readHeldAdapterChildRecords()).toEqual([{ attributes: { referenceId: `${CHILD_OBJECT}_Adapter_Reference_1` }, Account__c: fakeRecordId('Account', 0), Carrier__c: null }]);
 
             });
 
@@ -916,7 +923,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
                 panelState().updaterLoadStateMessage = undefined;
                 expect(RecipeCockpitService.routePanelMessage({ ...prepareMessage(), treeKey: 'Nope' }, panelState())).toEqual(notRouted);
-                const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
+                const heldRecords = (RecipeCockpitAdapterState as any).heldUpdaterRecords;
                 const heldAccounts = heldRecords.recordsByObjectApiName.get('Account');
                 heldRecords.recordsByObjectApiName.delete('Account');
                 expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toMatchObject({ refusalText: `${CHILD_OBJECT} was not added: ${RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON}` });
@@ -1003,7 +1010,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                     { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
                 ]
             });
-            expect(RecipeCockpitService.readHeldAdapterChildRecords()).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readHeldAdapterChildRecords()).toBeUndefined();
             expect(panelState().adapterChildBlockMessage).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
 

@@ -216,6 +216,8 @@ src/
     │   ├── RecipeCockpitQueryHost.ts         # The Query tab's host half (#665): its router cases, actions and state, handed its commands by the hub; tests/RecipeCockpitTabHosts.test.ts holds each tab host to the pattern
     │   ├── RecipeCockpitTroubleshootingHost.ts # The Troubleshooting tab's host half (#666): router cases and actions; RecipeCockpitTroubleshootingRuns.ts (deploys, retrieves, permission sets) and RecipeCockpitTroubleshootingViews.ts (summary, Validation Rules, History) are the rest of it
     │   ├── RecipeCockpitDatasetsHost.ts      # The Previously Used Data Sets tab's host half (#667): router cases, actions, a row's insert, counts, journey, names and favourites
+    │   ├── RecipeCockpitAdapterHost.ts       # The Treecipe Adapter tab's host half (#668): router cases and actions; RecipeCockpitAdapterMetadata.ts (retrieve, apply, add child), RecipeCockpitAdapterRecords.ts (load, generate, update, restore) and RecipeCockpitAdapterState.ts are the rest of it
+    │   ├── RecipeCockpitRecordLinks.ts       # A preview row's record links (#556), shared by the Query and Adapter hosts; RecipeCockpitRecordLinksHost.ts opens a row's record
     │   ├── RecipeCockpitValidationRuleList.ts # Validation Rules sub-tab list (#327); no vscode
     │   ├── RecipeCockpitMetadataRetrieve.ts  # Troubleshooting retrieves (#326, #382): org listing, package.xml, CLI answer; no vscode
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode

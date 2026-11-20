@@ -48,18 +48,22 @@ import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE,
-    RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
-    RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL,
-    RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORE_LABEL,
-    RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL,
     RECIPE_COCKPIT_UPDATER_RESTORING_LABEL,
     RECIPE_COCKPIT_UPDATER_SNAPSHOTS_HEADING,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL,
-    RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
+    RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
+    RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL,
+    RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
+    RecipeCockpitAdapterRecords
+} from '../RecipeCockpitAdapterRecords';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import {
     IUpdateSnapshot,
     RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME,
@@ -414,9 +418,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             SalesforceOrgService.clearDescribeCache();
 
             postedPanelMessages = [];
@@ -517,7 +521,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
                     }]]);
                 }
             } as unknown as IFakerRecipeProcessor;
-            jest.spyOn(RecipeCockpitService, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
+            jest.spyOn(RecipeCockpitAdapterRecords, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -912,12 +916,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             panelState().updaterLoadStateMessage = undefined;
 
             // ONE THAT REACHES THE EXECUTOR WHILE A RUN IS IN FLIGHT IS ANSWERED WITH THAT RUN'S STATE AND STARTS NOTHING
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = runningLoad;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningLoad;
             await requestRestore('20261023-100000-before.json');
             expect(postedNamed('updaterLoadState').at(-1)).toEqual(runningLoad);
             expect(restoreConfirmations()).toEqual([]);
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
 
         });
 

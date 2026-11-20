@@ -43,7 +43,6 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import {
     IRecipeCockpitPanelState,
-    RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL,
     RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_BUSY_REFUSAL,
     RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL,
@@ -54,6 +53,7 @@ import {
     RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL } from '../RecipeCockpitAdapterMetadata';
 import { OBJECT_REFRESH_KINDS } from '../RecipeCockpitObjectRefresh';
 import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';

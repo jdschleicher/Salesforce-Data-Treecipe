@@ -45,20 +45,27 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), exec
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
-    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
-    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL,
-    RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
+    RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON,
+    RecipeCockpitAdapterMetadata
+} from '../RecipeCockpitAdapterMetadata';
+import {
+    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL,
+    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
+    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
+    RecipeCockpitAdapterRecords
+} from '../RecipeCockpitAdapterRecords';
+import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { HOSTILE_PICKLIST_VALUES } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { IOrgNewFieldDetail, IOrgObjectChanges, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
@@ -181,7 +188,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         const recipe = loadTreeRecipe();
         const tree = recipe.trees.find(recipeTree => recipeTree.treeKey === ACCOUNT_TREE_KEY)!;
         const offer = (newFields: IOrgNewFieldDetail[], fakerService: 'faker-js' | 'snowfakery' | undefined, extraChanges: IOrgObjectChanges['fieldChanges'] = []) =>
-            RecipeCockpitService.offerAdapterOrgOnlyFields(recipe, tree, newFieldChanges(newFields, extraChanges), newFields, fakerService);
+            RecipeCockpitAdapterMetadata.offerAdapterOrgOnlyFields(RecipeCockpitService, recipe, tree, newFieldChanges(newFields, extraChanges), newFields, fakerService);
 
         it.each([
             ['faker-js', '${{ faker.lorem.text(80).substring(0, 80) }}'],
@@ -229,7 +236,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
                 ['Total_Spend__c', RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON, undefined],
                 ['Ticket_Number__c', RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON, undefined]
             ]);
-            expect(RecipeCockpitService.readAdapterOrgOnlyFieldApiNames({
+            expect(RecipeCockpitAdapterState.readAdapterOrgOnlyFieldApiNames({
                 adapterOrgOnlyFields: offered.orgOnlyFields,
                 adapterMetadataChangesMessage: { treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 },
                 recipeDataMessage: { renderSequence: 1 }
@@ -281,7 +288,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         it('reads a global value set picklist as Generate Treecipe does, and offers an object the recipe does not list its new fields', () => {
 
-            const offered = RecipeCockpitService.offerAdapterOrgOnlyFields(recipe, tree, [
+            const offered = RecipeCockpitAdapterMetadata.offerAdapterOrgOnlyFields(RecipeCockpitService, recipe, tree, [
                 ...newFieldChanges([newFieldDetail('Shared_Tier__c', { fieldType: 'Picklist', valueSetName: 'Not_Loaded_Set' })]),
                 { objectApiName: 'Unlisted__c', isRetrieved: true, unchangedFieldCount: 0, unreadableFieldCount: 0, fieldChanges: [{ fieldApiName: 'Code__c', status: 'new', fieldType: 'Text', fieldLabel: 'Code', differences: [] }] }
             ], [
@@ -439,9 +446,9 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }], sourceApiVersion: '62.0' }));
             fs.mkdirSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields'), { recursive: true });
 
-            (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
-            (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
-            RecipeCockpitService.clearHeldUpdaterRecords();
+            (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
+            (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             SalesforceOrgService.clearDescribeCache();
 
             postedPanelMessages = [];
@@ -565,7 +572,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
                     }]]);
                 }
             } as unknown as IFakerRecipeProcessor;
-            processorSpy = jest.spyOn(RecipeCockpitService, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
+            processorSpy = jest.spyOn(RecipeCockpitAdapterRecords, 'createUpdaterRecipeProcessor').mockReturnValue(standInProcessor);
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -592,8 +599,8 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
                 Sub_Status__c: { fieldTypeWithSize: 'Picklist', lockReason: `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c` },
                 Total_Spend__c: { fieldTypeWithSize: 'Summary', lockReason: RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON }
             });
-            expect(RecipeCockpitService.readAdapterOrgOnlyFieldApiNames(panelState(), ACCOUNT_TREE_KEY)).toEqual(new Map([['Account', ['Hologram__c', 'Region_Code__c']]]));
-            expect(RecipeCockpitService.readAdapterOrgOnlyFieldApiNames(panelState(), 'Lead-ONLY')).toBeUndefined();
+            expect(RecipeCockpitAdapterState.readAdapterOrgOnlyFieldApiNames(panelState(), ACCOUNT_TREE_KEY)).toEqual(new Map([['Account', ['Hologram__c', 'Region_Code__c']]]));
+            expect(RecipeCockpitAdapterState.readAdapterOrgOnlyFieldApiNames(panelState(), 'Lead-ONLY')).toBeUndefined();
 
         });
 
@@ -636,7 +643,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
                 '  Region_Code__c (only in the org) -- expression the recipe\'s backend writes for its type in the org: ${{fake.text(max_nb_chars=80)}}',
                 '  Hologram__c (only in the org) -- fixed value: Shimmer'
             ]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([0, 1, 2].map(recordIndex => ({
+            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toEqual([0, 1, 2].map(recordIndex => ({
                 recordId: fakeRecordId('Account', recordIndex),
                 fieldValues: { Region_Code__c: `Region_Code__c-new-${recordIndex}`, Hologram__c: 'Shimmer' }
             })));
@@ -652,10 +659,10 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
                 await generate([{ objectApiName: 'Account', fieldApiName: 'Tier__c', value: 'Platinum' }]);
                 expect(warnings().at(-1)).toMatch(/^No values were generated: Account\.Tier__c: .*Platinum/);
-                expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toBeUndefined();
+                expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
 
                 await generate([{ objectApiName: 'Account', fieldApiName: 'Tier__c', value: 'Gold' }]);
-                expect(RecipeCockpitService.readHeldUpdaterValues('Account')?.[0].fieldValues).toEqual({ Tier__c: 'Gold' });
+                expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')?.[0].fieldValues).toEqual({ Tier__c: 'Gold' });
             } finally {
                 delete ORG_ONLY_FIELD_FILES['Tier__c'];
             }
@@ -674,7 +681,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
             const accountChanges = postedNamed('adapterMetadataChanges')[0].objects.find((objectChanges: any) => objectChanges.objectApiName === 'Account');
             expect(accountChanges.fieldChanges.find((fieldChange: any) => fieldChange.fieldApiName === 'Region_Code__c').orgOnly).toEqual({ fieldTypeWithSize: 'Text(80)', lockReason: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON });
-            expect(RecipeCockpitService.readAdapterOrgOnlyFieldApiNames(panelState(), ACCOUNT_TREE_KEY)).toEqual(new Map());
+            expect(RecipeCockpitAdapterState.readAdapterOrgOnlyFieldApiNames(panelState(), ACCOUNT_TREE_KEY)).toEqual(new Map());
 
         });
 
@@ -690,7 +697,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             await send(loadRequest(['Region_Code__c']));
             await generate([{ objectApiName: 'Account', fieldApiName: 'Region_Code__c' }]);
 
-            const heldValues = RecipeCockpitService.readHeldUpdaterValues('Account')!;
+            const heldValues = RecipeCockpitAdapterState.readHeldUpdaterValues('Account')!;
             expect(heldValues.map(recordValues => recordValues.recordId)).toEqual([0, 1, 2].map(recordIndex => fakeRecordId('Account', recordIndex)));
             heldValues.forEach(recordValues => {
                 expect(typeof recordValues.fieldValues.Region_Code__c).toBe('string');
@@ -832,7 +839,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
     describe('the panel script', () => {
 
         const recipe = loadTreeRecipe();
-        const offered = RecipeCockpitService.offerAdapterOrgOnlyFields(recipe, recipe.trees.find(recipeTree => recipeTree.treeKey === ACCOUNT_TREE_KEY)!, newFieldChanges([
+        const offered = RecipeCockpitAdapterMetadata.offerAdapterOrgOnlyFields(RecipeCockpitService, recipe, recipe.trees.find(recipeTree => recipeTree.treeKey === ACCOUNT_TREE_KEY)!, newFieldChanges([
             newFieldDetail('Region_Code__c', { length: 80 }),
             newFieldDetail('Score_Formula__c', { fieldType: 'Number', isFormula: true }),
             newFieldDetail('Hologram__c', { fieldType: 'Hologram' })
