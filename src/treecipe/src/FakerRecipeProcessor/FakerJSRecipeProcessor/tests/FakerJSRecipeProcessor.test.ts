@@ -123,7 +123,23 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     });
 
     describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
-        
+
+        test('drops Quote.AccountId, which Salesforce sets from the quote\'s Opportunity, and keeps every other field (#680)', () => {
+
+            const fakerJson = JSON.stringify([
+                { object: 'Quote', id: 1, nickname: 'Quote_NickName', fields: { AccountId: 'Opportunity_NickName.AccountId', OpportunityId: 'Opportunity_Reference_1', Name: 'Q-1' } },
+                { object: 'Opportunity', id: 1, nickname: 'Opportunity_NickName', fields: { AccountId: 'Account_Reference_1', Name: 'Deal' } }
+            ]);
+
+            const recordsByObjectApiName = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+
+            expect(recordsByObjectApiName.get('Quote').records).toEqual([
+                { attributes: { type: 'Quote', referenceId: 'Quote_Reference_1__Quote_NickName' }, OpportunityId: 'Opportunity_Reference_1', Name: 'Q-1' }
+            ]);
+            expect(recordsByObjectApiName.get('Opportunity').records[0].AccountId).toBe('Account_Reference_1');
+
+        });
+
         test('for OOTB object, should transform faker JSON to collection API format', () => {
                       
             const fakeAccountYamlRecipeObjectStructure = FakerJSExpressionMocker.getFakeAccountYamlRecipeObjectStructure();

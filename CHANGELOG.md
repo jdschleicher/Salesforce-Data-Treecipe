@@ -1,5 +1,50 @@
 # Change Log
 
+## [3.204.0] - Standard master-detail and lookup fields on Quote, Order, Asset and other standard objects are wired to their parents (#680)
+
+Closes [#680](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/680).
+
+Source format writes no `<referenceTo>` for a standard relationship field, so `Quote.OpportunityId` arrives as a bare `<type>MasterDetail</type>`. Before this change it got no parent: Opportunity was missing from Quote's tree, and `OpportunityId`, `ContactId` and `ContractId` were written as `### TODO -- REFERENCE ID REQUIRED`. Custom master-detail fields were never affected; they are wired exactly as lookups are.
+
+- **`StandardFieldParentReferenceMap` names 39 more fields** (#400's map held 8). A Quote now sits in its Opportunity's tree, inserted after Account, Contact, Contract and Opportunity:
+  - **faker-js** writes `OpportunityId: Opportunity_NickName`, and the same for each other parent.
+  - **snowfakery** writes the REFERENCE ID TODO that the Recipe Cockpit's Wire lookup fills, as for every snowfakery lookup.
+  - The new fields:
+    - Quote: AccountId, ContactId, ContractId, OpportunityId
+    - QuoteLineItem: QuoteId, OpportunityLineItemId, PricebookEntryId, Product2Id
+    - OpportunityLineItem: OpportunityId, PricebookEntryId, Product2Id
+    - OpportunityContactRole: OpportunityId, ContactId
+    - Contract: AccountId, CustomerSignedId
+    - Order: AccountId, BillToContactId, ShipToContactId, CustomerAuthorizedById, ContractId, OpportunityId, QuoteId
+    - OrderItem: OrderId, PricebookEntryId, Product2Id, QuoteLineItemId
+    - Asset: AccountId, AssetProvidedById, AssetServicedById, ContactId, ParentId, Product2Id
+    - PricebookEntry: Product2Id
+    - CampaignMember: CampaignId, ContactId, LeadId
+    - Case: AssetId
+    - Opportunity: CampaignId, ContractId
+- **`Quote.AccountId` is read only, and shows where it comes from.** Salesforce copies it from the quote's Opportunity and rejects an insert that sets it. A new list, `ObjectInfoWrapper/StandardDerivedFields.ts`, names it.
+  - Both backends' recipes write `AccountId: Opportunity_NickName.AccountId`, naming the Opportunity record in the tree (before, faker-js wrote `Account_NickName` and the insert would fail on it).
+  - Run Faker drops the field in both processors, so a data set never holds it.
+  - On the Recipe Cockpit's Treecipe tab, its row is marked **read only** with `set by Salesforce from OpportunityId → Account_NickName`, its pencil is disabled, and its `↖ Opportunity_NickName` link scrolls to the Opportunity row. The ? help and the guide say so.
+- **A line item still needs its price book.** OpportunityLineItem, OrderItem and QuoteLineItem are wired to a generated PricebookEntry, and that entry's `Product2Id` and the line item's are the same `Product2_NickName` in a faker-js tree. The PricebookEntry's `Pricebook2Id` stays a TODO, since `Pricebook2Id` is unmapped; set it to the org's standard price book before inserting.
+- **CampaignMember maps both `ContactId` and `LeadId`.** A member is usually one or the other, so a recipe that inserts CampaignMember may need one of the two lines removed.
+- **Left unmapped on purpose,** so a tree never inserts a record nobody wants faked. A `customRelationshipMappings` entry still maps any of them.
+  - Polymorphic fields (`OwnerId`, `WhoId`, `WhatId`).
+  - Fields whose parent is User (`Contract.CompanySignedId`, `Order.CompanyAuthorizedById`).
+  - `Pricebook2Id` fields, since an org uses its standard price book.
+  - `Order.OriginalOrderId` and `OrderItem.OriginalOrderItemId`, set only on reduction orders.
+- **What a user now gets differently for a field that was already in a project,** seen in the golden files: `Opportunity.CampaignId` and `Opportunity.ContractId` name their parents.
+  - Their TODO reads `### TODO -- REFERENCE ID REQUIRED -- Campaign` (and `-- Contract`).
+  - The Opportunity comment lists `Parents: Account, Campaign, Contract`.
+  - The ER diagram and SOQL templates gain Campaign and Contract.
+  - Fake data sets are unchanged.
+- **An explicit `<referenceTo>` and a `customRelationshipMappings` entry still win** over the map, and a parent that is not in the project leaves the field a TODO, as before.
+- **Tests.**
+  - `StandardFieldParentReferenceMap.test.ts` pins the new set and the excluded fields; `StandardDerivedFields.test.ts` pins `Quote.AccountId` and its recipe value.
+  - `RelationshipService.derivedFields.test.ts` covers where the source nickname comes from; both processor suites check the field is dropped; `RecipeCockpitDerivedFields.test.ts` draws the read-only row, its link, its note and the locked pencil in the real panel.
+  - New `DirectoryProcessor.standardFieldParentQuote.test.ts` runs Generate Treecipe over two new fixtures with both backends: Quote with its four parents, and Quote alone. It also runs faker-js Run Faker over the generated recipe: the Quote record references the Opportunity and holds no AccountId.
+  - The golden files, the nested writer fixture and `MockRelationshipService`'s expected trees are regenerated for the Opportunity change above.
+
 ## [3.203.1] - Initiate Configuration File shows only its directory picker, and never offers a folder inside a hidden one (#676)
 
 - **No more progress notification beside the picker.** Initiate Configuration File used to open a "Treecipe: Initiate Configuration File" notification that listed every directory the scan found. Now only the picker shows.

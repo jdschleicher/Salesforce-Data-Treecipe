@@ -1,5 +1,6 @@
 import { createButton, createElement, setShownWithMotion } from '../../../../CockpitKit/panel/CockpitPanelElements';
-import { RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL, RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL, RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX } from '../../../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL, RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX, RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL, RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL, RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX } from '../../../RecipeCockpitFieldRowsConstants';
+import { StandardDerivedFields } from '../../../../ObjectInfoWrapper/StandardDerivedFields';
 import { RECIPE_COCKPIT_PICKLIST_RESET_LABEL } from '../../../RecipeCockpitTreecipeFieldEditorConstants';
 import { drawTreePermissionSet } from '../../troubleshooting/TroubleshootingActions';
 import { requestTroubleshootingSummary } from '../../troubleshooting/TroubleshootingTab';
@@ -17,7 +18,7 @@ import { drawObjectSelection } from './SelectionCascade';
 import type { FieldRowsPanelMessage, IFieldRowField, IFieldRowFieldState, IFieldRowObjectState, IFieldRowTreeObject, IFieldRowTreeState, IObjectSelectionMessage, ISelectionTree } from './FieldRowTypes';
 import { drawTreePickerObjects } from '../navigation/TreePicker';
 import { drawStructureMatchCount } from '../navigation/StructureFilter';
-import { buildNicknameBackLink, findReferencedOwnerState } from '../navigation/Nicknames';
+import { buildNicknameBackLink, findReferencedOwnerState, readSourceFieldNickname } from '../navigation/Nicknames';
 import { findTreeState, renderedSequence } from '../../shell/PanelRender';
 import { savePanelPlace } from '../../shell/PanelPlace';
 import { drawHelpSummary } from '../../shell/Help';
@@ -176,6 +177,17 @@ export function buildTreeFieldRow(treeObjectState: IFieldRowObjectState, fieldSt
 
     if (field.fieldTypeWithSize || field.fieldType) {
         fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
+    }
+
+    // A FIELD SALESFORCE SETS FROM ANOTHER LOOKUP (#680): READ ONLY, NAMING THE LOOKUP AND THE RECORD THE SOURCE HOLDS
+    const derivedField = StandardDerivedFields.resolveDerivedField(treeObjectState.object.objectApiName, field.fieldApiName);
+    if (derivedField) {
+        const derivedReason = RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
+        const derivedBadgeElement = createElement('span', 'fixedValueBadge derivedFieldBadge', RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL);
+        derivedBadgeElement.setAttribute('title', 'Salesforce sets ' + field.fieldApiName + ' from ' + derivedField.throughFieldApiName + RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX);
+        fieldHeaderElement.appendChild(derivedBadgeElement);
+        const copiedNickname = referencedOwnerState ? readSourceFieldNickname(referencedOwnerState, derivedField.sourceFieldApiName) : null;
+        fieldHeaderElement.appendChild(createElement('span', 'treeFieldNote derivedFieldNote muted', copiedNickname ? derivedReason + ' → ' + copiedNickname : derivedReason));
     }
 
     // THE RECORD TYPES THAT RESTRICT THIS FIELD (#320), AS TEXT, WHETHER OR NOT THE CHECK IS ON

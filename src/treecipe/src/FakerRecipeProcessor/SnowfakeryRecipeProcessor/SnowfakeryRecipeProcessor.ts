@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { StandardDerivedFields } from '../../ObjectInfoWrapper/StandardDerivedFields';
 
 export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
@@ -129,6 +130,8 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
             delete sobjectGeneratedDetail.id;
             delete sobjectGeneratedDetail.nickname;
             delete sobjectGeneratedDetail._table;
+            // SALESFORCE SETS A DERIVED FIELD ITSELF (Quote.AccountId FROM ITS OPPORTUNITY, #680) AND REJECTS AN INSERT THAT SENDS ONE
+            StandardDerivedFields.listDerivedFieldApiNames(objectApiName).forEach(derivedFieldApiName => delete sobjectGeneratedDetail[derivedFieldApiName]);
 
             if (objectApiToGeneratedRecords.has(objectApiName)) {
 
