@@ -97,6 +97,11 @@ export function renderDataOrgList(dataOrgList: IDataOrgListMessage): void {
     // PRODUCTION AND ORGS THE CLI DOES NOT REPORT CONNECTED ARE NEVER LISTED, AND THE READER IS TOLD WHY ONE THEY AUTHORIZED IS MISSING
     dataOrgPicker.dataOrgHiddenNoteText = [dataOrgList.forgottenOrgNotice || '', dataOrgList.hiddenOrgNote || ''].filter(Boolean).join(' ');
     dataOrgPicker.dataOrgLabels = Array.isArray(dataOrgList.orgLabels) ? dataOrgList.orgLabels.slice() : [];
+    // A PICKER LABEL FOR EVERY ORG, EACH A STRING, OR THE SHORT LABELS: THE DROPDOWN NEVER LISTS A DIFFERENT NUMBER OF ORGS THAN THE HOST HOLDS
+    const orgPickerLabels = dataOrgList.orgPickerLabels;
+    dataOrgPicker.dataOrgPickerLabels = Array.isArray(orgPickerLabels) && orgPickerLabels.length === dataOrgPicker.dataOrgLabels.length && orgPickerLabels.every(function (orgPickerLabel) { return typeof orgPickerLabel === 'string'; })
+        ? orgPickerLabels.slice()
+        : dataOrgPicker.dataOrgLabels.slice();
 
     // THE DROPDOWN STAYS DRAWN WITH NOTHING TO CHOOSE, SO THE PICKER DOES NOT VANISH WHEN THE CHECK FOUND NO ORG (#305)
     dataOrgPicker.isDataOrgSelectShown = true;
@@ -158,6 +163,7 @@ function holdDataOrgPickerBeforeCheck(): void {
 
     dataOrgPicker.dataOrgPickerBeforeCheck = {
         labels: dataOrgPicker.dataOrgLabels,
+        pickerLabels: dataOrgPicker.dataOrgPickerLabels,
         isLoadShown: dataOrgPicker.isDataOrgLoadShown,
         isSelectShown: dataOrgPicker.isDataOrgSelectShown,
         isRefreshShown: dataOrgPicker.isDataOrgRefreshShown,
@@ -196,6 +202,7 @@ export function renderDataOrgListingRefused(refusal: IDataOrgListingRefusedMessa
         dataOrgPicker.isDataOrgChecking = false;
         dataOrgPicker.dataOrgCheckingOptionLabels = [];
         dataOrgPicker.dataOrgLabels = pickerBeforeCheck.labels;
+        dataOrgPicker.dataOrgPickerLabels = pickerBeforeCheck.pickerLabels;
         dataOrgPicker.isDataOrgLoadShown = pickerBeforeCheck.isLoadShown;
         dataOrgPicker.isDataOrgSelectShown = pickerBeforeCheck.isSelectShown;
         dataOrgPicker.isDataOrgRefreshShown = pickerBeforeCheck.isRefreshShown;

@@ -209,6 +209,13 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR,
+    RECIPE_COCKPIT_ORG_PICKER_NAME,
+    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
+    RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
+    RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX,
+    RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
@@ -485,6 +492,13 @@ export {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR,
+    RECIPE_COCKPIT_ORG_PICKER_NAME,
+    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
+    RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
+    RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX,
+    RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
@@ -1824,6 +1838,8 @@ export interface IRecipeCockpitFocusTreeMessage {
 export interface IRecipeCockpitDataOrgListMessage {
     command: 'dataOrgList';
     orgLabels: string[];
+    // THE SAME ORGS AS THE PICKER LISTS THEM, "alias -- instance url" (#678); orgLabels STAYS WHAT EVERY OTHER TEXT QUOTES
+    orgPickerLabels: string[];
     selectedOrgIndex: number | null;
     noOrgsMessage: string;
     hiddenOrgNote: string;
@@ -7959,6 +7975,14 @@ export class RecipeCockpitService {
 
     }
 
+    // THE PICKER'S LABEL (#678): "alias -- instance url", THEN " (default)"; AN ORG WITH NO INSTANCE URL IS ITS ALIAS ALONE
+    static buildDataOrgPickerLabel(orgDetail: IDataOrgDetail): string {
+
+        const instanceUrlPart = orgDetail.instanceUrl ? RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR + orgDetail.instanceUrl : '';
+        return this.buildDataOrgLabel(orgDetail) + instanceUrlPart + ( orgDetail.isDefault === true ? RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX : '' );
+
+    }
+
     /*
         What the dropdown shows while the connections are checked: the org chosen last, else the
         CLI's default. Read locally; a read that fails shows nothing rather than holding the check.
@@ -8104,6 +8128,7 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgList',
             orgLabels: orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+            orgPickerLabels: orgDetails.map(orgDetail => this.buildDataOrgPickerLabel(orgDetail)),
             selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
             noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
             hiddenOrgNote: hiddenOrgNote,
@@ -10388,6 +10413,7 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgList',
             orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+            orgPickerLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgPickerLabel(orgDetail)),
             selectedOrgIndex: orgIndex,
             noOrgsMessage: '',
             hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),

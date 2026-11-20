@@ -73,6 +73,7 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { isOrgPickerDisabled } from './RecipeCockpitOrgPickerProbe';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
@@ -228,7 +229,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
             expect(authorizeElement.textContent).toBe(RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgNewScratch').textContent).toBe(RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL);
-            expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
+            expect(isOrgPickerDisabled(firstOf(panel, 'dataOrgSelect'))).toBe(true);
 
             authorizeElement.dispatch('click');
             expect(postedAuthorizeMessages(panel)).toHaveLength(1);
