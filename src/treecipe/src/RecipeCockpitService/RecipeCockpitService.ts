@@ -780,6 +780,9 @@ import { IOrgNewFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCoc
 import { RecipeService } from '../RecipeService/RecipeService';
 import { IObjectRefreshComparisonRequest, IObjectRefreshItem, IObjectRefreshPlannedItem, OBJECT_REFRESH_KIND_LABELS, OBJECT_REFRESH_KINDS, OBJECT_REFRESH_OPERATION_NAME, ObjectRefreshKind, RecipeCockpitObjectRefresh } from './RecipeCockpitObjectRefresh';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
+import { ICustomTreecipeDefinition, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME, RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION, RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH, RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
+import { RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES, RECIPE_COCKPIT_CUSTOM_TREECIPE_OPEN_RECIPE_LABEL } from './RecipeCockpitCustomTreecipeConstants';
+export * from './RecipeCockpitCustomTreecipeConstants';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -979,11 +982,18 @@ export interface IRecipeCockpitRun {
     runFolderPath: string;
     generatedAtTimestamp: string;
     objectsWrapperFilePath: string;
+    // THE run's "custom-" TREE FOLDERS (#677), EACH ITS OWN ENTRY IN THE RUN PICKER; SET ONLY WHEN THE RUN HAS ONE
+    customTreeFolderNames?: string[];
 }
 
+/*
+    One entry of the run picker: a run, or one custom tree of a run (#677). A custom entry keeps
+    its run's runFolderName, so every path built from the run on screen stays the run's own.
+*/
 export interface IRecipeCockpitRunViewModel {
     runFolderName: string;
     label: string;
+    customTreeFolderName?: string;
 }
 
 /*
@@ -1319,6 +1329,8 @@ export interface IRecipeCockpitTreeViewModel {
     treeKey: string;
     title: string;
     folderName: string;
+    // A CUSTOM TREE'S SOURCE TREE FOLDER (#677), WHICH ITS CARD NAMES; SET ONLY ON A CUSTOM TREE
+    customCopyOf?: string;
     objects: IRecipeCockpitTreeObjectViewModel[];
     fieldCount: number;
     history?: IRecipeCockpitTreeHistoryViewModel;
@@ -1430,6 +1442,43 @@ export interface IRecipeCockpitTreeObjectSelectionViewModel {
     objectCount: number;
 }
 
+// THE ONE CARD A CUSTOM TREE (#677) DRAWS AS
+export interface IRecipeCockpitCustomTreeSource {
+    folderName: string;
+    objectApiNames: string[];
+    customCopyOf: string;
+}
+
+/*
+    What "Customize and create new recipe" (#677) takes out of the new recipe, and what it leaves
+    out of a run only. Every name was matched against the drawn card by the router.
+*/
+export interface IRecipeCockpitCustomTreecipeRemoval {
+    removedObjectApiNames: string[];
+    removedFieldApiNamesByObject: Map<string, Set<string>>;
+    outOfRunObjectApiNames: string[];
+}
+
+/*
+    The modal's state as the host computes it, by the card's own rules: objectSelection and
+    fieldSelection are what the new recipe leaves out (its cascade, locks included),
+    outOfRunExclusions what the chain links also leave out of a run. folderName is where Save would
+    write; refusal says why it would not.
+*/
+export interface IRecipeCockpitCustomTreecipePreviewMessage {
+    command: 'customTreecipePreview';
+    renderSequence: number;
+    previewSequence: number;
+    treeKey: string;
+    objectSelection?: IRecipeCockpitTreeObjectSelectionViewModel;
+    fieldSelection?: IRecipeCockpitTreeFieldSelectionViewModel;
+    outOfRunExclusions: IObjectSelectionExclusion[];
+    keptObjectCount: number;
+    objectCount: number;
+    folderName?: string;
+    refusal?: string;
+}
+
 // A CARD'S EXCLUSIONS OR UNTICKED FIELDS CHANGED: REDRAWN IN PLACE, TAGGED WITH THE MODEL IT IS ABOUT
 export interface IRecipeCockpitObjectSelectionMessage {
     command: 'objectSelection';
@@ -1492,6 +1541,8 @@ export interface IRecipeCockpitNameEditResultMessage {
 export interface IRecipeCockpitRecipeViewModel {
     runs: IRecipeCockpitRunViewModel[];
     selectedRunFolderName: string;
+    // SET ONLY WHILE ONE CUSTOM TREE OF THE RUN IS ON SCREEN (#677)
+    selectedCustomTreeFolderName?: string;
     objects: IRecipeCockpitObjectViewModel[];
     trees: IRecipeCockpitTreeViewModel[];
     notices: string[];
@@ -1567,6 +1618,11 @@ export interface IRecipeSourceFile {
 */
 export interface IRecipeCockpitPanelMessage {
     command?: string;
+    // "Customize and create new recipe" (#677): WHAT THE MODAL REMOVED OR LEFT OUT OF A RUN, BY NAME, AND WHICH PREVIEW IT ASKS FOR
+    removedObjectApiNames?: unknown;
+    removedFields?: unknown;
+    outOfRunObjectApiNames?: unknown;
+    previewSequence?: unknown;
     // GET LATEST OBJECT DETAIL (#612): THE OPEN DIALOG'S ID, THE KINDS TICKED IN STEP 1 AND THE INDEXES OF THE ITEMS TICKED IN STEP 3
     refreshId?: unknown;
     kinds?: unknown;
@@ -1605,6 +1661,7 @@ export interface IRecipeCockpitPanelMessage {
     filePath?: unknown;
     lineNumber?: unknown;
     runFolderName?: unknown;
+    customTreeFolderName?: unknown;
     phase?: unknown;
     renderSequence?: unknown;
     objectApiName?: unknown;
@@ -2107,6 +2164,7 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase 
 };
 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
+                                        | IRecipeCockpitCustomTreecipePreviewMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
                                         | IRecipeCockpitAdapterMetadataChangesMessage
@@ -2343,7 +2401,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'activateValidationRuleList'; treeKey: string }
-    | { kind: 'selectRun'; runFolderName: string }
+    | { kind: 'selectRun'; runFolderName: string; customTreeFolderName?: string }
     | { kind: 'generateTreecipe' }
     | { kind: 'openHelpGuide' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
@@ -2369,6 +2427,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'setFieldIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isIncluded: boolean }
     | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; isIncluded: boolean; fieldScope?: typeof RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE }
     | { kind: 'resetTreeSelection'; folderName: string }
+    | { kind: 'previewCustomTreecipe'; treeKey: string; previewSequence: number; removal: IRecipeCockpitCustomTreecipeRemoval }
+    | { kind: 'saveCustomTreecipe'; treeKey: string; removal: IRecipeCockpitCustomTreecipeRemoval; name: string }
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; count: number }
     | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; value: string }
     | { kind: 'setPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; picklistValues: string[] }
@@ -5616,6 +5676,318 @@ export class RecipeCockpitService {
     }
 
     // A CARD'S Reset selection: EVERY OBJECT INCLUDED, EVERY FIELD TICKED AND EVERY COUNT THE RECIPE'S AGAIN, AFTER THE READER CONFIRMS IN THE HOST'S OWN DIALOG
+    /*
+        The modal's removals as the router reads them: three lists of names, each name a key the
+        drawn card has a chain link or a checkbox for. Anything else, or more names than any tree
+        holds, and the whole message is refused.
+    */
+    static readCustomTreecipeRemoval(panelMessage: IRecipeCockpitPanelMessage,
+                                        panelState: IRecipeCockpitPanelState,
+                                        treeKey: string): IRecipeCockpitCustomTreecipeRemoval | undefined {
+
+        const { removedObjectApiNames, removedFields, outOfRunObjectApiNames } = panelMessage;
+        const isDrawnObject = (objectApiName: unknown): objectApiName is string => typeof objectApiName === 'string'
+            && panelState.treeHistoryAllowLists.selectableObjectKeys.has(this.buildSelectableObjectKey(treeKey, objectApiName));
+        const isDrawnObjectList = (candidate: unknown): candidate is string[] => Array.isArray(candidate)
+            && candidate.length <= RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES && candidate.every(isDrawnObject);
+
+        if ( !isDrawnObjectList(removedObjectApiNames) || !isDrawnObjectList(outOfRunObjectApiNames)
+                || !Array.isArray(removedFields) || removedFields.length > RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES ) {
+            return undefined;
+        }
+
+        const removedFieldApiNamesByObject = new Map<string, Set<string>>();
+        for ( const removedField of removedFields as unknown[] ) {
+            if ( !this.isPlainRecord(removedField) ) {
+                return undefined;
+            }
+            const { objectApiName, fieldApiName } = removedField;
+            if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string'
+                    || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                return undefined;
+            }
+            removedFieldApiNamesByObject.set(objectApiName, ( removedFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName));
+        }
+
+        return {
+            removedObjectApiNames: [...new Set(removedObjectApiNames)],
+            removedFieldApiNamesByObject: removedFieldApiNamesByObject,
+            outOfRunObjectApiNames: [...new Set(outOfRunObjectApiNames)].filter(objectApiName => !removedObjectApiNames.includes(objectApiName))
+        };
+
+    }
+
+    /*
+        The card as the new recipe will be (#677): a copy of it whose selection is ONLY the modal's
+        removals, worked out by the card's own rules -- the object cascade, #679's removed lookups,
+        #611's empty objects and the field locks -- and whose counts, fixed values and switched-off
+        validation rules stay the card's, so the copy carries them. The card itself is not touched.
+    */
+    static buildCustomTreecipeTree(recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                    tree: IRecipeCockpitTreeViewModel,
+                                    removedObjectApiNames: readonly string[],
+                                    removedFieldApiNamesByObject: ReadonlyMap<string, ReadonlySet<string>>): IRecipeCockpitTreeViewModel {
+
+        const customTree: IRecipeCockpitTreeViewModel = { ...tree };
+        delete customTree.objectSelection;
+        delete customTree.fieldSelection;
+
+        this.applyTreeObjectAndFieldSelection(this.buildObjectsByApiName(recipeViewModel), customTree, new Set(removedObjectApiNames), removedFieldApiNamesByObject);
+
+        return customTree;
+
+    }
+
+    static buildCustomTreecipePreview(recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                        tree: IRecipeCockpitTreeViewModel,
+                                        removal: IRecipeCockpitCustomTreecipeRemoval): Omit<IRecipeCockpitCustomTreecipePreviewMessage, 'command' | 'renderSequence' | 'previewSequence' | 'treeKey' | 'folderName' | 'refusal'> {
+
+        const customTree = this.buildCustomTreecipeTree(recipeViewModel, tree, removal.removedObjectApiNames, removal.removedFieldApiNamesByObject);
+        const removedObjectApiNameSet = new Set(this.listExcludedObjectApiNames(customTree));
+        const outOfRunTree = this.buildCustomTreecipeTree(recipeViewModel, tree, [...removal.removedObjectApiNames, ...removal.outOfRunObjectApiNames], removal.removedFieldApiNamesByObject);
+        const drawnObjectApiNames = new Set(tree.objects.filter(treeObject => treeObject.iterationNickname === undefined).map(treeObject => treeObject.objectApiName));
+
+        return {
+            ...( customTree.objectSelection ? { objectSelection: customTree.objectSelection } : {} ),
+            ...( customTree.fieldSelection ? { fieldSelection: customTree.fieldSelection } : {} ),
+            outOfRunExclusions: ( outOfRunTree.objectSelection?.exclusions ?? [] ).filter(exclusion => !removedObjectApiNameSet.has(exclusion.objectApiName)),
+            keptObjectCount: [...drawnObjectApiNames].filter(objectApiName => !removedObjectApiNameSet.has(objectApiName)).length,
+            objectCount: drawnObjectApiNames.size
+        };
+
+    }
+
+    /*
+        Where a card's custom copy goes, read from disk at the moment it is asked: the run folder
+        that holds the card's own tree folder, the original generated tree it descends from, and the
+        first free "custom-" folder name there. A card whose recipe is not in its own tree folder
+        under a run cannot be copied.
+    */
+    static planCustomTreecipeLocation(recipeFilePath: string,
+                                        tree: IRecipeCockpitTreeViewModel): { runFolderPath: string; sourceTreeFolderPath: string; originalTreeFolderName: string; folderName: string } | { refusal: string } {
+
+        const sourceTreeFolderPath = path.dirname(recipeFilePath);
+        if ( path.basename(sourceTreeFolderPath) !== tree.folderName || !RecipeCockpitCustomTreecipe.isTreeFolderName(tree.folderName) ) {
+            return { refusal: `its recipe ${path.basename(recipeFilePath)} is not in a tree folder of its own.` };
+        }
+
+        const runFolderPath = path.dirname(sourceTreeFolderPath);
+        const originalTreeFolderName = RecipeCockpitCustomTreecipe.resolveOriginalTreeFolderName(tree.folderName, this.readCustomTreecipeDefinition(sourceTreeFolderPath));
+
+        let takenFolderNames: Set<string>;
+        try {
+            takenFolderNames = new Set(fs.readdirSync(runFolderPath));
+        } catch (readError) {
+            return { refusal: `its run folder ${path.basename(runFolderPath)} could not be read (${String(readError?.code ?? readError)}).` };
+        }
+
+        const folderName = RecipeCockpitCustomTreecipe.planCustomTreeFolderName(originalTreeFolderName, takenFolderNames);
+
+        return folderName
+            ? { runFolderPath: runFolderPath, sourceTreeFolderPath: sourceTreeFolderPath, originalTreeFolderName: originalTreeFolderName, folderName: folderName }
+            : { refusal: `${path.basename(runFolderPath)} already holds every custom copy number of ${originalTreeFolderName}. Remove one you no longer need.` };
+
+    }
+
+    // A TREE FOLDER'S customTreecipe.json, OR undefined FOR A GENERATED TREE, A MISSING FILE OR ONE THAT DOES NOT READ BACK
+    static readCustomTreecipeDefinition(treeFolderPath: string): ICustomTreecipeDefinition | undefined {
+
+        const definitionFilePath = path.join(treeFolderPath, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME);
+        try {
+            if ( !fs.lstatSync(definitionFilePath).isFile() ) {
+                return undefined;
+            }
+            return RecipeCockpitCustomTreecipe.readDefinition(fs.readFileSync(definitionFilePath, 'utf8'));
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    private static previewCustomTreecipe(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            panelAction: Extract<RecipeCockpitPanelAction, { kind: 'previewCustomTreecipe' }>) {
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const tree = recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(panelAction.treeKey);
+        if ( !recipeDataMessage || !tree || !recipeFilePath ) {
+            return;
+        }
+
+        const location = this.planCustomTreecipeLocation(recipeFilePath, tree);
+
+        this.postToPanel(cockpitPanel, {
+            command: 'customTreecipePreview',
+            renderSequence: recipeDataMessage.renderSequence,
+            previewSequence: panelAction.previewSequence,
+            treeKey: panelAction.treeKey,
+            ...this.buildCustomTreecipePreview(recipeDataMessage.recipe, tree, panelAction.removal),
+            ...( 'refusal' in location ? { refusal: location.refusal } : { folderName: location.folderName } )
+        });
+
+    }
+
+    private static isCustomTreecipeSaveInFlight = false;
+
+    /*
+        "Save as new Treecipe" (#677). The modal's save step is the confirmation, so the host plans
+        everything again here: the card's copy by its own rules, the filtered recipe Run Faker would
+        build from it, and a folder name free NOW. It writes only new things -- one folder, made
+        non-recursively, and two files with "wx" -- and takes them back out if either write fails.
+        The source recipe and its folder are never opened for writing.
+    */
+    private static async saveCustomTreecipe(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            panelAction: Extract<RecipeCockpitPanelAction, { kind: 'saveCustomTreecipe' }>) {
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const tree = recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(panelAction.treeKey);
+        if ( !recipeDataMessage || !tree || !recipeFilePath || this.isCustomTreecipeSaveInFlight ) {
+            return;
+        }
+
+        const workspaceRoot = panelState.workspaceRoot;
+        const treeLabel = RecipeYamlScalar.escapeForNotification(this.toSingleLine(tree.customName ?? tree.title));
+        const refuse = (reason: string) => {
+            VSCodeWorkspaceService.showWarningMessage(`No new Treecipe was saved from ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)}`);
+        };
+
+        const { removal } = panelAction;
+        if ( removal.removedObjectApiNames.length === 0 && removal.removedFieldApiNamesByObject.size === 0 ) {
+            refuse('nothing was removed, so the new recipe would be the same as the source. Remove an object or a field with ✕ first.');
+            return;
+        }
+
+        const customName = panelAction.name.trim() === '' ? undefined : RecipeCockpitCustomTreecipe.normalizeCustomTreeName(panelAction.name);
+        if ( panelAction.name.trim() !== '' && !customName ) {
+            refuse(`the name must be one line of at most ${RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH} characters.`);
+            return;
+        }
+
+        this.isCustomTreecipeSaveInFlight = true;
+        try {
+
+            const customTree = this.buildCustomTreecipeTree(recipeDataMessage.recipe, tree, removal.removedObjectApiNames, removal.removedFieldApiNamesByObject);
+            const removedObjectApiNames = this.listExcludedObjectApiNames(customTree);
+            const keptObjectApiNames = tree.objects
+                .filter(treeObject => treeObject.iterationNickname === undefined && !removedObjectApiNames.includes(treeObject.objectApiName))
+                .map(treeObject => treeObject.objectApiName);
+            if ( keptObjectApiNames.length === 0 ) {
+                refuse('every object was removed, so nothing is left to save.');
+                return;
+            }
+
+            if ( !SfdxProjectService.isPathContainedInWorkspace(recipeFilePath, workspaceRoot) ) {
+                refuse(`its recipe ${path.basename(recipeFilePath)} is not inside this workspace.`);
+                return;
+            }
+
+            let recipeText: string;
+            try {
+                recipeText = fs.readFileSync(recipeFilePath, 'utf8');
+            } catch (readError) {
+                refuse(`its recipe ${path.basename(recipeFilePath)} could not be read (${String(readError?.code ?? readError)}).`);
+                return;
+            }
+
+            const filteredRecipe = this.buildRunFakerFilteredRecipe(recipeText, customTree, panelState.objectLevelsByApiName, recipeDataMessage.recipe);
+            if ( 'refusalMessage' in filteredRecipe ) {
+                refuse(filteredRecipe.refusalMessage);
+                return;
+            }
+
+            const location = this.planCustomTreecipeLocation(recipeFilePath, tree);
+            if ( 'refusal' in location ) {
+                refuse(location.refusal);
+                return;
+            }
+            if ( !SfdxProjectService.isPathContainedInWorkspace(location.runFolderPath, workspaceRoot) ) {
+                refuse(`its run folder ${path.basename(location.runFolderPath)} is not inside this workspace.`);
+                return;
+            }
+
+            const savedAt = new Date();
+            const customTreeFolderPath = path.join(location.runFolderPath, location.folderName);
+            const customRecipeFilePath = path.join(customTreeFolderPath, RecipeCockpitCustomTreecipe.buildRecipeFileName(location.folderName, path.extname(recipeFilePath), savedAt));
+            const definition: ICustomTreecipeDefinition = {
+                version: RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION,
+                sourceRunFolderName: path.basename(location.runFolderPath),
+                sourceTreeFolderName: tree.folderName,
+                sourceRecipeFileName: path.basename(recipeFilePath),
+                originalTreeFolderName: location.originalTreeFolderName,
+                removedObjectApiNames: [...removal.removedObjectApiNames],
+                removedFields: [...removal.removedFieldApiNamesByObject.entries()].map(([objectApiName, fieldApiNames]) => ({ objectApiName: objectApiName, fieldApiNames: [...fieldApiNames] })),
+                outOfRunObjectApiNames: [...removal.outOfRunObjectApiNames],
+                ...( customName ? { name: customName } : {} ),
+                savedAt: savedAt.toISOString()
+            };
+
+            const writtenFilePaths: string[] = [];
+            try {
+                // NOT recursive: AN EXISTING FOLDER FAILS HERE, SO A COPY NEVER WRITES INTO ONE IT DID NOT MAKE
+                fs.mkdirSync(customTreeFolderPath);
+                if ( !SfdxProjectService.isPathContainedInWorkspace(customTreeFolderPath, workspaceRoot) ) {
+                    throw new Error(`${location.folderName} is not inside this workspace`);
+                }
+                fs.writeFileSync(customRecipeFilePath, filteredRecipe.recipeText, { encoding: 'utf8', flag: 'wx' });
+                writtenFilePaths.push(customRecipeFilePath);
+                const definitionFilePath = path.join(customTreeFolderPath, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME);
+                fs.writeFileSync(definitionFilePath, RecipeCockpitCustomTreecipe.buildDefinitionText(definition), { encoding: 'utf8', flag: 'wx' });
+                writtenFilePaths.push(definitionFilePath);
+            } catch (writeError) {
+                writtenFilePaths.forEach(writtenFilePath => fs.rmSync(writtenFilePath, { force: true }));
+                try {
+                    fs.rmdirSync(customTreeFolderPath);
+                } catch {
+                    // NOT MADE HERE, OR NOT EMPTY: LEFT AS IT IS
+                }
+                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)} (${this.describeThrown(writeError)}). Nothing was left behind.`);
+                return;
+            }
+
+            // THE NEW TREE OPENS WITH THE MODAL'S CHAIN LINKS AND NAME, KEYED BY ITS OWN FOLDER LIKE EVERY CARD'S
+            if ( removal.outOfRunObjectApiNames.length > 0 ) {
+                const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
+                treeSelections.excludedObjectApiNamesByFolderName.set(location.folderName, new Set(removal.outOfRunObjectApiNames));
+                await this.writeTreeSelections(this.recipeCockpitWorkspaceState, treeSelections);
+            }
+            if ( customName ) {
+                const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
+                treePreferences.customNamesByFolderName.set(location.folderName, customName);
+                await this.writeTreePreferences(this.recipeCockpitWorkspaceState, treePreferences);
+            }
+
+            const relativeRecipeFilePath = path.relative(workspaceRoot, customRecipeFilePath).split(path.sep).join('/');
+            Promise.resolve(vscode.window.showInformationMessage(
+                RecipeYamlScalar.escapeForNotification(`Saved ${location.folderName}, a custom copy of ${this.toSingleLine(tree.customName ?? tree.title)} with ${keptObjectApiNames.length} of ${keptObjectApiNames.length + removedObjectApiNames.length} objects: ${relativeRecipeFilePath}. Choose it in the Recipe run list to generate from it.`),
+                RECIPE_COCKPIT_CUSTOM_TREECIPE_OPEN_RECIPE_LABEL
+            )).then(async chosenAction => {
+                if ( chosenAction === RECIPE_COCKPIT_CUSTOM_TREECIPE_OPEN_RECIPE_LABEL ) {
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(customRecipeFilePath, workspaceRoot, 'The custom recipe no longer exists in this workspace.');
+                }
+            }).catch(() => undefined);
+
+            if ( this.recipeCockpitPanel === cockpitPanel ) {
+                this.selectedCustomTreeFolderNameByRunFolderName.set(path.basename(location.runFolderPath), location.folderName);
+                await this.loadRecipeIntoPanel(cockpitPanel, workspaceRoot, path.basename(location.runFolderPath), { treeKey: location.folderName, tab: 'treecipe' });
+            }
+
+        } finally {
+            this.isCustomTreecipeSaveInFlight = false;
+        }
+
+    }
+
+    // THE CUSTOM TREE A RUN SHOWS INSTEAD OF ITS OWN TREES (#677), KEPT WHILE THE SAME RUN RELOADS; A RUN WITH NONE SHOWS ITS TREES
+    static readonly selectedCustomTreeFolderNameByRunFolderName = new Map<string, string>();
+
+    // ONE RUN PICKER ENTRY: THE RUN, OR "<run>/<custom tree>" -- A FOLDER NAME NEVER HOLDS A "/"
+    static buildRunPickerKey(runFolderName: string, customTreeFolderName?: string): string {
+        return customTreeFolderName === undefined ? runFolderName : `${runFolderName}/${customTreeFolderName}`;
+    }
+
     private static async resetTreeSelection(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
 
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
@@ -6328,7 +6700,7 @@ export class RecipeCockpitService {
 
             await this.reportLoadPhase(cockpitPanel, loadStatusItem, RECIPE_COCKPIT_LOAD_PHASES.readingRun);
 
-            const loadedRecipe = this.loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+            const loadedRecipe = this.loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName, this.selectedCustomTreeFolderNameByRunFolderName);
 
             if ( !isCurrentLoad() ) {
                 return;
@@ -6649,7 +7021,7 @@ export class RecipeCockpitService {
         panelState.pendingOpenableValidationRuleKeys = new Set(this.collectOpenableValidationRuleKeys(recipeViewModel));
         panelState.pendingValidationRuleListKeys = new Map();
         panelState.openableValidationRuleKeys = new Set();
-        panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
+        panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => this.buildRunPickerKey(run.runFolderName, run.customTreeFolderName)));
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
         panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel, loadedRecipe.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
         panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
@@ -7025,6 +7397,11 @@ export class RecipeCockpitService {
 
             case 'selectRun':
 
+                if ( panelAction.customTreeFolderName ) {
+                    this.selectedCustomTreeFolderNameByRunFolderName.set(panelAction.runFolderName, panelAction.customTreeFolderName);
+                } else {
+                    this.selectedCustomTreeFolderNameByRunFolderName.delete(panelAction.runFolderName);
+                }
                 await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelAction.runFolderName, undefined, undefined,
                     loadedRecipe => this.confirmRunSwitchSelections(panelState, loadedRecipe));
                 return;
@@ -7152,6 +7529,16 @@ export class RecipeCockpitService {
             case 'resetTreeSelection':
 
                 await this.resetTreeSelection(cockpitPanel, panelState, panelAction.folderName);
+                return;
+
+            case 'previewCustomTreecipe':
+
+                this.previewCustomTreecipe(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'saveCustomTreecipe':
+
+                await this.saveCustomTreecipe(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'setObjectCount':
@@ -11471,15 +11858,18 @@ export class RecipeCockpitService {
 
             }
 
+            // A RUN, OR ONE OF ITS CUSTOM TREES (#677): THE PAIR MUST BE AN ENTRY THE DRAWN PICKER LISTED
             case 'selectRun': {
 
                 const { runFolderName } = panelMessage;
+                const customTreeFolderName = typeof panelMessage.customTreeFolderName === 'string' ? panelMessage.customTreeFolderName : undefined;
 
-                if ( typeof runFolderName !== 'string' || !panelState.selectableRunFolderNames.has(runFolderName) ) {
+                if ( typeof runFolderName !== 'string' || ( panelMessage.customTreeFolderName !== undefined && customTreeFolderName === undefined )
+                        || !panelState.selectableRunFolderNames.has(this.buildRunPickerKey(runFolderName, customTreeFolderName)) ) {
                     return undefined;
                 }
 
-                return { kind: 'selectRun', runFolderName: runFolderName };
+                return { kind: 'selectRun', runFolderName: runFolderName, ...( customTreeFolderName !== undefined ? { customTreeFolderName: customTreeFolderName } : {} ) };
 
             }
 
@@ -12117,6 +12507,39 @@ export class RecipeCockpitService {
                 const folderName = panelState.recipeDataMessage.recipe.trees.find(tree => tree.treeKey === treeKey)?.folderName;
 
                 return folderName ? { kind: 'resetTreeSelection', folderName: folderName } : undefined;
+
+            }
+
+            /*
+                "Customize and create new recipe" (#677) posts NAMES, each one a key the confirmed-drawn
+                model drew a chain link or a checkbox for on this card, so nothing it names is ever
+                written raw. Only a card with its own recipe file can be copied.
+            */
+            case 'previewCustomTreecipe':
+            case 'saveCustomTreecipe': {
+
+                const { treeKey, renderSequence, previewSequence, name } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !panelState.recipeDataMessage || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || !panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.has(treeKey) ) {
+                    return undefined;
+                }
+
+                const removal = this.readCustomTreecipeRemoval(panelMessage, panelState, treeKey);
+                if ( !removal ) {
+                    return undefined;
+                }
+
+                if ( panelMessage.command === 'previewCustomTreecipe' ) {
+                    return typeof previewSequence === 'number' && Number.isSafeInteger(previewSequence) && previewSequence >= 0
+                        ? { kind: 'previewCustomTreecipe', treeKey: treeKey, previewSequence: previewSequence, removal: removal }
+                        : undefined;
+                }
+
+                return typeof name === 'string' && name.length <= RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH
+                    ? { kind: 'saveCustomTreecipe', treeKey: treeKey, removal: removal, name: name }
+                    : undefined;
 
             }
 
@@ -12823,11 +13246,13 @@ export class RecipeCockpitService {
 
             const [, runDate, runHours, runMinutes, runSeconds] = timestampMatch;
 
+            const customTreeFolderNames = this.listCustomTreeFolderNames(runFolderPath);
             recipeRuns.push({
                 runFolderName: runFolderEntry.name,
                 runFolderPath: runFolderPath,
                 generatedAtTimestamp: `${runDate}T${runHours}:${runMinutes}:${runSeconds}Z`,
-                objectsWrapperFilePath: objectsWrapperFilePath
+                objectsWrapperFilePath: objectsWrapperFilePath,
+                ...( customTreeFolderNames.length > 0 ? { customTreeFolderNames: customTreeFolderNames } : {} )
             });
 
         });
@@ -12836,6 +13261,20 @@ export class RecipeCockpitService {
             secondRun.generatedAtTimestamp.localeCompare(firstRun.generatedAtTimestamp)
             || firstRun.runFolderName.localeCompare(secondRun.runFolderName)
         ));
+
+    }
+
+    // A RUN'S "custom-" TREE FOLDERS (#677) THAT HOLD A RECIPE, SORTED WITH "<"; A LINK OR A NAME THAT COULD STEP OUT IS NOT ONE
+    static listCustomTreeFolderNames(runFolderPath: string): string[] {
+
+        return fs.readdirSync(runFolderPath, { withFileTypes: true })
+            .filter(runFolderEntry => runFolderEntry.isDirectory()
+                                        && RecipeCockpitCustomTreecipe.isCustomTreeFolderName(runFolderEntry.name)
+                                        && RecipeCockpitCustomTreecipe.isTreeFolderName(runFolderEntry.name)
+                                        && fs.readdirSync(path.join(runFolderPath, runFolderEntry.name), { withFileTypes: true })
+                                            .some(treeFolderEntry => treeFolderEntry.isFile() && RECIPE_FILE_EXTENSIONS.includes(path.extname(treeFolderEntry.name).toLowerCase())))
+            .map(runFolderEntry => runFolderEntry.name)
+            .sort((left, right) => ( left < right ? -1 : left > right ? 1 : 0 ));
 
     }
 
@@ -12877,6 +13316,33 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        A custom tree (#677) as one card: its objects in the order its original generated tree
+        inserts them -- the wrapper's tree of that folder name -- then any its recipe holds that the
+        wrapper's tree does not, in recipe order. Its source, for the card, is what its
+        customTreecipe.json records, or its original when that file does not read back.
+    */
+    static buildCustomTreeSource(normalizedObjectsWrapper: Pick<IRecipeCockpitNormalizedObjectsWrapper, 'recipeTrees'>,
+                                    recipeSourceFiles: IRecipeSourceFile[],
+                                    runFolderPath: string,
+                                    customTreeFolderName: string): IRecipeCockpitCustomTreeSource {
+
+        const definition = this.readCustomTreecipeDefinition(path.join(runFolderPath, customTreeFolderName));
+        const originalTreeFolderName = RecipeCockpitCustomTreecipe.resolveOriginalTreeFolderName(customTreeFolderName, definition);
+        const recipeObjectApiNames = recipeSourceFiles.flatMap(recipeSourceFile => [...recipeSourceFile.objectEntries.keys()]);
+        const recipeObjectApiNameSet = new Set(recipeObjectApiNames);
+        const originalTree = normalizedObjectsWrapper.recipeTrees
+            .find(recipeTree => RelationshipService.buildRecipeTreeFolderName(recipeTree.objectApiNames) === originalTreeFolderName);
+        const orderedObjectApiNames = ( originalTree?.objectApiNames ?? [] ).filter(objectApiName => recipeObjectApiNameSet.has(objectApiName));
+
+        return {
+            folderName: customTreeFolderName,
+            objectApiNames: [...new Set([...orderedObjectApiNames, ...recipeObjectApiNames])],
+            customCopyOf: definition?.sourceTreeFolderName ?? originalTreeFolderName
+        };
+
+    }
+
     static buildRecipeViewModelByRuns(recipeRuns: IRecipeCockpitRun[],
                                         workspaceRoot: string,
                                         requestedRunFolderName?: string): IRecipeCockpitRecipeViewModel {
@@ -12887,12 +13353,21 @@ export class RecipeCockpitService {
 
     static loadRecipeRunByRuns(recipeRuns: IRecipeCockpitRun[],
                                 workspaceRoot: string,
-                                requestedRunFolderName?: string): IRecipeCockpitLoadedRecipe {
+                                requestedRunFolderName?: string,
+                                customTreeFolderNameByRunFolderName: ReadonlyMap<string, string> = new Map()): IRecipeCockpitLoadedRecipe {
 
-        const runViewModels = recipeRuns.map((recipeRun, runIndex) => ({
-            runFolderName: recipeRun.runFolderName,
-            label: this.buildRunLabel(recipeRun, runIndex === 0)
-        }));
+        // EACH RUN, THEN ITS CUSTOM TREES (#677) UNDER IT
+        const runViewModels: IRecipeCockpitRunViewModel[] = recipeRuns.flatMap((recipeRun, runIndex) => {
+            const runLabel = this.buildRunLabel(recipeRun, runIndex === 0);
+            return [
+                { runFolderName: recipeRun.runFolderName, label: runLabel },
+                ...( recipeRun.customTreeFolderNames ?? [] ).map(customTreeFolderName => ({
+                    runFolderName: recipeRun.runFolderName,
+                    label: `${runLabel} · ${customTreeFolderName}`,
+                    customTreeFolderName: customTreeFolderName
+                }))
+            ];
+        });
 
         if ( recipeRuns.length === 0 ) {
             return {
@@ -12905,9 +13380,15 @@ export class RecipeCockpitService {
         const requestedRun = recipeRuns.find(recipeRun => recipeRun.runFolderName === requestedRunFolderName);
         const selectedRun = requestedRun ?? recipeRuns[0];
 
+        const requestedCustomTreeFolderName = customTreeFolderNameByRunFolderName.get(selectedRun.runFolderName);
+        const selectedCustomTreeFolderName = requestedCustomTreeFolderName && ( selectedRun.customTreeFolderNames ?? [] ).includes(requestedCustomTreeFolderName)
+            ? requestedCustomTreeFolderName
+            : undefined;
+
         const recipeViewModel: IRecipeCockpitRecipeViewModel = {
             runs: runViewModels,
             selectedRunFolderName: selectedRun.runFolderName,
+            ...( selectedCustomTreeFolderName ? { selectedCustomTreeFolderName: selectedCustomTreeFolderName } : {} ),
             objects: [],
             trees: [],
             notices: [],
@@ -12928,16 +13409,17 @@ export class RecipeCockpitService {
         }
 
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
-        const recipeSourceRead = this.readRecipeSourceFiles(selectedRun.runFolderPath, workspaceRoot);
+        const recipeSourceRead = this.readRecipeSourceFiles(selectedRun.runFolderPath, workspaceRoot, selectedCustomTreeFolderName);
 
         /*
             An object the wrapper holds with no Fields is one a lookup points at. RelationshipService
             still lists it in its tree's RecipeFiles objects, but no recipe is written for it -- so it
             is kept only if a recipe file actually carries it.
         */
+        // A CUSTOM TREE (#677) DRAWS ONLY WHAT ITS RECIPE HOLDS: EVERY OTHER OBJECT OF THE RUN BELONGS TO THE RUN'S OWN TREES
         recipeViewModel.objects = this.attachRecipeSources(normalizedObjectsWrapper.objects, recipeSourceRead.recipeSourceFiles)
-            .filter(objectViewModel => !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName)
-                                        || !!objectViewModel.recipeFilePath);
+            .filter(objectViewModel => ( !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName) || !!objectViewModel.recipeFilePath )
+                                        && ( !selectedCustomTreeFolderName || !!objectViewModel.recipeFilePath ));
         this.applyGeneratedRecordTypes(recipeViewModel.objects, recipeSourceRead.recordTypeBlocks);
         this.attachValidationRuleSources(recipeViewModel.objects, workspaceRoot);
 
@@ -12945,7 +13427,8 @@ export class RecipeCockpitService {
             normalizedObjectsWrapper,
             recipeViewModel.objects,
             recipeSourceRead.recipeSourceFiles,
-            selectedRun.runFolderPath
+            selectedRun.runFolderPath,
+            selectedCustomTreeFolderName ? this.buildCustomTreeSource(normalizedObjectsWrapper, recipeSourceRead.recipeSourceFiles, selectedRun.runFolderPath, selectedCustomTreeFolderName) : undefined
         );
 
         recipeViewModel.trees = recipeTreeBuild.trees;
@@ -13375,7 +13858,8 @@ export class RecipeCockpitService {
     static buildRecipeTreeViewModels(normalizedObjectsWrapper: Pick<IRecipeCockpitNormalizedObjectsWrapper, 'recipeTrees' | 'parentLookupsByObjectApiName'>,
                                         objects: IRecipeCockpitObjectViewModel[],
                                         recipeSourceFiles: IRecipeSourceFile[],
-                                        runFolderPath: string): { trees: IRecipeCockpitTreeViewModel[]; notices: string[] } {
+                                        runFolderPath: string,
+                                        customTreeSource?: IRecipeCockpitCustomTreeSource): { trees: IRecipeCockpitTreeViewModel[]; notices: string[] } {
 
         const objectsByApiName = new Map(objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
         const claimedObjectApiNames = new Set<string>();
@@ -13384,9 +13868,11 @@ export class RecipeCockpitService {
         const trees: IRecipeCockpitTreeViewModel[] = [];
         const notices: string[] = [];
 
-        const hasTreeData = normalizedObjectsWrapper.recipeTrees.length > 0;
+        const hasTreeData = normalizedObjectsWrapper.recipeTrees.length > 0 || !!customTreeSource;
 
-        const treeSources: Array<{ folderName: string; objectApiNames: string[]; hasLookups: boolean }> = hasTreeData
+        const treeSources: Array<{ folderName: string; objectApiNames: string[]; hasLookups: boolean }> = customTreeSource
+            ? [{ folderName: customTreeSource.folderName, objectApiNames: customTreeSource.objectApiNames, hasLookups: true }]
+            : hasTreeData
             ? normalizedObjectsWrapper.recipeTrees.map(recipeTree => ({
                 folderName: RelationshipService.buildRecipeTreeFolderName(recipeTree.objectApiNames),
                 objectApiNames: recipeTree.objectApiNames,
@@ -13426,13 +13912,17 @@ export class RecipeCockpitService {
 
             });
 
-            trees.push(this.buildTreeViewModel(
+            const treeViewModel = this.buildTreeViewModel(
                 this.claimTreeKey(treeSource.folderName, treeIndex, usedTreeKeys),
                 this.claimTreeTitle(treeSource.folderName, titleCountsByFolderName),
                 treeSource.folderName,
                 this.placeTreeIterations(treeObjects, objectsByApiName),
                 objectsByApiName
-            ));
+            );
+            if ( customTreeSource ) {
+                treeViewModel.customCopyOf = customTreeSource.customCopyOf;
+            }
+            trees.push(treeViewModel);
 
         });
 
@@ -13678,14 +14168,14 @@ export class RecipeCockpitService {
         links and a notice, not the panel.
     */
     // recipeTextsByFilePath IS EACH FILE'S TEXT AS IT WAS READ HERE, SO THE TREE CARDS' TODO LOOKUPS ARE LISTED WITHOUT READING IT AGAIN (#151)
-    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string>; recordTypeBlocks: IRecipeRecordTypeBlocks } {
+    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string, onlyCustomTreeFolderName?: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string>; recordTypeBlocks: IRecipeRecordTypeBlocks } {
 
         const recipeSourceFiles: IRecipeSourceFile[] = [];
         const notices: string[] = [];
         const recipeTextsByFilePath = new Map<string, string>();
         const recordTypeBlocks = RecipeCockpitRecipeWriter.buildEmptyRecordTypeBlocks();
 
-        this.collectRecipeFilePaths(runFolderPath)
+        this.collectRecipeFilePaths(runFolderPath, onlyCustomTreeFolderName)
             .filter(recipeFilePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(recipeFilePath), path.resolve(workspaceRoot)))
             .forEach(recipeFilePath => {
 
@@ -13706,8 +14196,13 @@ export class RecipeCockpitService {
 
     }
 
-    // THE RUN FOLDER AND ITS RELATIONSHIP-TREE SUBFOLDERS, WHICH IS WHERE DirectoryProcessor WRITES EACH RECIPE
-    static collectRecipeFilePaths(runFolderPath: string): string[] {
+    /*
+        The run folder and its relationship-tree subfolders, which is where DirectoryProcessor writes
+        each recipe. A run leaves its "custom-" tree folders out (#677): they hold the run's objects
+        a second time, and a run keeps one view model per object. Asked for one custom tree, it reads
+        that folder alone.
+    */
+    static collectRecipeFilePaths(runFolderPath: string, onlyCustomTreeFolderName?: string): string[] {
 
         // AN ADAPTED RECIPE (#448) IS A SIDE FILE: READING ITS OBJECTS TOO WOULD DRAW EVERY ONE TWICE
         const isRecipeFile = (fileEntry: fs.Dirent) => (
@@ -13723,11 +14218,16 @@ export class RecipeCockpitService {
             const runFolderEntryPath = path.join(runFolderPath, runFolderEntry.name);
 
             if ( isRecipeFile(runFolderEntry) ) {
-                recipeFilePaths.push(runFolderEntryPath);
+                if ( !onlyCustomTreeFolderName ) {
+                    recipeFilePaths.push(runFolderEntryPath);
+                }
                 return;
             }
 
-            if ( !runFolderEntry.isDirectory() ) {
+            const isWantedTreeFolder = onlyCustomTreeFolderName
+                ? runFolderEntry.name === onlyCustomTreeFolderName
+                : !RecipeCockpitCustomTreecipe.isCustomTreeFolderName(runFolderEntry.name);
+            if ( !runFolderEntry.isDirectory() || !isWantedTreeFolder ) {
                 return;
             }
 
