@@ -7,7 +7,7 @@ MasterDetail relationships are shown with `||--o{` cardinality (required parent)
 Cross-tree relationships are excluded — only objects present in this recipe are shown.
 
 Generated: {TIMESTAMP}
-Objects: Account, Contact, Example_Everything__c, MasterDetailMadness__c, MegaMapMadness__c, Opportunity, Order_Item__c, Order__c, Product_Family__c, Product__c, User
+Objects: Account, Campaign, Contact, Contract, Example_Everything__c, MasterDetailMadness__c, MegaMapMadness__c, Opportunity, Order_Item__c, Order__c, Product_Family__c, Product__c, User
 
 ---
 
@@ -31,9 +31,15 @@ erDiagram
         string TickerSymbol
         string UpsellOpportunity__c
     }
+    Campaign {
+        id Id
+    }
     Contact {
         id Id
         string OtherAddress
+    }
+    Contract {
+        id Id
     }
     Example_Everything__c {
         id Id
@@ -137,6 +143,8 @@ erDiagram
     User |o--o{ MegaMapMadness__c : "LUOne_User__c"
     User |o--o{ MegaMapMadness__c : "LUTwo_User__c"
     Account |o--o{ Opportunity : "AccountId"
+    Campaign |o--o{ Opportunity : "CampaignId"
+    Contract |o--o{ Opportunity : "ContractId"
     Order__c ||--o{ Order_Item__c : "Order__c"
     Product__c |o--o{ Order_Item__c : "Product__c"
     Account |o--o{ Order__c : "Account__c"

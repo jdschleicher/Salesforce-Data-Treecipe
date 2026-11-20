@@ -1,7 +1,7 @@
 # Relationship Tree: RelationshipTree_1
 # Objects must be processed in this order for proper lookup resolution
 
-# Level 0 - Account, Product_Family__c, User
+# Level 0 - Account, Campaign, Contract, Product_Family__c, User
 # Account (Parents: Account | Children: Account, Contact, Example_Everything__c, Opportunity, Order__c)
 
 - object: Account
@@ -311,7 +311,7 @@
     LUOne_User__c: ### TODO -- REFERENCE ID REQUIRED
     LUTwo_User__c: ### TODO -- REFERENCE ID REQUIRED
 
-# Opportunity (Parents: Account)
+# Opportunity (Parents: Account, Campaign, Contract)
 
 - object: Opportunity
   nickname: Opportunity_NickName

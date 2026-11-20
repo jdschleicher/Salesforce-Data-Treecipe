@@ -143,6 +143,7 @@ Add an optional `customRelationshipMappings` property to `treecipe.config.json` 
 * The property is **optional** — leave it out entirely and Treecipe behaves exactly as before.
 * A mapping is only consulted when the field's own `<referenceTo>` tag is missing. Metadata always wins.
 * These entries **extend** the built-in lookup map (currently the single entry `AccountId` → `Account`); they never replace it.
+* Standard relationship fields on the common sales and service objects need no mapping. Source format writes no `<referenceTo>` for them, so Treecipe knows their parents itself: `Quote.OpportunityId` → `Opportunity`, `OrderItem.OrderId` → `Order`, `Case.AssetId` → `Asset` and the rest on Account, Asset, Campaign, CampaignMember, Case, Contact, Contract, Opportunity, OpportunityContactRole, OpportunityLineItem, Order, OrderItem, PricebookEntry, Quote and QuoteLineItem. A mapping you add for one of those fields still wins. Polymorphic fields (`OwnerId`, `WhoId`, `WhatId`), fields whose parent is User, `Pricebook2Id` fields and reduction-order fields (`OriginalOrderId`) are left unmapped on purpose; map one here if you do want its parent generated.
 * A key without exactly one dot separator (`"CustomObject__cPrimary_Contact__c"`, `"Too.Many.Dots__c"`) is ignored, and an entry with an empty parent value is skipped. A typo is silently skipped rather than failing the run — if an object is still landing in the wrong tree, check the key spelling first.
 
 #### Optional: `recordTypeSelections`

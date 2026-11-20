@@ -1,7 +1,7 @@
 # SOQL & SOSL Query Templates
 
 Generated: {TIMESTAMP}
-Objects: Account, Contact, Example_Everything__c, MasterDetailMadness__c, MegaMapMadness__c, Opportunity, Order_Item__c, Order__c, Product_Family__c, Product__c, User
+Objects: Account, Campaign, Contact, Contract, Example_Everything__c, MasterDetailMadness__c, MegaMapMadness__c, Opportunity, Order_Item__c, Order__c, Product_Family__c, Product__c, User
 
 ---
 
@@ -99,6 +99,35 @@ RETURNING Account(Id, SLASerialNumber__c)
 
 ---
 
+## Campaign
+
+### Base Query
+
+```sql
+SELECT Id
+FROM Campaign
+```
+
+### Parent-to-Child Queries
+
+```sql
+-- Children: Opportunity (via CampaignId)
+-- Note: Verify 'Opportunitys' is the correct Child Relationship Name
+SELECT Id,
+    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, IqScore, IsPrivate, MainCompetitors__c
+     FROM Opportunitys)
+FROM Campaign
+```
+
+### SOSL Template
+
+```sosl
+FIND {searchTerm} IN ALL FIELDS
+RETURNING Campaign(Id)
+```
+
+---
+
 ## Contact
 
 ### Base Query
@@ -176,6 +205,35 @@ FROM Contact
 ```sosl
 FIND {searchTerm} IN ALL FIELDS
 RETURNING Contact(Id)
+```
+
+---
+
+## Contract
+
+### Base Query
+
+```sql
+SELECT Id
+FROM Contract
+```
+
+### Parent-to-Child Queries
+
+```sql
+-- Children: Opportunity (via ContractId)
+-- Note: Verify 'Opportunitys' is the correct Child Relationship Name
+SELECT Id,
+    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, IqScore, IsPrivate, MainCompetitors__c
+     FROM Opportunitys)
+FROM Contract
+```
+
+### SOSL Template
+
+```sosl
+FIND {searchTerm} IN ALL FIELDS
+RETURNING Contract(Id)
 ```
 
 ---
@@ -457,6 +515,20 @@ SELECT Id,
        Account.CustomerPriority__c,
        Account.Jigsaw,
        Account.Number_of_Contacts__c
+FROM Opportunity
+```
+
+```sql
+-- Lookup to Campaign via CampaignId
+SELECT Id,
+       CampaignId
+FROM Opportunity
+```
+
+```sql
+-- Lookup to Contract via ContractId
+SELECT Id,
+       ContractId
 FROM Opportunity
 ```
 
