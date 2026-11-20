@@ -282,6 +282,7 @@ export class VSCodeWorkspaceService {
                 }
             });
 
+            // RACED SO A SCAN THAT REJECTS (EACCES) REACHES THE finally BELOW INSTEAD OF LEAVING A BUSY PICKER WAITING ON AN ANSWER
             await Promise.race([ scanCompletion, objectsDirectorySelection ]);
 
             return await objectsDirectorySelection;

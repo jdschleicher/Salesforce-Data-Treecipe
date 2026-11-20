@@ -809,6 +809,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         test('lists each discovered directory in the picker and opens no progress notification', async () => {
 
+            // A vscode MOCK FACTORY jest.fn() IS NOT A SPY, SO restoreMocks WOULD LEAVE ANOTHER TEST'S CALLS IN PLACE
+            (vscode.window.withProgress as jest.Mock).mockClear();
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
 
