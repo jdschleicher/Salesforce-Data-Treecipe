@@ -5675,7 +5675,6 @@ export class RecipeCockpitService {
 
     }
 
-    // A CARD'S Reset selection: EVERY OBJECT INCLUDED, EVERY FIELD TICKED AND EVERY COUNT THE RECIPE'S AGAIN, AFTER THE READER CONFIRMS IN THE HOST'S OWN DIALOG
     /*
         The modal's removals as the router reads them: three lists of names, each name a key the
         drawn card has a chain link or a checkbox for. Anything else, or more names than any tree
@@ -5953,17 +5952,29 @@ export class RecipeCockpitService {
                 return;
             }
 
-            // THE NEW TREE OPENS WITH THE MODAL'S CHAIN LINKS AND NAME, KEYED BY ITS OWN FOLDER LIKE EVERY CARD'S
+            /*
+                The new tree opens with the modal's chain links and name, keyed by its own folder like
+                every card's. A folder name used before (a custom tree deleted by hand, then saved
+                again) starts clean, so it never inherits that tree's unticked fields, counts or name.
+            */
+            const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
+            treeSelections.excludedFieldApiNamesByFolderName.delete(location.folderName);
+            treeSelections.objectCountsByFolderName.delete(location.folderName);
+            treeSelections.fixedValuesByFolderName.delete(location.folderName);
+            treeSelections.validationRulesOffByFolderName.delete(location.folderName);
             if ( removal.outOfRunObjectApiNames.length > 0 ) {
-                const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
                 treeSelections.excludedObjectApiNamesByFolderName.set(location.folderName, new Set(removal.outOfRunObjectApiNames));
-                await this.writeTreeSelections(this.recipeCockpitWorkspaceState, treeSelections);
+            } else {
+                treeSelections.excludedObjectApiNamesByFolderName.delete(location.folderName);
             }
+            await this.writeTreeSelections(this.recipeCockpitWorkspaceState, treeSelections);
+            const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
             if ( customName ) {
-                const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
                 treePreferences.customNamesByFolderName.set(location.folderName, customName);
-                await this.writeTreePreferences(this.recipeCockpitWorkspaceState, treePreferences);
+            } else {
+                treePreferences.customNamesByFolderName.delete(location.folderName);
             }
+            await this.writeTreePreferences(this.recipeCockpitWorkspaceState, treePreferences);
 
             const relativeRecipeFilePath = path.relative(workspaceRoot, customRecipeFilePath).split(path.sep).join('/');
             Promise.resolve(vscode.window.showInformationMessage(
@@ -5994,6 +6005,7 @@ export class RecipeCockpitService {
         return customTreeFolderName === undefined ? runFolderName : `${runFolderName}/${customTreeFolderName}`;
     }
 
+    // A CARD'S Reset selection: EVERY OBJECT INCLUDED, EVERY FIELD TICKED AND EVERY COUNT THE RECIPE'S AGAIN, AFTER THE READER CONFIRMS IN THE HOST'S OWN DIALOG
     private static async resetTreeSelection(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
 
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
@@ -13273,12 +13285,21 @@ export class RecipeCockpitService {
     // A RUN'S "custom-" TREE FOLDERS (#677) THAT HOLD A RECIPE, SORTED WITH "<"; A LINK OR A NAME THAT COULD STEP OUT IS NOT ONE
     static listCustomTreeFolderNames(runFolderPath: string): string[] {
 
+        // ONE UNREADABLE custom- FOLDER IS LEFT OUT OF THE LIST, NEVER THE REASON THE COCKPIT CANNOT LOAD
+        const holdsRecipeFile = (treeFolderPath: string) => {
+            try {
+                return fs.readdirSync(treeFolderPath, { withFileTypes: true })
+                    .some(treeFolderEntry => treeFolderEntry.isFile() && RECIPE_FILE_EXTENSIONS.includes(path.extname(treeFolderEntry.name).toLowerCase()));
+            } catch {
+                return false;
+            }
+        };
+
         return fs.readdirSync(runFolderPath, { withFileTypes: true })
             .filter(runFolderEntry => runFolderEntry.isDirectory()
                                         && RecipeCockpitCustomTreecipe.isCustomTreeFolderName(runFolderEntry.name)
                                         && RecipeCockpitCustomTreecipe.isTreeFolderName(runFolderEntry.name)
-                                        && fs.readdirSync(path.join(runFolderPath, runFolderEntry.name), { withFileTypes: true })
-                                            .some(treeFolderEntry => treeFolderEntry.isFile() && RECIPE_FILE_EXTENSIONS.includes(path.extname(treeFolderEntry.name).toLowerCase())))
+                                        && holdsRecipeFile(path.join(runFolderPath, runFolderEntry.name)))
             .map(runFolderEntry => runFolderEntry.name)
             .sort((left, right) => ( left < right ? -1 : left > right ? 1 : 0 ));
 

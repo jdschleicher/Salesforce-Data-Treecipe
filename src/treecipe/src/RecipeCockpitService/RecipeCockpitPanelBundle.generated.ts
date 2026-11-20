@@ -4973,12 +4973,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       cancelElement,
       saveElement,
       nameInputElement: null,
+      typedName: "",
       openerElement,
       controls: [],
       frameControls: [
-        { label: RECIPE_COCKPIT_CUSTOM_TREECIPE_CLOSE_LABEL, element: closeElement },
-        { label: RECIPE_COCKPIT_CUSTOM_TREECIPE_CANCEL_LABEL, element: cancelElement },
-        { label: RECIPE_COCKPIT_CUSTOM_TREECIPE_SAVE_LABEL, element: saveElement }
+        { key: "frame:close", element: closeElement },
+        { key: "frame:cancel", element: cancelElement },
+        { key: "frame:save", element: saveElement }
       ]
     };
     closeElement.addEventListener("click", function() {
@@ -5155,18 +5156,18 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     glyphElement.appendChild(pathElement);
     return glyphElement;
   }
-  function addControl(element, label) {
+  function addControl(element, key) {
     if (customTreecipeDialog) {
-      customTreecipeDialog.controls.push({ label, element });
+      customTreecipeDialog.controls.push({ key, element });
     }
     return element;
   }
-  function buildRoundButton(className, symbol, label, onClick) {
+  function buildRoundButton(className, symbol, label, key, onClick) {
     const buttonElement = createButton("icon", className, symbol);
     buttonElement.setAttribute("aria-label", label);
     buttonElement.setAttribute("title", label);
     buttonElement.addEventListener("click", onClick);
-    return addControl(buttonElement, label);
+    return addControl(buttonElement, key);
   }
   function removedFieldsOf(dialog, objectApiName) {
     return dialog.removedFields.get(objectApiName) || /* @__PURE__ */ new Set();
@@ -5210,20 +5211,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const detailElement = createElement("div", "sdtRowHeaderDetail customTreecipeObjectDetail");
     rowElement.appendChild(primaryElement);
     if (isDirectlyRemoved) {
-      primaryElement.appendChild(buildRoundButton("customTreecipeRestore", "↺", "Restore " + objectApiName, function() {
+      primaryElement.appendChild(buildRoundButton("customTreecipeRestore", "↺", "Restore " + objectApiName, "object:" + objectApiName, function() {
         changeRemoval(function(changedDialog) {
           changedDialog.removedObjects.delete(objectApiName);
         });
       }));
     } else if (removal && removal.removedLookupFieldApiName) {
       const lookupFieldApiName = removal.removedLookupFieldApiName;
-      primaryElement.appendChild(buildRoundButton("customTreecipeRestore", "↺", "Restore " + objectApiName + "." + lookupFieldApiName, function() {
+      primaryElement.appendChild(buildRoundButton("customTreecipeRestore", "↺", "Restore " + objectApiName + "." + lookupFieldApiName, "object:" + objectApiName, function() {
         changeRemoval(function(changedDialog) {
           removedFieldsOf(changedDialog, objectApiName).delete(lookupFieldApiName);
         });
       }));
     } else if (removal && removal.kind === "noFieldsSelected") {
-      primaryElement.appendChild(buildRoundButton("customTreecipeRestore", "↺", "Restore every field of " + objectApiName, function() {
+      primaryElement.appendChild(buildRoundButton("customTreecipeRestore", "↺", "Restore every field of " + objectApiName, "object:" + objectApiName, function() {
         changeRemoval(function(changedDialog) {
           changedDialog.removedFields.delete(objectApiName);
         });
@@ -5231,7 +5232,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     } else if (removal) {
       primaryElement.appendChild(createElement("span", "customTreecipeSlot"));
     } else {
-      primaryElement.appendChild(buildRoundButton("customTreecipeRemove", "✕", "Remove " + objectApiName + " from the new recipe", function() {
+      primaryElement.appendChild(buildRoundButton("customTreecipeRemove", "✕", "Remove " + objectApiName + " from the new recipe", "object:" + objectApiName, function() {
         removeObject(objectApiName);
       }));
     }
@@ -5252,7 +5253,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         }
       });
     });
-    primaryElement.appendChild(addControl(chainElement, chainLabel));
+    primaryElement.appendChild(addControl(chainElement, "chain:" + objectApiName));
     const isExpanded = dialog.expandedObjects.has(objectApiName) && !removal && !isDirectlyRemoved;
     const chevronElement = createButton("icon", "customTreecipeChevron" + (isExpanded ? " isExpanded" : ""));
     const chevronLabel = (isExpanded ? "Hide" : "Show") + " the fields of " + objectApiName;
@@ -5271,7 +5272,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
       drawCustomTreecipeDialog();
     });
-    primaryElement.appendChild(addControl(chevronElement, chevronLabel));
+    primaryElement.appendChild(addControl(chevronElement, "chevron:" + objectApiName));
     primaryElement.appendChild(createElement("span", "customTreecipeObjectName", objectApiName));
     const keptFieldCount = removal || isDirectlyRemoved ? 0 : countKeptFields(dialog, dialogObject);
     primaryElement.appendChild(createElement("span", "customTreecipeFieldCount muted", keptFieldCount + " of " + dialogObject.fields.length + " fields"));
@@ -5312,14 +5313,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       });
       const fieldElement = createElement("li", "treeField customTreecipeField" + (isRemoved ? " isRemoved" : isCut ? " isCut" : ""));
       if (isRemoved) {
-        fieldElement.appendChild(buildRoundButton("customTreecipeRestore isSmall", "↺", "Restore " + qualifiedName, function() {
+        fieldElement.appendChild(buildRoundButton("customTreecipeRestore isSmall", "↺", "Restore " + qualifiedName, "field:" + qualifiedName, function() {
           changeRemoval(function(changedDialog) {
             removedFieldsOf(changedDialog, objectApiName).delete(field.fieldApiName);
           });
         }));
       } else {
         const removeLabel = lockReason ? field.fieldApiName + " cannot be removed: " + lockReason : isCut ? field.fieldApiName + " goes with " + (lookup ? lookup.parentObjectApiName : "its parent") : "Remove " + qualifiedName + " from the new recipe";
-        const removeElement = buildRoundButton("customTreecipeRemove isSmall", "✕", removeLabel, function() {
+        const removeElement = buildRoundButton("customTreecipeRemove isSmall", "✕", removeLabel, "field:" + qualifiedName, function() {
           changeRemoval(function(changedDialog) {
             changedDialog.removedFields.set(objectApiName, removedFieldsOf(changedDialog, objectApiName).add(field.fieldApiName));
           });
@@ -5343,7 +5344,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     boxElement.appendChild(createElement("span", "customTreecipeAskTitle", "Remove " + rootObjectApiName + "?"));
     boxElement.appendChild(createElement("span", "", rootObjectApiName + " is the root of this tree. Removing it removes every object under it, so nothing is left to save."));
     const actionsElement = createElement("div", "customTreecipeAskActions");
-    const keepElement = addControl(createButton("secondary", "customTreecipeKeepRoot", "Keep " + rootObjectApiName), "Keep " + rootObjectApiName);
+    const keepElement = addControl(createButton("secondary", "customTreecipeKeepRoot", "Keep " + rootObjectApiName), "root:keep");
     keepElement.addEventListener("click", function() {
       if (!customTreecipeDialog) {
         return;
@@ -5351,7 +5352,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       customTreecipeDialog.isRootRemovalAsked = false;
       drawCustomTreecipeDialog();
     });
-    const removeElement = addControl(createButton("secondary", "customTreecipeRemoveRoot", "Remove " + rootObjectApiName), "Remove " + rootObjectApiName);
+    const removeElement = addControl(createButton("secondary", "customTreecipeRemoveRoot", "Remove " + rootObjectApiName), "root:remove");
     removeElement.addEventListener("click", function() {
       changeRemoval(function(changedDialog) {
         changedDialog.isRootRemovalAsked = false;
@@ -5393,14 +5394,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     nameInputElement.setAttribute("maxlength", "80");
     nameInputElement.setAttribute("placeholder", RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_PLACEHOLDER);
     nameInputElement.setAttribute("aria-label", RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_LABEL);
+    nameInputElement.value = dialog.typedName;
+    nameInputElement.addEventListener("input", function() {
+      if (customTreecipeDialog) {
+        customTreecipeDialog.typedName = nameInputElement.value;
+      }
+    });
     nameLabelElement.setAttribute("id", "customTreecipeNameLabel");
-    nameCellElement.appendChild(addControl(nameInputElement, RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_LABEL));
+    nameCellElement.appendChild(addControl(nameInputElement, "save:name"));
     detailsElement.appendChild(nameLabelElement);
     detailsElement.appendChild(nameCellElement);
     formElement.appendChild(detailsElement);
     dialog.nameInputElement = nameInputElement;
     const actionsElement = createElement("div", "customTreecipeAskActions");
-    const backElement = addControl(createButton("secondary", "customTreecipeBack", RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL), RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL);
+    const backElement = addControl(createButton("secondary", "customTreecipeBack", RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL), "save:back");
     backElement.setAttribute("type", "button");
     backElement.addEventListener("click", function() {
       if (!customTreecipeDialog) {
@@ -5409,7 +5416,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       customTreecipeDialog.step = "edit";
       drawCustomTreecipeDialog();
     });
-    const confirmElement = addControl(createButton("primary", "customTreecipeConfirmSave", RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL), RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL);
+    const confirmElement = addControl(createButton("primary", "customTreecipeConfirmSave", RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL), "save:confirm");
     confirmElement.setAttribute("type", "button");
     confirmElement.disabled = !preview || !preview.folderName || !!preview.refusal;
     actionsElement.appendChild(backElement);
@@ -5437,6 +5444,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     });
     return formElement;
   }
+  function focusWithoutScrolling(element) {
+    if (typeof element.focus === "function") {
+      element.focus({ preventScroll: true });
+    }
+  }
   function hasRemovals(dialog) {
     return dialog.removedObjects.size > 0 || countRemovedFields(dialog) > 0;
   }
@@ -5458,7 +5470,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const focusedControl = dialog.controls.find(function(control) {
       return control.element === document.activeElement;
     });
-    const focusedLabel = focusedControl ? focusedControl.label : null;
+    const focusedKey = focusedControl ? focusedControl.key : null;
+    const scrollTop = dialog.bodyElement.scrollTop;
     dialog.bodyElement.textContent = "";
     dialog.nameInputElement = null;
     dialog.controls = [];
@@ -5483,16 +5496,19 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     dialog.saveElement.disabled = !hasRemovals(dialog) || isNothingLeft || !preview || !!preview.refusal;
     dialog.statusElement.textContent = isNothingLeft ? RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_LEFT_NOTE : !hasRemovals(dialog) ? RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_REMOVED_NOTE : preview && preview.refusal ? preview.refusal : preview && preview.folderName ? "Ready to save as " + preview.folderName + "." : "";
+    dialog.bodyElement.scrollTop = scrollTop;
     if (dialog.step === "save" && dialog.nameInputElement) {
-      focusElement(dialog.nameInputElement);
-    } else if (focusedLabel) {
+      focusWithoutScrolling(dialog.nameInputElement);
+    } else if (focusedKey) {
       const enabledControls = dialog.controls.filter(function(control) {
         return !control.element.disabled;
       });
       const sameControl = enabledControls.find(function(control) {
-        return control.label === focusedLabel;
-      }) || enabledControls[0];
-      focusElement(sameControl ? sameControl.element : dialog.saveElement);
+        return control.key === focusedKey;
+      }) || enabledControls.find(function(control) {
+        return control.key.split(":")[1] === focusedKey.split(":")[1];
+      });
+      focusWithoutScrolling(sameControl ? sameControl.element : dialog.saveElement);
     }
   }
 
@@ -9996,6 +10012,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     cockpitBodyElement.textContent = "";
     closeConfirmDialog(false);
     closeObjectRefreshDialog(false);
+    closeCustomTreecipeDialog(false);
     resetHelpState();
     treeStates = [];
     treesViewElement = null;

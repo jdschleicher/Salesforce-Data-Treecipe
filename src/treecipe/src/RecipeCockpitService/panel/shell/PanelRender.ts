@@ -21,6 +21,7 @@ import { applyTreeFocus } from '../treecipe/navigation/StructureFilter';
 import { closeObjectRefreshDialog } from '../treecipe/objectRefresh/ObjectRefreshDialog';
 import { resetRecordTypesState } from '../treecipe/recordTypes/RecordTypesState';
 import { renderHelp, resetHelpState } from './Help';
+import { closeCustomTreecipeDialog } from '../treecipe/customTreecipe/CustomTreecipeDialog';
 import { applyPlaceBeforeRender, restorePlaceAfterRender, restoreScroll, savePanelPlace, takeRestorablePlace, takeSameRunPlace } from './PanelPlace';
 import type { CardTreeState, ICardModel } from '../treecipe/card/CardTypes';
 import type { IPanelPlace } from './PanelPlace';
@@ -184,6 +185,8 @@ function resetPanelState(): void {
     // THE HOST ANSWERS AN OPEN CONFIRMATION CANCEL WHEN IT POSTS A NEW MODEL, AND A FAILURE TO DRAW ENDS IT TOO
     closeConfirmDialog(false);
     closeObjectRefreshDialog(false);
+    // A NEW MODEL IS A NEW CARD (#677): THE MODAL WAS FOR THE OLD ONE, SO IT GOES, AS A RUN STARTING ON THE CARD DOES TOO
+    closeCustomTreecipeDialog(false);
     resetHelpState();
     treeStates = [];
     treesViewElement = null;

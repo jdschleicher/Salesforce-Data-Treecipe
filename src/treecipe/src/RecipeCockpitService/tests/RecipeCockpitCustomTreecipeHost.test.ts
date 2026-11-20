@@ -368,6 +368,36 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         });
 
+        it('starts a reused folder name clean: no selection, count or name of a custom tree deleted by hand', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await RecipeCockpitService.writeTreeSelections(workspaceState as any, {
+                excludedObjectApiNamesByFolderName: new Map([[CUSTOM_FOLDER_NAME, new Set(['Contact'])]]),
+                excludedFieldApiNamesByFolderName: new Map([[CUSTOM_FOLDER_NAME, new Map([['Account', new Set(['Legacy_Code__c'])]])]]),
+                objectCountsByFolderName: new Map([[CUSTOM_FOLDER_NAME, new Map([['Account', 9]])]]),
+                fixedValuesByFolderName: new Map(),
+                validationRulesOffByFolderName: new Map()
+            } as any);
+            const stalePreferences = RecipeCockpitService.readTreePreferences(workspaceState as any);
+            stalePreferences.customNamesByFolderName.set(CUSTOM_FOLDER_NAME, 'Old name');
+            await RecipeCockpitService.writeTreePreferences(workspaceState as any, stalePreferences);
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
+            await receivedMessageHandler({ command: 'ready' });
+            const recipeDataMessage = await drawLatestModel();
+
+            await receivedMessageHandler({
+                command: 'saveCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, name: '',
+                ...removal({ removedObjectApiNames: ['OtherChildObject__c'] })
+            });
+
+            const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState as any);
+            expect(treeSelections.excludedObjectApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
+            expect(treeSelections.excludedFieldApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
+            expect(treeSelections.objectCountsByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
+            expect(RecipeCockpitService.readTreePreferences(workspaceState as any).customNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
+
+        });
+
         it('leaves a folder it did not make when another save made it first', async () => {
 
             const recipeDataMessage = await openAndDraw();
@@ -495,6 +525,24 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             await receivedMessageHandler({ command: 'selectRun', runFolderName: RUN_FOLDER_NAME, customTreeFolderName: `${CUSTOM_FOLDER_NAME}-3` });
 
             expect((await drawLatestModel()).recipe.trees.map((tree: any) => [tree.folderName, tree.customCopyOf])).toEqual([[`${CUSTOM_FOLDER_NAME}-3`, SOURCE_TREE_KEY]]);
+
+        });
+
+        it('leaves out a custom folder it cannot read, and loads the run', async () => {
+
+            fs.mkdirSync(path.join(runFolderPath, CUSTOM_FOLDER_NAME));
+            const readdirSync = fs.readdirSync;
+            jest.spyOn(fs, 'readdirSync').mockImplementation(((folderPath: fs.PathLike, ...rest: unknown[]) => {
+                if ( String(folderPath).endsWith(CUSTOM_FOLDER_NAME) ) {
+                    throw Object.assign(new Error('denied'), { code: 'EACCES' });
+                }
+                return (readdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest);
+            }) as typeof fs.readdirSync);
+
+            const runModel = (await openAndDraw()).recipe;
+
+            expect(runModel.trees.map((tree: any) => tree.folderName)).toEqual([SOURCE_TREE_KEY, 'Lead-ONLY']);
+            expect(runModel.runs.filter((run: any) => run.customTreeFolderName)).toEqual([]);
 
         });
 

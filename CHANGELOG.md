@@ -17,7 +17,15 @@
   - The source recipe and its folder are never written.
 - **A custom tree is its own entry in the run list**, under its run (`<run> · custom-<tree>`). Choosing it shows that one card, marked `custom copy of <tree>`, which generates, inserts, keeps its own data sets and can be customized again (as `custom-<original tree>-2`, never `custom-custom-`).
   - A run leaves its `custom-` folders out, because a run keeps one view model per object and a custom recipe holds the same objects again.
-- The ? help and the guide say so, and two of the guide's pictures were re-taken.
+- **The modal behaves in a long list and around redraws:**
+  - After a ✕ or ↺, focus stays on that row and the list keeps its scroll, rather than jumping to the top.
+  - A name typed on the save step survives a preview arriving.
+  - The modal closes when the cockpit draws a new model, so it never posts for a card that is gone.
+- **Loading and saving are more defensive:**
+  - An unreadable `custom-` folder is left out of the run list rather than stopping the cockpit from loading.
+  - A reused folder name starts with no old selection, count or name.
+  - A failed save removes only a folder it made, and a `customTreecipe.json` over 64 KB is not read.
+- The ? help and the guide say so, and three of the guide's pictures were re-taken.
 
 ### An unticked lookup cuts off what it linked
 

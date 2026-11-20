@@ -95,10 +95,16 @@ interface ICustomTreecipeDialog {
     cancelElement: HTMLButtonElement;
     saveElement: HTMLButtonElement;
     nameInputElement: HTMLInputElement | null;
+    // WHAT THE READER TYPED ON THE SAVE STEP, KEPT ACROSS A REDRAW (A PREVIEW CAN LAND WHILE THEY TYPE)
+    typedName: string;
     openerElement: HTMLElement | null;
-    // EVERY CONTROL DRAWN, BY ITS LABEL, IN TAB ORDER: THE FOCUS TRAP AND A REDRAW'S FOCUS READ THIS, NOT THE DOM
-    controls: Array<{ label: string; element: HTMLButtonElement | HTMLInputElement }>;
-    frameControls: Array<{ label: string; element: HTMLButtonElement | HTMLInputElement }>;
+    /*
+        Every control drawn, in tab order, under a KEY naming what it acts on (the object or field),
+        never its label: ✕ becomes ↺ on the same key, so a redraw puts focus back on the row the
+        reader was on rather than at the top of the list. The focus trap reads this, not the DOM.
+    */
+    controls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
+    frameControls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
 }
 
 let customTreecipeDialog: ICustomTreecipeDialog | null = null;
@@ -113,10 +119,6 @@ export function buildCustomizeTreeButton(treeState: CardTreeState): HTMLButtonEl
     buttonElement.addEventListener('click', function () { openCustomTreecipeDialog(treeState, buttonElement); });
     return buttonElement;
 
-}
-
-export function isCustomTreecipeDialogOpen(): boolean {
-    return customTreecipeDialog !== null;
 }
 
 function listDialogObjects(treeState: CardTreeState): IDialogObject[] {
@@ -205,12 +207,13 @@ export function openCustomTreecipeDialog(treeState: CardTreeState, openerElement
         cancelElement: cancelElement,
         saveElement: saveElement,
         nameInputElement: null,
+        typedName: '',
         openerElement: openerElement,
         controls: [],
         frameControls: [
-            { label: RECIPE_COCKPIT_CUSTOM_TREECIPE_CLOSE_LABEL, element: closeElement },
-            { label: RECIPE_COCKPIT_CUSTOM_TREECIPE_CANCEL_LABEL, element: cancelElement },
-            { label: RECIPE_COCKPIT_CUSTOM_TREECIPE_SAVE_LABEL, element: saveElement }
+            { key: 'frame:close', element: closeElement },
+            { key: 'frame:cancel', element: cancelElement },
+            { key: 'frame:save', element: saveElement }
         ]
     };
 
@@ -382,19 +385,19 @@ function buildGlyph(className: string, pathData: string, transform?: string): SV
 
 }
 
-// A CONTROL OF THE BODY, KEPT IN TAB ORDER UNDER ITS LABEL
-function addControl<ControlElement extends HTMLButtonElement | HTMLInputElement>(element: ControlElement, label: string): ControlElement {
-    if (customTreecipeDialog) { customTreecipeDialog.controls.push({ label: label, element: element }); }
+// A CONTROL OF THE BODY, KEPT IN TAB ORDER UNDER ITS KEY
+function addControl<ControlElement extends HTMLButtonElement | HTMLInputElement>(element: ControlElement, key: string): ControlElement {
+    if (customTreecipeDialog) { customTreecipeDialog.controls.push({ key: key, element: element }); }
     return element;
 }
 
-function buildRoundButton(className: string, symbol: string, label: string, onClick: () => void): HTMLButtonElement {
+function buildRoundButton(className: string, symbol: string, label: string, key: string, onClick: () => void): HTMLButtonElement {
 
     const buttonElement = createButton('icon', className, symbol);
     buttonElement.setAttribute('aria-label', label);
     buttonElement.setAttribute('title', label);
     buttonElement.addEventListener('click', onClick);
-    return addControl(buttonElement, label);
+    return addControl(buttonElement, key);
 
 }
 
@@ -449,22 +452,22 @@ function buildObjectRow(dialog: ICustomTreecipeDialog, dialogObject: IDialogObje
     rowElement.appendChild(primaryElement);
 
     if (isDirectlyRemoved) {
-        primaryElement.appendChild(buildRoundButton('customTreecipeRestore', '↺', 'Restore ' + objectApiName, function () {
+        primaryElement.appendChild(buildRoundButton('customTreecipeRestore', '↺', 'Restore ' + objectApiName, 'object:' + objectApiName, function () {
             changeRemoval(function (changedDialog) { changedDialog.removedObjects.delete(objectApiName); });
         }));
     } else if (removal && removal.removedLookupFieldApiName) {
         const lookupFieldApiName = removal.removedLookupFieldApiName;
-        primaryElement.appendChild(buildRoundButton('customTreecipeRestore', '↺', 'Restore ' + objectApiName + '.' + lookupFieldApiName, function () {
+        primaryElement.appendChild(buildRoundButton('customTreecipeRestore', '↺', 'Restore ' + objectApiName + '.' + lookupFieldApiName, 'object:' + objectApiName, function () {
             changeRemoval(function (changedDialog) { removedFieldsOf(changedDialog, objectApiName).delete(lookupFieldApiName); });
         }));
     } else if (removal && removal.kind === 'noFieldsSelected') {
-        primaryElement.appendChild(buildRoundButton('customTreecipeRestore', '↺', 'Restore every field of ' + objectApiName, function () {
+        primaryElement.appendChild(buildRoundButton('customTreecipeRestore', '↺', 'Restore every field of ' + objectApiName, 'object:' + objectApiName, function () {
             changeRemoval(function (changedDialog) { changedDialog.removedFields.delete(objectApiName); });
         }));
     } else if (removal) {
         primaryElement.appendChild(createElement('span', 'customTreecipeSlot'));
     } else {
-        primaryElement.appendChild(buildRoundButton('customTreecipeRemove', '✕', 'Remove ' + objectApiName + ' from the new recipe', function () { removeObject(objectApiName); }));
+        primaryElement.appendChild(buildRoundButton('customTreecipeRemove', '✕', 'Remove ' + objectApiName + ' from the new recipe', 'object:' + objectApiName, function () { removeObject(objectApiName); }));
     }
 
     const isOutDirectly = dialog.outOfRunObjects.has(objectApiName);
@@ -480,7 +483,7 @@ function buildObjectRow(dialog: ICustomTreecipeDialog, dialogObject: IDialogObje
             if (isOutDirectly) { changedDialog.outOfRunObjects.delete(objectApiName); } else { changedDialog.outOfRunObjects.add(objectApiName); }
         });
     });
-    primaryElement.appendChild(addControl(chainElement, chainLabel));
+    primaryElement.appendChild(addControl(chainElement, 'chain:' + objectApiName));
 
     const isExpanded = dialog.expandedObjects.has(objectApiName) && !removal && !isDirectlyRemoved;
     const chevronElement = createButton('icon', 'customTreecipeChevron' + (isExpanded ? ' isExpanded' : ''));
@@ -494,7 +497,7 @@ function buildObjectRow(dialog: ICustomTreecipeDialog, dialogObject: IDialogObje
         if (customTreecipeDialog.expandedObjects.has(objectApiName)) { customTreecipeDialog.expandedObjects.delete(objectApiName); } else { customTreecipeDialog.expandedObjects.add(objectApiName); }
         drawCustomTreecipeDialog();
     });
-    primaryElement.appendChild(addControl(chevronElement, chevronLabel));
+    primaryElement.appendChild(addControl(chevronElement, 'chevron:' + objectApiName));
 
     primaryElement.appendChild(createElement('span', 'customTreecipeObjectName', objectApiName));
 
@@ -544,14 +547,14 @@ function buildFieldList(dialog: ICustomTreecipeDialog, dialogObject: IDialogObje
         const fieldElement = createElement('li', 'treeField customTreecipeField' + (isRemoved ? ' isRemoved' : isCut ? ' isCut' : ''));
 
         if (isRemoved) {
-            fieldElement.appendChild(buildRoundButton('customTreecipeRestore isSmall', '↺', 'Restore ' + qualifiedName, function () {
+            fieldElement.appendChild(buildRoundButton('customTreecipeRestore isSmall', '↺', 'Restore ' + qualifiedName, 'field:' + qualifiedName, function () {
                 changeRemoval(function (changedDialog) { removedFieldsOf(changedDialog, objectApiName).delete(field.fieldApiName); });
             }));
         } else {
             const removeLabel = lockReason ? field.fieldApiName + ' cannot be removed: ' + lockReason
                 : isCut ? field.fieldApiName + ' goes with ' + (lookup ? lookup.parentObjectApiName : 'its parent')
                 : 'Remove ' + qualifiedName + ' from the new recipe';
-            const removeElement = buildRoundButton('customTreecipeRemove isSmall', '✕', removeLabel, function () {
+            const removeElement = buildRoundButton('customTreecipeRemove isSmall', '✕', removeLabel, 'field:' + qualifiedName, function () {
                 changeRemoval(function (changedDialog) {
                     changedDialog.removedFields.set(objectApiName, removedFieldsOf(changedDialog, objectApiName).add(field.fieldApiName));
                 });
@@ -582,13 +585,13 @@ function buildRootConfirmation(dialog: ICustomTreecipeDialog): HTMLElement {
     boxElement.appendChild(createElement('span', 'customTreecipeAskTitle', 'Remove ' + rootObjectApiName + '?'));
     boxElement.appendChild(createElement('span', '', rootObjectApiName + ' is the root of this tree. Removing it removes every object under it, so nothing is left to save.'));
     const actionsElement = createElement('div', 'customTreecipeAskActions');
-    const keepElement = addControl(createButton('secondary', 'customTreecipeKeepRoot', 'Keep ' + rootObjectApiName), 'Keep ' + rootObjectApiName);
+    const keepElement = addControl(createButton('secondary', 'customTreecipeKeepRoot', 'Keep ' + rootObjectApiName), 'root:keep');
     keepElement.addEventListener('click', function () {
         if (!customTreecipeDialog) { return; }
         customTreecipeDialog.isRootRemovalAsked = false;
         drawCustomTreecipeDialog();
     });
-    const removeElement = addControl(createButton('secondary', 'customTreecipeRemoveRoot', 'Remove ' + rootObjectApiName), 'Remove ' + rootObjectApiName);
+    const removeElement = addControl(createButton('secondary', 'customTreecipeRemoveRoot', 'Remove ' + rootObjectApiName), 'root:remove');
     removeElement.addEventListener('click', function () {
         changeRemoval(function (changedDialog) {
             changedDialog.isRootRemovalAsked = false;
@@ -635,22 +638,26 @@ function buildSaveForm(dialog: ICustomTreecipeDialog): HTMLElement {
     nameInputElement.setAttribute('maxlength', '80');
     nameInputElement.setAttribute('placeholder', RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_PLACEHOLDER);
     nameInputElement.setAttribute('aria-label', RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_LABEL);
+    nameInputElement.value = dialog.typedName;
+    nameInputElement.addEventListener('input', function () {
+        if (customTreecipeDialog) { customTreecipeDialog.typedName = nameInputElement.value; }
+    });
     nameLabelElement.setAttribute('id', 'customTreecipeNameLabel');
-    nameCellElement.appendChild(addControl(nameInputElement, RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_LABEL));
+    nameCellElement.appendChild(addControl(nameInputElement, 'save:name'));
     detailsElement.appendChild(nameLabelElement);
     detailsElement.appendChild(nameCellElement);
     formElement.appendChild(detailsElement);
     dialog.nameInputElement = nameInputElement;
 
     const actionsElement = createElement('div', 'customTreecipeAskActions');
-    const backElement = addControl(createButton('secondary', 'customTreecipeBack', RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL), RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL);
+    const backElement = addControl(createButton('secondary', 'customTreecipeBack', RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL), 'save:back');
     backElement.setAttribute('type', 'button');
     backElement.addEventListener('click', function () {
         if (!customTreecipeDialog) { return; }
         customTreecipeDialog.step = 'edit';
         drawCustomTreecipeDialog();
     });
-    const confirmElement = addControl(createButton('primary', 'customTreecipeConfirmSave', RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL), RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL);
+    const confirmElement = addControl(createButton('primary', 'customTreecipeConfirmSave', RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL), 'save:confirm');
     confirmElement.setAttribute('type', 'button');
     confirmElement.disabled = !preview || !preview.folderName || !!preview.refusal;
     actionsElement.appendChild(backElement);
@@ -677,6 +684,10 @@ function buildSaveForm(dialog: ICustomTreecipeDialog): HTMLElement {
 
 }
 
+function focusWithoutScrolling(element: HTMLElement): void {
+    if (typeof element.focus === 'function') { element.focus({ preventScroll: true }); }
+}
+
 function hasRemovals(dialog: ICustomTreecipeDialog): boolean {
     return dialog.removedObjects.size > 0 || countRemovedFields(dialog) > 0;
 }
@@ -696,7 +707,8 @@ function drawCustomTreecipeDialog(): void {
     dialog.summaryElement.textContent = 'New recipe keeps ' + keptObjectCount + ' of ' + dialog.objects.length + ' objects · ' + keptFieldCount + ' of ' + totalFieldCount + ' fields';
 
     const focusedControl = dialog.controls.find(function (control) { return control.element === document.activeElement; });
-    const focusedLabel = focusedControl ? focusedControl.label : null;
+    const focusedKey = focusedControl ? focusedControl.key : null;
+    const scrollTop = dialog.bodyElement.scrollTop;
     dialog.bodyElement.textContent = '';
     dialog.nameInputElement = null;
     dialog.controls = [];
@@ -723,12 +735,15 @@ function drawCustomTreecipeDialog(): void {
         : '';
 
     // A REDRAW KEEPS THE READER'S PLACE: THE CONTROL THAT WAS FOCUSED, BY ITS LABEL, OR THE NAME BOX ON THE SAVE STEP
+    // THE BODY KEEPS ITS SCROLL, AND FOCUS RETURNS WITHOUT SCROLLING, SO A ✕ DEEP IN A LONG LIST LEAVES THE READER WHERE THEY WERE
+    dialog.bodyElement.scrollTop = scrollTop;
     if (dialog.step === 'save' && dialog.nameInputElement) {
-        focusElement(dialog.nameInputElement);
-    } else if (focusedLabel) {
+        focusWithoutScrolling(dialog.nameInputElement);
+    } else if (focusedKey) {
         const enabledControls = dialog.controls.filter(function (control) { return !control.element.disabled; });
-        const sameControl = enabledControls.find(function (control) { return control.label === focusedLabel; }) || enabledControls[0];
-        focusElement(sameControl ? sameControl.element : dialog.saveElement);
+        const sameControl = enabledControls.find(function (control) { return control.key === focusedKey; })
+            || enabledControls.find(function (control) { return control.key.split(':')[1] === focusedKey.split(':')[1]; });
+        focusWithoutScrolling(sameControl ? sameControl.element : dialog.saveElement);
     }
 
 }
