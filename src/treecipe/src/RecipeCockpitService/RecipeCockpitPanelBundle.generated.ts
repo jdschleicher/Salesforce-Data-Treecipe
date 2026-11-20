@@ -662,9 +662,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER = "Search for org";
   var RECIPE_COCKPIT_ORG_CHOOSE_LABEL = "or choose org";
   var RECIPE_COCKPIT_ORG_UNSELECTED_LABEL = "Choose org…";
-  function buildOrgNoMatchText(searchText) {
-    return 'No org matches "' + searchText + '"';
-  }
+  var RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX = 'No org matches "';
+  var RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX = '"';
   var RECIPE_COCKPIT_INSERT_ACTION_LABEL = "Generate fake data and insert";
   var RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = "No org is chosen yet.";
   var RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = "You will be asked which org to insert into.";
@@ -679,9 +678,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var searchableSelectCount = 0;
   var openSearchableSelect = null;
   var isOutsideClickListenerAdded = false;
-  function isInside(targetElement, rootElement) {
-    for (let currentElement = targetElement; currentElement; currentElement = currentElement.parentNode) {
-      if (currentElement === rootElement) {
+  function isInside(targetNode, rootElement) {
+    for (let currentNode = targetNode; currentNode; currentNode = currentNode.parentNode) {
+      if (currentNode === rootElement) {
         return true;
       }
     }
@@ -796,12 +795,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       focusElement(searchElement);
     }
     function close(isFocusReturned) {
+      const wasSearchFocused = document.activeElement === searchElement;
       if (openSearchableSelect === instance) {
         openSearchableSelect = null;
       }
       setShown(popupElement, false);
       triggerElement.setAttribute("aria-expanded", "false");
-      if (isFocusReturned) {
+      if (isFocusReturned || wasSearchFocused) {
         focusElement(triggerElement);
       }
     }
@@ -809,8 +809,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (triggerElement.disabled || optionIndex < 0 || optionIndex >= optionLabels.length) {
         return;
       }
-      selectedIndex = optionIndex;
-      drawTrigger(optionLabels[optionIndex]);
       close(true);
       settings.onSelect(optionIndex);
     }
@@ -856,7 +854,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         }
         close(true);
       } else if (keyboardEvent.key === "Tab") {
-        close(false);
+        close(true);
       }
     });
     return {
@@ -2863,7 +2861,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     orgElement.appendChild(orgView.element);
     bodyElement.appendChild(orgElement);
     dialog.orgView = orgView;
-    [orgView.loadElement, orgView.orgSelect.triggerElement, orgView.orgSelect.searchElement, orgView.openOrgElement, orgView.refreshElement].forEach(function(element) {
+    [orgView.loadElement, orgView.orgSelect.triggerElement, orgView.openOrgElement, orgView.refreshElement].forEach(function(element) {
       dialog.focusableElements.push(element);
     });
     const tickedKinds = OBJECT_REFRESH_KINDS.filter(function(kind) {
@@ -10342,7 +10340,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         searchPlaceholder: RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
         chooseLabel: RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
         unselectedLabel: RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
-        buildNoMatchText: buildOrgNoMatchText,
+        buildNoMatchText: function(searchText) {
+          return RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX + searchText + RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX;
+        },
         // ONLY AN INDEX THE HOST LISTED: WHILE THE CHECK RUNS THE PICKER HOLDS NO LABEL TO CHOOSE
         onSelect: function(orgIndex) {
           if (dataOrgPicker.isDataOrgChecking) {

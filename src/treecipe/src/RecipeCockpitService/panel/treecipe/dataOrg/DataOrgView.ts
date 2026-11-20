@@ -1,7 +1,6 @@
 import { createButton, createElement, setShown } from '../../../../CockpitKit/panel/CockpitPanelElements';
 import { buildSearchableSelect } from '../../../../CockpitKit/panel/CockpitSearchableSelect';
 import {
-    buildOrgNoMatchText,
     RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP,
@@ -9,6 +8,8 @@ import {
     RECIPE_COCKPIT_OPEN_ORG_LABEL,
     RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX,
+    RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
     RECIPE_COCKPIT_ORG_PICKER_NAME,
     RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
@@ -48,7 +49,7 @@ export function buildDataOrgView(hasOrgAddingButtons?: boolean): IDataOrgView {
             searchPlaceholder: RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
             chooseLabel: RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
             unselectedLabel: RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
-            buildNoMatchText: buildOrgNoMatchText,
+            buildNoMatchText: function (searchText: string) { return RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX + searchText + RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX; },
             // ONLY AN INDEX THE HOST LISTED: WHILE THE CHECK RUNS THE PICKER HOLDS NO LABEL TO CHOOSE
             onSelect: function (orgIndex: number) {
                 if (dataOrgPicker.isDataOrgChecking) { return; }

@@ -33,9 +33,9 @@ export const RECIPE_COCKPIT_ORG_PICKER_NAME = 'Salesforce org the generated data
 export const RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER = 'Search for org';
 export const RECIPE_COCKPIT_ORG_CHOOSE_LABEL = 'or choose org';
 export const RECIPE_COCKPIT_ORG_UNSELECTED_LABEL = 'Choose org…';
-export function buildOrgNoMatchText(searchText: string): string {
-    return 'No org matches "' + searchText + '"';
-}
+// THE TEXT TYPED GOES BETWEEN THEM: No org matches "zzz"
+export const RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX = 'No org matches "';
+export const RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX = '"';
 
 // "alias -- instance url" IN THE PICKER ONLY (#678); EVERY OTHER TEXT NAMING AN ORG KEEPS THE ALIAS ALONE
 export const RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR = ' -- ';

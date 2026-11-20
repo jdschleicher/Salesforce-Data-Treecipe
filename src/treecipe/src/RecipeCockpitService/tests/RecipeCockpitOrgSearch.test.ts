@@ -180,7 +180,27 @@ describe('RecipeCockpitService, Target Org Manager\'s searchable org dropdown (#
 
             expect(postedSelections(panel)).toEqual([{ command: 'selectDataOrg', orgIndex: 2 }]);
             expect(isOrgPickerOpen(pickerElement)).toBe(false);
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 2, orgLabel: 'test-active@example.com', orgTypeLabel: 'Scratch org', isSandbox: true, failureMessage: '', requestSequence: 1, renderSequence: 1 });
             expect(shownOrgLabelOf(pickerElement)).toBe(SCRATCH_LABEL);
+
+        });
+
+        // THE HOST DROPS A CHOICE WITHOUT ANSWERING WHILE AN INSERT, A PROMPT OR AN ADAPTER UPDATE HOLDS THE ORG: THE BUTTON MUST NAME THE ORG WRITES STILL GO TO
+        it('keeps naming the org the host holds until the host answers a choice, so a choice it drops never shows', () => {
+
+            const { panel, pickerElement } = renderPickerPanel(undefined, undefined, 0);
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa (default)', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 1, renderSequence: 1 });
+
+            chooseOrgOption(pickerElement, UAT_LABEL);
+
+            expect(postedSelections(panel)).toEqual([{ command: 'selectDataOrg', orgIndex: 1 }]);
+            expect(shownOrgLabelOf(pickerElement)).toBe(QA_LABEL);
+            expect(selectedOrgIndexOf(pickerElement)).toBe(0);
+
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 1, orgLabel: 'uat', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 2, renderSequence: 1 });
+
+            expect(shownOrgLabelOf(pickerElement)).toBe(UAT_LABEL);
+            expect(selectedOrgIndexOf(pickerElement)).toBe(1);
 
         });
 
@@ -220,6 +240,31 @@ describe('RecipeCockpitService, Target Org Manager\'s searchable org dropdown (#
             searchElement.dispatch('keydown', { key: 'Enter' });
 
             expect(postedSelections(panel)).toEqual([{ command: 'selectDataOrg', orgIndex: 1 }]);
+            expect(isOrgPickerOpen(pickerElement)).toBe(false);
+            expect(panel.activeElement()).toBe(orgPickerTriggerOf(pickerElement));
+
+        });
+
+        it('closes on Tab with focus back on the dropdown, so Tab moves on from there', () => {
+
+            const { panel, pickerElement } = renderPickerPanel();
+            orgPickerTriggerOf(pickerElement).dispatch('click');
+            orgPickerSearchOf(pickerElement).dispatch('keydown', { key: 'Tab' });
+
+            expect(isOrgPickerOpen(pickerElement)).toBe(false);
+            expect(panel.activeElement()).toBe(orgPickerTriggerOf(pickerElement));
+            expect(postedSelections(panel)).toEqual([]);
+
+        });
+
+        it('puts focus back on the dropdown when a run closes it while the reader is typing', () => {
+
+            const { panel, pickerElement } = renderPickerPanel();
+            typeOrgSearch(pickerElement, 'ua');
+            expect(panel.activeElement()).toBe(orgPickerSearchOf(pickerElement));
+
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch')[0].dispatch('click');
+
             expect(isOrgPickerOpen(pickerElement)).toBe(false);
             expect(panel.activeElement()).toBe(orgPickerTriggerOf(pickerElement));
 

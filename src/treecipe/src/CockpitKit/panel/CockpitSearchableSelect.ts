@@ -4,7 +4,8 @@ import { createButton, createElement, focusElement, setShown } from './CockpitPa
     A dropdown a reader can search or choose from (#678): a combobox button that opens a popup with
     a search box, a line inviting a choice, and a listbox of the labels it was given. It knows
     nothing of what the labels name -- the cockpit hands it labels and hears back only the INDEX of
-    the one chosen, so a list of orgs, objects or anything else is drawn the same way. The search
+    the one chosen, so a list of orgs, objects or anything else is drawn the same way. A choice
+    changes nothing on screen until the cockpit draws it with drawOptions. The search
     filters only the labels already drawn; nothing is posted while the reader types. Every label
     goes in through textContent.
 */
@@ -40,9 +41,9 @@ let searchableSelectCount = 0;
 let openSearchableSelect: ISearchableSelectInstance | null = null;
 let isOutsideClickListenerAdded = false;
 
-function isInside(targetElement: unknown, rootElement: HTMLElement): boolean {
-    for (let currentElement = targetElement as { parentNode: unknown } | null; currentElement; currentElement = currentElement.parentNode as { parentNode: unknown } | null) {
-        if (currentElement === (rootElement as unknown)) { return true; }
+function isInside(targetNode: Node | null, rootElement: HTMLElement): boolean {
+    for (let currentNode = targetNode; currentNode; currentNode = currentNode.parentNode) {
+        if (currentNode === rootElement) { return true; }
     }
     return false;
 }
@@ -51,7 +52,7 @@ function addOutsideClickListener(): void {
     if (isOutsideClickListenerAdded) { return; }
     isOutsideClickListenerAdded = true;
     document.addEventListener('click', function (event: Event) {
-        if (openSearchableSelect && !isInside(event.target, openSearchableSelect.rootElement)) { openSearchableSelect.close(false); }
+        if (openSearchableSelect && !isInside(event.target as Node | null, openSearchableSelect.rootElement)) { openSearchableSelect.close(false); }
     }, true);
 }
 
@@ -165,18 +166,19 @@ export function buildSearchableSelect(settings: ISearchableSelectSettings): ISea
 
     function close(isFocusReturned: boolean): void {
 
+        // A REDRAW OR A RUN THAT CLOSES IT UNDER THE READER'S TYPING WOULD OTHERWISE LEAVE FOCUS ON A HIDDEN BOX
+        const wasSearchFocused = document.activeElement === searchElement;
         if (openSearchableSelect === instance) { openSearchableSelect = null; }
         setShown(popupElement, false);
         triggerElement.setAttribute('aria-expanded', 'false');
-        if (isFocusReturned) { focusElement(triggerElement); }
+        if (isFocusReturned || wasSearchFocused) { focusElement(triggerElement); }
 
     }
 
+    // THE BUTTON KEEPS SHOWING WHAT THE CALLER LAST DREW: THE CALLER MAY REFUSE THE CHOICE, AND THEN NOTHING REDRAWS IT
     function choose(optionIndex: number): void {
 
         if (triggerElement.disabled || optionIndex < 0 || optionIndex >= optionLabels.length) { return; }
-        selectedIndex = optionIndex;
-        drawTrigger(optionLabels[optionIndex]);
         close(true);
         settings.onSelect(optionIndex);
 
@@ -213,7 +215,8 @@ export function buildSearchableSelect(settings: ISearchableSelectSettings): ISea
             if (typeof keyboardEvent.stopPropagation === 'function') { keyboardEvent.stopPropagation(); }
             close(true);
         } else if (keyboardEvent.key === 'Tab') {
-            close(false);
+            // FOCUS IS BACK ON THE BUTTON BEFORE THE BROWSER, OR A DIALOG'S FOCUS TRAP, MOVES IT ON FROM THERE
+            close(true);
         }
 
     });

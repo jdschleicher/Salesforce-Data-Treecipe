@@ -1390,7 +1390,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod@example.com'], selectedOrgIndex: 0, noOrgsMessage: '', hiddenOrgNote: 'One org is hidden.', renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod@example.com'], orgPickerLabels: ['qa -- https://acme--qa.sandbox.my.salesforce.com', 'prod@example.com -- https://acme--prod.sandbox.my.salesforce.com'], selectedOrgIndex: 0, noOrgsMessage: '', hiddenOrgNote: 'One org is hidden.', renderSequence: 1 });
             postSelectionAndReadiness(panel, 1);
             const reasonsBefore = insertReasonsOf(panel);
             const buttonsBefore = insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled]);
@@ -1409,7 +1409,8 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({ command: 'dataOrgListingRefused', renderSequence: 1, message: refusalText });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgSpinner'))).toBe(true);
-            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual({ shown: 'qa', options: ['qa', 'prod@example.com'] });
+            // THE PICKER LABELS COME BACK WITH THE REST OF THE PICKER (#678)
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual({ shown: 'qa -- https://acme--qa.sandbox.my.salesforce.com', options: ['qa -- https://acme--qa.sandbox.my.salesforce.com', 'prod@example.com -- https://acme--prod.sandbox.my.salesforce.com'] });
             expect(selectedOrgIndexOf(viewOf(panel, 'dataOrgSelect'))).toBe(0);
             expect(viewOf(panel, 'dataOrgType').textContent).toBe('Sandbox');
             expect(viewOf(panel, 'dataOrgHiddenNote').textContent).toBe('One org is hidden.');
