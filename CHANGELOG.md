@@ -22,6 +22,8 @@ Source format writes no `<referenceTo>` for a standard relationship field, so `Q
     - CampaignMember: CampaignId, ContactId, LeadId
     - Case: AssetId
     - Opportunity: CampaignId, ContractId
+- **A line item still needs its price book.** OpportunityLineItem, OrderItem and QuoteLineItem are wired to a generated PricebookEntry, and that entry's `Product2Id` and the line item's are the same `Product2_NickName` in a faker-js tree. The PricebookEntry's `Pricebook2Id` stays a TODO, since `Pricebook2Id` is unmapped; set it to the org's standard price book before inserting.
+- **CampaignMember maps both `ContactId` and `LeadId`.** A member is usually one or the other, so a recipe that inserts CampaignMember may need one of the two lines removed.
 - **Left unmapped on purpose,** so a tree never inserts a record nobody wants faked. A `customRelationshipMappings` entry still maps any of them.
   - Polymorphic fields (`OwnerId`, `WhoId`, `WhatId`).
   - Fields whose parent is User (`Contract.CompanySignedId`, `Order.CompanyAuthorizedById`).
