@@ -1,8 +1,8 @@
 # Change Log
 
-## [3.202.16] - Recipe Cockpit: unticking a lookup field cuts its object off when that was its only link into the tree (#677, slice A)
+## [3.202.16] - Recipe Cockpit: unticking a lookup field cuts its object off when that was its only link into the tree (foundation for #677)
 
-This is the first slice of #677's "Edit custom treecipe" mode: the cascade rule its red ✕ relies on. Its edit mode comes in a later slice.
+This is the cascade rule #677's "Customize and create new recipe" modal relies on: there, a red ✕ on a lookup field removes what the field linked. The modal and its Save as new Treecipe come in a later change.
 
 - **An unticked lookup field is no longer an edge of the tree.** Before, an object whose only lookup into the tree was unticked stayed included, with no link to its parent. Now it is cut off with its subtree, and its row says `cut off — Contact.AccountId removed`.
   - An object that still has another lookup to an included parent stays included.
