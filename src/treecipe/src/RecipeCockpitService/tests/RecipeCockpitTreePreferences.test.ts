@@ -498,15 +498,16 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         it('asks for no name in a VS Code input box: the box is the panel\'s (#551)', () => {
 
-            const serviceSource = require('fs').readFileSync(path.join(__dirname, '..', 'RecipeCockpitService.ts'), 'utf8') as string;
-            const methodSourceOf = (methodName: string) => {
-                const methodStart = serviceSource.indexOf(`private static async ${methodName}(`);
-                return serviceSource.slice(methodStart, serviceSource.indexOf('\n    }\n', methodStart));
+            // A DATA SET'S RENAME IS THE DATA SETS TAB HOST'S (#667)
+            const methodSourceOf = (fileName: string, methodName: string) => {
+                const fileSource = require('fs').readFileSync(path.join(__dirname, '..', fileName), 'utf8') as string;
+                const methodStart = fileSource.indexOf(`private static async ${methodName}(`);
+                return fileSource.slice(methodStart, fileSource.indexOf('\n    }\n', methodStart));
             };
 
-            ['renameTree', 'renameDataset'].forEach(methodName => {
-                expect(methodSourceOf(methodName)).toContain('validate');
-                expect(methodSourceOf(methodName)).not.toContain('showInputBox');
+            [['RecipeCockpitService.ts', 'renameTree'], ['RecipeCockpitDatasetsHost.ts', 'renameDataset']].forEach(([fileName, methodName]) => {
+                expect(methodSourceOf(fileName, methodName)).toContain('validate');
+                expect(methodSourceOf(fileName, methodName)).not.toContain('showInputBox');
             });
 
         });

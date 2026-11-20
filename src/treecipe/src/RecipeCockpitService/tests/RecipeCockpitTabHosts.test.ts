@@ -20,6 +20,12 @@ import {
 } from '../RecipeCockpitService';
 import { RecipeCockpitQueryHost } from '../RecipeCockpitQueryHost';
 import { RecipeCockpitTroubleshootingHost } from '../RecipeCockpitTroubleshootingHost';
+import * as RecipeCockpitDatasetsHostModule from '../RecipeCockpitDatasetsHost';
+import {
+    RECIPE_COCKPIT_DATASETS_ACTION_KINDS,
+    RECIPE_COCKPIT_DATASETS_COMMANDS,
+    RecipeCockpitDatasetsHost
+} from '../RecipeCockpitDatasetsHost';
 import * as RecipeCockpitQueryHostModule from '../RecipeCockpitQueryHost';
 import * as RecipeCockpitTroubleshootingHostModule from '../RecipeCockpitTroubleshootingHost';
 import * as RecipeCockpitTroubleshootingRunsModule from '../RecipeCockpitTroubleshootingRuns';
@@ -61,6 +67,8 @@ interface ITabHost {
     // A PURE MODULE ONLY THIS TAB'S HOST MAY IMPORT, OF THE HOSTS AND THE HUB
     pureModuleFileNames: string[];
     hubUsesStillOwed: IHubUseStillOwed[];
+    // ANOTHER TAB'S HOST THAT MAY IMPORT ONE OF THIS TAB'S PURE MODULES TOO, AND WHY
+    sharedWithHosts?: { pureModuleFileName: string; hostFileName: string; reason: string }[];
 }
 
 const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays in the hub';
@@ -146,12 +154,6 @@ const TAB_HOSTS: ITabHost[] = [
                 owedBy: '#668 (the Adapter\'s apply) and #669 (Get latest object detail)'
             },
             {
-                pureModuleFileName: 'RecipeCockpitRunHistory.ts',
-                importedNames: ['RUN_HISTORY_STEP_LABELS', 'RecipeCockpitRunHistory', 'RunHistoryRowStatus'],
-                members: ['formatTimeLabel'],
-                owedBy: '#667: a data set row\'s insert journey lists the same steps'
-            },
-            {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
                 importedNames: ['RecipeCockpitValidationRuleList'],
                 members: ['buildRuleSourceKey', 'resolveRuleSourceFilePaths'],
@@ -162,6 +164,31 @@ const TAB_HOSTS: ITabHost[] = [
                 importedNames: ['IRemovedTodoFileRead', 'RecipeCockpitRemovedTodoStore'],
                 members: ['addEntry', 'buildFilePath', 'isSameEntry', 'parse', 'removeEntry', 'serialize'],
                 owedBy: '#669: removing and restoring a TODO writes the recipe, and the model reads the removed list'
+            }
+        ],
+        sharedWithHosts: [
+            {
+                pureModuleFileName: 'RecipeCockpitRunHistory.ts',
+                hostFileName: 'RecipeCockpitDatasetsHost.ts',
+                reason: 'a data set row\'s insert journey (#471) lists the same Troubleshooting steps, with the same labels and times'
+            }
+        ]
+    },
+    {
+        tabName: 'Previously Used Data Sets',
+        hostClassName: 'RecipeCockpitDatasetsHost',
+        hostFileNames: ['RecipeCockpitDatasetsHost.ts'],
+        hostModules: [RecipeCockpitDatasetsHostModule],
+        commands: RECIPE_COCKPIT_DATASETS_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_DATASETS_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitDatasetsHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: ['RecipeCockpitDatasetJourney.ts', 'RecipeCockpitTreeHistory.ts'],
+        hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitTreeHistory.ts',
+                importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'IRecipeCockpitTreeHistoryTargets', 'IRecipeCockpitTreeHistoryViewModel', 'RecipeCockpitTreeHistory'],
+                members: ['buildEmptyTargets', 'buildTreeHistories', 'buildUnmatchedDatasetsNotice'],
+                owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from, which only the hub writes'
             }
         ]
     }
@@ -383,7 +410,8 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                                     strayImports.push(`${HUB_FILE_NAME}: ${importDeclaration.getText()}`);
                                 }
                                 hubImportedNames.push(...importedNames(importDeclaration));
-                            } else if ( HOST_FILE_NAMES.includes(fileName) && !tabHost.hostFileNames.includes(fileName) ) {
+                            } else if ( HOST_FILE_NAMES.includes(fileName) && !tabHost.hostFileNames.includes(fileName)
+                                    && !( tabHost.sharedWithHosts ?? [] ).some(sharedWith => sharedWith.pureModuleFileName === pureModuleFileName && sharedWith.hostFileName === fileName) ) {
                                 strayImports.push(`${fileName}: ${pureModuleFileName}`);
                             }
                         });

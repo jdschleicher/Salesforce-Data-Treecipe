@@ -3,10 +3,10 @@ import * as path from 'path';
 jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
-    IRecipeCockpitDatasetJourneyMessage,
     IRecipeCockpitRecipeViewModel,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import { IRecipeCockpitDatasetJourneyMessage } from '../RecipeCockpitDatasetsHost';
 import { IRecipeCockpitTroubleshootingHistoryMessage } from '../RecipeCockpitTroubleshootingHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 

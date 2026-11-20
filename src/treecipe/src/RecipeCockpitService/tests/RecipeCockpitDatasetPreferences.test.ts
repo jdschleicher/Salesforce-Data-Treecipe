@@ -14,17 +14,20 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitDatasetPreferences,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY,
-    RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
     RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
     RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitDatasetPreferences,
+    RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY,
+    RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
+    RecipeCockpitDatasetsHost
+} from '../RecipeCockpitDatasetsHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -81,20 +84,20 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
             const isEmpty = (datasetPreferences: IRecipeCockpitDatasetPreferences) => datasetPreferences.customNamesByFolderName.size === 0 && datasetPreferences.favoriteFolderNames.size === 0;
 
-            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(undefined))).toBe(true);
-            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(buildWorkspaceState()))).toBe(true);
-            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(buildWorkspaceState({
+            expect(isEmpty(RecipeCockpitDatasetsHost.readDatasetPreferences(RecipeCockpitService, undefined))).toBe(true);
+            expect(isEmpty(RecipeCockpitDatasetsHost.readDatasetPreferences(RecipeCockpitService, buildWorkspaceState()))).toBe(true);
+            expect(isEmpty(RecipeCockpitDatasetsHost.readDatasetPreferences(RecipeCockpitService, buildWorkspaceState({
                 [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: { ...storedPreferences({ [ACCOUNT_DATASET]: 'Seed' }), version: RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION + 1 }
             })))).toBe(true);
 
             const throwingState = { get: () => { throw new Error('no state'); }, update: jest.fn() };
-            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(throwingState as any))).toBe(true);
+            expect(isEmpty(RecipeCockpitDatasetsHost.readDatasetPreferences(RecipeCockpitService, throwingState as any))).toBe(true);
 
         });
 
         it('drops each entry that could not have been saved and keeps the rest, a folder named __proto__ included', () => {
 
-            const datasetPreferences = RecipeCockpitService.readDatasetPreferences(buildWorkspaceState({
+            const datasetPreferences = RecipeCockpitDatasetsHost.readDatasetPreferences(RecipeCockpitService, buildWorkspaceState({
                 [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: JSON.parse(JSON.stringify(storedPreferences({
                     [ACCOUNT_DATASET]: 'Seed',
                     ['__proto__']: 'Prototype data set',
@@ -115,10 +118,10 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const workspaceState = buildWorkspaceState();
             const datasetPreferences = buildPreferences({ [ACCOUNT_DATASET]: 'Seed', ['__proto__']: 'Prototype data set' }, [LEAD_DATASETS[1]]);
 
-            await expect(RecipeCockpitService.writeDatasetPreferences(workspaceState, datasetPreferences)).resolves.toBe(true);
+            await expect(RecipeCockpitDatasetsHost.writeDatasetPreferences(RecipeCockpitService, workspaceState, datasetPreferences)).resolves.toBe(true);
 
             expect(workspaceState.storedValues.has(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY)).toBe(false);
-            expect(RecipeCockpitService.readDatasetPreferences(workspaceState)).toEqual(datasetPreferences);
+            expect(RecipeCockpitDatasetsHost.readDatasetPreferences(RecipeCockpitService, workspaceState)).toEqual(datasetPreferences);
 
         });
 
@@ -128,8 +131,8 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const failingState = buildWorkspaceState();
             failingState.update.mockImplementation(() => Promise.reject(new Error('read-only [x](command:y)')));
 
-            await expect(RecipeCockpitService.writeDatasetPreferences(undefined, buildPreferences())).resolves.toBe(false);
-            await expect(RecipeCockpitService.writeDatasetPreferences(failingState, buildPreferences())).resolves.toBe(false);
+            await expect(RecipeCockpitDatasetsHost.writeDatasetPreferences(RecipeCockpitService, undefined, buildPreferences())).resolves.toBe(false);
+            await expect(RecipeCockpitDatasetsHost.writeDatasetPreferences(RecipeCockpitService, failingState, buildPreferences())).resolves.toBe(false);
 
             expect(warningSpy.mock.calls[0][0]).toContain('data set names and favorites');
             expect(warningSpy.mock.calls[1][0]).toContain('The data set name or favorite could not be saved');
@@ -145,20 +148,20 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         it('accepts an empty name, which clears it, and a name no other data set has', () => {
 
-            expect(RecipeCockpitService.validateDatasetName('   ', ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
-            expect(RecipeCockpitService.validateDatasetName(' Seed ', ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, '   ', ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, ' Seed ', ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
             // ITS OWN NAME AND ITS OWN FOLDER ARE NOT "ANOTHER" DATA SET'S
-            expect(RecipeCockpitService.validateDatasetName('Seed', ACCOUNT_DATASET, buildPreferences({ [ACCOUNT_DATASET]: 'Seed' }), trees())).toBeUndefined();
-            expect(RecipeCockpitService.validateDatasetName(ACCOUNT_DATASET, ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, 'Seed', ACCOUNT_DATASET, buildPreferences({ [ACCOUNT_DATASET]: 'Seed' }), trees())).toBeUndefined();
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, ACCOUNT_DATASET, ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
 
         });
 
         it('refuses another data set\'s name or folder name, without case, and one that is not one short line', () => {
 
-            expect(RecipeCockpitService.validateDatasetName('SEED', ACCOUNT_DATASET, buildPreferences({ 'dataset-gone': 'Seed' }), trees())).toContain('already has that name');
-            expect(RecipeCockpitService.validateDatasetName(LEAD_DATASETS[0].toUpperCase(), ACCOUNT_DATASET, buildPreferences(), trees())).toContain('already has that name');
-            expect(RecipeCockpitService.validateDatasetName('One Two', ACCOUNT_DATASET, buildPreferences(), trees())).toContain('one line');
-            expect(RecipeCockpitService.validateDatasetName('n'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH + 1), ACCOUNT_DATASET, buildPreferences(), trees()))
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, 'SEED', ACCOUNT_DATASET, buildPreferences({ 'dataset-gone': 'Seed' }), trees())).toContain('already has that name');
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, LEAD_DATASETS[0].toUpperCase(), ACCOUNT_DATASET, buildPreferences(), trees())).toContain('already has that name');
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, 'One Two', ACCOUNT_DATASET, buildPreferences(), trees())).toContain('one line');
+            expect(RecipeCockpitDatasetsHost.validateDatasetName(RecipeCockpitService, 'n'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH + 1), ACCOUNT_DATASET, buildPreferences(), trees()))
                 .toContain(`at most ${RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH}`);
 
         });
@@ -170,7 +173,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
         it('names and stars every row of a data set, and takes off what was cleared', () => {
 
             const recipe = loadRecipe();
-            RecipeCockpitService.applyDatasetPreferences(recipe.trees, buildPreferences({ [LEAD_DATASETS[1]]: 'Before the fix' }, [ACCOUNT_DATASET]));
+            RecipeCockpitDatasetsHost.applyDatasetPreferences(recipe.trees, buildPreferences({ [LEAD_DATASETS[1]]: 'Before the fix' }, [ACCOUNT_DATASET]));
 
             const leadDatasets = recipe.trees[1].history!.datasets;
             expect(recipe.trees[0].history!.datasets[0]).toMatchObject({ datasetFolderName: ACCOUNT_DATASET, isFavorite: true });
@@ -178,7 +181,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(leadDatasets[0].customName).toBeUndefined();
             expect(leadDatasets[0].isFavorite).toBeUndefined();
 
-            RecipeCockpitService.applyDatasetPreferences(recipe.trees, buildPreferences());
+            RecipeCockpitDatasetsHost.applyDatasetPreferences(recipe.trees, buildPreferences());
 
             expect(recipe.trees[0].history!.datasets[0].isFavorite).toBeUndefined();
             expect(leadDatasets[1].customName).toBeUndefined();
