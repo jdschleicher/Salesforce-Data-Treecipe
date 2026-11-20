@@ -26,13 +26,16 @@
 			// There is no built-in esbuild matcher, so this keys on esbuild's own watch output:
 			//   [watch] build started / [watch] build finished, watching for changes...
 			// Errors themselves still surface from the tsc half, which owns typechecking.
+			// VS Code rejects a pattern without a file group, and esbuild puts the file two lines
+			// below its "✘ [ERROR]" line (a blank line between), which no pattern can join -- so
+			// this pattern deliberately never matches; only the background markers matter here.
 			"problemMatcher": [
 				{
 					"pattern": [
 						{
-							"regexp": "^\\s*(✘|▲)\\s+\\[(ERROR|WARNING)\\]\\s+(.*)$",
-							"severity": 2,
-							"message": 3
+							"regexp": "^__esbuild_errors_are_reported_by_watch_typecheck__(.*):(.*)$",
+							"file": 1,
+							"message": 2
 						}
 					],
 					"background": {
