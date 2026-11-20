@@ -9,19 +9,19 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
   - A data set row's insert and its confirmation, record counts, last insert and new-row post (`postAddedDataset`).
   - The insert journey, and the data set names and favourites kept in workspaceState.
 - **Some data set code stays in the hub, because the hub or other tabs use it:**
-  - The journey and partial-render acks, since only the hub promotes allow-lists.
-  - The allow-list writes the host calls the hub to make.
-  - The insert lock the tree insert shares.
+  - The journey and partial-render acks. The host stages pending allow-list entries and narrows active ones, as before, but only the hub promotes pending to active.
+  - The insert lock, on the hub's panel state and replayed by it. A row's insert takes and releases it, and a tree insert holds the same lock.
   - The name-preference store, shared with tree names and favourites until #669.
   - Building the model's data set rows.
 - **The hub no longer uses `RecipeCockpitDatasetJourney` or `RecipeCockpitRunHistory`.** The Troubleshooting row's owed `RecipeCockpitRunHistory` entry is gone.
 - **Two constants moved.** `RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL` is now in `RecipeCockpitNavigationConstants.ts`, since both renames say it. The data set insert's place in the hub's "Change org…" list is now `RECIPE_COCKPIT_DATASETS_ORG_CHANGE_ACTION_KINDS`.
-- **`RecipeCockpitTabHosts.test.ts` has a Data Sets row.** `RecipeCockpitRunHistory` may be imported by both the Troubleshooting host and this one, since a journey lists the same steps. Any other host importing it fails.
+- **`RecipeCockpitTabHosts.test.ts` has a Data Sets row.** `RecipeCockpitRunHistory` may be imported by both the Troubleshooting host and this one, since a journey lists the same steps. The test lists exactly the names and members this host takes, and fails on any more, on a stale entry, or on any other host importing it.
+- **`readTreeFocus` moved to the host,** since only a data set row's click reads it.
 - **Tests changed only to reach code where it now lives.**
   - They import the moved names from the host.
   - A test calling a moved method passes the hub first.
   - The rename and confirmation source scans read the host too.
-- **`RecipeCockpitService.ts` went from 18,888 lines to 17,896.**
+- **`RecipeCockpitService.ts` went from 18,888 lines to 17,885.**
 
 ## [3.202.13] - The Troubleshooting tab's host code is three modules of its own, handed its messages by the hub (#666, slice 2 of #566)
 

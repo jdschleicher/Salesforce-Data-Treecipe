@@ -49,16 +49,17 @@ import type {
     IRecipeCockpitTreeFocus,
     IRecipeCockpitTreeViewModel,
     IRecipeCockpitWorkspaceState,
-    RecipeCockpitPanelAction,
     RecipeCockpitService
 } from './RecipeCockpitService';
 
 /*
     The Previously Used Data Sets tab's host half (moved out of the hub by #667, after #665's pattern):
     the messages it answers and the actions they route to, a data set row's insert, its record counts
-    and last insert, its journey, and the names and favourites the reader keeps for it. The hub owns
-    the panel, its state and every allow-list: it writes a new row into the lists and promotes them on
-    the panel's acks, and it holds the insert lock the tree insert shares.
+    and last insert, its journey, and the names and favourites the reader keeps for it. The host stages
+    PENDING allow-list entries for what it posts and narrows the active ones it replaces; only the hub
+    promotes pending to active, on the panel's acks. The insert lock lives on the hub's panel state,
+    which the hub replays to a reloaded panel: a row's insert takes it and releases it, and a tree
+    insert holds the same lock.
 */
 
 /*
@@ -78,7 +79,6 @@ export type IRecipeCockpitHubForDatasetsTab = Readonly<Pick<typeof RecipeCockpit
     'postToPanel' |
     'promptAndSelectDataOrg' |
     'readNamePreferences' |
-    'readTreeFocus' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
@@ -302,7 +302,7 @@ export class RecipeCockpitDatasetsHost {
                     return undefined;
                 }
 
-                const focusTree = hub.readTreeFocus(panelMessage, panelState);
+                const focusTree = this.readTreeFocus(panelMessage, panelState);
 
                 return {
                     kind: 'openDataset',
@@ -348,7 +348,7 @@ export class RecipeCockpitDatasetsHost {
                     return { kind: 'refuseDatasetInsert', refusalText: RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL };
                 }
 
-                const focusTree = hub.readTreeFocus(panelMessage, panelState);
+                const focusTree = this.readTreeFocus(panelMessage, panelState);
                 const datasetInsert = {
                     kind: 'insertDataset' as const,
                     datasetFolderName: datasetFolderName,
@@ -632,7 +632,7 @@ export class RecipeCockpitDatasetsHost {
     // A DATA SET'S NAME, TYPED IN ITS ROW'S INLINE BOX (#551) AND CHECKED AS A CARD'S IS, ON THE PREFERENCES AS THEY ARE NOW
     private static async renameDataset(hub: IRecipeCockpitHubForDatasetsTab, cockpitPanel: vscode.WebviewPanel,
                                         panelState: IRecipeCockpitPanelState,
-                                        renameAction: Extract<RecipeCockpitPanelAction, { kind: 'renameDataset' }>) {
+                                        renameAction: Extract<RecipeCockpitDatasetsPanelAction, { kind: 'renameDataset' }>) {
 
         const { datasetFolderName, name, renderSequence } = renameAction;
         const datasetPreferences = this.readDatasetPreferences(hub, hub.recipeCockpitWorkspaceState);
@@ -945,7 +945,7 @@ export class RecipeCockpitDatasetsHost {
     */
     private static async insertDatasetIntoOrg(hub: IRecipeCockpitHubForDatasetsTab, cockpitPanel: vscode.WebviewPanel,
                                                 panelState: IRecipeCockpitPanelState,
-                                                insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertDataset' }>) {
+                                                insertAction: Extract<RecipeCockpitDatasetsPanelAction, { kind: 'insertDataset' }>) {
 
         const { datasetFolderName, datasetFolderPath } = insertAction;
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
@@ -981,7 +981,7 @@ export class RecipeCockpitDatasetsHost {
     // A DATA SET GONE SINCE THE DRAW ASKS FOR NO ORG; WITH NO SELECTION THE ORG IS ASKED FOR ONCE, AND ONLY A SANDBOX GOES ON
     private static async runDatasetInsertSteps(hub: IRecipeCockpitHubForDatasetsTab, cockpitPanel: vscode.WebviewPanel,
                                                 panelState: IRecipeCockpitPanelState,
-                                                insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertDataset' }>,
+                                                insertAction: Extract<RecipeCockpitDatasetsPanelAction, { kind: 'insertDataset' }>,
                                                 clickedRecipeDataMessage: IRecipeCockpitRecipeDataMessage | undefined,
                                                 isClickStillCurrent: () => boolean): Promise<'sent' | 'missing' | 'notSent'> {
 
@@ -1020,7 +1020,7 @@ export class RecipeCockpitDatasetsHost {
     */
     private static async performDatasetInsert(hub: IRecipeCockpitHubForDatasetsTab, cockpitPanel: vscode.WebviewPanel,
                                                 panelState: IRecipeCockpitPanelState,
-                                                insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertDataset' }>,
+                                                insertAction: Extract<RecipeCockpitDatasetsPanelAction, { kind: 'insertDataset' }>,
                                                 isClickStillCurrent: () => boolean,
                                                 onDatasetMissing: () => void): Promise<boolean> {
 
@@ -1158,6 +1158,18 @@ export class RecipeCockpitDatasetsHost {
                 { title: 'What happens next', lines: ['You choose all-or-none next.', 'The data set is inserted the way Insert Data Set by Directory inserts, and the results are written to its InsertAttempts folder.'] }
             ]
         };
+
+    }
+
+    // THE CARD AND TAB A DATA SET ROW'S CLICK CAME FROM, WHEN IT IS A DRAWN CARD'S DATA SETS TAB: WHERE A RELOAD PUTS THE READER BACK
+    private static readTreeFocus(panelMessage: IRecipeCockpitPanelMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitTreeFocus | undefined {
+
+        const { treeKey, tab } = panelMessage;
+        const isDatasetsTab = tab === 'datasets';
+        const isRenderedTree = typeof treeKey === 'string'
+                                && !!panelState.recipeDataMessage?.recipe.trees.some(tree => tree.treeKey === treeKey);
+
+        return isDatasetsTab && isRenderedTree ? { treeKey: treeKey as string, tab: tab } : undefined;
 
     }
 

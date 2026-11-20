@@ -16120,17 +16120,6 @@ export class RecipeCockpitService {
 
     }
 
-    static readTreeFocus(panelMessage: IRecipeCockpitPanelMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitTreeFocus | undefined {
-
-        const { treeKey, tab } = panelMessage;
-        const isDatasetsTab = tab === 'datasets';
-        const isRenderedTree = typeof treeKey === 'string'
-                                && !!panelState.recipeDataMessage?.recipe.trees.some(tree => tree.treeKey === treeKey);
-
-        return isDatasetsTab && isRenderedTree ? { treeKey: treeKey as string, tab: tab } : undefined;
-
-    }
-
     /*
         What a (re)loaded document is brought back to: the model if there is one, then a failure if
         the load died -- the structure on screen is still worth showing, and the reader still has to

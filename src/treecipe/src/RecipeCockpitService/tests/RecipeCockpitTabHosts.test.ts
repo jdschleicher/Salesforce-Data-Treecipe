@@ -67,8 +67,8 @@ interface ITabHost {
     // A PURE MODULE ONLY THIS TAB'S HOST MAY IMPORT, OF THE HOSTS AND THE HUB
     pureModuleFileNames: string[];
     hubUsesStillOwed: IHubUseStillOwed[];
-    // ANOTHER TAB'S HOST THAT MAY IMPORT ONE OF THIS TAB'S PURE MODULES TOO, AND WHY
-    sharedWithHosts?: { pureModuleFileName: string; hostFileName: string; reason: string }[];
+    // ANOTHER TAB'S HOST THAT MAY IMPORT ONE OF THIS TAB'S PURE MODULES TOO: EXACTLY WHICH NAMES AND MEMBERS, AND WHY
+    sharedWithHosts?: { pureModuleFileName: string; hostFileName: string; importedNames: string[]; members: string[]; reason: string }[];
 }
 
 const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays in the hub';
@@ -170,6 +170,8 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitRunHistory.ts',
                 hostFileName: 'RecipeCockpitDatasetsHost.ts',
+                importedNames: ['RUN_HISTORY_STEP_LABELS', 'RecipeCockpitRunHistory', 'RunHistoryRowStatus'],
+                members: ['formatTimeLabel'],
                 reason: 'a data set row\'s insert journey (#471) lists the same Troubleshooting steps, with the same labels and times'
             }
         ]
@@ -188,7 +190,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitTreeHistory.ts',
                 importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'IRecipeCockpitTreeHistoryTargets', 'IRecipeCockpitTreeHistoryViewModel', 'RecipeCockpitTreeHistory'],
                 members: ['buildEmptyTargets', 'buildTreeHistories', 'buildUnmatchedDatasetsNotice'],
-                owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from, which only the hub writes'
+                owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from'
             }
         ]
     }
@@ -436,6 +438,26 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
             })));
 
         });
+
+        // A SHARED MODULE IS TAKEN EXACTLY AS LISTED: A NEW NAME OR MEMBER FAILS, AND SO DOES AN ALLOWANCE NO IMPORT USES ANY MORE
+        ( tabHost.sharedWithHosts ?? [] ).forEach(sharedWith => test(`shares ${sharedWith.pureModuleFileName} with ${sharedWith.hostFileName} exactly as listed`, () => {
+
+            const sharingHostSource = parse(path.join(COCKPIT_FOLDER, sharedWith.hostFileName));
+            const sharedModulePath = path.join(COCKPIT_FOLDER, sharedWith.pureModuleFileName);
+            const takenNames = importsOf(sharingHostSource)
+                .filter(importDeclaration => resolvedImportPath(sharingHostSource, importDeclaration) === sharedModulePath)
+                .flatMap(importDeclaration => importedNames(importDeclaration));
+            const takenMembers = new Set<string>();
+            visit(sharingHostSource, node => {
+                if ( ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && takenNames.includes(node.expression.text) ) {
+                    takenMembers.add(node.name.text);
+                }
+            });
+
+            expect([...takenNames].sort()).toEqual([...sharedWith.importedNames].sort());
+            expect([...takenMembers].sort()).toEqual([...sharedWith.members].sort());
+
+        }));
 
         test.each(tabHost.hostFileNames)('%s never loads the hub, directly or through another module, so the hub it is imported by never loads half-built', hostFileName => {
 
