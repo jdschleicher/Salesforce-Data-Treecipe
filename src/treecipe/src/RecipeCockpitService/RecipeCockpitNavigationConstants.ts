@@ -69,3 +69,6 @@ export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this ru
     RecipeCockpitPanelBundle.test.ts fails when the two differ.
 */
 export const RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;
+
+// WHAT THE INLINE NAME EDITOR (#551) SAYS UNDER ITS BOX WHEN workspaceState WOULD NOT TAKE THE NAME; THE WARNING SAYS WHY. A TREE'S AND A DATA SET'S RENAME BOTH SAY IT
+export const RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL = 'The name could not be saved, so it was not changed.';

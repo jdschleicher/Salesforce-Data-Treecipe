@@ -42,6 +42,7 @@ const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 const SERVICE_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitService.ts');
 const TROUBLESHOOTING_RUNS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTroubleshootingRuns.ts');
+const DATASETS_HOST_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitDatasetsHost.ts');
 const EXTENSION_COMMAND_SERVICE_SOURCE_PATH = path.join(__dirname, '..', '..', 'ExtensionCommandService', 'ExtensionCommandService.ts');
 
 const flushMicrotasks = () => new Promise(resolve => setImmediate(resolve));
@@ -719,8 +720,8 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         it('asks no cockpit confirmation in VS Code\'s modal', () => {
 
-            // THE HUB AND THE TAB HOSTS IT HANDS RUNS TO (#666), WHICH ASK THROUGH THE HUB'S confirmInPanel
-            const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
+            // THE HUB AND THE TAB HOSTS IT HANDS RUNS TO (#666, #667), WHICH ASK THROUGH THE HUB'S confirmInPanel
+            const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH, DATASETS_HOST_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
             expect(serviceSource.match(/(this|hub)\.confirmInPanel\(/g) ?? []).toHaveLength(23);

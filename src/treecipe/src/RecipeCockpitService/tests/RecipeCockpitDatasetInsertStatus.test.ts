@@ -20,9 +20,12 @@ import {
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
-    RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY,
-    RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL
+    RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
+    RecipeCockpitDatasetsHost
+} from '../RecipeCockpitDatasetsHost';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -212,7 +215,7 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
             const cockpitPanel = { webview: { postMessage: jest.fn() } };
 
-            const isPosted = RecipeCockpitService.postAddedDataset(cockpitPanel as any, panelState, recipeDataMessage, path.join(fakeDataSetsPath(), addedFolderName));
+            const isPosted = RecipeCockpitDatasetsHost.postAddedDataset(RecipeCockpitService, cockpitPanel as any, panelState, recipeDataMessage, path.join(fakeDataSetsPath(), addedFolderName));
 
             expect(isPosted).toBe(true);
             // THE STORED MODEL A REVEAL REPLAYS CARRIES THE ROW'S STATUS, AND NO PATH

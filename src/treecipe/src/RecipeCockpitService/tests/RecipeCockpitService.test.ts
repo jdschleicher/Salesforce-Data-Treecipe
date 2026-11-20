@@ -40,10 +40,6 @@ import {
     RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
     RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
-    RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
-    RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL,
-    RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL,
-    RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_INSERT_RUNNING_LABEL,
@@ -53,6 +49,13 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_CUSTOM_PROPERTIES
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_NOT_SANDBOX_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_SELECTION_CHANGED_REFUSAL,
+    RecipeCockpitDatasetsHost
+} from '../RecipeCockpitDatasetsHost';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { DatasetSourceService, DATASET_COLLECTIONS_API_FOLDER_NAME, IDatasetListing, IDatasetSourceReadResult } from '../../DatasetSourceService/DatasetSourceService';
@@ -3595,7 +3598,7 @@ describe('RecipeCockpitService', () => {
                     const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
                     const insertAction = { kind: 'insertDataset', datasetFolderName: DATASET_FOLDER_NAME, datasetFolderPath: datasetFolderPath, isOrgToPrompt: false };
                     const performDatasetInsert = (panelState: IRecipeCockpitPanelState) =>
-                        (RecipeCockpitService as any).performDatasetInsert({}, panelState, insertAction, () => true, () => undefined);
+                        (RecipeCockpitDatasetsHost as any).performDatasetInsert(RecipeCockpitService, {}, panelState, insertAction, () => true, () => undefined);
 
                     const unselectedPanelState = buildHistoryPanelState();
                     await expect(performDatasetInsert(unselectedPanelState)).resolves.toBe(false);
@@ -3627,7 +3630,7 @@ describe('RecipeCockpitService', () => {
             describe('what a data set\'s insert confirmation says (#541)', () => {
 
                 const buildContent = (recordCountsByObject: Record<string, number>, unreadableFileNames: string[] = [], customName?: string) =>
-                    RecipeCockpitService.buildDatasetInsertConfirmationContent('dataset-2026-09-21T00-00-00', customName, 'qa (qa@example.com)',
+                    RecipeCockpitDatasetsHost.buildDatasetInsertConfirmationContent('dataset-2026-09-21T00-00-00', customName, 'qa (qa@example.com)',
                         { isSandbox: true, organizationType: 'Developer Edition' }, { recordCountsByObject, unreadableFileNames });
 
                 it('totals the records, lists each object in name order, and names the data set by its folder', () => {
@@ -3653,7 +3656,7 @@ describe('RecipeCockpitService', () => {
 
                 it('finds no row for a data set no card lists', () => {
 
-                    expect((RecipeCockpitService as any).findDatasetEntry(loadHistoryRecipe().recipeViewModel, 'dataset-not-listed')).toBeUndefined();
+                    expect((RecipeCockpitDatasetsHost as any).findDatasetEntry(loadHistoryRecipe().recipeViewModel, 'dataset-not-listed')).toBeUndefined();
 
                 });
 
@@ -3770,7 +3773,7 @@ describe('RecipeCockpitService', () => {
                 const listedDatasetFolderName = loadedRecipe.recipeViewModel.trees.flatMap(tree => tree.history?.datasets ?? [])[0].datasetFolderName;
                 const fakePanel = { webview: { postMessage: jest.fn() } } as any;
 
-                expect(RecipeCockpitService.postAddedDataset(fakePanel, panelState, recipeDataMessage, path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets', listedDatasetFolderName))).toBe(false);
+                expect(RecipeCockpitDatasetsHost.postAddedDataset(RecipeCockpitService, fakePanel, panelState, recipeDataMessage, path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets', listedDatasetFolderName))).toBe(false);
                 expect(fakePanel.webview.postMessage).not.toHaveBeenCalled();
 
             });

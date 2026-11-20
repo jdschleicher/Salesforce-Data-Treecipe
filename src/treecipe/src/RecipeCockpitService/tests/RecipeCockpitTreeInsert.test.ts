@@ -68,11 +68,13 @@ import {
     RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
     RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
-    RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
-    RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
-    RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
+    RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
+    RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER
+} from '../RecipeCockpitDatasetsHost';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
