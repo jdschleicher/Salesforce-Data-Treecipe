@@ -21,6 +21,11 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
   - The shared retrieve runner, locks and retrieve notification.
 - **The hub no longer uses `RecipeCockpitQuery`.** It also drops most of what it took from `RecipeCockpitMetadataDeploy` and `RecipeCockpitPermissionSetGenerate`; what remains is Get latest object detail's (#669).
 - **Two button labels moved.** `RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL` and `RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL` are now in `RecipeCockpitDataOrgConstants.ts`, since the tree insert's and the Adapter update's notifications both say them.
+- **`RecipeCockpitTabHosts.test.ts` checks three more rules for each tab:**
+  - A tab's files load one way, in the order its row lists them, so an import back up the chain fails.
+  - A tab loads another tab's host file only where its row's `loadsOtherHosts` says so and why.
+  - No file outside a tab assigns its classes' state.
+- **A preview's held-data tokens are private.** `RecipeCockpitRecordLinks.readHeldSourceToken` reads one, so no other module can reset the map that the "still held" check reads.
 - **`RecipeCockpitTabHosts.test.ts` has Adapter and record-links rows.**
   - The Query and Troubleshooting modules the Adapter imports are listed exactly as shared.
   - The hub's owed lists are shorter.

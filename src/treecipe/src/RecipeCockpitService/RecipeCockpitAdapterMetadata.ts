@@ -702,7 +702,7 @@ export class RecipeCockpitAdapterMetadata {
             title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating ${describeRecords(recordCount, childObjectApiName)} with ${heldChild.fakerService}`),
             cancellable: true
         }, async (progress, cancellationToken) => {
-            generation = await RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, 
+            generation = await RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub,
                 heldChild.fakerService,
                 childObjectApiName,
                 recordCount,

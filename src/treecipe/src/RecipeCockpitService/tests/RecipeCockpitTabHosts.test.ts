@@ -74,7 +74,7 @@ interface IHubUseStillOwed {
 interface ITabHost {
     tabName: string;
     hostClassName: string;
-    // THE FILES THE TAB'S HOST HALF IS: THE FIRST HOLDS ITS ROUTER AND EXECUTOR
+    // THE FILES THE TAB'S HOST HALF IS, IN LOAD ORDER: THE FIRST HOLDS ITS ROUTER AND EXECUTOR, AND EACH LOADS ONLY THE ONES AFTER IT
     hostFileNames: string[];
     hostModules: Record<string, unknown>[];
     commands: readonly string[];
@@ -85,6 +85,8 @@ interface ITabHost {
     hubUsesStillOwed: IHubUseStillOwed[];
     // ANOTHER TAB'S HOST THAT MAY IMPORT ONE OF THIS TAB'S PURE MODULES TOO: EXACTLY WHICH NAMES AND MEMBERS, AND WHY
     sharedWithHosts?: { pureModuleFileName: string; hostFileName: string; importedNames: string[]; members: string[]; reason: string }[];
+    // ANOTHER TAB'S HOST FILE ONE OF THIS TAB'S FILES LOADS AT RUN TIME, AND WHY
+    loadsOtherHosts?: { fileName: string; otherHostFileName: string; reason: string }[];
 }
 
 const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays in the hub';
@@ -99,6 +101,9 @@ const TAB_HOSTS: ITabHost[] = [
         tabName: 'Query',
         hostClassName: 'RecipeCockpitQueryHost',
         hostFileNames: ['RecipeCockpitQueryHost.ts'],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitQueryHost.ts', otherHostFileName: 'RecipeCockpitRecordLinks.ts', reason: 'a query preview\'s rows link the records they show (#556)' }
+        ],
         hostModules: [RecipeCockpitQueryHostModule],
         commands: RECIPE_COCKPIT_QUERY_COMMANDS,
         actionKinds: RECIPE_COCKPIT_QUERY_ACTION_KINDS,
@@ -249,6 +254,10 @@ const TAB_HOSTS: ITabHost[] = [
         actionKinds: RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitAdapterHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
         pureModuleFileNames: ['RecipeCockpitTreeUpdaterQuery.ts', 'RecipeCockpitRecordUpdate.ts', 'RecipeCockpitOrgChangeDetection.ts', 'RecipeCockpitAdaptedDataset.ts'],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitDatasetsHost.ts', reason: 'a landed update adds its adapted data set to Previously Used Data Sets (#448)' },
+            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitRecordLinks.ts', reason: 'a loaded or updated preview\'s rows link the records they show (#556)' }
+        ],
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitTreeUpdaterQuery.ts',
@@ -285,7 +294,11 @@ const TAB_HOSTS: ITabHost[] = [
         actionKinds: RECIPE_COCKPIT_RECORD_LINKS_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitRecordLinksHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
         pureModuleFileNames: [],
-        hubUsesStillOwed: []
+        hubUsesStillOwed: [],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitQueryHost.ts', reason: 'a query preview\'s row is opened from the result the Query host holds' },
+            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitAdapterState.ts', reason: 'a loaded preview\'s row is opened from the records the Adapter holds' }
+        ]
     }
 ];
 
@@ -573,6 +586,49 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
             }
 
             expect(hubLoadChain).toEqual([]);
+
+        });
+
+        test.each(tabHost.hostFileNames)('%s loads only its own files listed after it, and another tab\'s host only as listed', hostFileName => {
+
+            const hostFileIndex = tabHost.hostFileNames.indexOf(hostFileName);
+            const loadedHostFileNames = runtimeImportPaths(parse(path.join(COCKPIT_FOLDER, hostFileName)))
+                .filter(loadedPath => path.dirname(loadedPath) === COCKPIT_FOLDER && HOST_FILE_NAMES.includes(path.basename(loadedPath)))
+                .map(loadedPath => path.basename(loadedPath));
+
+            const ownFilesLoadedOutOfOrder = loadedHostFileNames.filter(loadedFileName => tabHost.hostFileNames.includes(loadedFileName)
+                && tabHost.hostFileNames.indexOf(loadedFileName) <= hostFileIndex);
+            const otherHostsLoaded = loadedHostFileNames.filter(loadedFileName => !tabHost.hostFileNames.includes(loadedFileName));
+            const otherHostsListed = ( tabHost.loadsOtherHosts ?? [] ).filter(loadsOther => loadsOther.fileName === hostFileName).map(loadsOther => loadsOther.otherHostFileName);
+
+            expect(ownFilesLoadedOutOfOrder).toEqual([]);
+            expect([...new Set(otherHostsLoaded)].sort()).toEqual([...otherHostsListed].sort());
+
+        });
+
+        test('has its classes\' state written only by its own files', () => {
+
+            const tabClassNames = tabHost.hostModules.flatMap(hostModule => Object.entries(hostModule))
+                .filter(([, exportedValue]) => typeof exportedValue === 'function')
+                .map(([exportedName]) => exportedName);
+            const isTabClassMember = (node: ts.Node) => ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && tabClassNames.includes(node.expression.text);
+
+            const writesFromOutside: string[] = [];
+            hostSideFiles.filter(filePath => !hostFilePaths.includes(filePath)).forEach(filePath => {
+                visit(parse(filePath), node => {
+                    const isAssignment = ts.isBinaryExpression(node)
+                        && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+                        && isTabClassMember(node.left);
+                    const isIncrement = ( ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node) )
+                        && ( node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken )
+                        && isTabClassMember(node.operand);
+                    if ( isAssignment || isIncrement ) {
+                        writesFromOutside.push(`${path.basename(filePath)}: ${node.getText()}`);
+                    }
+                });
+            });
+
+            expect(writesFromOutside).toEqual([]);
 
         });
 

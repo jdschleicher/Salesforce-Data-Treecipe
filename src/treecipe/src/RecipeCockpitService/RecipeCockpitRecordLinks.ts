@@ -31,9 +31,14 @@ export class RecipeCockpitRecordLinks {
     private static recordLinkSequence = 0;
 
     // HELD DATA → THE TOKEN ITS PREVIEW CARRIES: A WeakMap, SO A TOKEN NEVER KEEPS RELEASED DATA ALIVE
-    static heldSourceTokens = new WeakMap<object, number>();
+    private static readonly heldSourceTokens = new WeakMap<object, number>();
 
     private static heldSourceTokenSequence = 0;
+
+    // undefined ONCE THE DATA IS LET GO OR REPLACED, WHICH IS WHY A ROW'S TOKEN IS CHECKED BEFORE IT IS OPENED
+    static readHeldSourceToken(heldSource: object): number | undefined {
+        return this.heldSourceTokens.get(heldSource);
+    }
 
     /*
         Keeps a preview's record links PENDING (#556), replacing any earlier preview of its kind, and

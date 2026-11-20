@@ -2378,11 +2378,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'createScratchOrg' }
     | { kind: 'authorizeOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
-    // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'activateTroubleshootingHistory'; treeKey: string }
     | { kind: 'activateDatasetJourney'; datasetFolderName: string }
-    // THE UPDATER'S LOAD (#416): FROM THE SELECTED SANDBOX, OR, WITH NONE SELECTED, FROM ONE ASKED FOR AS THE INSERT ASKS
-    // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     // "Get latest object detail from target org" (#612): THE ROW ON SCREEN, THEN ONLY THE OPEN DIALOG'S ID, KINDS AND ITEM INDEXES
     | { kind: 'openObjectRefresh'; treeKey: string; renderSequence: number; objectApiName: string; nickname?: string }
     | { kind: 'startObjectRefresh'; refreshId: string; kinds: ObjectRefreshKind[] }
@@ -2393,9 +2390,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'activateUpdaterValues' }
     // A RECORD Id OPENED FROM A PREVIEW (#556): THE PREVIEW THE PANEL DREW, THEN ONE OF ITS ROWS
     | { kind: 'activateRecordLinks'; recordLinkSequence: number }
-    // THE UPDATER'S RESTORE (#419): A SNAPSHOT NAMED BY FILE NAME, LISTED, DRAWN, THEN WRITTEN BACK
+    // THE UPDATER'S RESTORE (#419): THE SNAPSHOT LIST THE PANEL DREW, WHICH A RESTORE THEN NAMES BY FILE NAME
     | { kind: 'activateUpdaterSnapshots'; treeKey: string }
-    // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }

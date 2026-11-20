@@ -168,7 +168,7 @@ export class RecipeCockpitRecordLinksHost {
             : preview.previewKind === 'updaterRecords' ? RecipeCockpitAdapterState.heldUpdaterRecords
             : RecipeCockpitAdapterState.heldUpdaterValues;
 
-        if ( heldSource === undefined || RecipeCockpitRecordLinks.heldSourceTokens.get(heldSource) !== preview.heldSourceToken ) {
+        if ( heldSource === undefined || RecipeCockpitRecordLinks.readHeldSourceToken(heldSource) !== preview.heldSourceToken ) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL));
             return;
         }
