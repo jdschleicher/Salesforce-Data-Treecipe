@@ -695,7 +695,7 @@ import { CreateParentRefusalReason, ILookupWiringContext, ILookupWiringRequest, 
 import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
-import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
+import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup, IObjectSelectionRemovedLookup } from './RecipeCockpitObjectSelection';
 import { IRecordTypeTickObject, OccurrenceSettingPlacer, RECORD_TYPE_SET_MODE_LABELS, RECORD_TYPE_SET_MODE_LEGEND, RecipeCockpitRecordTypeRecipe, RecordTypeSetMode } from './RecipeCockpitRecordTypeRecipe';
 import {
     ICreateReadinessInput,
@@ -3238,18 +3238,20 @@ export class RecipeCockpitService {
     static buildTreeObjectSelection(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
                                     tree: IRecipeCockpitTreeViewModel,
                                     directlyExcludedObjectApiNames: ReadonlySet<string> | undefined,
-                                    noFieldsSelectedObjectApiNames: ReadonlySet<string> = new Set()): IRecipeCockpitTreeObjectSelectionViewModel | undefined {
+                                    noFieldsSelectedObjectApiNames: ReadonlySet<string> = new Set(),
+                                    storedFieldsByObject?: ReadonlyMap<string, ReadonlySet<string>>): IRecipeCockpitTreeObjectSelectionViewModel | undefined {
 
         const selectableObjectApiNames = this.collectSelectableObjectApiNames(objectsByApiName, tree);
         const directlyExcluded = selectableObjectApiNames.filter(objectApiName => directlyExcludedObjectApiNames?.has(objectApiName));
         const noFieldsSelected = selectableObjectApiNames.filter(objectApiName => noFieldsSelectedObjectApiNames.has(objectApiName));
+        const drawnTreeObjects = tree.objects.filter(treeObject => treeObject.iterationNickname === undefined && objectsByApiName.has(treeObject.objectApiName));
+        const removedLookups = this.listRemovedTreeLookups(drawnTreeObjects, storedFieldsByObject);
 
-        if ( directlyExcluded.length === 0 && noFieldsSelected.length === 0 ) {
+        if ( directlyExcluded.length === 0 && noFieldsSelected.length === 0 && removedLookups.length === 0 ) {
             return undefined;
         }
 
-        const drawnTreeObjects = tree.objects.filter(treeObject => treeObject.iterationNickname === undefined && objectsByApiName.has(treeObject.objectApiName));
-        const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection(drawnTreeObjects, directlyExcluded, noFieldsSelected);
+        const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection(drawnTreeObjects, directlyExcluded, noFieldsSelected, removedLookups);
         const drawnObjectApiNames = new Set(drawnTreeObjects.map(treeObject => treeObject.objectApiName));
         const excludedObjectApiNames = new Set(objectSelection.exclusions.map(exclusion => exclusion.objectApiName));
 
@@ -3260,6 +3262,17 @@ export class RecipeCockpitService {
             objectCount: drawnObjectApiNames.size
         };
 
+    }
+
+    // A LOOKUP FIELD THE READER UNTICKED IS NO EDGE OF THE CASCADE (#677); AN ITERATION FOLLOWS ITS OBJECT, SO ONLY THE OBJECT'S OWN ENTRY COUNTS
+    static listRemovedTreeLookups(drawnTreeObjects: readonly IRecipeCockpitTreeObjectViewModel[],
+                                    storedFieldsByObject: ReadonlyMap<string, ReadonlySet<string>> | undefined): IObjectSelectionRemovedLookup[] {
+        return drawnTreeObjects.flatMap(treeObject => {
+            const untickedFieldApiNames = storedFieldsByObject?.get(treeObject.objectApiName);
+            return treeObject.parentLookups
+                .filter(parentLookup => untickedFieldApiNames?.has(parentLookup.fieldApiName))
+                .map(parentLookup => ({ objectApiName: treeObject.objectApiName, fieldApiName: parentLookup.fieldApiName }));
+        });
     }
 
     /*
@@ -3276,7 +3289,7 @@ export class RecipeCockpitService {
 
         for ( ;; ) {
 
-            const objectSelection = this.buildTreeObjectSelection(objectsByApiName, tree, directlyExcludedObjectApiNames, noFieldsSelectedObjectApiNames);
+            const objectSelection = this.buildTreeObjectSelection(objectsByApiName, tree, directlyExcludedObjectApiNames, noFieldsSelectedObjectApiNames, storedFieldsByObject);
             if ( objectSelection ) {
                 tree.objectSelection = objectSelection;
             } else {
@@ -3290,7 +3303,10 @@ export class RecipeCockpitService {
                 delete tree.fieldSelection;
             }
 
-            const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
+            // UNTICKING EVERY FIELD UNTICKS THE LOOKUP TOO: "NO FIELDS SELECTED" IS THE TRUER REASON, SO IT OUTRANKS A REMOVED LOOKUP (#677)
+            const excludedObjectApiNames = new Set(( tree.objectSelection?.exclusions ?? [] )
+                .filter(exclusion => exclusion.removedLookupFieldApiName === undefined)
+                .map(exclusion => exclusion.objectApiName));
             const newlyCutOff = this.listTreeOccurrences(objectsByApiName, tree)
                 .filter(occurrence => !occurrence.objectViewModel.isIterationOccurrence
                                         && !excludedObjectApiNames.has(occurrence.objectApiName)
@@ -4264,8 +4280,11 @@ export class RecipeCockpitService {
     }
 
     // A LEFT-OUT OBJECT'S FIELDS CANNOT BE CHANGED, EXCEPT ONE LEFT OUT FOR HAVING NONE TICKED (#611): TICKING ONE BRINGS IT BACK
+    // RE-TICKING THE REMOVED LOOKUP IS HOW A CUT-OFF OBJECT COMES BACK (#677), SO ITS FIELDS STAY EDITABLE LIKE A NO-FIELDS OBJECT'S
     static listFieldReadOnlyObjectApiNames(tree: IRecipeCockpitTreeViewModel | undefined): string[] {
-        return ( tree?.objectSelection?.exclusions ?? [] ).filter(exclusion => exclusion.kind !== 'noFieldsSelected').map(exclusion => exclusion.objectApiName);
+        return ( tree?.objectSelection?.exclusions ?? [] )
+            .filter(exclusion => exclusion.kind !== 'noFieldsSelected' && exclusion.removedLookupFieldApiName === undefined)
+            .map(exclusion => exclusion.objectApiName);
     }
 
     private static async setObjectIncluded(cockpitPanel: vscode.WebviewPanel,
@@ -11154,7 +11173,9 @@ export class RecipeCockpitService {
             .map(({ entry }) => entry);
 
         const exclusionLines = byInsertOrder(tree.objectSelection?.exclusions ?? [], exclusion => exclusion.objectApiName)
-            .map(exclusion => exclusion.kind === 'autoExcluded'
+            .map(exclusion => exclusion.removedLookupFieldApiName !== undefined
+                ? `${exclusion.objectApiName}: not generated, cut off by removing ${exclusion.objectApiName}.${exclusion.removedLookupFieldApiName}`
+                : exclusion.kind === 'autoExcluded'
                 ? `${exclusion.objectApiName}: not generated, ${exclusion.excludedParentObjectApiName ? `auto-excluded with its parent ${exclusion.excludedParentObjectApiName}` : 'auto-excluded with its parent'}`
                 : exclusion.kind === 'noFieldsSelected' ? `${exclusion.objectApiName}: not generated, no fields selected`
                 : `${exclusion.objectApiName}: not generated, excluded`);

@@ -202,3 +202,90 @@ describe('RecipeCockpitObjectSelection.computeObjectSelection (#219)', () => {
     });
 
 });
+
+describe('RecipeCockpitObjectSelection.computeObjectSelection, removed lookup fields (#677)', () => {
+
+    const removed = (objectApiName: string, fieldApiName: string) => ({ objectApiName: objectApiName, fieldApiName: fieldApiName });
+
+    test('removing an object\'s only lookup into the tree cuts it off with its subtree, naming the removed field', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, [], [], [removed('Opportunity', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Opportunity', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' },
+            { objectApiName: 'ChildOpps__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Opportunity' }
+        ]);
+        expect(selection.disabledLookups).toEqual([]);
+        expect(selection.includedObjectCount).toBe(4);
+
+    });
+
+    test('an object that keeps another lookup to an included parent stays, and the removed lookup is not listed as disabled', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, [], [], [removed('Case', 'ContactId')]);
+
+        expect(selection.exclusions).toEqual([]);
+        expect(selection.disabledLookups).toEqual([]);
+        expect(selection.includedObjectCount).toBe(6);
+
+    });
+
+    test('removing every lookup of an object with two parents cuts it off, naming the first removed field by "<"', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, [], [], [removed('Case', 'ContactId'), removed('Case', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([{ objectApiName: 'Case', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' }]);
+
+    });
+
+    test('a kept lookup to an excluded parent names that parent, not the removed field', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['Contact'], [], [removed('Case', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Contact', kind: 'excluded' },
+            { objectApiName: 'Case', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+        ]);
+        expect(selection.disabledLookups).toEqual([]);
+
+    });
+
+    test('a removed self-lookup, or a lookup to a parent outside the tree, cuts nothing off', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection([
+            ...TREE,
+            { objectApiName: 'Note__c', parentLookups: [lookup('Owner__c', 'User')] }
+        ], [], [], [removed('Account', 'ParentId'), removed('Note__c', 'Owner__c'), removed('Lead', 'NotALookup__c')]);
+
+        expect(selection.exclusions).toEqual([]);
+        expect(selection.includedObjectCount).toBe(7);
+
+    });
+
+    test('restoring the field brings back exactly what its removal cut off, and a direct exclusion stays', () => {
+
+        const withRemoval = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['ChildOpps__c'], [], [removed('Opportunity', 'AccountId')]);
+        expect(withRemoval.exclusions.map(exclusion => exclusion.objectApiName)).toEqual(['Opportunity', 'ChildOpps__c']);
+        expect(withRemoval.exclusions[1]).toEqual({ objectApiName: 'ChildOpps__c', kind: 'excluded' });
+
+        const restored = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['ChildOpps__c'], [], []);
+        expect(restored.exclusions).toEqual([{ objectApiName: 'ChildOpps__c', kind: 'excluded' }]);
+
+    });
+
+    test('two objects whose removed lookups leave them pointing only at each other do not keep each other included', () => {
+
+        const cyclicTree: IObjectSelectionTreeObject[] = [
+            { objectApiName: 'Root', parentLookups: [] },
+            { objectApiName: 'Left', parentLookups: [lookup('Root__c', 'Root'), lookup('Right__c', 'Right')] },
+            { objectApiName: 'Right', parentLookups: [lookup('Root__c', 'Root'), lookup('Left__c', 'Left')] }
+        ];
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(cyclicTree, [], [], [removed('Left', 'Root__c'), removed('Right', 'Root__c')]);
+
+        expect(selection.exclusions.map(exclusion => [exclusion.objectApiName, exclusion.kind])).toEqual([['Left', 'autoExcluded'], ['Right', 'autoExcluded']]);
+        expect(selection.includedObjectCount).toBe(1);
+
+    });
+
+});

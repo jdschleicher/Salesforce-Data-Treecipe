@@ -4658,6 +4658,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.",
         "Unticked fields: the field is left out. All fields, above an object's fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object's unticked fields, and TODOs only shows its fields with a TODO. The insert's confirmation lists what is left out, object by object.",
         "No fields selected: an object with every field unticked generates no records. Its row shows NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED in red in place of its nickname, friends and count, and its chain link turns red and cannot be clicked. Its children are left out with it, as for an excluded object. Tick any field to bring it back.",
+        "Removed lookup: an unticked lookup field is no link to its parent. An object whose only lookup into the tree is unticked is cut off with its children, and its row says cut off — ‹Object›.‹Field› removed. Its boxes stay clickable: tick the lookup again to bring it back. An object that keeps another lookup to an included parent stays.",
         "Record counts: each object's row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend's count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.",
         "Record types: tick them under Manage record types, and the next Generate fake data and insert uses them. Its confirmation offers One data set with the record types folded together: each ticked record type gets its own records, with its own children and picklist values. The recipe is built again from your object metadata for that data set, so what was written into the recipe file is not in it (lines edited by hand, lookups wired on the card, parents or friends added on it), and no new run is written.",
         "The rules box: a field generated without the limits its validation rules set. Beside it, ↗ and a rule's name open that rule's .validationRule-meta.xml file at its formula, for each rule the field names, applied or not.",
@@ -7056,7 +7057,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
   function findFieldLockingExclusion(tree, objectApiName) {
     const exclusion = findObjectExclusion(tree, objectApiName);
-    return exclusion && exclusion.kind !== "noFieldsSelected" ? exclusion : null;
+    return exclusion && exclusion.kind !== "noFieldsSelected" && exclusion.removedLookupFieldApiName === void 0 ? exclusion : null;
   }
   function drawNoFieldsSelected(treeObjectState, isNoFieldsSelected) {
     treeObjectState.headerDetailElements.forEach(function(detailElement) {
@@ -7108,6 +7109,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
       const isAutoExcluded = !!exclusion && exclusion.kind === "autoExcluded";
       const isNoFieldsSelected = !!exclusion && exclusion.kind === "noFieldsSelected";
+      const removedLookupText = exclusion && exclusion.removedLookupFieldApiName !== void 0 ? objectApiName + "." + exclusion.removedLookupFieldApiName : null;
       const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
       const excludedParent = isAutoExcluded ? findObjectExclusion(tree, exclusion.excludedParentObjectApiName) : null;
       const excludedParentState = excludedParent && excludedParent.kind === "noFieldsSelected" ? " has no fields selected" : " excluded";
@@ -7116,7 +7118,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       } else {
         treeObjectState.element.classList.remove("excluded");
       }
-      treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact) : !exclusion ? "" : isAutoExcluded ? "auto-excluded — parent " + exclusion.excludedParentObjectApiName + excludedParentState : isNoFieldsSelected ? "not generated — " + objectApiName + " has no fields selected" : "excluded";
+      treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact) : !exclusion ? "" : removedLookupText ? "cut off — " + removedLookupText + " removed" : isAutoExcluded ? "auto-excluded — parent " + exclusion.excludedParentObjectApiName + excludedParentState : isNoFieldsSelected ? "not generated — " + objectApiName + " has no fields selected" : "excluded";
       if (exclusion || impact) {
         treeObjectState.exclusionElement.classList.remove("hidden");
       } else {
@@ -7143,7 +7145,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       treeObjectState.glyphPathElement.setAttribute("d", exclusion ? RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH : impact ? RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH : RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
       includeElement.setAttribute("aria-pressed", exclusion ? "false" : "true");
       includeElement.disabled = isAutoExcluded || isNoFieldsSelected || isRefused;
-      const title = isRefused ? objectApiName + " is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded" : isNoFieldsSelected ? "No fields selected, so no records will be generated. Tick a field to include it" : isAutoExcluded ? "Excluded because parent " + exclusion.excludedParentObjectApiName + (excludedParent && excludedParent.kind === "noFieldsSelected" ? " has no fields selected" : " is excluded") : exclusion ? "Excluded — click to include" : impact ? "Included — " + describeObjectImpact(impact) + ", so " + impact.fieldApiNames.join(", ") + (impact.fieldApiNames.length === 1 ? " is" : " are") + " left out. Click to exclude" : "Included — click to exclude";
+      const title = isRefused ? objectApiName + " is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded" : isNoFieldsSelected ? "No fields selected, so no records will be generated. Tick a field to include it" : removedLookupText ? "Cut off because " + removedLookupText + " was removed. Tick it to include " + objectApiName : isAutoExcluded ? "Excluded because parent " + exclusion.excludedParentObjectApiName + (excludedParent && excludedParent.kind === "noFieldsSelected" ? " has no fields selected" : " is excluded") : exclusion ? "Excluded — click to include" : impact ? "Included — " + describeObjectImpact(impact) + ", so " + impact.fieldApiNames.join(", ") + (impact.fieldApiNames.length === 1 ? " is" : " are") + " left out. Click to exclude" : "Included — click to exclude";
       includeElement.setAttribute("title", title);
       includeElement.setAttribute("aria-label", objectApiName + ": " + title);
     });

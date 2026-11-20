@@ -14,6 +14,10 @@
 
     An object whose every field is unticked (#611) is cut off the same way, as noFieldsSelected:
     no record is generated for it, so it is no parent. A chain-link exclusion outranks it.
+
+    A lookup field the reader removed (#677) is no edge: its object keeps only the parents its other
+    lookups name. An object that had a parent in the tree and kept none is cut off with its subtree --
+    it is no root -- and its label names the removed field, since no parent of it was excluded.
 */
 
 export interface IObjectSelectionLookup {
@@ -26,16 +30,23 @@ export interface IObjectSelectionTreeObject {
     parentLookups: readonly IObjectSelectionLookup[];
 }
 
+export interface IObjectSelectionRemovedLookup {
+    objectApiName: string;
+    fieldApiName: string;
+}
+
 export type ObjectSelectionExclusionKind = 'excluded' | 'noFieldsSelected' | 'autoExcluded';
 
 /*
     excludedParentObjectApiName is set on an auto-excluded object: the parent its label names,
-    preferring one the reader excluded directly, then the first by "<".
+    preferring one the reader excluded directly, then the first by "<". An object cut off only by a
+    removed lookup names that field in removedLookupFieldApiName instead, the first by "<".
 */
 export interface IObjectSelectionExclusion {
     objectApiName: string;
     kind: ObjectSelectionExclusionKind;
     excludedParentObjectApiName?: string;
+    removedLookupFieldApiName?: string;
 }
 
 // A LOOKUP OF AN INCLUDED OBJECT TO AN EXCLUDED PARENT: SHOWN DISABLED, AND LEFT OUT OF WHAT IS GENERATED
@@ -56,7 +67,8 @@ export class RecipeCockpitObjectSelection {
 
     static computeObjectSelection(treeObjects: readonly IObjectSelectionTreeObject[],
                                     directlyExcludedObjectApiNames: Iterable<string>,
-                                    noFieldsSelectedObjectApiNames: Iterable<string> = []): IObjectSelection {
+                                    noFieldsSelectedObjectApiNames: Iterable<string> = [],
+                                    removedLookups: Iterable<IObjectSelectionRemovedLookup> = []): IObjectSelection {
 
         // EVERY STEP BELOW IS LINEAR IN THE TREE: A WIDE ROOT WITH THOUSANDS OF CHILDREN IS WHAT A GENERATED TREE CAN BE
         const lookupsByObjectApiName = new Map<string, IObjectSelectionLookup[]>();
@@ -74,13 +86,23 @@ export class RecipeCockpitObjectSelection {
         });
 
         const objectApiNames = [...lookupsByObjectApiName.keys()];
+        const isTreeParentOf = (objectApiName: string, lookup: IObjectSelectionLookup) => lookup.parentObjectApiName !== objectApiName && lookupsByObjectApiName.has(lookup.parentObjectApiName);
+        const removedLookupKeys = new Set([...removedLookups].map(removedLookup => `${removedLookup.objectApiName}\n${removedLookup.fieldApiName}`));
+        const isRemoved = (objectApiName: string, lookup: IObjectSelectionLookup) => removedLookupKeys.has(`${objectApiName}\n${lookup.fieldApiName}`);
+        const hasTreeParent = new Set(objectApiNames.filter(objectApiName => ( lookupsByObjectApiName.get(objectApiName) ?? [] ).some(lookup => isTreeParentOf(objectApiName, lookup))));
+        const removedTreeLookupFieldsByObject = new Map(objectApiNames
+            .map(objectApiName => [objectApiName, ( lookupsByObjectApiName.get(objectApiName) ?? [] )
+                .filter(lookup => isTreeParentOf(objectApiName, lookup) && isRemoved(objectApiName, lookup))
+                .map(lookup => lookup.fieldApiName)
+                .sort((left, right) => ( left < right ? -1 : left > right ? 1 : 0 ))] as [string, string[]])
+            .filter(([, fieldApiNames]) => fieldApiNames.length > 0));
         const excludedByChainLink = new Set([...directlyExcludedObjectApiNames].filter(objectApiName => lookupsByObjectApiName.has(objectApiName)));
         const noFieldsSelected = new Set([...noFieldsSelectedObjectApiNames].filter(objectApiName => lookupsByObjectApiName.has(objectApiName) && !excludedByChainLink.has(objectApiName)));
         const directlyExcluded = new Set([...excludedByChainLink, ...noFieldsSelected]);
 
         const parentsByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, [...new Set(( lookupsByObjectApiName.get(objectApiName) ?? [] )
-            .map(lookup => lookup.parentObjectApiName)
-            .filter(parentObjectApiName => parentObjectApiName !== objectApiName && lookupsByObjectApiName.has(parentObjectApiName)))]]));
+            .filter(lookup => isTreeParentOf(objectApiName, lookup) && !isRemoved(objectApiName, lookup))
+            .map(lookup => lookup.parentObjectApiName))]]));
         const parentsOf = (objectApiName: string) => parentsByObjectApiName.get(objectApiName) ?? [];
 
         const childrenByParent = new Map<string, string[]>();
@@ -93,8 +115,9 @@ export class RecipeCockpitObjectSelection {
             }
         }));
 
-        const descendantsOfExcluded = new Set<string>();
-        const pending = [...directlyExcluded];
+        // AN OBJECT A REMOVED LOOKUP TOUCHES IS CUT OFF UNTIL AN INCLUDED PARENT IT KEPT REACHES IT
+        const descendantsOfExcluded = new Set<string>(removedTreeLookupFieldsByObject.keys());
+        const pending = [...directlyExcluded, ...removedTreeLookupFieldsByObject.keys()];
         while ( pending.length > 0 ) {
             ( childrenByParent.get(pending.pop() as string) ?? [] ).forEach(childObjectApiName => {
                 if ( !descendantsOfExcluded.has(childObjectApiName) ) {
@@ -106,7 +129,7 @@ export class RecipeCockpitObjectSelection {
 
         // THE LEAST SET REACHABLE FROM WHAT THE EXCLUSION DOES NOT TOUCH: TWO OBJECTS CUT OFF TOGETHER DO NOT KEEP EACH OTHER
         const included = new Set(objectApiNames.filter(objectApiName => !directlyExcluded.has(objectApiName)
-                                                                        && ( !descendantsOfExcluded.has(objectApiName) || parentsOf(objectApiName).length === 0 )));
+                                                                        && ( !descendantsOfExcluded.has(objectApiName) || !hasTreeParent.has(objectApiName) )));
         // AN OBJECT WITH ONE INCLUDED PARENT IS INCLUDED: SPREAD FROM WHAT IS INCLUDED, EACH OBJECT ENTERED ONCE
         const pendingIncluded = [...included];
         while ( pendingIncluded.length > 0 ) {
@@ -124,6 +147,10 @@ export class RecipeCockpitObjectSelection {
                 if ( directlyExcluded.has(objectApiName) ) {
                     return { objectApiName: objectApiName, kind: noFieldsSelected.has(objectApiName) ? 'noFieldsSelected' : 'excluded' };
                 }
+                const [removedLookupFieldApiName] = removedTreeLookupFieldsByObject.get(objectApiName) ?? [];
+                if ( parentsOf(objectApiName).length === 0 && removedLookupFieldApiName !== undefined ) {
+                    return { objectApiName: objectApiName, kind: 'autoExcluded', removedLookupFieldApiName: removedLookupFieldApiName };
+                }
                 const [excludedParentObjectApiName] = parentsOf(objectApiName).slice().sort((left, right) => (
                     Number(directlyExcluded.has(right)) - Number(directlyExcluded.has(left)) || ( left < right ? -1 : left > right ? 1 : 0 )
                 ));
@@ -133,7 +160,7 @@ export class RecipeCockpitObjectSelection {
         const disabledLookups: IObjectSelectionDisabledLookup[] = objectApiNames
             .filter(objectApiName => included.has(objectApiName))
             .flatMap(objectApiName => ( lookupsByObjectApiName.get(objectApiName) ?? [] )
-                .filter(lookup => lookup.parentObjectApiName !== objectApiName && lookupsByObjectApiName.has(lookup.parentObjectApiName) && !included.has(lookup.parentObjectApiName))
+                .filter(lookup => isTreeParentOf(objectApiName, lookup) && !isRemoved(objectApiName, lookup) && !included.has(lookup.parentObjectApiName))
                 .map(lookup => ({ objectApiName: objectApiName, fieldApiName: lookup.fieldApiName, parentObjectApiName: lookup.parentObjectApiName })));
 
         return {

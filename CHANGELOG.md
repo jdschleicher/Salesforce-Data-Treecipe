@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.202.16] - Recipe Cockpit: unticking a lookup field cuts its object off when that was its only link into the tree (#677, slice A)
+
+This is the first slice of #677's "Edit custom treecipe" mode: the cascade rule its red ✕ relies on. Its edit mode comes in a later slice.
+
+- **An unticked lookup field is no longer an edge of the tree.** Before, an object whose only lookup into the tree was unticked stayed included, with no link to its parent. Now it is cut off with its subtree, and its row says `cut off — Contact.AccountId removed`.
+  - An object that still has another lookup to an included parent stays included.
+  - Unticking a self-lookup, or a lookup to a parent outside the tree, cuts nothing off.
+  - Ticking the lookup again brings back exactly what it cut off.
+- **A cut-off object's field boxes stay clickable,** like a no-fields object's (#611), since re-ticking the lookup is how it comes back. Its chain link is a disabled status naming the field.
+- **"No fields selected" outranks a removed lookup.** Unticking every field also unticks the lookup, and the object still reads as `no fields selected`.
+- **The insert confirmation's Left out section** says `not generated, cut off by removing <Object>.<Field>`.
+- **Changed expectations:** two #611 tests and the #611 journey. A child whose second lookup is unticked now follows its no-fields parent out, and the journey ticks the lookup again to bring Contact back.
+
 ## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

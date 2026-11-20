@@ -134,10 +134,10 @@ export function findObjectExclusion(tree: ISelectionTree, objectApiName: string 
 
 }
 
-// AN OBJECT LEFT OUT FOR HAVING NO FIELD TICKED (#611) KEEPS ITS BOXES: TICKING ONE IS HOW IT COMES BACK
+// AN OBJECT LEFT OUT FOR HAVING NO FIELD TICKED (#611), OR CUT OFF BY ITS OWN REMOVED LOOKUP (#677), KEEPS ITS BOXES: TICKING ONE IS HOW IT COMES BACK
 export function findFieldLockingExclusion(tree: ISelectionTree, objectApiName: string): IObjectSelectionExclusion | null {
     const exclusion = findObjectExclusion(tree, objectApiName);
-    return exclusion && exclusion.kind !== 'noFieldsSelected' ? exclusion : null;
+    return exclusion && exclusion.kind !== 'noFieldsSelected' && exclusion.removedLookupFieldApiName === undefined ? exclusion : null;
 }
 
 // EVERYTHING AFTER THE OBJECT'S NAME GIVES WAY TO ONE RED MESSAGE; THE ▸ STAYS, SO A FIELD CAN BE TICKED AGAIN
@@ -192,6 +192,7 @@ export function drawObjectSelection(treeState: IFieldRowTreeState): void {
         const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
         const isAutoExcluded = !!exclusion && exclusion.kind === 'autoExcluded';
         const isNoFieldsSelected = !!exclusion && exclusion.kind === 'noFieldsSelected';
+        const removedLookupText = exclusion && exclusion.removedLookupFieldApiName !== undefined ? objectApiName + '.' + exclusion.removedLookupFieldApiName : null;
         const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
         const excludedParent = isAutoExcluded ? findObjectExclusion(tree, exclusion.excludedParentObjectApiName) : null;
         const excludedParentState = excludedParent && excludedParent.kind === 'noFieldsSelected' ? ' has no fields selected' : ' excluded';
@@ -201,6 +202,7 @@ export function drawObjectSelection(treeState: IFieldRowTreeState): void {
 
         treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact)
             : !exclusion ? ''
+            : removedLookupText ? 'cut off — ' + removedLookupText + ' removed'
             : isAutoExcluded ? 'auto-excluded — parent ' + exclusion.excludedParentObjectApiName + excludedParentState
             : isNoFieldsSelected ? 'not generated — ' + objectApiName + ' has no fields selected'
             : 'excluded';
@@ -229,6 +231,7 @@ export function drawObjectSelection(treeState: IFieldRowTreeState): void {
 
         const title = isRefused ? objectApiName + ' is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded'
             : isNoFieldsSelected ? 'No fields selected, so no records will be generated. Tick a field to include it'
+            : removedLookupText ? 'Cut off because ' + removedLookupText + ' was removed. Tick it to include ' + objectApiName
             : isAutoExcluded ? 'Excluded because parent ' + exclusion.excludedParentObjectApiName + ( excludedParent && excludedParent.kind === 'noFieldsSelected' ? ' has no fields selected' : ' is excluded' )
             : exclusion ? 'Excluded — click to include'
             : impact ? 'Included — ' + describeObjectImpact(impact) + ', so ' + impact.fieldApiNames.join(', ') + ( impact.fieldApiNames.length === 1 ? ' is' : ' are' ) + ' left out. Click to exclude'
