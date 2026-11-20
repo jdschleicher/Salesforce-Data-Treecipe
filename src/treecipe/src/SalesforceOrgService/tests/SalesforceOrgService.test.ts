@@ -42,7 +42,8 @@ import {
     TARGET_ORG_ENVIRONMENT_VARIABLE,
     LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
     ORG_PARENT_SEARCH_RESULT_LIMIT,
-    PERMISSION_SET_QUERY_NAME_CHUNK_SIZE
+    PERMISSION_SET_QUERY_NAME_CHUNK_SIZE,
+    DATA_ORG_INSTANCE_URL_MAX_LENGTH
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
@@ -56,6 +57,9 @@ const ORG_AUTHORIZATIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'mock
 
 const CONNECTED_SANDBOX = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
 const ACTIVE_SCRATCH_ORG = { targetOrgIdentifier: 'activeScratch', username: 'test-active@example.com', alias: 'activeScratch' };
+// AS DATA-BY-ORG LISTS THEM (#678): WITH THE AUTHORIZATION'S INSTANCE URL
+const LISTED_CONNECTED_SANDBOX = { ...CONNECTED_SANDBOX, instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com' };
+const LISTED_ACTIVE_SCRATCH_ORG = { ...ACTIVE_SCRATCH_ORG, instanceUrl: 'https://ability-active-3.scratch.my.salesforce.com' };
 
 // THE IN-PROCESS CONNECTION CHECK'S PINGS (#502), AND WHO WAS PINGED
 let pingedUsernames: jest.Mock = jest.fn();
@@ -993,7 +997,7 @@ describe('SalesforceOrgService', () => {
             await expect(failedListing).rejects.toThrow('The authorized Salesforce orgs could not be read, so no org is listed. auth files unreadable');
             expect(SalesforceOrgService.isConnectedOrgStatusCached()).toBe(false);
 
-            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails).toEqual([LISTED_CONNECTED_SANDBOX, LISTED_ACTIVE_SCRATCH_ORG]);
 
         });
 
@@ -1561,7 +1565,7 @@ describe('SalesforceOrgService', () => {
 
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
 
-            expect(dataOrgListing.orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+            expect(dataOrgListing.orgDetails).toEqual([LISTED_CONNECTED_SANDBOX, LISTED_ACTIVE_SCRATCH_ORG]);
             expect(dataOrgListing.hiddenOrgCount).toBe(5);
             expect(dataOrgListing.hiddenOrgReasonCounts).toEqual({ production: 1, expired: 1, deleted: 0, notConnected: 3 });
             expect(dataOrgListing.hiddenOrgs).toContainEqual({ username: 'prod@example.com', label: 'prod', reason: 'production' });
@@ -1632,8 +1636,8 @@ describe('SalesforceOrgService', () => {
             (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization(['myQa'])]);
             const listedAfter = await SalesforceOrgService.listDataOrgDetails();
 
-            expect(listedBefore.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
-            expect(listedAfter.orgDetails).toEqual([{ targetOrgIdentifier: 'myQa', username: SANDBOX_USERNAME, alias: 'myQa' }]);
+            expect(listedBefore.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined, instanceUrl: LISTED_CONNECTED_SANDBOX.instanceUrl }]);
+            expect(listedAfter.orgDetails).toEqual([{ targetOrgIdentifier: 'myQa', username: SANDBOX_USERNAME, alias: 'myQa', instanceUrl: LISTED_CONNECTED_SANDBOX.instanceUrl }]);
             expect(checkSpy).toHaveBeenCalledTimes(1);
 
         });
@@ -1658,7 +1662,7 @@ describe('SalesforceOrgService', () => {
 
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
 
-            expect(dataOrgListing.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
+            expect(dataOrgListing.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined, instanceUrl: LISTED_CONNECTED_SANDBOX.instanceUrl }]);
 
         });
 
@@ -1907,9 +1911,9 @@ describe('SalesforceOrgService', () => {
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, {});
 
             expect(dataOrgListing.orgDetails).toEqual([
-                { targetOrgIdentifier: 'prod', username: 'prod@example.com', alias: 'prod', isDefault: true },
-                CONNECTED_SANDBOX,
-                ACTIVE_SCRATCH_ORG
+                { targetOrgIdentifier: 'prod', username: 'prod@example.com', alias: 'prod', isDefault: true, instanceUrl: 'https://acme.my.salesforce.com' },
+                LISTED_CONNECTED_SANDBOX,
+                LISTED_ACTIVE_SCRATCH_ORG
             ]);
             expect(dataOrgListing.hiddenOrgReasonCounts).toEqual({ production: 0, expired: 1, deleted: 0, notConnected: 3 });
             expect(dataOrgListing.hiddenOrgCount).toBe(4);
@@ -1922,7 +1926,7 @@ describe('SalesforceOrgService', () => {
 
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'test-active@example.com' });
 
-            expect(dataOrgListing.orgDetails).toEqual([{ ...ACTIVE_SCRATCH_ORG, isDefault: true }, CONNECTED_SANDBOX]);
+            expect(dataOrgListing.orgDetails).toEqual([{ ...LISTED_ACTIVE_SCRATCH_ORG, isDefault: true }, LISTED_CONNECTED_SANDBOX]);
 
         });
 
@@ -1932,7 +1936,7 @@ describe('SalesforceOrgService', () => {
 
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'prod' });
 
-            expect(dataOrgListing.orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+            expect(dataOrgListing.orgDetails).toEqual([LISTED_CONNECTED_SANDBOX, LISTED_ACTIVE_SCRATCH_ORG]);
             expect(dataOrgListing.hiddenOrgs).toContainEqual({ username: 'prod@example.com', label: 'prod', reason: 'production' });
 
         });
@@ -1941,8 +1945,8 @@ describe('SalesforceOrgService', () => {
 
             listWithProduction(true);
 
-            expect((await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'nobody' })).orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
-            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+            expect((await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'nobody' })).orgDetails).toEqual([LISTED_CONNECTED_SANDBOX, LISTED_ACTIVE_SCRATCH_ORG]);
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails).toEqual([LISTED_CONNECTED_SANDBOX, LISTED_ACTIVE_SCRATCH_ORG]);
 
         });
 
@@ -2293,6 +2297,47 @@ describe('SalesforceOrgService', () => {
             expect(SalesforceOrgService.buildOrgTypeLabel(sandboxRow, undefined)).toBe('Sandbox');
             expect(SalesforceOrgService.buildOrgTypeLabel({ isSandbox: false, organizationType: 'Enterprise Edition' }, { isScratchOrg: true, expirationDate: '2026-11-01' })).toBe('Production · Enterprise Edition');
             expect(SalesforceOrgService.buildOrgTypeLabel(undefined, { isScratchOrg: true })).toBe(ORG_TYPE_UNKNOWN_LABEL);
+
+        });
+
+    });
+
+    // #678: THE PICKER SAYS WHICH INSTANCE AN ALIAS IS, SO ONLY A URL SHOWN AS THE CLI STORED IT IS CARRIED
+    describe('the instance URL a listed org carries (#678)', () => {
+
+        it('carries an https:// URL as the CLI stored it', () => {
+            expect(SalesforceOrgService.readDataOrgInstanceUrl('https://acme--qa.sandbox.my.salesforce.com')).toBe('https://acme--qa.sandbox.my.salesforce.com');
+        });
+
+        it.each([
+            ['not a string', 42],
+            ['missing', undefined],
+            ['empty', ''],
+            ['http://', 'http://acme--qa.sandbox.my.salesforce.com'],
+            ['javascript:', 'javascript:alert(1)'],
+            ['not a URL', 'acme--qa.sandbox.my.salesforce.com'],
+            ['holding a line break', 'https://acme.my.salesforce.com\n[Run](command:workbench.action.terminal.new)'],
+            ['holding a space', 'https://acme.my.salesforce.com x'],
+            ['holding a control character', 'https://acme.my.salesforce.com\u0007'],
+            ['longer than the limit', 'https://acme.my.salesforce.com/' + 'a'.repeat(DATA_ORG_INSTANCE_URL_MAX_LENGTH)]
+        ])('carries nothing for an instance URL %s', (_caseName, instanceUrl) => {
+            expect(SalesforceOrgService.readDataOrgInstanceUrl(instanceUrl)).toBeUndefined();
+        });
+
+        it('lists an org whose authorization has no usable instance URL without one, and the others with theirs', async () => {
+
+            SalesforceOrgService.clearConnectedOrgStatusCache();
+            answerOrgPings(username => CONNECTED_ORG_USERNAMES.includes(username));
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS.map((authorization: any) => authorization.username === 'test-active@example.com'
+                ? { ...authorization, isScratchOrg: true, instanceUrl: 'http://ability-active-3.scratch.my.salesforce.com' }
+                : authorization));
+
+            const listedOrgDetails = (await SalesforceOrgService.listDataOrgDetails()).orgDetails;
+
+            expect(listedOrgDetails.find(orgDetail => orgDetail.username === 'qa@example.com.qa')?.instanceUrl).toBe('https://acme--qa.sandbox.my.salesforce.com');
+            const scratchOrgDetail = listedOrgDetails.find(orgDetail => orgDetail.username === 'test-active@example.com');
+            expect(scratchOrgDetail).toBeDefined();
+            expect(scratchOrgDetail).not.toHaveProperty('instanceUrl');
 
         });
 

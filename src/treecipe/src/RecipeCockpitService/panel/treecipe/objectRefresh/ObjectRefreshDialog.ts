@@ -208,7 +208,7 @@ function drawObjectRefreshChoose(hostMessage: IObjectRefreshState, bodyElement: 
     orgElement.appendChild(orgView.element);
     bodyElement.appendChild(orgElement);
     dialog.orgView = orgView;
-    [orgView.loadElement, orgView.selectElement, orgView.openOrgElement, orgView.refreshElement].forEach(function (element) { dialog.focusableElements.push(element); });
+    [orgView.loadElement, orgView.orgSelect.triggerElement, orgView.orgSelect.searchElement, orgView.openOrgElement, orgView.refreshElement].forEach(function (element) { dialog.focusableElements.push(element); });
 
     const tickedKinds: ObjectRefreshKind[] = OBJECT_REFRESH_KINDS.filter(function (kind) { return hostMessage.kinds.indexOf(kind) !== -1; });
     const kindsElement = createElement('div', 'objectRefreshKinds');

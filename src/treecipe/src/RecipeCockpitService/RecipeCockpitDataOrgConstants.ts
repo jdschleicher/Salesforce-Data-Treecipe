@@ -28,6 +28,18 @@ export const RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = 'Loading orgs…';
 // THE DROPDOWN'S ONE OPTION WHEN THE CHECK ANSWERED WITH NO ORG TO OFFER: IT STAYS DRAWN, AND ⟳ BESIDE IT
 export const RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = 'No org listed';
 
+// THE PICKER IS SEARCHED OR CHOSEN FROM (#678): ITS SEARCH BOX, THE LINE ABOVE THE LIST, AND WHAT IT SAYS WHEN NOTHING MATCHES
+export const RECIPE_COCKPIT_ORG_PICKER_NAME = 'Salesforce org the generated data goes to';
+export const RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER = 'Search for org';
+export const RECIPE_COCKPIT_ORG_CHOOSE_LABEL = 'or choose org';
+export const RECIPE_COCKPIT_ORG_UNSELECTED_LABEL = 'Choose org…';
+export function buildOrgNoMatchText(searchText: string): string {
+    return 'No org matches "' + searchText + '"';
+}
+
+// "alias -- instance url" IN THE PICKER ONLY (#678); EVERY OTHER TEXT NAMING AN ORG KEEPS THE ALIAS ALONE
+export const RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR = ' -- ';
+
 // THE ONE BUTTON ALWAYS GENERATES AND INSERTS (#375); WHAT STOPS AN INSERT DISABLES IT, AND GENERATING ONLY IS Run Faker by Recipe'S
 export const RECIPE_COCKPIT_INSERT_ACTION_LABEL = 'Generate fake data and insert';
 

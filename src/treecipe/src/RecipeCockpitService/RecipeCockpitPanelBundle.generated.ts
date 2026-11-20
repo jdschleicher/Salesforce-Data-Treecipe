@@ -658,6 +658,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = "Checking org connections…";
   var RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = "Loading orgs…";
   var RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = "No org listed";
+  var RECIPE_COCKPIT_ORG_PICKER_NAME = "Salesforce org the generated data goes to";
+  var RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER = "Search for org";
+  var RECIPE_COCKPIT_ORG_CHOOSE_LABEL = "or choose org";
+  var RECIPE_COCKPIT_ORG_UNSELECTED_LABEL = "Choose org…";
+  function buildOrgNoMatchText(searchText) {
+    return 'No org matches "' + searchText + '"';
+  }
   var RECIPE_COCKPIT_INSERT_ACTION_LABEL = "Generate fake data and insert";
   var RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = "No org is chosen yet.";
   var RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = "You will be asked which org to insert into.";
@@ -667,6 +674,224 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     objectNotCreateable: { subTab: "permissions", label: "Troubleshooting › Permissions" }
   });
   var RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX = "Treecipe › ";
+
+  // src/treecipe/src/CockpitKit/panel/CockpitSearchableSelect.ts
+  var searchableSelectCount = 0;
+  var openSearchableSelect = null;
+  var isOutsideClickListenerAdded = false;
+  function isInside(targetElement, rootElement) {
+    for (let currentElement = targetElement; currentElement; currentElement = currentElement.parentNode) {
+      if (currentElement === rootElement) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function addOutsideClickListener() {
+    if (isOutsideClickListenerAdded) {
+      return;
+    }
+    isOutsideClickListenerAdded = true;
+    document.addEventListener("click", function(event) {
+      if (openSearchableSelect && !isInside(event.target, openSearchableSelect.rootElement)) {
+        openSearchableSelect.close(false);
+      }
+    }, true);
+  }
+  function matchesSearchText(optionLabel, searchText) {
+    const wantedText = searchText.trim().toLowerCase();
+    return !wantedText || optionLabel.toLowerCase().indexOf(wantedText) !== -1;
+  }
+  function buildSearchableSelect(settings) {
+    searchableSelectCount++;
+    const listId = "sdtSearchableSelect-" + searchableSelectCount + "-list";
+    const rootElement = createElement("span", "sdtSearchableSelect " + settings.className);
+    const triggerElement = createButton("secondary", "sdtSearchableSelectTrigger");
+    const popupElement = createElement("div", "sdtSearchableSelectPopup hidden");
+    const searchElement = createElement("input", "sdtSearchableSelectSearch");
+    const chooseLabelElement = createElement("div", "sdtSearchableSelectChoose muted", settings.chooseLabel);
+    const listElement = createElement("div", "sdtSearchableSelectList");
+    const noMatchElement = createElement("div", "sdtSearchableSelectNoMatch muted hidden");
+    triggerElement.setAttribute("role", "combobox");
+    triggerElement.setAttribute("aria-label", settings.accessibleName);
+    triggerElement.setAttribute("aria-haspopup", "listbox");
+    triggerElement.setAttribute("aria-controls", listId);
+    triggerElement.setAttribute("aria-expanded", "false");
+    searchElement.setAttribute("type", "search");
+    searchElement.setAttribute("placeholder", settings.searchPlaceholder);
+    searchElement.setAttribute("aria-label", settings.searchPlaceholder);
+    searchElement.setAttribute("aria-controls", listId);
+    searchElement.setAttribute("autocomplete", "off");
+    listElement.setAttribute("id", listId);
+    listElement.setAttribute("role", "listbox");
+    listElement.setAttribute("aria-label", settings.accessibleName);
+    noMatchElement.setAttribute("role", "status");
+    popupElement.appendChild(searchElement);
+    popupElement.appendChild(chooseLabelElement);
+    popupElement.appendChild(listElement);
+    popupElement.appendChild(noMatchElement);
+    rootElement.appendChild(triggerElement);
+    rootElement.appendChild(popupElement);
+    let optionLabels = [];
+    let selectedIndex = null;
+    let isOpenable = false;
+    let shownIndexes = [];
+    let highlightedPosition = -1;
+    const instance = { rootElement, close };
+    function drawTrigger(triggerText) {
+      triggerElement.textContent = triggerText;
+    }
+    function drawList() {
+      listElement.textContent = "";
+      shownIndexes = [];
+      optionLabels.forEach(function(optionLabel, optionIndex) {
+        if (!matchesSearchText(optionLabel, String(searchElement.value || ""))) {
+          return;
+        }
+        shownIndexes.push(optionIndex);
+        const optionElement = createElement("div", "sdtSearchableSelectOption", optionLabel);
+        optionElement.setAttribute("role", "option");
+        optionElement.setAttribute("id", listId + "-option-" + optionIndex);
+        optionElement.setAttribute("aria-selected", optionIndex === selectedIndex ? "true" : "false");
+        optionElement.addEventListener("click", function() {
+          choose(optionIndex);
+        });
+        listElement.appendChild(optionElement);
+      });
+      const isNothingShown = shownIndexes.length === 0;
+      noMatchElement.textContent = isNothingShown ? settings.buildNoMatchText(String(searchElement.value || "").trim()) : "";
+      setShown(noMatchElement, isNothingShown);
+      setShown(listElement, !isNothingShown);
+      const selectedPosition = selectedIndex === null ? -1 : shownIndexes.indexOf(selectedIndex);
+      highlight(selectedPosition >= 0 ? selectedPosition : isNothingShown ? -1 : 0);
+    }
+    function highlight(position) {
+      highlightedPosition = position;
+      Array.prototype.forEach.call(listElement.children, function(optionElement, childPosition) {
+        if (childPosition === position) {
+          optionElement.classList.add("highlighted");
+        } else {
+          optionElement.classList.remove("highlighted");
+        }
+      });
+      if (position >= 0) {
+        searchElement.setAttribute("aria-activedescendant", listId + "-option-" + shownIndexes[position]);
+      } else {
+        searchElement.removeAttribute("aria-activedescendant");
+      }
+    }
+    function open() {
+      if (!isOpenable || triggerElement.disabled || openSearchableSelect === instance) {
+        return;
+      }
+      if (openSearchableSelect) {
+        openSearchableSelect.close(false);
+      }
+      addOutsideClickListener();
+      openSearchableSelect = instance;
+      searchElement.value = "";
+      drawList();
+      setShown(popupElement, true);
+      triggerElement.setAttribute("aria-expanded", "true");
+      focusElement(searchElement);
+    }
+    function close(isFocusReturned) {
+      if (openSearchableSelect === instance) {
+        openSearchableSelect = null;
+      }
+      setShown(popupElement, false);
+      triggerElement.setAttribute("aria-expanded", "false");
+      if (isFocusReturned) {
+        focusElement(triggerElement);
+      }
+    }
+    function choose(optionIndex) {
+      if (triggerElement.disabled || optionIndex < 0 || optionIndex >= optionLabels.length) {
+        return;
+      }
+      selectedIndex = optionIndex;
+      drawTrigger(optionLabels[optionIndex]);
+      close(true);
+      settings.onSelect(optionIndex);
+    }
+    triggerElement.addEventListener("click", function() {
+      if (openSearchableSelect === instance) {
+        close(true);
+      } else {
+        open();
+      }
+    });
+    triggerElement.addEventListener("keydown", function(event) {
+      const key = event.key;
+      if (key === "ArrowDown" || key === "ArrowUp") {
+        if (typeof event.preventDefault === "function") {
+          event.preventDefault();
+        }
+        open();
+      }
+    });
+    searchElement.addEventListener("input", drawList);
+    searchElement.addEventListener("keydown", function(event) {
+      const keyboardEvent = event;
+      const preventDefault = function() {
+        if (typeof keyboardEvent.preventDefault === "function") {
+          keyboardEvent.preventDefault();
+        }
+      };
+      if (keyboardEvent.key === "ArrowDown" && shownIndexes.length > 0) {
+        preventDefault();
+        highlight(Math.min(highlightedPosition + 1, shownIndexes.length - 1));
+      } else if (keyboardEvent.key === "ArrowUp" && shownIndexes.length > 0) {
+        preventDefault();
+        highlight(Math.max(highlightedPosition - 1, 0));
+      } else if (keyboardEvent.key === "Enter") {
+        preventDefault();
+        if (highlightedPosition >= 0) {
+          choose(shownIndexes[highlightedPosition]);
+        }
+      } else if (keyboardEvent.key === "Escape") {
+        preventDefault();
+        if (typeof keyboardEvent.stopPropagation === "function") {
+          keyboardEvent.stopPropagation();
+        }
+        close(true);
+      } else if (keyboardEvent.key === "Tab") {
+        close(false);
+      }
+    });
+    return {
+      element: rootElement,
+      triggerElement,
+      searchElement,
+      drawOptions: function(nextOptionLabels, nextSelectedIndex) {
+        optionLabels = nextOptionLabels.slice();
+        selectedIndex = nextSelectedIndex !== null && nextSelectedIndex >= 0 && nextSelectedIndex < optionLabels.length ? nextSelectedIndex : null;
+        isOpenable = optionLabels.length > 0;
+        drawTrigger(selectedIndex === null ? settings.unselectedLabel : optionLabels[selectedIndex]);
+        if (!isOpenable) {
+          close(false);
+        } else if (openSearchableSelect === instance) {
+          drawList();
+        }
+      },
+      drawPlaceholder: function(placeholderText) {
+        optionLabels = [];
+        selectedIndex = null;
+        isOpenable = false;
+        drawTrigger(placeholderText);
+        close(false);
+      },
+      setDisabled: function(isDisabled) {
+        triggerElement.disabled = isDisabled;
+        if (isDisabled && openSearchableSelect === instance) {
+          close(false);
+        }
+      },
+      isOpen: function() {
+        return openSearchableSelect === instance;
+      }
+    };
+  }
 
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitTroubleshootingConstants.ts
   var RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = "Assign permission sets to me…";
@@ -1485,6 +1710,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     isDataOrgPickerInUse: false,
     dataOrgViews: [],
     dataOrgLabels: null,
+    // WHAT THE DROPDOWN LISTS (#678): THE SAME ORGS, "alias -- instance url"; dataOrgLabels STAYS WHAT EVERY OTHER TEXT QUOTES
+    dataOrgPickerLabels: null,
     isDataOrgLoadShown: true,
     isDataOrgSelectShown: false,
     isDataOrgRefreshShown: false,
@@ -1521,6 +1748,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   function resetDataOrgPickerState() {
     dataOrgPicker.dataOrgViews = [];
     dataOrgPicker.dataOrgLabels = null;
+    dataOrgPicker.dataOrgPickerLabels = null;
     dataOrgPicker.isDataOrgLoadShown = true;
     dataOrgPicker.isDataOrgSelectShown = false;
     dataOrgPicker.isDataOrgRefreshShown = false;
@@ -2635,7 +2863,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     orgElement.appendChild(orgView.element);
     bodyElement.appendChild(orgElement);
     dialog.orgView = orgView;
-    [orgView.loadElement, orgView.selectElement, orgView.openOrgElement, orgView.refreshElement].forEach(function(element) {
+    [orgView.loadElement, orgView.orgSelect.triggerElement, orgView.orgSelect.searchElement, orgView.openOrgElement, orgView.refreshElement].forEach(function(element) {
       dialog.focusableElements.push(element);
     });
     const tickedKinds = OBJECT_REFRESH_KINDS.filter(function(kind) {
@@ -4637,7 +4865,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       paragraphs: [
         "Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.",
         "The cockpit opens the newest run, or the one you pick in Select Generated Treecipe runs by date:, the first line of the Treecipes section (or at the top of the panel, when a run has no cards to show). Each card is one tree: related objects written to one recipe file, parents before children.",
-        "At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Authorize org, next to it, logs in to a sandbox that already exists: it asks for the sandbox's subdomain, such as acme--qa, and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Its confirmation offers Authorize with Salesforce CLI, which runs sf org login web so every sf command can use the org, and Authorize with @salesforce/core, which logs in inside VS Code without the CLI, though sf in a terminal set up differently from VS Code may not be able to use that login. Tick the box in its confirmation to also choose the org here and make it this workspace's default org; an org that is not a sandbox or scratch org is authorized, but it is never chosen or made the default here, and it does not get the alias. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org's objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row's pencil works the same way.",
+        "At the top of the panel, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which lives the number of days you choose (1 to 30, 7 unless you change it) and which it creates and selects without deploying anything to it. Its dropdown opens on a Search for org box: type part of an org's alias or address to narrow the list, or choose one from the list below it, where each org shows as its alias, two dashes and the address it logs in at, so two orgs with similar aliases can be told apart. Authorize org, next to it, logs in to a sandbox that already exists: it asks for the sandbox's subdomain, such as acme--qa, and for an alias, which you can leave empty, then opens the Salesforce login page in your browser. Its confirmation offers Authorize with Salesforce CLI, which runs sf org login web so every sf command can use the org, and Authorize with @salesforce/core, which logs in inside VS Code without the CLI, though sf in a terminal set up differently from VS Code may not be able to use that login. Tick the box in its confirmation to also choose the org here and make it this workspace's default org; an org that is not a sandbox or scratch org is authorized, but it is never chosen or made the default here, and it does not get the alias. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. Refresh orgs checks again which authorized orgs are connected, forgets what it had read about each org's objects and checks the chosen org again, so a new login, a permission change or a deploy made elsewhere shows without restarting VS Code; while an insert, a deploy or another run is using the chosen org, it keeps the list and says which run that is. It stays at the top of the panel while you scroll. The Treecipes section below it starts with the run list, then shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with the pencil before its name, beside the star that marks it a favorite. The pencil turns the name into a box where it is: press Enter or click away to save, or Escape to keep the old name, and leave it empty to go back to the folder name. A data set row's pencil works the same way.",
         "Under the dropdown, a line lists the card's objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.",
         "The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.",
         "Each card's Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field's row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card's Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.",
@@ -10108,7 +10336,21 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const dataOrgView = {
       element: viewElement,
       loadElement: createButton("primary", "dataOrgLoad", "Choose org…"),
-      selectElement: createElement("select", "dataOrgSelect hidden"),
+      orgSelect: buildSearchableSelect({
+        className: "dataOrgSelect hidden",
+        accessibleName: RECIPE_COCKPIT_ORG_PICKER_NAME,
+        searchPlaceholder: RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+        chooseLabel: RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
+        unselectedLabel: RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
+        buildNoMatchText: buildOrgNoMatchText,
+        // ONLY AN INDEX THE HOST LISTED: WHILE THE CHECK RUNS THE PICKER HOLDS NO LABEL TO CHOOSE
+        onSelect: function(orgIndex) {
+          if (dataOrgPicker.isDataOrgChecking) {
+            return;
+          }
+          vscodeApi.postMessage({ command: "selectDataOrg", orgIndex });
+        }
+      }),
       spinnerElement: createElement("span", "dataOrgSpinner hidden"),
       typeElement: createElement("span", "dataOrgType hidden"),
       openOrgElement: createButton("secondary", "dataOrgOpen hidden", RECIPE_COCKPIT_OPEN_ORG_LABEL),
@@ -10117,19 +10359,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       authorizeElement: createButton("primary", "dataOrgAuthorize", RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL),
       hiddenNoteElement: createElement("div", "dataOrgHiddenNote muted hidden"),
       statusElement: createElement("div", "dataOrgStatus muted hidden"),
-      drawnLabels: null
+      drawnLabels: null,
+      drawnSelectedIndex: null
     };
     dataOrgView.loadElement.setAttribute("title", "List the connected sandbox and scratch orgs the generated data can go to");
     dataOrgView.loadElement.addEventListener("click", function() {
       requestDataOrgs();
-    });
-    dataOrgView.selectElement.setAttribute("aria-label", "Salesforce org the generated data goes to");
-    dataOrgView.selectElement.addEventListener("change", function() {
-      const selectedValue = String(dataOrgView.selectElement.value || "");
-      if (dataOrgPicker.isDataOrgChecking || !/^[0-9]+$/.test(selectedValue)) {
-        return;
-      }
-      vscodeApi.postMessage({ command: "selectDataOrg", orgIndex: Number(selectedValue) });
     });
     dataOrgView.spinnerElement.setAttribute("aria-hidden", "true");
     const refreshIconElement = createElement("span", "dataOrgRefreshIcon", "⟳");
@@ -10176,7 +10411,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       vscodeApi.postMessage({ command: "authorizeOrg" });
     });
     pickerElement.appendChild(dataOrgView.loadElement);
-    pickerElement.appendChild(dataOrgView.selectElement);
+    pickerElement.appendChild(dataOrgView.orgSelect.element);
     pickerElement.appendChild(dataOrgView.spinnerElement);
     pickerElement.appendChild(dataOrgView.typeElement);
     pickerElement.appendChild(dataOrgView.openOrgElement);
@@ -10193,28 +10428,21 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     return dataOrgView;
   }
   function drawDataOrgView(dataOrgView) {
-    const optionLabels = dataOrgPicker.isDataOrgChecking ? dataOrgPicker.dataOrgCheckingOptionLabels : dataOrgPicker.dataOrgLabels;
-    if (dataOrgView.drawnLabels !== optionLabels) {
-      dataOrgView.selectElement.textContent = "";
-      if (dataOrgPicker.isDataOrgChecking || dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgLabels.length === 0) {
-        const onlyOptionElement = createElement("option", "", dataOrgPicker.isDataOrgChecking ? dataOrgPicker.dataOrgCheckingOptionLabels[0] : RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER);
-        onlyOptionElement.value = "";
-        dataOrgView.selectElement.appendChild(onlyOptionElement);
-      } else if (dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgLabels.length > 0) {
-        const placeholderElement = createElement("option", "", "Choose org…");
-        placeholderElement.value = "";
-        dataOrgView.selectElement.appendChild(placeholderElement);
-        dataOrgPicker.dataOrgLabels.forEach(function(orgLabel, orgIndex) {
-          const optionElement = createElement("option", "", orgLabel);
-          optionElement.value = String(orgIndex);
-          dataOrgView.selectElement.appendChild(optionElement);
-        });
+    const optionLabels = dataOrgPicker.isDataOrgChecking ? dataOrgPicker.dataOrgCheckingOptionLabels : dataOrgPicker.dataOrgPickerLabels;
+    const selectedIndex = dataOrgPicker.isDataOrgChecking ? null : dataOrgPicker.dataOrgSelectedIndex;
+    if (dataOrgView.drawnLabels !== optionLabels || dataOrgView.drawnSelectedIndex !== selectedIndex) {
+      if (dataOrgPicker.isDataOrgChecking) {
+        dataOrgView.orgSelect.drawPlaceholder(dataOrgPicker.dataOrgCheckingOptionLabels[0]);
+      } else if (dataOrgPicker.dataOrgPickerLabels && dataOrgPicker.dataOrgPickerLabels.length > 0) {
+        dataOrgView.orgSelect.drawOptions(dataOrgPicker.dataOrgPickerLabels, selectedIndex);
+      } else {
+        dataOrgView.orgSelect.drawPlaceholder(RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER);
       }
       dataOrgView.drawnLabels = optionLabels;
+      dataOrgView.drawnSelectedIndex = selectedIndex;
     }
-    dataOrgView.selectElement.value = dataOrgPicker.isDataOrgChecking || dataOrgPicker.dataOrgSelectedIndex === null ? "" : String(dataOrgPicker.dataOrgSelectedIndex);
     setShown(dataOrgView.loadElement, dataOrgPicker.isDataOrgLoadShown);
-    setShown(dataOrgView.selectElement, dataOrgPicker.isDataOrgSelectShown || dataOrgPicker.isDataOrgChecking);
+    setShown(dataOrgView.orgSelect.element, dataOrgPicker.isDataOrgSelectShown || dataOrgPicker.isDataOrgChecking);
     setShown(dataOrgView.spinnerElement, dataOrgPicker.isDataOrgChecking);
     setShown(dataOrgView.refreshElement, dataOrgPicker.isDataOrgRefreshShown);
     dataOrgView.typeElement.textContent = dataOrgPicker.dataOrgTypeLabel || "";
@@ -10232,7 +10460,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     dataOrgView.newScratchElement.textContent = runLocks.isScratchOrgRunning && !runLocks.isOrgAuthorizeRunning ? "Setting up scratch org…" : RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL;
     dataOrgView.authorizeElement.disabled = dataOrgView.newScratchElement.disabled;
     dataOrgView.authorizeElement.textContent = runLocks.isOrgAuthorizeRunning ? RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL : RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL;
-    dataOrgView.selectElement.disabled = runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
+    dataOrgView.orgSelect.setDisabled(runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning);
     dataOrgView.loadElement.disabled = runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
     dataOrgView.refreshElement.disabled = runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
     setShown(dataOrgView.openOrgElement, dataOrgPicker.isDataOrgSelectShown && dataOrgPicker.dataOrgSelectedIndex !== null);
@@ -10301,6 +10529,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     dataOrgPicker.isDataOrgRefreshShown = true;
     dataOrgPicker.dataOrgHiddenNoteText = [dataOrgList.forgottenOrgNotice || "", dataOrgList.hiddenOrgNote || ""].filter(Boolean).join(" ");
     dataOrgPicker.dataOrgLabels = Array.isArray(dataOrgList.orgLabels) ? dataOrgList.orgLabels.slice() : [];
+    const orgPickerLabels = dataOrgList.orgPickerLabels;
+    dataOrgPicker.dataOrgPickerLabels = Array.isArray(orgPickerLabels) && orgPickerLabels.length === dataOrgPicker.dataOrgLabels.length && orgPickerLabels.every(function(orgPickerLabel) {
+      return typeof orgPickerLabel === "string";
+    }) ? orgPickerLabels.slice() : dataOrgPicker.dataOrgLabels.slice();
     dataOrgPicker.isDataOrgSelectShown = true;
     if (dataOrgPicker.dataOrgLabels.length === 0) {
       setDataOrgStatus(dataOrgList.noOrgsMessage, true);
@@ -10338,6 +10570,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     dataOrgPicker.dataOrgPickerBeforeCheck = {
       labels: dataOrgPicker.dataOrgLabels,
+      pickerLabels: dataOrgPicker.dataOrgPickerLabels,
       isLoadShown: dataOrgPicker.isDataOrgLoadShown,
       isSelectShown: dataOrgPicker.isDataOrgSelectShown,
       isRefreshShown: dataOrgPicker.isDataOrgRefreshShown,
@@ -10369,6 +10602,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       dataOrgPicker.isDataOrgChecking = false;
       dataOrgPicker.dataOrgCheckingOptionLabels = [];
       dataOrgPicker.dataOrgLabels = pickerBeforeCheck.labels;
+      dataOrgPicker.dataOrgPickerLabels = pickerBeforeCheck.pickerLabels;
       dataOrgPicker.isDataOrgLoadShown = pickerBeforeCheck.isLoadShown;
       dataOrgPicker.isDataOrgSelectShown = pickerBeforeCheck.isSelectShown;
       dataOrgPicker.isDataOrgRefreshShown = pickerBeforeCheck.isRefreshShown;

@@ -17,6 +17,7 @@ export const COCKPIT_KIT_STYLESHEET_FILES: readonly string[] = Object.freeze([
     'CockpitButtonKinds.state.css',
     'CockpitButtonKinds.check.css',
     'CockpitOrgPicker.css',
+    'CockpitSearchableSelect.css',
     'CockpitOrgPicker.pinnedSection.css',
     'CockpitConfirmDialog.css'
 ]);
