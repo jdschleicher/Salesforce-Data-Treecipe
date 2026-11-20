@@ -179,7 +179,23 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
     });
 
     describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
-        
+
+        test('drops Quote.AccountId, which Salesforce sets from the quote\'s Opportunity, and keeps every other field (#680)', () => {
+
+            const snowfakeryJson = JSON.stringify([
+                { id: 1, _table: 'Quote', nickname: 'Quote_NickName', AccountId: 'Opportunity_NickName.AccountId', OpportunityId: 'Opportunity_Reference_1', Name: 'Q-1' },
+                { id: 1, _table: 'Opportunity', nickname: 'Opportunity_NickName', AccountId: 'Account_Reference_1', Name: 'Deal' }
+            ]);
+
+            const recordsByObjectApiName = snowfakeryRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJson);
+
+            expect(recordsByObjectApiName.get('Quote').records).toEqual([
+                { attributes: { type: 'Quote', referenceId: 'Quote_Reference_1__Quote_NickName' }, OpportunityId: 'Opportunity_Reference_1', Name: 'Q-1' }
+            ]);
+            expect(recordsByObjectApiName.get('Opportunity').records[0].AccountId).toBe('Account_Reference_1');
+
+        });
+
         test('given two different objects from snowfakery generation, calls createCollectionsApiFile twice', () => {
             
             const snowfakeryJsonFileContent = JSON.stringify([

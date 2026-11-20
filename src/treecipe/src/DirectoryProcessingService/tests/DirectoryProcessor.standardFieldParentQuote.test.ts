@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
@@ -40,12 +42,14 @@ import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRe
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import { RecipeFileOutput } from '../../ObjectInfoWrapper/RelationshipTypes';
+import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 
 /*
     #680: Quote.OpportunityId is a standard MasterDetail field with no <referenceTo> in source format, as
     are Quote's ContactId and ContractId lookups. StandardFieldParentReferenceMap names their parents,
     so Generate Treecipe puts Quote in Opportunity's tree, inserted after it, with each field written
-    as any lookup with that <referenceTo> is written.
+    as any lookup with that <referenceTo> is written. Quote.AccountId is set by Salesforce from the
+    quote's Opportunity (StandardDerivedFields), so it is written as Opportunity_NickName.AccountId.
 */
 
 const QUOTE_PARENT_OBJECTS_PATH = path.join(__dirname, 'mocks', 'QuoteParentSalesforceMetadataDirectory', 'objects');
@@ -56,6 +60,8 @@ const QUOTE_PARENT_FIELDS = [
     ['ContactId', 'Lookup', 'Contact'],
     ['ContractId', 'Lookup', 'Contract']
 ] as const;
+const QUOTE_WIRED_PARENT_FIELDS = QUOTE_PARENT_FIELDS.filter(([fieldApiName]) => fieldApiName !== 'AccountId');
+const QUOTE_DERIVED_ACCOUNT_ID_VALUE = 'Opportunity_NickName.AccountId';
 
 type LoadedObjectRecipe = { object: string; nickname: string; fields: Record<string, unknown> | null; friends?: LoadedObjectRecipe[] };
 
@@ -114,13 +120,13 @@ describe.each([
     });
 
     test(isNestingBackend
-        ? 'every Quote parent field is written as its parent\'s nickname, with no REFERENCE ID TODO'
-        : 'every Quote parent field is the REFERENCE ID TODO the Recipe Cockpit\'s Wire lookup fills, as for Contact.AccountId', async () => {
+        ? 'every Quote lookup Salesforce lets a recipe set is written as its parent\'s nickname, with no REFERENCE ID TODO'
+        : 'every Quote lookup Salesforce lets a recipe set is the REFERENCE ID TODO the Recipe Cockpit\'s Wire lookup fills, as for Contact.AccountId', async () => {
 
         const objectInfoWrapper = await generate(QUOTE_PARENT_OBJECTS_PATH);
         const [quoteRecipe] = loadQuoteRecipes(findQuoteRecipeFile(objectInfoWrapper.RecipeFiles));
 
-        QUOTE_PARENT_FIELDS.forEach(([fieldApiName, unusedType, parentObjectApiName]) => {
+        QUOTE_WIRED_PARENT_FIELDS.forEach(([fieldApiName, unusedType, parentObjectApiName]) => {
             expect(quoteRecipe.fields[fieldApiName]).toBe(isNestingBackend ? `${parentObjectApiName}_NickName` : null);
         });
         expect(Object.keys(objectInfoWrapper.ObjectToObjectInfoMap.Quote.RelationshipDetail.parentObjectToFieldReferences).sort())
@@ -128,16 +134,65 @@ describe.each([
 
     });
 
-    test('with none of its parents in the project, Quote is still written, each parent field a REFERENCE ID TODO, and generation does not fail', async () => {
+    test('Quote.AccountId, which Salesforce sets from the quote\'s Opportunity, is written as Opportunity_NickName.AccountId', async () => {
+
+        const objectInfoWrapper = await generate(QUOTE_PARENT_OBJECTS_PATH);
+        const quoteRecipeFile = findQuoteRecipeFile(objectInfoWrapper.RecipeFiles);
+        const [quoteRecipe] = loadQuoteRecipes(quoteRecipeFile);
+
+        expect(quoteRecipe.fields.AccountId).toBe(QUOTE_DERIVED_ACCOUNT_ID_VALUE);
+        // THE OPPORTUNITY IT NAMES IS WRITTEN IN THE SAME TREE
+        expect(quoteRecipeFile.content).toMatch(/^ +nickname: Opportunity_NickName$/m);
+
+    });
+
+    test('with none of its parents in the project, Quote is still written, each lookup a REFERENCE ID TODO, and generation does not fail', async () => {
 
         const objectInfoWrapper = await generate(QUOTE_WITHOUT_PARENTS_OBJECTS_PATH);
         const quoteRecipeFile = findQuoteRecipeFile(objectInfoWrapper.RecipeFiles);
         const writtenObjectApiNames = flattenObjectRecipes(yaml.load(quoteRecipeFile.content) as LoadedObjectRecipe[]).map(objectRecipe => objectRecipe.object);
 
         expect(writtenObjectApiNames).toEqual(['Quote']);
-        QUOTE_PARENT_FIELDS.forEach(([fieldApiName]) => {
+        QUOTE_WIRED_PARENT_FIELDS.forEach(([fieldApiName]) => {
             expect(quoteRecipeFile.content).toMatch(new RegExp(`^ +${fieldApiName}: ${RelationshipService.referenceIdRequiredTodo}$`, 'm'));
         });
+        // NO OPPORTUNITY IN THE TREE: THE DEFAULT NICKNAME IS NAMED, AND THE INSERT DROPS THE FIELD ANYWAY
+        expect(quoteRecipeFile.content).toMatch(new RegExp(`^ +AccountId: ${QUOTE_DERIVED_ACCOUNT_ID_VALUE}$`, 'm'));
+
+    });
+
+});
+
+// RUN FAKER OVER THE GENERATED RECIPE: THE QUOTE SENT TO SALESFORCE CARRIES ITS OPPORTUNITY AND NO AccountId
+describe('Run Faker by Recipe over the generated faker-js Quote recipe (#680)', () => {
+
+    let recipeDirectoryPath: string;
+
+    beforeEach(() => {
+        jest.spyOn(RecipeFakerServiceFactory, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new FakerJSRecipeFakerService());
+        jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
+        jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+        recipeDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-quote-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(recipeDirectoryPath, { recursive: true, force: true });
+    });
+
+    test('the Quote record references the generated Opportunity and holds no AccountId', async () => {
+
+        const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(QUOTE_PARENT_OBJECTS_PATH));
+        const recipeFilePath = path.join(recipeDirectoryPath, 'recipe.yml');
+        fs.writeFileSync(recipeFilePath, objectInfoWrapper.RecipeFiles.find(recipeFile => recipeFile.objects.includes('Quote')).content);
+
+        const fakerRecipeProcessor = new FakerJSRecipeProcessor();
+        const recordsByObjectApiName = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFilePath));
+        const [quoteRecord] = recordsByObjectApiName.get('Quote').records as Record<string, unknown>[];
+        const opportunityReferenceIds = (recordsByObjectApiName.get('Opportunity').records as Array<{ attributes: { referenceId: string } }>).map(opportunityRecord => opportunityRecord.attributes.referenceId);
+
+        expect(quoteRecord).not.toHaveProperty('AccountId');
+        // A LOOKUP HOLDS ITS PARENT RECORD'S NICKNAME, WHICH THE INSERT RESOLVES THROUGH THE "__<nickname>" END OF THAT RECORD'S referenceId
+        expect(opportunityReferenceIds.filter(referenceId => referenceId.endsWith(`__${quoteRecord.OpportunityId}`))).toHaveLength(1);
 
     });
 

@@ -145,6 +145,8 @@ import {
 import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTreecipeFieldEditorConstants';
 import {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
+    RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -558,6 +560,8 @@ export type { IRecipeCockpitHelpSection, RecipeCockpitTreeTab };
 // THE FIELD ROWS' WORDS LIVE IN A FILE THEIR PANEL MODULES IMPORT (#655); THE HOST'S NAMES STAY
 export {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
+    RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -709,6 +713,7 @@ import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } fr
 import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { RecipeCockpitInsertFailureTriage } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
+import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedFields';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
@@ -3521,7 +3526,7 @@ export class RecipeCockpitService {
     /*
         Why a field cannot be given a fixed value (#262), or undefined when it can. A field the tree or
         the insert decides -- RecordTypeId, a dependent picklist whose value a controlling value
-        chooses -- keeps its expression, and so does any field a #220 lock holds or the reader
+        chooses, a field Salesforce sets from another lookup (#680) -- keeps its expression, and so does any field a #220 lock holds or the reader
         unticked: a fixed value on a field generation leaves out would never be written. A lookup is
         open (#627): it takes a record's Id (findLookupValueRefusal). The panel draws the same rule
         from the same model.
@@ -3545,6 +3550,11 @@ export class RecipeCockpitService {
         }
         if ( fieldViewModel.fieldApiName === 'RecordTypeId' ) {
             return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON;
+        }
+
+        const derivedField = StandardDerivedFields.resolveDerivedField(objectViewModel.objectApiName, fieldViewModel.fieldApiName);
+        if ( derivedField ) {
+            return `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}${derivedField.throughFieldApiName}`;
         }
 
         if ( fieldViewModel.controllingField ) {

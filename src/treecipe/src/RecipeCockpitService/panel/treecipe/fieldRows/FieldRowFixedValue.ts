@@ -1,5 +1,6 @@
 import { createButton } from '../../../../CockpitKit/panel/CockpitPanelElements';
 import {
+    RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
@@ -10,6 +11,7 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
     RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX
 } from '../../../RecipeCockpitFieldRowsConstants';
+import { StandardDerivedFields } from '../../../../ObjectInfoWrapper/StandardDerivedFields';
 import { buildPencilGlyph } from '../../RecipeCockpitPanelBuilders';
 import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { closeFieldEditor, toggleFieldEditor } from '../fieldEditor/FieldEditor';
@@ -71,6 +73,9 @@ export function findFixedValueLockReason(treeObjectState: ITreeObjectState, fiel
     if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, field.fieldApiName)) { return objectFieldSelection.lockReasonsByFieldApiName[field.fieldApiName]; }
     if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, field.fieldApiName)) { return RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON; }
     if (field.fieldApiName === 'RecordTypeId') { return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON; }
+
+    const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
+    if (derivedField) { return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName; }
 
     if (field.controllingField) { return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
 

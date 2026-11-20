@@ -846,6 +846,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = "unticked";
   var RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = "the record type is chosen by name";
   var RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = "depends on ";
+  var RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX = "set by Salesforce from ";
+  var RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL = "read only";
   var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
   var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
   var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
@@ -857,6 +859,37 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = "↗ ";
   var RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE = "NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED";
   var RECIPE_COCKPIT_RESET_SELECTION_LABEL = "Reset Selections";
+
+  // src/treecipe/src/ObjectInfoWrapper/StandardDerivedFields.ts
+  var StandardDerivedFields = class {
+    static resolveDerivedField(objectApiName, fieldApiName) {
+      const objectFieldKey = \`\${objectApiName}.\${fieldApiName}\`;
+      return Object.prototype.hasOwnProperty.call(this.derivedFieldByObjectField, objectFieldKey) ? this.derivedFieldByObjectField[objectFieldKey] : void 0;
+    }
+    static listDerivedFieldApiNames(objectApiName) {
+      const objectPrefix = \`\${objectApiName}.\`;
+      return Object.keys(this.derivedFieldByObjectField).filter((objectFieldKey) => objectFieldKey.startsWith(objectPrefix)).map((objectFieldKey) => objectFieldKey.slice(objectPrefix.length));
+    }
+    static listDerivedObjectFields() {
+      return Object.keys(this.derivedFieldByObjectField);
+    }
+    // THE VALUE A RECIPE WRITES: THE SOURCE RECORD'S NICKNAME AND THE FIELD SALESFORCE COPIES FROM IT
+    static formatRecipeValue(sourceNickname, derivedField) {
+      return \`\${sourceNickname}.\${derivedField.sourceFieldApiName}\`;
+    }
+    // THE SOURCE NICKNAME OF A RECIPE VALUE formatRecipeValue WROTE, OR undefined FOR ANY OTHER VALUE
+    static readSourceNickname(recipeValue, derivedField) {
+      if (typeof recipeValue !== "string") {
+        return void 0;
+      }
+      const fieldSuffix = \`.\${derivedField.sourceFieldApiName}\`;
+      const sourceNickname = recipeValue.endsWith(fieldSuffix) ? recipeValue.slice(0, -fieldSuffix.length) : "";
+      return /^[A-Za-z]\\w*$/.test(sourceNickname) ? sourceNickname : void 0;
+    }
+  };
+  StandardDerivedFields.derivedFieldByObjectField = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+    "Quote.AccountId": Object.freeze({ throughFieldApiName: "OpportunityId", sourceObjectApiName: "Opportunity", sourceFieldApiName: "AccountId" })
+  }));
 
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelConnection.ts
   var acquiredVsCodeApi = null;
@@ -4135,6 +4168,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return valueLine.trim().charAt(0) === "#";
     }) ? firstLine : null;
   }
+  function readFieldReferencedNickname(objectApiName, field) {
+    const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
+    if (!derivedField) {
+      return readReferencedNickname(field.recipeValue);
+    }
+    const sourceNickname = StandardDerivedFields.readSourceNickname(String(field.recipeValue || "").trim(), derivedField);
+    return sourceNickname !== void 0 && isReferenceableNickname(sourceNickname) ? sourceNickname : null;
+  }
+  function readSourceFieldNickname(sourceOwnerState, sourceFieldApiName) {
+    const sourceFieldState = sourceOwnerState.fieldStates.find(function(fieldState) {
+      return fieldState.field.fieldApiName === sourceFieldApiName;
+    });
+    return sourceFieldState ? readFieldReferencedNickname(sourceOwnerState.object.objectApiName, sourceFieldState.field) : null;
+  }
   function nicknameKeyOf(recipeFilePath, nickname) {
     return String(recipeFilePath || "") + "\\n" + nickname;
   }
@@ -4168,7 +4215,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         if (!fieldState.field.lineNumber) {
           return;
         }
-        const nickname = readReferencedNickname(fieldState.field.recipeValue);
+        const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
         if (nickname === null) {
           return;
         }
@@ -4192,7 +4239,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (!treeObjectState.treeState || !fieldState.field.lineNumber) {
       return null;
     }
-    const nickname = readReferencedNickname(fieldState.field.recipeValue);
+    const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
     if (nickname === null) {
       return null;
     }
@@ -4642,6 +4689,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.",
         "Each card's Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field's row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card's Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.",
         "Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.",
+        "A field Salesforce sets itself from another lookup, such as a Quote's AccountId, which always comes from its Opportunity, is marked read only and its pencil is disabled. Its value names the record it comes from, such as Opportunity_NickName.AccountId, says which account that record holds, and links to that row like a nickname. It is never sent to Salesforce on insert.",
         "A friend (an object nested under another's friends: in a faker-js recipe) shows a 👥 chip per parent: the parent's nickname and its place among that parent's friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.",
         "Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card's Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO's list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.",
         "The Troubleshooting tab shows one area at a time: TODO's, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.",
@@ -6814,6 +6862,15 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (field.fieldTypeWithSize || field.fieldType) {
       fieldHeaderElement.appendChild(createElement("span", "fieldType", field.fieldTypeWithSize || field.fieldType));
     }
+    const derivedField = StandardDerivedFields.resolveDerivedField(treeObjectState.object.objectApiName, field.fieldApiName);
+    if (derivedField) {
+      const derivedReason = RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
+      const derivedBadgeElement = createElement("span", "fixedValueBadge derivedFieldBadge", RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL);
+      derivedBadgeElement.setAttribute("title", "Salesforce sets " + field.fieldApiName + " from " + derivedField.throughFieldApiName + ", so it is never inserted");
+      fieldHeaderElement.appendChild(derivedBadgeElement);
+      const copiedNickname = referencedOwnerState ? readSourceFieldNickname(referencedOwnerState, derivedField.sourceFieldApiName) : null;
+      fieldHeaderElement.appendChild(createElement("span", "treeFieldNote derivedFieldNote muted", copiedNickname ? derivedReason + " → " + copiedNickname : derivedReason));
+    }
     if (fieldState.recordTypeDeveloperNames) {
       const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(", ");
       const recordTypeChipElement = createElement("span", "recordTypeChip", recordTypeNamesText);
@@ -7283,6 +7340,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     if (field.fieldApiName === "RecordTypeId") {
       return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON;
+    }
+    const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
+    if (derivedField) {
+      return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
     }
     if (field.controllingField) {
       return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;

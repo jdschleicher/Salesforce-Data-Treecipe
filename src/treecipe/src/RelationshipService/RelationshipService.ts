@@ -4,6 +4,7 @@ import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { RelationshipDetail, RelationshipTree, OrderedRecipeStructure, OrderedRelationshipTree, RecipeLevel, RecipeInfo, RecipeFileOutput } from "../ObjectInfoWrapper/RelationshipTypes";
 import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 import { REFERENCE_ID_REQUIRED_TODO } from "./ReferenceIdRequiredTodo";
+import { StandardDerivedFields } from "../ObjectInfoWrapper/StandardDerivedFields";
 
 export class RelationshipService {
 
@@ -352,6 +353,7 @@ export class RelationshipService {
     combinedRecipe += `# Objects must be processed in this order for proper lookup resolution\n\n`;
 
     const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(orderedTree.orderedLevels.flatMap(level => level.recipes));
+    const firstNicknameByObjectName = RelationshipService.buildFirstNicknameByObjectName(orderedTree.orderedLevels.flatMap(level => level.recipes));
 
     orderedTree.orderedLevels.forEach(level => {
       combinedRecipe += `# Level ${level.level} - ${level.objects.join(', ')}\n`;
@@ -359,7 +361,8 @@ export class RelationshipService {
         combinedRecipe += `# ${recipeInfo.objectName} (${recipeInfo.relationshipInfo})\n`;
         // EACH SELECTED RECORD TYPE'S BLOCK FOLLOWS THE FIRST, FLAT (#194)
         [recipeInfo.recipe, ...recipeInfo.additionalRecordTypeRecipes].forEach(blockRecipe => {
-          const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, blockRecipe.split('\n'), blockNicknamesByObjectName, objectInfoWrapper).join('\n');
+          const derivedLines = RelationshipService.writeDerivedFieldValues(recipeInfo.objectName, blockRecipe.split('\n'), firstNicknameByObjectName);
+          const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, derivedLines, blockNicknamesByObjectName, objectInfoWrapper).join('\n');
           combinedRecipe += annotatedBlockRecipe;
           if (!annotatedBlockRecipe.endsWith('\n')) {
             combinedRecipe += '\n';
@@ -393,6 +396,55 @@ export class RelationshipService {
         blockNicknamesByObjectName.set(recipeInfo.objectName, blockNicknames);
       });
     return blockNicknamesByObjectName;
+
+  }
+
+  // THE NICKNAME OF EACH OBJECT'S FIRST BLOCK IN A TREE, WHICH A DERIVED FIELD NAMES WHEN ITS THROUGH LOOKUP NAMES NO RECORD
+  static buildFirstNicknameByObjectName(recipeInfos: RecipeInfo[]): Map<string, string> {
+
+    const firstNicknameByObjectName = new Map<string, string>();
+    recipeInfos.forEach(recipeInfo => {
+      const nickname = RelationshipService.readNickname(recipeInfo.recipe);
+      if ( nickname !== undefined && !firstNicknameByObjectName.has(recipeInfo.objectName) ) {
+        firstNicknameByObjectName.set(recipeInfo.objectName, nickname);
+      }
+    });
+    return firstNicknameByObjectName;
+
+  }
+
+  /*
+    A field Salesforce sets from another lookup (StandardDerivedFields, #680) is written as the
+    record it comes from and the field copied, AccountId: Opportunity_NickName.AccountId, whatever
+    generation put there. The source is the record the through lookup names -- a nickname (faker-js)
+    or a reference() (a snowfakery child copy) -- else the source object's first block in the tree,
+    else its default nickname. Both faker processors drop the field before insert.
+  */
+  static writeDerivedFieldValues(objectName: string, objectLines: string[], firstNicknameByObjectName: Map<string, string>): string[] {
+
+    const derivedFieldApiNames = StandardDerivedFields.listDerivedFieldApiNames(objectName);
+    if ( derivedFieldApiNames.length === 0 ) {
+      return objectLines;
+    }
+
+    const readFieldValue = (fieldApiName: string): string | undefined => {
+      const fieldLinePrefix = `    ${fieldApiName}:`;
+      const fieldLine = objectLines.find(objectLine => objectLine.startsWith(fieldLinePrefix));
+      return fieldLine === undefined ? undefined : fieldLine.slice(fieldLinePrefix.length).trim();
+    };
+
+    const sourceNicknameByFieldApiName = new Map(derivedFieldApiNames.map(fieldApiName => {
+      const derivedField = StandardDerivedFields.resolveDerivedField(objectName, fieldApiName);
+      const throughValue = readFieldValue(derivedField.throughFieldApiName) ?? '';
+      const namedSourceNickname = /^[A-Za-z]\w*$/.test(throughValue) ? throughValue : /\breference\(([A-Za-z]\w*)\)/.exec(throughValue)?.[1];
+      const sourceNickname = namedSourceNickname ?? firstNicknameByObjectName.get(derivedField.sourceObjectApiName) ?? `${derivedField.sourceObjectApiName}_NickName`;
+      return [fieldApiName, StandardDerivedFields.formatRecipeValue(sourceNickname, derivedField)] as const;
+    }));
+
+    return objectLines.map(objectLine => {
+      const fieldApiName = derivedFieldApiNames.find(candidate => objectLine.startsWith(`    ${candidate}:`));
+      return fieldApiName === undefined ? objectLine : `    ${fieldApiName}: ${sourceNicknameByFieldApiName.get(fieldApiName)}`;
+    });
 
   }
 
@@ -533,6 +585,7 @@ export class RelationshipService {
 
     const recipeInfoByObjectName = new Map(recipeInfosInInsertOrder.map(recipeInfo => [recipeInfo.objectName, recipeInfo]));
     const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(recipeInfosInInsertOrder);
+    const firstNicknameByObjectName = RelationshipService.buildFirstNicknameByObjectName(recipeInfosInInsertOrder);
     const placeObject = this.buildBlockPlacer(recipeInfosInInsertOrder, friendsParentByObjectName, selfLookupObjectNames, isChildTreeCopiedPerRecordTypeBlock, objectInfoWrapper);
 
     const renderBlock = (placement: RecordTypeBlockPlacement, depth: number): string[] => {
@@ -543,7 +596,8 @@ export class RelationshipService {
                                                     placement.resolveLowerLevelParentNickname,
                                                     recipeInfoByObjectName,
                                                     objectInfoWrapper);
-      return RelationshipService.annotateLookupsToRecordTypeBlocks(placement.objectName, wiredLines, placement.resolveBlockNicknamesByObjectName(blockNicknamesByObjectName), objectInfoWrapper)
+      const derivedLines = RelationshipService.writeDerivedFieldValues(placement.objectName, wiredLines, firstNicknameByObjectName);
+      return RelationshipService.annotateLookupsToRecordTypeBlocks(placement.objectName, derivedLines, placement.resolveBlockNicknamesByObjectName(blockNicknamesByObjectName), objectInfoWrapper)
         .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
     };
 
@@ -794,6 +848,7 @@ export class RelationshipService {
       .forEach(rootObjectName => collectPlacements(rootObjectName, placeObject(rootObjectName, new Map(), [])));
 
     const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(recipeInfosInInsertOrder);
+    const firstNicknameByObjectName = RelationshipService.buildFirstNicknameByObjectName(recipeInfosInInsertOrder);
 
     let flatRecipe = `# Relationship Tree: ${orderedTree.treeName}\n`;
     flatRecipe += `# Objects must be processed in this order for proper lookup resolution\n`;
@@ -805,7 +860,7 @@ export class RelationshipService {
         flatRecipe += `# ${recipeInfo.objectName} (${recipeInfo.relationshipInfo})\n`;
         // EVERY OBJECT WITH A RECIPE IS PLACED: A ROOT, OR A FRIEND OF ITS PARENT'S FIRST BLOCK
         placementsByObjectName.get(recipeInfo.objectName).forEach(placement => {
-          const referencedLines = RelationshipService.referenceAncestorLookups(placement, objectInfoWrapper);
+          const referencedLines = RelationshipService.writeDerivedFieldValues(recipeInfo.objectName, RelationshipService.referenceAncestorLookups(placement, objectInfoWrapper), firstNicknameByObjectName);
           const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, referencedLines, placement.resolveBlockNicknamesByObjectName(blockNicknamesByObjectName), objectInfoWrapper).join('\n');
           flatRecipe += annotatedBlockRecipe;
           if ( !annotatedBlockRecipe.endsWith('\n') ) {

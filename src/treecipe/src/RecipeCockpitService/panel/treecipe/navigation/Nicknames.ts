@@ -1,6 +1,7 @@
 import { createButton, createElement } from '../../../../CockpitKit/panel/CockpitPanelElements';
 import { RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT, RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI, RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT, RECIPE_COCKPIT_YAML_NON_STRING_NICKNAME_PATTERN } from '../../../RecipeCockpitNavigationConstants';
 import { hasOwnKey } from '../../RecipeCockpitOwnKey';
+import { StandardDerivedFields } from '../../../../ObjectInfoWrapper/StandardDerivedFields';
 import type { IFieldRowFieldState } from '../fieldRows/FieldRowTypes';
 import { buildChipEmoji, drawFriendsButton } from './Friends';
 import { revealTreeObjectRow } from './TreecipesSearch';
@@ -43,6 +44,30 @@ function readReferencedNickname(recipeValue: unknown): string | null {
 
 }
 
+/*
+    The nickname a field's recipe value points to. A field Salesforce sets from another lookup (#680)
+    names its source as "<nickname>.<field>" (AccountId: Opportunity_NickName.AccountId), so its row
+    links to that record like any lookup; every other field points only with a bare nickname.
+*/
+function readFieldReferencedNickname(objectApiName: string, field: { fieldApiName: string; recipeValue?: unknown }): string | null {
+
+    const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
+    if (!derivedField) { return readReferencedNickname(field.recipeValue); }
+
+    const sourceNickname = StandardDerivedFields.readSourceNickname(String(field.recipeValue || '').trim(), derivedField);
+    return sourceNickname !== undefined && isReferenceableNickname(sourceNickname) ? sourceNickname : null;
+
+}
+
+// THE NICKNAME THE SOURCE RECORD'S OWN FIELD HOLDS (Opportunity_NickName's AccountId: Account_NickName), OR null
+export function readSourceFieldNickname(sourceOwnerState: INavigationObjectState, sourceFieldApiName: string): string | null {
+
+    const sourceFieldState = sourceOwnerState.fieldStates.find(function (fieldState) { return fieldState.field.fieldApiName === sourceFieldApiName; });
+
+    return sourceFieldState ? readFieldReferencedNickname(sourceOwnerState.object.objectApiName, sourceFieldState.field) : null;
+
+}
+
 export function nicknameKeyOf(recipeFilePath: string | undefined, nickname: string): string {
     return String(recipeFilePath || '') + '\n' + nickname;
 }
@@ -82,7 +107,7 @@ export function ensureNicknameIndex(treeState: INavigationTreeState): INicknameI
 
             if (!fieldState.field.lineNumber) { return; }
 
-            const nickname = readReferencedNickname(fieldState.field.recipeValue);
+            const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
             if (nickname === null) { return; }
 
             const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
@@ -107,7 +132,7 @@ export function findReferencedOwnerState(treeObjectStateView: ITreeObjectStateVi
     const treeObjectState = asNavigationObjectState(treeObjectStateView);
     if (!treeObjectState.treeState || !fieldState.field.lineNumber) { return null; }
 
-    const nickname = readReferencedNickname(fieldState.field.recipeValue);
+    const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
     if (nickname === null) { return null; }
 
     const nicknameIndex = ensureNicknameIndex(treeObjectState.treeState);
