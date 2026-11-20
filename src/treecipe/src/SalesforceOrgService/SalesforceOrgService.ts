@@ -358,7 +358,12 @@ const DEFAULT_TARGET_ORG_SETTING_NAMES: IDefaultOrgSettingNames = {
 */
 export interface IDataOrgDetail extends IAuthenticatedOrgDetail {
     isDefault?: boolean;
+    // THE AUTHORIZATION'S https:// INSTANCE URL, SO THE PICKER CAN SAY WHICH INSTANCE AN ALIAS IS (#678); LEFT OUT WHEN IT HAS NONE
+    instanceUrl?: string;
 }
+
+// AN INSTANCE URL IS WORKSPACE-ADJACENT TEXT FROM THE CLI'S FILES: LONGER THAN THIS IS NOT ONE SALESFORCE GIVES
+export const DATA_ORG_INSTANCE_URL_MAX_LENGTH = 2048;
 
 // A DEV HUB THE READER CAN PICK. configSource IS PRESENT ONLY ON THE ONE THE CLI HAS SET AS ITS DEFAULT
 export interface IDevHubOrgDetail extends IAuthenticatedOrgDetail {
@@ -1255,21 +1260,59 @@ export class SalesforceOrgService {
             : undefined;
 
         if ( !defaultOrgDetail ) {
-            return { ...connectedOrgListing, hiddenOrgCount: this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts) };
+            return {
+                ...connectedOrgListing,
+                orgDetails: this.addInstanceUrls(connectedOrgListing.orgDetails, authorizations),
+                hiddenOrgCount: this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts)
+            };
         }
 
         const hiddenOrgs = connectedOrgListing.hiddenOrgs.filter(hiddenOrg => hiddenOrg.username !== defaultOrgDetail.username);
         const hiddenOrgReasonCounts = this.countHiddenOrgReasons(hiddenOrgs);
 
         return {
-            orgDetails: [
+            orgDetails: this.addInstanceUrls([
                 { ...defaultOrgDetail, isDefault: true },
                 ...connectedOrgListing.orgDetails.filter(orgDetail => orgDetail.username !== defaultOrgDetail.username)
-            ],
+            ], authorizations),
             hiddenOrgs: hiddenOrgs,
             hiddenOrgReasonCounts: hiddenOrgReasonCounts,
             hiddenOrgCount: this.countHiddenOrgs(hiddenOrgReasonCounts)
         };
+
+    }
+
+    // EACH LISTED ORG WITH ITS AUTHORIZATION'S INSTANCE URL, WHEN THAT IS ONE (#678); AN ORG WITHOUT ONE IS LEFT AS IT WAS
+    private static addInstanceUrls(orgDetails: IDataOrgDetail[], authorizations: OrgAuthorization[]): IDataOrgDetail[] {
+
+        const instanceUrlsByUsername = new Map<string, string>();
+        this.readAuthorizations(authorizations).forEach(authorization => {
+            const instanceUrl = this.readDataOrgInstanceUrl(authorization?.instanceUrl);
+            if ( typeof authorization?.username === 'string' && instanceUrl !== undefined && !instanceUrlsByUsername.has(authorization.username) ) {
+                instanceUrlsByUsername.set(authorization.username, instanceUrl);
+            }
+        });
+
+        return orgDetails.map(orgDetail => {
+            const instanceUrl = instanceUrlsByUsername.get(orgDetail.username);
+            return instanceUrl === undefined ? orgDetail : { ...orgDetail, instanceUrl: instanceUrl };
+        });
+
+    }
+
+    // ONLY AN https:// URL OF A SIZE SALESFORCE GIVES, WRITTEN AS THE CLI STORED IT
+    static readDataOrgInstanceUrl(instanceUrl: unknown): string | undefined {
+
+        // A URL THE PARSER WOULD CLEAN UP -- A LINE BREAK, A SPACE, A CONTROL CHARACTER -- IS NOT SHOWN AS IT WAS STORED, SO IT IS NOT SHOWN
+        if ( typeof instanceUrl !== 'string' || !instanceUrl || instanceUrl.length > DATA_ORG_INSTANCE_URL_MAX_LENGTH || /[\s\u0000-\u001f\u007f]/.test(instanceUrl) ) {
+            return undefined;
+        }
+
+        try {
+            return new URL(instanceUrl).protocol === 'https:' ? instanceUrl : undefined;
+        } catch {
+            return undefined;
+        }
 
     }
 

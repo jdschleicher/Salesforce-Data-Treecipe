@@ -115,7 +115,7 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
 
             await journey.step('prod is chosen, and the button says why it cannot insert', () => {
                 const screen = journey.screen();
-                expectEqual(screen.get('combobox', 'Salesforce org the generated data goes to').value, 'prod (default)', 'The org chosen');
+                expectEqual(screen.get('combobox', 'Salesforce org the generated data goes to').value, 'prod -- https://example.my.salesforce.com (default)', 'The org chosen');
                 const treecipeTab = screen.get('tabpanel', 'Treecipe');
                 expectEqual(screen.get('button', GENERATE_AND_INSERT_BUTTON_NAME, treecipeTab).states, ['disabled'], 'The Generate button');
                 screen.get('text', 'Can\'t insert: prod answered that it is Production · Developer Edition, so the Treecipe tab asked it nothing more. It inserts records only into a sandbox or scratch org.', treecipeTab);

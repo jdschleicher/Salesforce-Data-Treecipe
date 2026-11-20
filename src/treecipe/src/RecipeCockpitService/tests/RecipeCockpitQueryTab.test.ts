@@ -1086,7 +1086,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
             expect(new Set(runLabels())).toEqual(new Set(['Run…']));
 
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod (default)'], selectedOrgIndex: 1, noOrgsMessage: '', renderSequence: 1 });
+            // THE PICKER SHOWS "alias -- instance url" (#678); THE RUN BUTTON KEEPS THE ALIAS ALONE
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod (default)'], orgPickerLabels: ['qa -- https://acme--qa.sandbox.my.salesforce.com', 'prod -- https://acme.my.salesforce.com (default)'], selectedOrgIndex: 1, noOrgsMessage: '', renderSequence: 1 });
             expect(new Set(runLabels())).toEqual(new Set(['Run in prod (default)']));
             expect(panel.findAll(accountCard, 'treeQueryRun')[0].attributes.title).toBe('Run this query against prod (default), the org chosen in Target Org Manager');
 

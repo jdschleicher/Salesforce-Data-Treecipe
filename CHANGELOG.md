@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.203.0] - Target Org Manager's dropdown opens with a "Search for org" box and lists each org as "alias -- instance url" (#678)
+
+- **The org dropdown can be searched or chosen from.** Clicking it opens a **Search for org** box, then the line **or choose org**, then every org.
+  - Typing narrows the list, ignoring case, to orgs whose alias (or username) or instance URL holds what was typed. Nothing is sent to the extension while you type.
+  - When nothing matches, the list says `No org matches "<what you typed>"`.
+  - Up and Down move through the orgs, Enter chooses, and Escape or a click outside closes the list without changing the org. The search is empty each time it opens.
+  - While the orgs load, when none is listed, and while a scratch org, an authorization, a deploy or a permission set assignment holds the org, the dropdown does not open.
+- **Each org shows as its alias, two dashes and its instance URL,** such as `qa -- https://acme--qa.sandbox.my.salesforce.com`, in the list and on the closed dropdown. An org with no alias shows its username instead, an org whose authorization has no usable https:// URL shows the alias alone, and the CLI's default org still ends in ` (default)`.
+  - Everything else that names the org keeps the alias alone: the Query tab's **Run in …**, a data set's **Insert…** and every notification.
+  - The panel still sends only the chosen org's position in the list; the extension holds the usernames.
+  - The closed dropdown names the org the extension holds: a choice shows once the extension takes it, so a choice it turns down while an insert or a prompt holds the org never shows as chosen.
+- **The dropdown is a kit piece any cockpit can use,** `CockpitKit/panel/CockpitSearchableSelect.ts` with its stylesheet, so the Picklist Cockpit (#525) can take it.
+- **Tests:** `RecipeCockpitOrgSearch.test.ts` covers the search, the keyboard, the closed states, markup in a label and the host's labels; `SalesforceOrgService.test.ts` covers which instance URLs are carried; the panel suites read the dropdown through `RecipeCockpitOrgPickerProbe.ts`; and the acceptance journeys pick an org by typing its alias into **Search for org**.
+- The **?** help and the guide say how to search or choose an org.
+
 ## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

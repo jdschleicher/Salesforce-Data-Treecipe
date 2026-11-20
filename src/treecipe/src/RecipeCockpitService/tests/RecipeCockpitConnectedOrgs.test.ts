@@ -184,11 +184,13 @@ describe('RecipeCockpitService, every org picker lists only the orgs that answer
         await receivedMessageHandler({ command: 'loadDataOrgs' });
 
         expect(postedNamed('dataOrgList')[0].orgLabels).toEqual(['qa@example.com.qa', 'test-active@example.com']);
+        // THE PICKER NAMES EACH BY ITS USERNAME AND INSTANCE (#678); EVERY OTHER TEXT KEEPS THE USERNAME ALONE
+        expect(postedNamed('dataOrgList')[0].orgPickerLabels).toEqual(['qa@example.com.qa -- https://acme--qa.sandbox.my.salesforce.com', 'test-active@example.com -- https://ability-active-3.scratch.my.salesforce.com']);
 
         await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
         const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
-        expect(panelState.dataOrgSelection.orgDetail).toEqual({ targetOrgIdentifier: 'qa@example.com.qa', username: 'qa@example.com.qa', alias: undefined });
+        expect(panelState.dataOrgSelection.orgDetail).toEqual({ targetOrgIdentifier: 'qa@example.com.qa', username: 'qa@example.com.qa', alias: undefined, instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com' });
         expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'qa@example.com.qa');
         expect(getConnectionSpy).toHaveBeenCalledWith('qa@example.com.qa');
 
