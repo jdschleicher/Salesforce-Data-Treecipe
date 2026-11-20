@@ -7,6 +7,8 @@ This is the first slice of #677's "Edit custom treecipe" mode: the cascade rule 
 - **An unticked lookup field is no longer an edge of the tree.** Before, an object whose only lookup into the tree was unticked stayed included, with no link to its parent. Now it is cut off with its subtree, and its row says `cut off — Contact.AccountId removed`.
   - An object that still has another lookup to an included parent stays included.
   - Unticking a self-lookup, or a lookup to a parent outside the tree, cuts nothing off.
+  - Only a lookup to an object earlier in the tree's insert order counts. In an `Account ⇄ Contact` cycle, unticking `Account.Primary_Contact__c` (the cycle-closing lookup, already a TODO) cuts nothing off, and unticking `Contact.AccountId` cuts off Contact and its children but keeps Account.
+  - An object with iterations is read under its first occurrence's nickname, as its field rows are.
   - Ticking the lookup again brings back exactly what it cut off.
 - **A cut-off object's field boxes stay clickable,** like a no-fields object's (#611), since re-ticking the lookup is how it comes back. Its chain link is a disabled status naming the field.
 - **"No fields selected" outranks a removed lookup.** Unticking every field also unticks the lookup, and the object still reads as `no fields selected`.

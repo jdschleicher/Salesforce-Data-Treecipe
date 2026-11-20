@@ -3245,7 +3245,7 @@ export class RecipeCockpitService {
         const directlyExcluded = selectableObjectApiNames.filter(objectApiName => directlyExcludedObjectApiNames?.has(objectApiName));
         const noFieldsSelected = selectableObjectApiNames.filter(objectApiName => noFieldsSelectedObjectApiNames.has(objectApiName));
         const drawnTreeObjects = tree.objects.filter(treeObject => treeObject.iterationNickname === undefined && objectsByApiName.has(treeObject.objectApiName));
-        const removedLookups = this.listRemovedTreeLookups(drawnTreeObjects, storedFieldsByObject);
+        const removedLookups = this.listRemovedTreeLookups(objectsByApiName, drawnTreeObjects, storedFieldsByObject);
 
         if ( directlyExcluded.length === 0 && noFieldsSelected.length === 0 && removedLookups.length === 0 ) {
             return undefined;
@@ -3264,11 +3264,18 @@ export class RecipeCockpitService {
 
     }
 
-    // A LOOKUP FIELD THE READER UNTICKED IS NO EDGE OF THE CASCADE (#677); AN ITERATION FOLLOWS ITS OBJECT, SO ONLY THE OBJECT'S OWN ENTRY COUNTS
-    static listRemovedTreeLookups(drawnTreeObjects: readonly IRecipeCockpitTreeObjectViewModel[],
+    /*
+        A lookup field the reader unticked is no edge of the cascade (#677). An iteration follows its
+        object, so only the first occurrence's entry counts -- keyed by its nickname once the object
+        has iterations (#467), as the field rows read it.
+    */
+    static listRemovedTreeLookups(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
+                                    drawnTreeObjects: readonly IRecipeCockpitTreeObjectViewModel[],
                                     storedFieldsByObject: ReadonlyMap<string, ReadonlySet<string>> | undefined): IObjectSelectionRemovedLookup[] {
         return drawnTreeObjects.flatMap(treeObject => {
-            const untickedFieldApiNames = storedFieldsByObject?.get(treeObject.objectApiName);
+            const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
+            const firstNickname = objectViewModel ? this.readOccurrenceNickname(objectViewModel) : undefined;
+            const untickedFieldApiNames = this.pickStoredForOccurrence(storedFieldsByObject, treeObject.objectApiName, firstNickname);
             return treeObject.parentLookups
                 .filter(parentLookup => untickedFieldApiNames?.has(parentLookup.fieldApiName))
                 .map(parentLookup => ({ objectApiName: treeObject.objectApiName, fieldApiName: parentLookup.fieldApiName }));

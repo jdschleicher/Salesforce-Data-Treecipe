@@ -273,6 +273,35 @@ describe('RecipeCockpitObjectSelection.computeObjectSelection, removed lookup fi
 
     });
 
+    // RelationshipService LEAVES THE CYCLE-CLOSING LOOKUP (TO THE SAME OR A LATER OBJECT IN INSERT ORDER) A TODO (#104)
+    const CYCLE_TREE: IObjectSelectionTreeObject[] = [
+        { objectApiName: 'Account', parentLookups: [lookup('Primary_Contact__c', 'Contact')] },
+        { objectApiName: 'Contact', parentLookups: [lookup('AccountId', 'Account')] },
+        { objectApiName: 'Case', parentLookups: [lookup('ContactId', 'Contact')] }
+    ];
+
+    test('removing the cycle-closing lookup of an Account ⇄ Contact cycle cuts nothing off', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(CYCLE_TREE, [], [], [removed('Account', 'Primary_Contact__c')]);
+
+        expect(selection.exclusions).toEqual([]);
+        expect(selection.includedObjectCount).toBe(3);
+
+    });
+
+    test('removing the other lookup of the cycle cuts off Contact and Case, and keeps the root, its lookup to Contact disabled', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(CYCLE_TREE, [], [], [removed('Contact', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Contact', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' },
+            { objectApiName: 'Case', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+        ]);
+        expect(selection.disabledLookups).toEqual([{ objectApiName: 'Account', fieldApiName: 'Primary_Contact__c', parentObjectApiName: 'Contact' }]);
+        expect(selection.includedObjectCount).toBe(1);
+
+    });
+
     test('two objects whose removed lookups leave them pointing only at each other do not keep each other included', () => {
 
         const cyclicTree: IObjectSelectionTreeObject[] = [

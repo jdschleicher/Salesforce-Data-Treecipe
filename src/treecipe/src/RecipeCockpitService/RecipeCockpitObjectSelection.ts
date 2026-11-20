@@ -17,7 +17,10 @@
 
     A lookup field the reader removed (#677) is no edge: its object keeps only the parents its other
     lookups name. An object that had a parent in the tree and kept none is cut off with its subtree --
-    it is no root -- and its label names the removed field, since no parent of it was excluded.
+    it is no root -- and its label names the removed field, since no parent of it was excluded. For
+    this rule only a lookup to an object EARLIER in treeObjects (insert order) is a parent: a lookup
+    to the same or a later object closes a cycle, which RelationshipService leaves a TODO (#104), so
+    removing it, or the lookup it pairs with, never cuts off the tree's root.
 */
 
 export interface IObjectSelectionLookup {
@@ -90,9 +93,13 @@ export class RecipeCockpitObjectSelection {
         const removedLookupKeys = new Set([...removedLookups].map(removedLookup => `${removedLookup.objectApiName}\n${removedLookup.fieldApiName}`));
         const isRemoved = (objectApiName: string, lookup: IObjectSelectionLookup) => removedLookupKeys.has(`${objectApiName}\n${lookup.fieldApiName}`);
         const hasTreeParent = new Set(objectApiNames.filter(objectApiName => ( lookupsByObjectApiName.get(objectApiName) ?? [] ).some(lookup => isTreeParentOf(objectApiName, lookup))));
+        const insertPositionByObjectApiName = new Map(objectApiNames.map((objectApiName, insertPosition) => [objectApiName, insertPosition]));
+        const isInsertOrderParentOf = (objectApiName: string, lookup: IObjectSelectionLookup) => isTreeParentOf(objectApiName, lookup)
+            && ( insertPositionByObjectApiName.get(lookup.parentObjectApiName) as number ) < ( insertPositionByObjectApiName.get(objectApiName) as number );
+        const hasInsertOrderParent = new Set(objectApiNames.filter(objectApiName => ( lookupsByObjectApiName.get(objectApiName) ?? [] ).some(lookup => isInsertOrderParentOf(objectApiName, lookup))));
         const removedTreeLookupFieldsByObject = new Map(objectApiNames
             .map(objectApiName => [objectApiName, ( lookupsByObjectApiName.get(objectApiName) ?? [] )
-                .filter(lookup => isTreeParentOf(objectApiName, lookup) && isRemoved(objectApiName, lookup))
+                .filter(lookup => isInsertOrderParentOf(objectApiName, lookup) && isRemoved(objectApiName, lookup))
                 .map(lookup => lookup.fieldApiName)
                 .sort((left, right) => ( left < right ? -1 : left > right ? 1 : 0 ))] as [string, string[]])
             .filter(([, fieldApiNames]) => fieldApiNames.length > 0));
@@ -115,21 +122,31 @@ export class RecipeCockpitObjectSelection {
             }
         }));
 
-        // AN OBJECT A REMOVED LOOKUP TOUCHES IS CUT OFF UNTIL AN INCLUDED PARENT IT KEPT REACHES IT
-        const descendantsOfExcluded = new Set<string>(removedTreeLookupFieldsByObject.keys());
-        const pending = [...directlyExcluded, ...removedTreeLookupFieldsByObject.keys()];
-        while ( pending.length > 0 ) {
-            ( childrenByParent.get(pending.pop() as string) ?? [] ).forEach(childObjectApiName => {
-                if ( !descendantsOfExcluded.has(childObjectApiName) ) {
-                    descendantsOfExcluded.add(childObjectApiName);
-                    pending.push(childObjectApiName);
-                }
-            });
-        }
+        const collectDescendants = (seedObjectApiNames: Iterable<string>, isFollowed: (childObjectApiName: string, parentObjectApiName: string) => boolean) => {
+            const descendants = new Set<string>();
+            const pending = [...seedObjectApiNames];
+            while ( pending.length > 0 ) {
+                const parentObjectApiName = pending.pop() as string;
+                ( childrenByParent.get(parentObjectApiName) ?? [] ).forEach(childObjectApiName => {
+                    if ( !descendants.has(childObjectApiName) && isFollowed(childObjectApiName, parentObjectApiName) ) {
+                        descendants.add(childObjectApiName);
+                        pending.push(childObjectApiName);
+                    }
+                });
+            }
+            return descendants;
+        };
+        const descendantsOfExcluded = collectDescendants(directlyExcluded, () => true);
+        // AN OBJECT A REMOVED LOOKUP TOUCHES IS CUT OFF, DOWN INSERT ORDER ONLY, UNTIL AN INCLUDED PARENT IT KEPT REACHES IT
+        const cutByRemovedLookup = collectDescendants(removedTreeLookupFieldsByObject.keys(), (childObjectApiName, parentObjectApiName) => (
+            ( insertPositionByObjectApiName.get(parentObjectApiName) as number ) < ( insertPositionByObjectApiName.get(childObjectApiName) as number )
+        ));
+        [...removedTreeLookupFieldsByObject.keys()].forEach(objectApiName => cutByRemovedLookup.add(objectApiName));
 
         // THE LEAST SET REACHABLE FROM WHAT THE EXCLUSION DOES NOT TOUCH: TWO OBJECTS CUT OFF TOGETHER DO NOT KEEP EACH OTHER
         const included = new Set(objectApiNames.filter(objectApiName => !directlyExcluded.has(objectApiName)
-                                                                        && ( !descendantsOfExcluded.has(objectApiName) || !hasTreeParent.has(objectApiName) )));
+                                                                        && ( !descendantsOfExcluded.has(objectApiName) || !hasTreeParent.has(objectApiName) )
+                                                                        && ( !cutByRemovedLookup.has(objectApiName) || !hasInsertOrderParent.has(objectApiName) )));
         // AN OBJECT WITH ONE INCLUDED PARENT IS INCLUDED: SPREAD FROM WHAT IS INCLUDED, EACH OBJECT ENTERED ONCE
         const pendingIncluded = [...included];
         while ( pendingIncluded.length > 0 ) {
