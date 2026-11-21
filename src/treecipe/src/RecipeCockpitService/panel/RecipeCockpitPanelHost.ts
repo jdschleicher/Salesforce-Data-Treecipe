@@ -27,6 +27,7 @@ import { renderFieldEditResult } from './treecipe/fieldEditor/FieldEditor';
 import { setAddFriendRunning, setWireLookupRunning } from './treecipe/fieldEditor/LookupWiring';
 import { renderPicklistValues } from './treecipe/fieldEditor/PicklistTiles';
 import { renderObjectSelection } from './treecipe/fieldRows/FieldRow';
+import { renderCustomTreecipePreview } from './treecipe/customTreecipe/CustomTreecipeDialog';
 import { navigationState } from './treecipe/navigation/NavigationState';
 import { closeNicknameMenu, isElementWithin } from './treecipe/navigation/Nicknames';
 import { focusTreeInPlace } from './treecipe/navigation/StructureFilter';
@@ -115,6 +116,11 @@ function routeHostMessage(hostMessage: any): void {
 
     if (hostMessage.command === 'objectRefreshState') {
         renderObjectRefreshState(hostMessage);
+        return;
+    }
+
+    if (hostMessage.command === 'customTreecipePreview') {
+        renderCustomTreecipePreview(hostMessage);
         return;
     }
 

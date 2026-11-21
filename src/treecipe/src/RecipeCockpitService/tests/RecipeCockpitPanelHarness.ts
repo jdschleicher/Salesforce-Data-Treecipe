@@ -96,6 +96,14 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
                 childElement.parentNode = this;
                 return childElement;
             },
+            // A ROW NO LONGER DRAWN IS TAKEN OUT IN PLACE (#677); A REFERENCE THAT IS NOT A CHILD THROWS, AS THE DOM'S DOES
+            removeChild(childElement: any) {
+                const childIndex = this.children.indexOf(childElement);
+                if ( childIndex === -1 ) { throw new Error('removeChild: the element is not a child of this element'); }
+                this.children.splice(childIndex, 1);
+                childElement.parentNode = null;
+                return childElement;
+            },
             get firstChild() { return this.children[0] ?? null; },
             // THE RECORD TYPES SECTION SCROLLS TO THE OBJECT "Change record types" NAMES (#321); COUNTED, SINCE THERE IS NO LAYOUT
             scrolledIntoViewCount: 0,

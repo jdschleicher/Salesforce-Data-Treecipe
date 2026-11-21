@@ -202,3 +202,119 @@ describe('RecipeCockpitObjectSelection.computeObjectSelection (#219)', () => {
     });
 
 });
+
+describe('RecipeCockpitObjectSelection.computeObjectSelection, removed lookup fields (#677)', () => {
+
+    const removed = (objectApiName: string, fieldApiName: string) => ({ objectApiName: objectApiName, fieldApiName: fieldApiName });
+
+    test('removing an object\'s only lookup into the tree cuts it off with its subtree, naming the removed field', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, [], [], [removed('Opportunity', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Opportunity', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' },
+            { objectApiName: 'ChildOpps__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Opportunity' }
+        ]);
+        expect(selection.disabledLookups).toEqual([]);
+        expect(selection.includedObjectCount).toBe(4);
+
+    });
+
+    test('an object that keeps another lookup to an included parent stays, and the removed lookup is not listed as disabled', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, [], [], [removed('Case', 'ContactId')]);
+
+        expect(selection.exclusions).toEqual([]);
+        expect(selection.disabledLookups).toEqual([]);
+        expect(selection.includedObjectCount).toBe(6);
+
+    });
+
+    test('removing every lookup of an object with two parents cuts it off, naming the first removed field by "<"', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, [], [], [removed('Case', 'ContactId'), removed('Case', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([{ objectApiName: 'Case', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' }]);
+
+    });
+
+    test('a kept lookup to an excluded parent names that parent, not the removed field', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['Contact'], [], [removed('Case', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Contact', kind: 'excluded' },
+            { objectApiName: 'Case', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+        ]);
+        expect(selection.disabledLookups).toEqual([]);
+
+    });
+
+    test('a removed self-lookup, or a lookup to a parent outside the tree, cuts nothing off', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection([
+            ...TREE,
+            { objectApiName: 'Note__c', parentLookups: [lookup('Owner__c', 'User')] }
+        ], [], [], [removed('Account', 'ParentId'), removed('Note__c', 'Owner__c'), removed('Lead', 'NotALookup__c')]);
+
+        expect(selection.exclusions).toEqual([]);
+        expect(selection.includedObjectCount).toBe(7);
+
+    });
+
+    test('restoring the field brings back exactly what its removal cut off, and a direct exclusion stays', () => {
+
+        const withRemoval = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['ChildOpps__c'], [], [removed('Opportunity', 'AccountId')]);
+        expect(withRemoval.exclusions.map(exclusion => exclusion.objectApiName)).toEqual(['Opportunity', 'ChildOpps__c']);
+        expect(withRemoval.exclusions[1]).toEqual({ objectApiName: 'ChildOpps__c', kind: 'excluded' });
+
+        const restored = RecipeCockpitObjectSelection.computeObjectSelection(TREE, ['ChildOpps__c'], [], []);
+        expect(restored.exclusions).toEqual([{ objectApiName: 'ChildOpps__c', kind: 'excluded' }]);
+
+    });
+
+    // RelationshipService LEAVES THE CYCLE-CLOSING LOOKUP (TO THE SAME OR A LATER OBJECT IN INSERT ORDER) A TODO (#104)
+    const CYCLE_TREE: IObjectSelectionTreeObject[] = [
+        { objectApiName: 'Account', parentLookups: [lookup('Primary_Contact__c', 'Contact')] },
+        { objectApiName: 'Contact', parentLookups: [lookup('AccountId', 'Account')] },
+        { objectApiName: 'Case', parentLookups: [lookup('ContactId', 'Contact')] }
+    ];
+
+    test('removing the cycle-closing lookup of an Account ⇄ Contact cycle cuts nothing off', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(CYCLE_TREE, [], [], [removed('Account', 'Primary_Contact__c')]);
+
+        expect(selection.exclusions).toEqual([]);
+        expect(selection.includedObjectCount).toBe(3);
+
+    });
+
+    test('removing the other lookup of the cycle cuts off Contact and Case, and keeps the root, its lookup to Contact disabled', () => {
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(CYCLE_TREE, [], [], [removed('Contact', 'AccountId')]);
+
+        expect(selection.exclusions).toEqual([
+            { objectApiName: 'Contact', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' },
+            { objectApiName: 'Case', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+        ]);
+        expect(selection.disabledLookups).toEqual([{ objectApiName: 'Account', fieldApiName: 'Primary_Contact__c', parentObjectApiName: 'Contact' }]);
+        expect(selection.includedObjectCount).toBe(1);
+
+    });
+
+    test('two objects whose removed lookups leave them pointing only at each other do not keep each other included', () => {
+
+        const cyclicTree: IObjectSelectionTreeObject[] = [
+            { objectApiName: 'Root', parentLookups: [] },
+            { objectApiName: 'Left', parentLookups: [lookup('Root__c', 'Root'), lookup('Right__c', 'Right')] },
+            { objectApiName: 'Right', parentLookups: [lookup('Root__c', 'Root'), lookup('Left__c', 'Left')] }
+        ];
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(cyclicTree, [], [], [removed('Left', 'Root__c'), removed('Right', 'Root__c')]);
+
+        expect(selection.exclusions.map(exclusion => [exclusion.objectApiName, exclusion.kind])).toEqual([['Left', 'autoExcluded'], ['Right', 'autoExcluded']]);
+        expect(selection.includedObjectCount).toBe(1);
+
+    });
+
+});

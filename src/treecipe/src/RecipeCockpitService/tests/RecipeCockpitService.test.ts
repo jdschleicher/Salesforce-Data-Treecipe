@@ -4453,7 +4453,7 @@ describe('RecipeCockpitService', () => {
             const secondSelection = receivedMessageHandler({ command: 'selectRun', runFolderName: LATEST_RUN_FOLDER_NAME });
             await Promise.all([firstSelection, secondSelection]);
 
-            expect(RecipeCockpitService.loadRecipeRunByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME);
+            expect(RecipeCockpitService.loadRecipeRunByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME, expect.any(Map));
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
             expect(postedPanelMessages.map(hostMessage => hostMessage.command)).not.toContain('loadFailed');
 

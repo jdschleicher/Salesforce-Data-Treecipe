@@ -16,6 +16,8 @@ import { buildTreePicker, displayTitleOf } from '../navigation/TreePicker';
 import { applyTreecipesSearch, buildTreecipesSearch } from '../navigation/TreecipesSearch';
 import { indexRecordTypeFields } from '../recordTypes/RecordTypeFieldsToggle';
 import { recordTypesState } from '../recordTypes/RecordTypesState';
+import { buildCustomizeTreeButton } from '../customTreecipe/CustomTreecipeDialog';
+import { RECIPE_COCKPIT_CUSTOM_TREECIPE_COPY_LABEL_PREFIX } from '../../../RecipeCockpitCustomTreecipeConstants';
 import { buildNameEditor } from './NameEditor';
 import { buildTreeObjectState, resolveTreeObject } from './TreeObjectRow';
 import type { CardTreeState, ICardModel, ICardObject, ICardTree } from './CardTypes';
@@ -178,6 +180,11 @@ function renderTree(tree: ICardTree, objectsByApiName: Record<string, ICardObjec
         treeHeaderElement.appendChild(treeState.folderElement);
     }
 
+    // A CUSTOM TREE (#677) SAYS WHICH TREE IT WAS COPIED FROM
+    if (tree.customCopyOf) {
+        treeHeaderElement.appendChild(createElement('span', 'treeCustomCopyOf muted', RECIPE_COCKPIT_CUSTOM_TREECIPE_COPY_LABEL_PREFIX + tree.customCopyOf));
+    }
+
     treeState.countedObjectCount = objectStatesCounted.length;
     treeState.countedFieldCount = treeFieldCount;
     treeState.countElement = createElement('span', 'treeCount muted');
@@ -282,6 +289,11 @@ export function buildTreecipeHeader(treeState: CardTreeState): HTMLElement {
         // BESIDE THE INSERT ON A CARD THAT HAS ONE (#539)
         if (!tree.runFakerRecipeFileName) { actionsElement.appendChild(resetSelectionElement); }
         drawResetSelection(treeState);
+    }
+
+    const customizeElement = buildCustomizeTreeButton(treeState);
+    if (customizeElement) {
+        actionsElement.appendChild(customizeElement);
     }
 
     const wireAllLookupsElement = buildWireAllLookupsElement(tree);
