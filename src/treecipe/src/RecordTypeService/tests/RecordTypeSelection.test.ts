@@ -131,6 +131,55 @@ describe('RecordTypeSelection', () => {
 
     });
 
+    describe('listRecordTypeCombinations (#624)', () => {
+
+        const names = (plan: ReturnType<typeof RecordTypeSelection.listRecordTypeCombinations>) =>
+            plan.combinations.map(combination => combination.map(entry => `${entry.objectApiName} · ${entry.developerName}`).join('; '));
+
+        it('makes one set per record type of a single object, in the order ticked', () => {
+            const plan = RecordTypeSelection.listRecordTypeCombinations({ Account: ['Partner', 'Business'] }, ['Account', 'Contact'], 10);
+            expect(plan.setCount).toBe(2);
+            expect(plan.recordTypeCountsByObject).toEqual([{ objectApiName: 'Account', recordTypeCount: 2 }]);
+            expect(names(plan)).toEqual(['Account · Partner', 'Account · Business']);
+        });
+
+        it('makes every combination of two objects, in the tree\'s order, the first object changing slowest', () => {
+            const plan = RecordTypeSelection.listRecordTypeCombinations({ Opportunity: ['New', 'Renewal'], Account: ['Business', 'Partner'] }, ['Account', 'Contact', 'Opportunity'], 10);
+            expect(plan.setCount).toBe(4);
+            expect(names(plan)).toEqual([
+                'Account · Business; Opportunity · New', 'Account · Business; Opportunity · Renewal',
+                'Account · Partner; Opportunity · New', 'Account · Partner; Opportunity · Renewal'
+            ]);
+        });
+
+        it('makes 2 sets for Account {Business, Partner} × Opportunity {New}', () => {
+            const plan = RecordTypeSelection.listRecordTypeCombinations({ Account: ['Business', 'Partner'], Opportunity: ['New'] }, ['Account', 'Opportunity'], 10);
+            expect(names(plan)).toEqual(['Account · Business; Opportunity · New', 'Account · Partner; Opportunity · New']);
+        });
+
+        it('lists the sets at exactly the cap, and only counts them above it', () => {
+            const atCap = RecordTypeSelection.listRecordTypeCombinations({ Account: ['A', 'B', 'C', 'D', 'E'], Opportunity: ['X', 'Y'] }, ['Account', 'Opportunity'], 10);
+            expect(atCap.setCount).toBe(10);
+            expect(atCap.combinations).toHaveLength(10);
+            const aboveCap = RecordTypeSelection.listRecordTypeCombinations({ Account: ['A', 'B', 'C'], Opportunity: ['W', 'X', 'Y', 'Z'] }, ['Account', 'Opportunity'], 10);
+            expect(aboveCap.setCount).toBe(12);
+            expect(aboveCap.combinations).toEqual([]);
+            expect(aboveCap.recordTypeCountsByObject).toEqual([{ objectApiName: 'Account', recordTypeCount: 3 }, { objectApiName: 'Opportunity', recordTypeCount: 4 }]);
+        });
+
+        it('leaves out an object with no names, one the tree does not list, a repeated name, and an inherited key', () => {
+            const selection = Object.assign(Object.create({ Contact: ['Inherited'] }), { Account: ['Business', 'Business'], Case: [], Lead: ['Web'] });
+            const plan = RecordTypeSelection.listRecordTypeCombinations(selection, ['Account', 'Account', 'Case', 'Contact'], 10);
+            expect(plan.setCount).toBe(1);
+            expect(names(plan)).toEqual(['Account · Business']);
+        });
+
+        it('makes no set from an empty selection', () => {
+            expect(RecordTypeSelection.listRecordTypeCombinations({}, ['Account'], 10)).toEqual({ setCount: 0, recordTypeCountsByObject: [], combinations: [] });
+        });
+
+    });
+
     describe('buildRecordTypeBlocks (#194)', () => {
 
         test('given nothing selected, is one default block under the usual nickname, carrying the ignored names', () => {

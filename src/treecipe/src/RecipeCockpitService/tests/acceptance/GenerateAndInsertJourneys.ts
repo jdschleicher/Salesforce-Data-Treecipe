@@ -31,6 +31,29 @@ const NOTE_ACCOUNT_LOOKUP_FIELD = `<?xml version="1.0" encoding="UTF-8"?>
 </CustomField>
 `;
 const FOLDED_MODE_LABEL = RECORD_TYPE_SET_MODE_LABELS.folded;
+const SEPARATE_MODE_LABEL = RECORD_TYPE_SET_MODE_LABELS.separate;
+const BUSINESS_RECORD_TYPE_ID = '012000000000001AAA';
+const PARTNER_RECORD_TYPE_ID = '012000000000002AAA';
+const RECORD_TYPE_SETS_NOTIFICATION = /^\d+ of \d+ data sets of /;
+
+// EVERY DATA SET FOLDER WRITTEN SINCE, IN THE ORDER WRITTEN
+const writtenDatasetFolders = (journey: RecipeCockpitJourney, fileChangeCountBefore: number) => [...new Set(journey.fileChanges.slice(fileChangeCountBefore)
+    .map(fileChange => /^(treecipe\/FakeDataSets\/dataset-fakerjs-[^/]+)\//.exec(fileChange.relativePath)?.[1])
+    .filter((datasetFolder): datasetFolder is string => datasetFolder !== undefined))];
+
+// TICK PARTNER, GENERATE, CHOOSE A DATA SET FOR EACH RECORD TYPE, CONFIRM AND ANSWER ALL-OR-NONE (#624)
+async function generateSeparateSets(journey: RecipeCockpitJourney, allOrNoneLabel: string): Promise<void> {
+    await journey.click('button', `Manage record types (${TREE_NAME})`);
+    await journey.click('checkbox', 'Partner (Account)');
+    const notificationCountBefore = journey.notifications.length;
+    await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+    await journey.answerQuickPick(INSERT_ORG_LABEL);
+    await journey.waitForConfirmation();
+    await journey.click('radio', SEPARATE_MODE_LABEL);
+    await journey.answerConfirmation('Generate and insert');
+    await journey.answerQuickPick(allOrNoneLabel);
+    await journey.waitForNotification(RECORD_TYPE_SETS_NOTIFICATION, notificationCountBefore);
+}
 const PRODUCTION_ORG = { username: 'admin@example.com.prod', aliases: ['prod'], orgId: '00D000000000PRDAAA', instanceUrl: 'https://example.my.salesforce.com', isSandbox: false };
 
 const insertCallCount = (journey: RecipeCockpitJourney) => journey.org.calls.filter(orgCall => /\.insert$/.test(orgCall.call)).length;
@@ -259,7 +282,7 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
                 const screen = journey.screen();
                 const confirmation = screen.get('alertdialog', CONFIRMATION_TITLE);
                 expectEqual(screen.findAll('radio', undefined, confirmation).map(radio => ({ name: radio.name, states: radio.states })),
-                    [{ name: FOLDED_MODE_LABEL, states: ['checked'] }], 'The record type set modes offered');
+                    [{ name: FOLDED_MODE_LABEL, states: ['checked'] }, { name: SEPARATE_MODE_LABEL, states: [] }], 'The record type set modes offered');
                 screen.get('text', 'Generate 6 records and insert them into qa (qa@example.com.qa).', confirmation);
                 expectEqual(screen.findAll('listitem', /^(Account|Contact|Visit__c): /, confirmation).map(listItem => listItem.name),
                     ['Account: 2', 'Contact: 2 (1 per Account)', 'Visit__c: 2 (1 per Contact)'], 'The record totals the confirmation lists');
@@ -297,6 +320,131 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
                 const screen = journey.screen();
                 const rowLines = screen.lines(screen.get('tabpanel', 'Previously Used Data Sets'));
                 expectEqual(rowLines.some(rowLine => rowLine.includes('Record types: Account · Business, Partner')), true, `A row tagged with Business and Partner: ${JSON.stringify(rowLines.slice(0, 6))}`);
+            });
+
+        }
+    },
+
+    {
+        name: 'a data set for each record type: two sets, each with one RecordTypeId and its own row, inserted one after another (#624)',
+        run: async journey => {
+
+            await journey.click('button', `Manage record types (${TREE_NAME})`);
+            await journey.click('checkbox', 'Partner (Account)');
+            const fileChangeCountBefore = journey.fileChanges.length;
+            await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+            await journey.answerQuickPick(INSERT_ORG_LABEL);
+            await journey.waitForConfirmation();
+            await journey.click('button', /^If you choose a data set for each record type/);
+
+            await journey.step('the confirmation lists every set by name, with the records each one inserts', () => {
+                const screen = journey.screen();
+                const confirmation = screen.get('alertdialog', CONFIRMATION_TITLE);
+                expectEqual(screen.findAll('listitem', /^Set \d of \d: /, confirmation).map(listItem => listItem.name), [
+                    'Set 1 of 2: Account · Business (Account 1, Contact 1, Visit__c 1)',
+                    'Set 2 of 2: Account · Partner (Account 1, Contact 1, Visit__c 1)'
+                ], 'The sets the confirmation lists');
+                expectEqual(fileChangesSince(journey, fileChangeCountBefore), [], 'Files written before the confirmation is answered');
+            });
+
+            await journey.click('radio', SEPARATE_MODE_LABEL);
+            const notificationCountBefore = journey.notifications.length;
+            await journey.answerConfirmation('Generate and insert');
+
+            await journey.step('all-or-none is asked once, for every set', () => {
+                expectEqual(journey.prompts.filter(prompt => prompt.isWaiting).map(prompt => prompt.offeredLabels), [['AllOrNone: TRUE', 'AllOrNone: FALSE']], 'The prompt waiting');
+            });
+
+            await journey.answerQuickPick('AllOrNone: TRUE');
+            await journey.waitForNotification(RECORD_TYPE_SETS_NOTIFICATION, notificationCountBefore);
+            const datasetFolders = writtenDatasetFolders(journey, fileChangeCountBefore);
+
+            await journey.step('each set is its own data set, holding only its record type', () => {
+                expectEqual(datasetFolders.length, 2, `Data set folders written: ${JSON.stringify(datasetFolders)}`);
+                expectEqual(datasetFolders.map(datasetFolder => readWorkspaceFile(journey, `${datasetFolder}/BaseArtifactFiles/filteredRecipe-${RECIPE_FILE_NAME}`)
+                    .split('\n').filter(recipeLine => /^\s*(- object|RecordTypeId): /.test(recipeLine)).map(recipeLine => recipeLine.trim())), [
+                    ['- object: Account', 'RecordTypeId: Account.Business', '- object: Contact', '- object: Visit__c'],
+                    ['- object: Account', 'RecordTypeId: Account.Partner', '- object: Contact', '- object: Visit__c']
+                ], 'The blocks of each set\'s recipe');
+                expectEqual(datasetFolders.map(datasetFolder => JSON.parse(readWorkspaceFile(journey, `${datasetFolder}/BaseArtifactFiles/datasetSource.json`)).recordTypesByObject),
+                    [{ Account: ['Business'] }, { Account: ['Partner'] }], 'The record types each datasetSource.json names');
+                expectEqual(readWorkspaceFile(journey, RECIPE_RELATIVE_PATH), readFixtureFile(RECIPE_RELATIVE_PATH), 'The run\'s recipe file');
+            });
+
+            await journey.step('the sets are inserted one after another, each child under its own set\'s Account', () => {
+                const inserts = insertsSent(journey);
+                expectEqual(inserts.map(insert => `${insert.objectApiName}: ${insert.records.length}`),
+                    ['Account: 1', 'Contact: 1', 'Visit__c: 1', 'Account: 1', 'Contact: 1', 'Visit__c: 1'], 'The records inserted, set by set');
+                expectEqual([inserts[0], inserts[3]].map(insert => insert.records[0].RecordTypeId), [BUSINESS_RECORD_TYPE_ID, PARTNER_RECORD_TYPE_ID], 'Each set\'s Account RecordTypeId');
+                expectEqual(inserts[1].records[0].AccountId !== inserts[4].records[0].AccountId, true, 'The two Contacts point at different Accounts');
+            });
+
+            await journey.step('one notification names each set and how it ended', () => {
+                expectEqual(journey.notifications.slice(notificationCountBefore).filter(notification => RECORD_TYPE_SETS_NOTIFICATION.test(notification.text))
+                    .map(notification => ({ kind: notification.kind, text: notification.text, buttons: notification.buttons })), [{
+                    kind: 'information',
+                    text: `2 of 2 data sets of ${TREE_NAME} were inserted into qa (qa@example.com.qa), one per record type. Set 1 (Account · Business) inserted 3 records. Set 2 (Account · Partner) inserted 3 records.`,
+                    buttons: []
+                }], 'The notification');
+            });
+
+            await journey.openTab('Previously Used Data Sets');
+
+            await journey.step('each set is a new row, tagged with its record type', () => {
+                const screen = journey.screen();
+                const rowLines = screen.lines(screen.get('tabpanel', 'Previously Used Data Sets'));
+                expectEqual(['Record types: Account · Business', 'Record types: Account · Partner']
+                    .map(tagText => rowLines.some(rowLine => rowLine.includes(tagText) && !rowLine.includes(`${tagText},`))), [true, true], `Rows tagged: ${JSON.stringify(rowLines.slice(0, 8))}`);
+            });
+
+        }
+    },
+
+    {
+        name: 'a data set for each record type with all-or-none: set 2 fails and rolls back, set 1 stays, and one error names both (#624)',
+        run: async journey => {
+
+            const fileChangeCountBefore = journey.fileChanges.length;
+            journey.org.insertAnswer = (_username, objectApiName, records) => objectApiName === 'Account' && records.some(account => account.RecordTypeId === PARTNER_RECORD_TYPE_ID)
+                ? records.map(() => ({ success: false, errors: [{ statusCode: 'FIELD_CUSTOM_VALIDATION_EXCEPTION', message: 'A partner needs a region.', fields: ['Region__c'] }] }))
+                : undefined;
+
+            await generateSeparateSets(journey, 'AllOrNone: TRUE');
+
+            await journey.step('set 1 is inserted, set 2 is stopped at its Accounts', () => {
+                expectEqual(insertsSent(journey).map(insert => `${insert.objectApiName}: ${insert.records.length}`), ['Account: 1', 'Contact: 1', 'Visit__c: 1', 'Account: 1'], 'The records sent, set by set');
+                expectEqual(writtenDatasetFolders(journey, fileChangeCountBefore).length, 2, 'Data set folders written');
+            });
+
+            await journey.step('one error names each set\'s outcome, with View errors for set 2', () => {
+                const [setsNotification] = journey.notifications.filter(notification => RECORD_TYPE_SETS_NOTIFICATION.test(notification.text));
+                expectEqual({ kind: setsNotification.kind, text: setsNotification.text, buttons: setsNotification.buttons }, {
+                    kind: 'error',
+                    text: `1 of 2 data sets of ${TREE_NAME} were inserted into qa (qa@example.com.qa), one per record type. Set 1 (Account · Business) inserted 3 records. Set 2 (Account · Partner) failed, and every record it had inserted was deleted, because all-or-none was chosen (1 record failed). The first file that failed is collectionsApi-Account.json; its Validation Rules in the Troubleshooting tab may fix it.`,
+                    buttons: ['View failed file', 'View errors', 'Open Troubleshooting']
+                }, 'The notification');
+            });
+
+        }
+    },
+
+    {
+        name: 'a data set for each record type: set 1 lost a record without all-or-none, so set 2 is not started (#624)',
+        run: async journey => {
+
+            const fileChangeCountBefore = journey.fileChanges.length;
+            journey.org.insertAnswer = (_username, objectApiName, records) => objectApiName === 'Visit__c'
+                ? records.map(() => ({ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'A visit needs a date.', fields: ['Date__c'] }] }))
+                : undefined;
+
+            await generateSeparateSets(journey, 'AllOrNone: FALSE');
+
+            await journey.step('only set 1 is generated and sent, and the notification says set 2 was not started', () => {
+                expectEqual(writtenDatasetFolders(journey, fileChangeCountBefore).length, 1, 'Data set folders written');
+                expectEqual(insertsSent(journey).map(insert => insert.objectApiName), ['Account', 'Contact', 'Visit__c'], 'The objects sent');
+                const [setsNotification] = journey.notifications.filter(notification => RECORD_TYPE_SETS_NOTIFICATION.test(notification.text));
+                expectEqual(setsNotification.kind, 'error', 'The notification\'s kind');
+                expectEqual(setsNotification.text.includes('Set 1 (Account · Business) inserted 2 records and 1 failed; nothing was rolled back. Set 2 (Account · Partner) was not started.'), true, `The notification: ${setsNotification.text}`);
             });
 
         }
@@ -492,7 +640,7 @@ export const GENERATE_AND_INSERT_JOURNEYS: Array<{ name: string; run(journey: Re
             await journey.waitForConfirmation();
 
             const confirmRequest = journey.messages.filter(message => message.direction === 'host → panel' && message.command === 'confirmRequest').pop();
-            await journey.forgePanelMessage({ command: 'confirmResponse', confirmationId: ( confirmRequest?.message as { confirmationId: string } ).confirmationId, choice: 0, recordTypeSetMode: 'separate' });
+            await journey.forgePanelMessage({ command: 'confirmResponse', confirmationId: ( confirmRequest?.message as { confirmationId: string } ).confirmationId, choice: 0, recordTypeSetMode: 'everyRecordTypeTwice' });
 
             await journey.step('the forged answer is read as Cancel', () => {
                 expectEqual(journey.hostCalls.filter(hostCall => hostCall.call === 'commands.executeCommand').map(hostCall => hostCall.args[0]), [], 'Commands run');

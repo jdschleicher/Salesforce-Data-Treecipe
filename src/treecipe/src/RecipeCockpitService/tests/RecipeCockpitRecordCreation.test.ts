@@ -538,3 +538,41 @@ describe('RecipeCockpitRecordCreation', () => {
     });
 
 });
+
+describe('RecipeCockpitRecordCreation record type sets (#624)', () => {
+
+    const landed = { outcome: 'completed' as const, isRolledBack: false, savedRecordCount: 3, failedRecordCount: 0 };
+
+    it('counts a set landed only when its insert went through every file with no record failing', () => {
+        expect(RecipeCockpitRecordCreation.isRecordTypeSetLanded(landed)).toBeTrue();
+        expect(RecipeCockpitRecordCreation.isRecordTypeSetLanded({ ...landed, failedRecordCount: 1 })).toBeFalse();
+        expect(RecipeCockpitRecordCreation.isRecordTypeSetLanded({ ...landed, outcome: 'stopped' })).toBeFalse();
+        expect(RecipeCockpitRecordCreation.isRecordTypeSetLanded({ ...landed, outcome: 'cancelled' })).toBeFalse();
+    });
+
+    it('names set 1 kept, set 2 rolled back and set 3 not started in one error', () => {
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [
+            { setName: 'Account · Business', insertResult: landed },
+            { setName: 'Account · Partner', insertResult: { outcome: 'stopped', isRolledBack: true, savedRecordCount: 0, failedRecordCount: 2 } },
+            { setName: 'Account · Other', unrunReason: 'notStarted' }
+        ])).toEqual({
+            severity: 'error',
+            text: '1 of 3 data sets of Tree were inserted into qa, one per record type. Set 1 (Account · Business) inserted 3 records. Set 2 (Account · Partner) failed, and every record it had inserted was deleted, because all-or-none was chosen (2 records failed). Set 3 (Account · Other) was not started.'
+        });
+    });
+
+    it('is information when every set landed, a warning for a cancel, and an error for a set not generated', () => {
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', insertResult: { ...landed, savedRecordCount: 1 } }, { setName: 'B', insertResult: landed }]))
+            .toEqual({ severity: 'information', text: '2 of 2 data sets of Tree were inserted into qa, one per record type. Set 1 (A) inserted 1 record. Set 2 (B) inserted 3 records.' });
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', insertResult: { ...landed, outcome: 'cancelled', isRolledBack: true } }, { setName: 'B', unrunReason: 'notStarted' }]).severity)
+            .toBe('warning');
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', insertResult: landed }, { setName: 'B', unrunReason: 'notGenerated' }]))
+            .toEqual({ severity: 'error', text: '1 of 2 data sets of Tree were inserted into qa, one per record type. Set 1 (A) inserted 3 records. Set 2 (B) was not generated, so nothing of it was inserted.' });
+    });
+
+    it('says what was kept of a set stopped without all-or-none', () => {
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', insertResult: { outcome: 'stopped', isRolledBack: false, savedRecordCount: 1, failedRecordCount: 1 } }]).text)
+            .toBe('0 of 1 data sets of Tree were inserted into qa, one per record type. Set 1 (A) failed: 1 record kept, because all-or-none was not chosen, and 1 failed.');
+    });
+
+});

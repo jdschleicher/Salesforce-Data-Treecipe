@@ -17,6 +17,23 @@ export interface IRecordTypeBlock {
     ignoredDeveloperNames: string[];
 }
 
+// ONE RECORD TYPE OF ONE OBJECT IN A SET (#624)
+export interface IRecordTypeCombinationEntry {
+    objectApiName: string;
+    developerName: string;
+}
+
+/*
+    The sets "A data set for each record type" makes (#624): one record type per object, every
+    combination. setCount is counted, never listed, so a cap can refuse a large product without
+    building it; combinations is empty above the cap.
+*/
+export interface IRecordTypeCombinationPlan {
+    setCount: number;
+    recordTypeCountsByObject: Array<{ objectApiName: string; recordTypeCount: number }>;
+    combinations: IRecordTypeCombinationEntry[][];
+}
+
 /*
     Which record types the user chose per object (#193): object api name -> developer names, in the
     order chosen. Each usable name is one block of the object's recipe (#194). Names are matched
@@ -105,6 +122,39 @@ export class RecordTypeSelection {
         });
 
         return resolution;
+
+    }
+
+    /*
+        Every combination of one record type per object, the objects in objectApiNames' order (the
+        tree's insert order) and the first object's record type changing slowest, each object's names
+        in the order ticked. An object with no names, or none in the selection, is in no set.
+    */
+    static listRecordTypeCombinations(developerNamesByObjectApiName: Readonly<Record<string, readonly string[]>>,
+                                        objectApiNames: readonly string[],
+                                        maxCombinationCount: number): IRecordTypeCombinationPlan {
+
+        const objectsWithNames = [...new Set(objectApiNames)]
+            .filter(objectApiName => Object.prototype.hasOwnProperty.call(developerNamesByObjectApiName, objectApiName))
+            .map(objectApiName => ({ objectApiName: objectApiName, developerNames: [...new Set(developerNamesByObjectApiName[objectApiName])] }))
+            .filter(objectWithNames => objectWithNames.developerNames.length > 0);
+
+        const setCount = objectsWithNames.length === 0
+            ? 0
+            : objectsWithNames.reduce((product, objectWithNames) => product * objectWithNames.developerNames.length, 1);
+
+        const combinations = setCount > maxCombinationCount
+            ? []
+            : objectsWithNames.reduce<IRecordTypeCombinationEntry[][]>((partialCombinations, { objectApiName, developerNames }) =>
+                partialCombinations.flatMap(partialCombination => developerNames.map(developerName =>
+                    [...partialCombination, { objectApiName: objectApiName, developerName: developerName }])), [[]])
+                .filter(combination => combination.length > 0);
+
+        return {
+            setCount: setCount,
+            recordTypeCountsByObject: objectsWithNames.map(({ objectApiName, developerNames }) => ({ objectApiName: objectApiName, recordTypeCount: developerNames.length })),
+            combinations: combinations
+        };
 
     }
 

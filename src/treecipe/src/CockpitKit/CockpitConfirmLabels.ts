@@ -15,4 +15,6 @@ export interface ICockpitConfirmAnswer {
 export interface ICockpitConfirmRecordTypeSetMode {
     name: string;
     label: string;
+    // SET: THE RADIO IS DRAWN DISABLED WITH THIS REASON UNDER IT, AND THE ANSWER NEVER NAMES IT (#624)
+    disabledReason?: string;
 }

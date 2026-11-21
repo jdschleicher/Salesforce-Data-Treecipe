@@ -2,7 +2,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { IRecordTypeTickObject, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
@@ -121,6 +121,68 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
             expect(Object.getPrototypeOf(plan.recordTypeSelection)).toBeNull();
             expect(Object.keys(plan.recordTypeSelection)).toEqual(['__proto__']);
 
+        });
+
+    });
+
+    describe('planRecordTypeSets (#624)', () => {
+
+        const treeObjects = ['Account', 'Contact', 'Opportunity'];
+
+        it('offers a set per combination, each a selection of one record type per object with a choice', () => {
+            const setsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets({ Account: ['Business', 'Partner'], Opportunity: ['New'] }, [], treeObjects);
+            expect(setsPlan).toEqual({
+                isSeparateOffered: true,
+                sets: [
+                    { setName: 'Account · Business; Opportunity · New', recordTypeSelection: { Account: ['Business'], Opportunity: ['New'] } },
+                    { setName: 'Account · Partner; Opportunity · New', recordTypeSelection: { Account: ['Partner'], Opportunity: ['New'] } }
+                ]
+            });
+        });
+
+        it('does not offer separate for one set, which would be the folded data set again', () => {
+            expect(RecipeCockpitRecordTypeRecipe.planRecordTypeSets({ Account: ['Partner'] }, [], treeObjects)).toEqual({ isSeparateOffered: false, sets: [] });
+        });
+
+        it('leaves out an object whose ticks the walk dropped, so it is in its default record type in every set', () => {
+            const setsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets({ Account: ['Business', 'Partner'], Opportunity: ['New', 'Gone'] },
+                [{ objectApiName: 'Opportunity', missingDeveloperNames: ['Gone'] }], treeObjects);
+            expect(setsPlan.sets.map(recordTypeSet => recordTypeSet.recordTypeSelection)).toEqual([{ Account: ['Business'] }, { Account: ['Partner'] }]);
+        });
+
+        it(`draws separate disabled past ${RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS} sets, with a reason that names each object's count`, () => {
+            const setsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets({ Account: ['A', 'B', 'C'], Opportunity: ['W', 'X', 'Y', 'Z'] }, [], treeObjects);
+            expect(setsPlan.isSeparateOffered).toBeTrue();
+            expect(setsPlan.sets).toEqual([]);
+            expect(setsPlan.separateDisabledReason).toBe('Not available: one data set per record type would make 12 data sets (Account 3 × Opportunity 4), more than the 10 one generate inserts. Tick fewer record types, or choose one data set.');
+        });
+
+        it('keeps exactly the cap enabled', () => {
+            const setsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets({ Account: ['A', 'B', 'C', 'D', 'E'], Opportunity: ['X', 'Y'] }, [], treeObjects);
+            expect(setsPlan.separateDisabledReason).toBeUndefined();
+            expect(setsPlan.sets).toHaveLength(RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS);
+        });
+
+        it('records an object named __proto__ as an own key of a set\'s selection', () => {
+            const selection: Record<string, string[]> = Object.create(null);
+            selection['__proto__'] = ['A', 'B'];
+            const setsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets(selection, [], ['__proto__']);
+            expect(setsPlan.sets.map(recordTypeSet => Object.keys(recordTypeSet.recordTypeSelection))).toEqual([['__proto__'], ['__proto__']]);
+            expect(Object.getPrototypeOf(setsPlan.sets[0].recordTypeSelection)).toBe(Object.prototype);
+        });
+
+    });
+
+    describe('buildRecordTypeSetLines (#624)', () => {
+
+        it('lists each set by number and name, with the totals every set inserts', () => {
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLines([
+                { setName: 'Account · Business', recordTypeSelection: { Account: ['Business'] } },
+                { setName: 'Account · Partner', recordTypeSelection: { Account: ['Partner'] } }
+            ], new Map([['Account', 1], ['Contact', 5]]))).toEqual([
+                'Set 1 of 2: Account · Business (Account 1, Contact 5)',
+                'Set 2 of 2: Account · Partner (Account 1, Contact 5)'
+            ]);
         });
 
     });

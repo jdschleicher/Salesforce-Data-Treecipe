@@ -628,6 +628,28 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('posts a disabled mode after the offered ones, with its reason, and reads it as Cancel when the panel names it anyway (#624)', async () => {
+
+            await openAndDraw();
+
+            const modeAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', {
+                summary: ['x'],
+                recordTypeSetModes: ['folded'],
+                disabledRecordTypeSetModes: [{ recordTypeSetMode: 'separate', disabledReason: 'Too many sets.' }]
+            }, 'Go');
+            expect(lastPosted('confirmRequest').recordTypeSetModes).toEqual([
+                { name: 'folded', label: 'One data set with the record types folded together' },
+                { name: 'separate', label: 'A data set for each record type', disabledReason: 'Too many sets.' }
+            ]);
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'separate' });
+            await expect(modeAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+            const separateAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded', 'separate'] }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'separate' });
+            await expect(separateAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false, recordTypeSetMode: 'separate' });
+
+        });
+
         it.each([
             ['a mode it did not offer', 'separate'],
             ['no mode', undefined],
@@ -1195,6 +1217,38 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             panel.findAll(dialogElement, 'confirmChoice')[0].dispatch('click');
             expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: 0, recordTypeSetMode: 'folded' }]);
+
+        });
+
+        it('draws a mode with a disabled reason disabled, its reason under it, never chosen, and chooses the first enabled mode (#624)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ recordTypeSetModes: [{ ...MODES[0], disabledReason: 'Too many <sets>.' }, MODES[1]] }));
+
+            const dialogElement = dialogOf(panel);
+            const radioElements = panel.findAll(dialogElement, 'confirmModeRadio');
+            const [reasonElement] = panel.findAll(dialogElement, 'confirmModeReason');
+            expect(reasonElement.textContent).toBe('Too many <sets>.');
+            expect(radioElements[0].disabled).toBeTrue();
+            expect(radioElements[0].attributes).toMatchObject({ 'aria-disabled': 'true', 'aria-describedby': reasonElement.id });
+            expect(radioElements.map((radioElement: any) => radioElement.attributes['aria-checked'])).toEqual(['false', 'true']);
+
+            radioElements[0].dispatch('click');
+            panel.findAll(dialogElement, 'confirmModeLabel')[0].dispatch('click');
+            expect(radioElements.map((radioElement: any) => radioElement.attributes['aria-checked'])).toEqual(['false', 'true']);
+
+            panel.findAll(dialogElement, 'confirmChoice')[0].dispatch('click');
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: 0, recordTypeSetMode: 'folded' }]);
+
+        });
+
+        it('draws no modes for a disabled reason that is not a string with text (#624)', () => {
+
+            const panel = drawnPanel();
+            [{ disabledReason: '' }, { disabledReason: 3 }, { disabledReason: null }].forEach((badReason, requestIndex) => {
+                panel.postToPanel(confirmRequest({ confirmationId: String(requestIndex).repeat(32), recordTypeSetModes: [{ ...MODES[0], ...badReason }, MODES[1]] }));
+                expect(panel.findAll(dialogOf(panel), 'confirmModeGroup')).toEqual([]);
+            });
 
         });
 

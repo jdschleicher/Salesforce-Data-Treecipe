@@ -3,7 +3,7 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { DirectoryProcessor, IRecipeGenerationProgress, RecipeGenerationCancelledError } from '../DirectoryProcessingService/DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
-import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
+import { IObjectRecordTypeSelection, IRecordTypeCombinationEntry, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 
@@ -11,13 +11,18 @@ import { RelationshipService } from '../RelationshipService/RelationshipService'
     How the record types ticked under "Manage record types" become ONE generate (#623, slice C of
     #620). The ticks are used at "Generate fake data and insert": when they ask for anything the run's
     recipe does not already write, the tree's recipe is built again in memory from the object
-    metadata, and no Generate Treecipe run is written. Slice D adds the 'separate' mode.
+    metadata, and no Generate Treecipe run is written. 'separate' (#624, slice D) makes one data set per
+    combination of one record type per object, each built, generated and inserted in turn.
 */
-export type RecordTypeSetMode = 'folded';
+export type RecordTypeSetMode = 'folded' | 'separate';
 
 export const RECORD_TYPE_SET_MODE_LABELS: Readonly<Record<RecordTypeSetMode, string>> = Object.freeze({
-    folded: 'One data set with the record types folded together'
+    folded: 'One data set with the record types folded together',
+    separate: 'A data set for each record type'
 });
+
+// EACH SET IS A RECIPE WALK, A RUN FAKER AND AN INSERT, ONE AFTER ANOTHER UNDER THE ONE INSERT LOCK, SO ONE CLICK IS HELD TO THIS MANY
+export const RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS = 10;
 
 export const RECORD_TYPE_SET_MODE_LEGEND = 'Record types ticked under Manage record types';
 export const RECORD_TYPE_RECIPE_PROGRESS_TITLE = 'Building the recipe for the ticked record types';
@@ -47,6 +52,23 @@ export interface IDroppedRecordTypeTick {
 export interface IDerivedTreeRecipe {
     recipeText: string;
     droppedTicks: IDroppedRecordTypeTick[];
+}
+
+// ONE DATA SET OF "A data set for each record type" (#624): ITS NAME, AND THE SELECTION ITS RECIPE IS BUILT FOR, ONE RECORD TYPE PER OBJECT
+export interface IRecordTypeSet {
+    setName: string;
+    recordTypeSelection: Record<string, string[]>;
+}
+
+/*
+    Whether the confirmation offers 'separate', and the sets it would make. Not offered for fewer
+    than two sets, which would be the folded data set again. Above the cap it is drawn disabled with
+    separateDisabledReason, and sets is empty.
+*/
+export interface IRecordTypeSetsPlan {
+    isSeparateOffered: boolean;
+    separateDisabledReason?: string;
+    sets: IRecordTypeSet[];
 }
 
 // WHY THERE IS NO DERIVED RECIPE: THE READER CANCELLED THE WALK, OR THE METADATA NO LONGER BUILDS THE CARD'S TREE
@@ -222,6 +244,68 @@ export class RecipeCockpitRecordTypeRecipe {
         const choiceObjectApiNames = new Set(Object.keys(recordTypeSelection));
 
         return new OccurrenceSettingPlacer(derivedNicknamesByObject, runFirstNicknameByObject, iterationNicknamesByObject, choiceObjectApiNames);
+
+    }
+
+    /*
+        The sets of 'separate' (#624), from the choice left once the walk dropped stale ticks: every
+        combination of one record type per object with a choice, in the tree's insert order. An
+        object at its default is in no set's selection, so every set writes it as the run does.
+    */
+    static planRecordTypeSets(recordTypeSelection: Readonly<Record<string, string[]>>,
+                                droppedTicks: readonly IDroppedRecordTypeTick[],
+                                treeObjectApiNames: readonly string[]): IRecordTypeSetsPlan {
+
+        const droppedObjectApiNames = new Set(droppedTicks.map(droppedTick => droppedTick.objectApiName));
+        const keptSelection: Record<string, string[]> = Object.create(null);
+        Object.keys(recordTypeSelection)
+            .filter(objectApiName => !droppedObjectApiNames.has(objectApiName))
+            .forEach(objectApiName => { keptSelection[objectApiName] = recordTypeSelection[objectApiName]; });
+
+        const combinationPlan = RecordTypeSelection.listRecordTypeCombinations(keptSelection, treeObjectApiNames, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS);
+
+        if ( combinationPlan.setCount < 2 ) {
+            return { isSeparateOffered: false, sets: [] };
+        }
+
+        if ( combinationPlan.setCount > RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS ) {
+            const countsText = combinationPlan.recordTypeCountsByObject
+                .map(({ objectApiName, recordTypeCount }) => `${objectApiName} ${recordTypeCount}`).join(' × ');
+            return {
+                isSeparateOffered: true,
+                separateDisabledReason: `Not available: one data set per record type would make ${combinationPlan.setCount} data sets (${countsText}), more than the ${RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS} one generate inserts. Tick fewer record types, or choose one data set.`,
+                sets: []
+            };
+        }
+
+        return {
+            isSeparateOffered: true,
+            sets: combinationPlan.combinations.map(combination => ({
+                setName: RecipeCockpitRecordTypeRecipe.buildRecordTypeSetName(combination),
+                recordTypeSelection: Object.fromEntries(combination.map(({ objectApiName, developerName }) => [objectApiName, [developerName]]))
+            }))
+        };
+
+    }
+
+    // "Account · Business; Opportunity · New", AS A DATA SET ROW'S RECORD TYPE CHIP (#621) NAMES AN OBJECT AND ITS RECORD TYPES
+    static buildRecordTypeSetName(combination: readonly IRecordTypeCombinationEntry[]): string {
+
+        return combination.map(({ objectApiName, developerName }) => `${objectApiName} · ${developerName}`).join('; ');
+
+    }
+
+    /*
+        The confirmation's lines for 'separate': each set by number and name, then the records EVERY
+        set inserts. One record type per object writes one block per object and no child copies, so
+        every set has the same totals, read from the first set's recipe.
+    */
+    static buildRecordTypeSetLines(recordTypeSets: readonly IRecordTypeSet[], recordTotalsByObject: ReadonlyMap<string, number>): string[] {
+
+        const totalsText = [...recordTotalsByObject].map(([objectApiName, recordTotal]) => `${objectApiName} ${recordTotal}`).join(', ');
+
+        return recordTypeSets.map((recordTypeSet, setIndex) =>
+            `Set ${setIndex + 1} of ${recordTypeSets.length}: ${recordTypeSet.setName} (${totalsText})`);
 
     }
 

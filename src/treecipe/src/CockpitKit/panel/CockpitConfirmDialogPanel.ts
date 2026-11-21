@@ -172,9 +172,10 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
         checkElement = drawnCheckElement;
     }
 
-    // THE RECORD TYPE SET MODES THE HOST OFFERS (#623), ONE RADIO EACH, THE FIRST CHOSEN; THE ANSWER NAMES THE ONE CHOSEN
+    // THE RECORD TYPE SET MODES THE HOST OFFERS (#623), ONE RADIO EACH, THE FIRST ENABLED ONE CHOSEN; THE ANSWER NAMES THE ONE CHOSEN
     const offeredModes = readConfirmRecordTypeSetModes(hostMessage);
-    const modeState = { chosenName: offeredModes.length > 0 ? offeredModes[0].name : null };
+    const firstEnabledMode = offeredModes.find(function (offeredMode) { return offeredMode.disabledReason === undefined; });
+    const modeState = { chosenName: firstEnabledMode ? firstEnabledMode.name : null };
     let modeGroupElement: HTMLElement | null = null;
     const modeRadioElements: HTMLButtonElement[] = [];
     if (offeredModes.length > 0) {
@@ -197,11 +198,22 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
             const chooseMode = function () { modeState.chosenName = offeredMode.name; drawModes(); };
             radioElement.setAttribute('role', 'radio');
             radioElement.setAttribute('aria-label', offeredMode.label);
-            radioElement.addEventListener('click', chooseMode);
-            modeLabelElement.addEventListener('click', chooseMode);
             modeRowElement.appendChild(radioElement);
             modeRowElement.appendChild(modeLabelElement);
             drawnModeGroupElement.appendChild(modeRowElement);
+            // A MODE THE HOST CANNOT RUN (#624) IS SHOWN WITH ITS REASON, AND NOTHING CHOOSES IT
+            if (offeredMode.disabledReason !== undefined) {
+                const reasonElement = createElement('div', 'confirmModeReason', offeredMode.disabledReason);
+                reasonElement.id = 'confirmModeReason-' + modeRadioElements.length;
+                radioElement.disabled = true;
+                radioElement.setAttribute('aria-disabled', 'true');
+                radioElement.setAttribute('aria-describedby', reasonElement.id);
+                modeLabelElement.classList.add('confirmModeLabelDisabled');
+                drawnModeGroupElement.appendChild(reasonElement);
+            } else {
+                radioElement.addEventListener('click', chooseMode);
+                modeLabelElement.addEventListener('click', chooseMode);
+            }
             modeRadioElements.push(radioElement);
         });
         drawModes();
@@ -255,16 +267,19 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
 
 }
 
-// THE MODES OF A REQUEST (#623): EACH A NAME AND A LABEL, BOTH STRINGS WITH TEXT; ANYTHING ELSE IS NO MODES AT ALL
+// THE MODES OF A REQUEST (#623): EACH A NAME AND A LABEL, BOTH STRINGS WITH TEXT, AND AN OPTIONAL DISABLED REASON WITH TEXT (#624); ANYTHING ELSE IS NO MODES AT ALL
 function readConfirmRecordTypeSetModes(hostMessage: ICockpitConfirmRequestMessage): ICockpitConfirmRecordTypeSetMode[] {
 
     const postedModes = hostMessage.recordTypeSetModes;
     const isReadableMode = function (mode: unknown): mode is ICockpitConfirmRecordTypeSetMode {
-        return isRecord(mode) && typeof mode.name === 'string' && !!mode.name && typeof mode.label === 'string' && !!mode.label;
+        return isRecord(mode) && typeof mode.name === 'string' && !!mode.name && typeof mode.label === 'string' && !!mode.label
+            && (mode.disabledReason === undefined || (typeof mode.disabledReason === 'string' && !!mode.disabledReason));
     };
 
     return Array.isArray(postedModes) && (postedModes as unknown[]).every(isReadableMode)
-        ? (postedModes as ICockpitConfirmRecordTypeSetMode[]).map(function (mode) { return { name: mode.name, label: mode.label }; })
+        ? (postedModes as ICockpitConfirmRecordTypeSetMode[]).map(function (mode) {
+            return mode.disabledReason !== undefined ? { name: mode.name, label: mode.label, disabledReason: mode.disabledReason } : { name: mode.name, label: mode.label };
+        })
         : [];
 
 }

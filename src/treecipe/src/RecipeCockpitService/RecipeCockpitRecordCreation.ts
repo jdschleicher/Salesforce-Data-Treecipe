@@ -132,6 +132,25 @@ export interface ITreeInsertLookupContext {
 
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
+/*
+    How one set of "A data set for each record type" ended (#624). insertResult is how its insert
+    ended, the same shape CollectionsApiService answers; a set with none was never inserted:
+    notGenerated (its recipe or data set could not be made), buildCancelled (the reader cancelled its
+    recipe build) or notStarted (an earlier set did not land, or the org selection changed).
+*/
+export interface IRecordTypeSetInsertResult {
+    outcome: 'completed' | 'cancelled' | 'stopped';
+    isRolledBack: boolean;
+    savedRecordCount: number;
+    failedRecordCount: number;
+}
+
+export interface IRecordTypeSetOutcome {
+    setName: string;
+    insertResult?: IRecordTypeSetInsertResult;
+    unrunReason?: 'notGenerated' | 'buildCancelled' | 'notStarted';
+}
+
 export class RecipeCockpitRecordCreation {
 
     // THE REQUESTS AN INSERT OF THESE TOTALS NEEDS AT LEAST: EACH OBJECT'S RECORDS GO 200 TO A REQUEST, AND A FILE INSERTED IN ROUNDS NEEDS MORE
@@ -373,6 +392,57 @@ export class RecipeCockpitRecordCreation {
     private static isLookupField(describeField: ICreateDescribeField): boolean {
 
         return describeField.fieldType === 'reference' && describeField.fieldApiName !== RECORD_TYPE_ID_FIELD_API_NAME;
+
+    }
+
+    // A SET LANDED WHEN ITS INSERT WENT THROUGH EVERY FILE WITH NO RECORD FAILING; ANY OTHER ENDING STOPS THE SETS AFTER IT (#624)
+    static isRecordTypeSetLanded(insertResult: IRecordTypeSetInsertResult): boolean {
+
+        return insertResult.outcome === 'completed' && insertResult.failedRecordCount === 0;
+
+    }
+
+    /*
+        The one notification of a 'separate' run (#624): each set by number and name, and how it
+        ended, in order. An error when any set failed, a warning when one was cancelled or not
+        started, information when every set landed. Every label arrives escaped.
+    */
+    static summarizeRecordTypeSetOutcomes(treeLabel: string, orgLabel: string, setOutcomes: readonly IRecordTypeSetOutcome[]): { severity: 'information' | 'warning' | 'error'; text: string } {
+
+        const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+
+        const describeOutcome = (setOutcome: IRecordTypeSetOutcome): { kind: 'landed' | 'failed' | 'cancelled' | 'notStarted'; text: string } => {
+            const insertResult = setOutcome.insertResult;
+            if ( !insertResult ) {
+                return setOutcome.unrunReason === 'notGenerated' ? { kind: 'failed', text: 'was not generated, so nothing of it was inserted' }
+                    : setOutcome.unrunReason === 'buildCancelled' ? { kind: 'cancelled', text: 'was cancelled while its recipe was built, so nothing of it was inserted' }
+                    : { kind: 'notStarted', text: 'was not started' };
+            }
+            if ( insertResult.outcome === 'cancelled' ) {
+                return { kind: 'cancelled', text: `was cancelled${insertResult.isRolledBack ? ', and every record it had inserted was deleted' : ''}` };
+            }
+            if ( insertResult.outcome === 'stopped' ) {
+                return { kind: 'failed', text: insertResult.isRolledBack
+                    ? `failed, and every record it had inserted was deleted, because all-or-none was chosen (${recordsText(insertResult.failedRecordCount)} failed)`
+                    : `failed: ${recordsText(insertResult.savedRecordCount)} kept, because all-or-none was not chosen, and ${insertResult.failedRecordCount} failed` };
+            }
+            if ( insertResult.failedRecordCount > 0 ) {
+                return { kind: 'failed', text: `inserted ${recordsText(insertResult.savedRecordCount)} and ${insertResult.failedRecordCount} failed; nothing was rolled back` };
+            }
+            return { kind: 'landed', text: `inserted ${recordsText(insertResult.savedRecordCount)}` };
+        };
+
+        const describedOutcomes = setOutcomes.map(describeOutcome);
+        const setLines = setOutcomes.map((setOutcome, setIndex) => `Set ${setIndex + 1} (${setOutcome.setName}) ${describedOutcomes[setIndex].text}.`);
+        const landedCount = describedOutcomes.filter(describedOutcome => describedOutcome.kind === 'landed').length;
+        const severity = describedOutcomes.some(describedOutcome => describedOutcome.kind === 'failed') ? 'error'
+            : landedCount === setOutcomes.length ? 'information'
+            : 'warning';
+
+        return {
+            severity: severity,
+            text: `${landedCount} of ${setOutcomes.length} data sets of ${treeLabel} were inserted into ${orgLabel}, one per record type. ${setLines.join(' ')}`
+        };
 
     }
 

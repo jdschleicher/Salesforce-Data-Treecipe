@@ -1090,6 +1090,8 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     .confirmModeRow { display: flex; align-items: center; gap: 0.4rem; margin: 0.2rem 0; }
     .confirmModeRadio { border-radius: 999px; }
     .confirmModeLabel { cursor: pointer; overflow-wrap: anywhere; }
+    .confirmModeLabelDisabled { cursor: default; color: var(--sdt-muted); }
+    .confirmModeReason { margin: 0 0 0.3rem 1.8rem; color: var(--sdt-muted); font-size: 0.9em; overflow-wrap: anywhere; }
     .confirmActions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; }
     .treeObjectRefresh { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
     .objectRefreshGlyph { width: 1rem; height: 1rem; flex: none; }

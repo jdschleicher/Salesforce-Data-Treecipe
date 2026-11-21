@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.206.0] - Recipe Cockpit: "A data set for each record type" makes one data set per record type, inserted one after another (#624, slice D of #620)
+
+With record types ticked under **Manage record types**, **Generate fake data and insert** could only fold them into one data set. Now its confirmation also offers one data set per record type.
+
+- **The confirmation offers "A data set for each record type"** beside **One data set with the record types folded together** whenever the ticks make two sets or more. Each set holds exactly one record type per object, and the sets are every combination: Account {Business, Partner} × Opportunity {New} is 2 sets. **If you choose a data set for each record type** lists each set by number and name, with the records it inserts (`Set 1 of 2: Account · Business (Account 1, Contact 1, Visit__c 1)`). The folded choice stays first and selected.
+- **At most 10 sets.** Past that, the choice is drawn disabled, with the reason under it naming each object's count (`12 data sets (Account 3 × Opportunity 4)`). A panel that posts it anyway is read as Cancel.
+- **Each set is its own data set**, with its own `filteredRecipe-…`, its own `datasetSource.json` naming its record type, and its own row in Previously Used Data Sets, added in place and tagged `Record types: Account · Business`. The sets are generated and inserted one after another in one run, after one confirmation and one all-or-none answer. The insert lock holds for the whole run.
+- **A set that does not land stops the run.** With all-or-none, if set 2 of 3 fails, set 2 rolls back, set 3 is not started, and set 1 stays. A cancel stops after the current set, which rolls back as a cancel does today. A set that loses records without all-or-none, or whose recipe or data set cannot be made, stops the run too. The run also stops if another org is chosen between sets.
+- **One notification** names every set and how it ended: inserted, failed, cancelled or not started. A failed set gets **View errors**, and **View failed file** and **Open Troubleshooting** when one of its files failed.
+- **The sets' totals come from a second recipe build.** It runs before the confirmation, behind the same progress notification with Cancel. Each later set's recipe is built just before that set runs. A record type dropped from the metadata since it was ticked is left out of every set, and the confirmation names it, as before.
+- The kit's confirmation can draw a record type set mode disabled, with its reason, and never chooses it.
+- Palette **Generate Treecipe**, **Run Faker by Recipe** and **Insert Data Set by Directory**, the golden files, and the folded data set are unchanged.
+- The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new choice, and say that each set's row names its own record type, the default included. The guide's pictures were not re-taken. The rendered `help-section` baseline gains the two new help lines.
+- **Tests.** `RecordTypeSelection.listRecordTypeCombinations`: order, the cap, prototype keys. `planRecordTypeSets` and the set lines. The set outcomes and their notification. The disabled radio, in the panel and the host. Both backends build a set's recipe as one block per object. Journeys: two sets each with its own `RecordTypeId` and row; set 2 rolled back with set 1 kept; set 1 losing a record so set 2 is not started; cancels during a set's build and during its insert.
+
 ## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
 ### Customize and create new recipe

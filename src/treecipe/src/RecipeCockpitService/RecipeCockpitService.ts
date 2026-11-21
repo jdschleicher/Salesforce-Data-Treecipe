@@ -716,13 +716,14 @@ import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCock
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup, IObjectSelectionRemovedLookup } from './RecipeCockpitObjectSelection';
-import { IRecordTypeTickObject, OccurrenceSettingPlacer, RECORD_TYPE_SET_MODE_LABELS, RECORD_TYPE_SET_MODE_LEGEND, RecipeCockpitRecordTypeRecipe, RecordTypeSetMode } from './RecipeCockpitRecordTypeRecipe';
+import { IDroppedRecordTypeTick, IRecordTypeSet, IRecordTypeSetsPlan, IRecordTypeTickObject, OccurrenceSettingPlacer, RECORD_TYPE_SET_MODE_LABELS, RECORD_TYPE_SET_MODE_LEGEND, RecipeCockpitRecordTypeRecipe, RecordTypeSetMode } from './RecipeCockpitRecordTypeRecipe';
 import {
     ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
     RecipeCockpitCreateReasonCode,
     RecipeCockpitRecordCreation,
     ICreateObjectDescribe,
+    IRecordTypeSetOutcome,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
 import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
@@ -948,6 +949,7 @@ export const RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL = 'Restore TODO';
 export const RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX = 'The TODO was not removed';
 export const RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX = 'The TODO was not put back';
 export const RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE = 'Record types, one block each';
+export const RECIPE_COCKPIT_INSERT_RECORD_TYPE_SETS_SECTION_TITLE = 'If you choose a data set for each record type';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 // THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
 export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING;
@@ -2281,6 +2283,27 @@ export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpit
 // THE RECORD TYPE SET MODES A CONFIRMATION OFFERS (#623), IN THE ORDER DRAWN; THE FIRST IS THE ONE CHOSEN WHEN IT OPENS
 export interface IRecipeCockpitConfirmWithRecordTypeSetModesOptions extends IRecipeCockpitConfirmOptions {
     recordTypeSetModes: RecordTypeSetMode[];
+    // DRAWN AFTER THE OFFERED MODES, DISABLED WITH THE REASON UNDER THEM (#624); NEVER AN ANSWER
+    disabledRecordTypeSetModes?: Array<{ recordTypeSetMode: RecordTypeSetMode; disabledReason: string }>;
+}
+
+// WHAT "A data set for each record type" (#624) RUNS WITH, ONCE THE CONFIRMATION AND EVERY GUARD HAVE HELD
+interface IRecipeCockpitRecordTypeSetRun {
+    panelState: IRecipeCockpitPanelState;
+    recipeDataMessage: IRecipeCockpitRecipeDataMessage;
+    tree: IRecipeCockpitTreeViewModel;
+    // ESCAPED
+    treeLabel: string;
+    recipeFilePath: string;
+    connection: Connection;
+    allOrNoneSelection: boolean;
+    orgUsername: string;
+    orgAlias?: string;
+    recordTypeSets: IRecordTypeSet[];
+    firstSetFilteredRecipe: IRecipeCockpitRunFakerFilteredRecipe;
+    buildRecordPreparer: () => DataSetRecordPreparer;
+    isSameSelection: () => boolean;
+    onDatasetFolderMade: (datasetFolderPath: string) => void;
 }
 
 // THE LABEL CHOSEN, OR undefined FOR CANCEL; isChecked IS true ONLY FOR A BOX TICKED UNDER A CHOSEN BUTTON
@@ -6489,7 +6512,7 @@ export class RecipeCockpitService {
     */
     static confirmInPanelWithRecordTypeSetModes(message: string, confirmOptions: IRecipeCockpitConfirmWithRecordTypeSetModesOptions, ...buttonLabels: string[]): Promise<IRecipeCockpitConfirmAnswer> {
 
-        return this.askInPanel(message, confirmOptions, undefined, buttonLabels, confirmOptions.recordTypeSetModes);
+        return this.askInPanel(message, confirmOptions, undefined, buttonLabels, confirmOptions.recordTypeSetModes, confirmOptions.disabledRecordTypeSetModes);
 
     }
 
@@ -6504,7 +6527,9 @@ export class RecipeCockpitService {
 
     }
 
-    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[], recordTypeSetModes: RecordTypeSetMode[] = []): Promise<IRecipeCockpitConfirmAnswer> {
+    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[],
+                                recordTypeSetModes: RecordTypeSetMode[] = [],
+                                disabledRecordTypeSetModes: Array<{ recordTypeSetMode: RecordTypeSetMode; disabledReason: string }> = []): Promise<IRecipeCockpitConfirmAnswer> {
 
         const cancelled: IRecipeCockpitConfirmAnswer = { chosenLabel: undefined, isChecked: false };
 
@@ -6553,7 +6578,10 @@ export class RecipeCockpitService {
                 ...( recordTypeSetModes.length > 0
                     ? {
                         recordTypeSetModeLegend: RECORD_TYPE_SET_MODE_LEGEND,
-                        recordTypeSetModes: recordTypeSetModes.map(recordTypeSetMode => ({ name: recordTypeSetMode, label: RECORD_TYPE_SET_MODE_LABELS[recordTypeSetMode] }))
+                        recordTypeSetModes: [
+                            ...recordTypeSetModes.map(recordTypeSetMode => ({ name: recordTypeSetMode, label: RECORD_TYPE_SET_MODE_LABELS[recordTypeSetMode] })),
+                            ...disabledRecordTypeSetModes.map(({ recordTypeSetMode, disabledReason }) => ({ name: recordTypeSetMode, label: RECORD_TYPE_SET_MODE_LABELS[recordTypeSetMode], disabledReason: disabledReason }))
+                        ]
                     }
                     : {} ),
                 ...( changeOrg ? { canChangeOrg: true } : {} )
@@ -10336,7 +10364,8 @@ export class RecipeCockpitService {
 
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
         let isDatasetWritten = false;
-        let insertedDatasetFolderPath = '';
+        // ONE PER DATA SET WRITTEN: "A data set for each record type" (#624) WRITES ONE PER SET
+        const insertedDatasetFolderPaths: string[] = [];
         let isInsertFinished = false;
         let hasInsertFailed = false;
         let insertError: unknown;
@@ -10345,7 +10374,7 @@ export class RecipeCockpitService {
 
             isDatasetWritten = await this.performTreeInsert(cockpitPanel, panelState, insertAction, datasetFolderPath => {
                 isDatasetWritten = true;
-                insertedDatasetFolderPath = datasetFolderPath;
+                insertedDatasetFolderPaths.push(datasetFolderPath);
             }, () => { isInsertFinished = true; });
 
         } catch (thrownError) {
@@ -10359,10 +10388,10 @@ export class RecipeCockpitService {
 
             if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
 
-                // ONLY AN INSERT THAT REACHED THE END ADDS ITS DATA SET IN PLACE; ONE THAT THREW RELOADS
+                // ONLY AN INSERT THAT REACHED THE END ADDS ITS DATA SETS IN PLACE, ONE datasetAdded EACH; ONE THAT THREW, OR A ROW THAT CANNOT BE PLACED, RELOADS
                 const isAddedInPlace = isInsertFinished
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
-                                        && RecipeCockpitDatasetsHost.postAddedDataset(this, cockpitPanel, panelState, clickedRecipeDataMessage, insertedDatasetFolderPath);
+                                        && insertedDatasetFolderPaths.every(datasetFolderPath => RecipeCockpitDatasetsHost.postAddedDataset(this, cockpitPanel, panelState, clickedRecipeDataMessage, datasetFolderPath));
 
                 if ( !isAddedInPlace ) {
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
@@ -10660,40 +10689,36 @@ export class RecipeCockpitService {
         }
 
         // BUILT ONLY NOW, ONCE THE ORG CAN TAKE THE TREE: THE BUILD WALKS EVERY OBJECT'S METADATA
+        let recordTypeSetsPlan: IRecordTypeSetsPlan = { isSeparateOffered: false, sets: [] };
+        let firstSetFilteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined;
+        const buildCancelledText = `Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`;
+
         if ( recordTypePlan.isRecipeDerived ) {
 
-            const derivedRecipe = tree.folderName
-                ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypePlan.recordTypeSelection)
-                : 'treeNotBuilt';
-            if ( derivedRecipe === 'cancelled' ) {
-                VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
+            const derivedFilteredRecipe = await this.buildRecordTypeFilteredRecipe(panelState, recipeDataMessage, tree, treeLabel, recordTypePlan.recordTypeSelection);
+            if ( derivedFilteredRecipe === 'cancelled' ) {
+                VSCodeWorkspaceService.showInformationMessage(buildCancelledText);
                 return false;
             }
-            if ( derivedRecipe === 'treeNotBuilt' ) {
-                return refuse(`Nothing was generated or inserted for ${treeLabel}: the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.`);
-            }
-
-            const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(
-                derivedRecipe.recipeText,
-                this.listRunFirstNicknamesByObject(recipeDataMessage.recipe, tree),
-                recordTypePlan.recordTypeSelection
-            );
-
-            // THE CARD, ITS READINESS AND THE CONFIRMATION'S TOTALS ARE THE RUN'S OBJECTS, SO A RECIPE WITH AN OBJECT THE RUN LACKS IS NOT GENERATED
-            const treeObjectApiNames = new Set(tree.objects.map(treeObject => treeObject.objectApiName));
-            const objectsNewToTree = settingPlacer.derivedObjectApiNames.filter(objectApiName => !treeObjectApiNames.has(objectApiName));
-            if ( objectsNewToTree.length > 0 ) {
-                return refuse(`Nothing was generated or inserted for ${treeLabel}: the object metadata now puts ${objectsNewToTree.map(objectApiName => RecipeYamlScalar.escapeForNotification(objectApiName)).join(', ')} in this tree, which this run does not have. Run "Generate Treecipe" again, then tick the record types.`);
-            }
-
-            const derivedFilteredRecipe = this.buildRunFakerFilteredRecipe(derivedRecipe.recipeText, tree, panelState.objectLevelsByApiName, recipeDataMessage.recipe, settingPlacer);
             if ( 'refusalMessage' in derivedFilteredRecipe ) {
-                return refuse(`Nothing was generated or inserted for ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(derivedFilteredRecipe.refusalMessage)} The recipe built for the ticked record types could not take this card's settings.`);
+                return refuse(derivedFilteredRecipe.refusalMessage);
             }
+            filteredRecipe = derivedFilteredRecipe.filteredRecipe;
+            recordTypeWarnings = derivedFilteredRecipe.warnings;
 
-            // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
-            filteredRecipe = { ...derivedFilteredRecipe, recordTypeSelection: Object.fromEntries(Object.entries(recordTypePlan.recordTypeSelection)) };
-            recordTypeWarnings = RecipeCockpitRecordTypeRecipe.buildConfirmationWarnings(derivedRecipe.droppedTicks, settingPlacer);
+            // THE SETS OF "A data set for each record type" (#624), AND THE FIRST SET'S RECIPE: EVERY SET HAS ITS TOTALS
+            recordTypeSetsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets(recordTypePlan.recordTypeSelection, derivedFilteredRecipe.droppedTicks, tree.objects.map(treeObject => treeObject.objectApiName));
+            if ( recordTypeSetsPlan.sets.length > 0 ) {
+                const firstSetRecipe = await this.buildRecordTypeFilteredRecipe(panelState, recipeDataMessage, tree, treeLabel, recordTypeSetsPlan.sets[0].recordTypeSelection);
+                if ( firstSetRecipe === 'cancelled' ) {
+                    VSCodeWorkspaceService.showInformationMessage(buildCancelledText);
+                    return false;
+                }
+                if ( 'refusalMessage' in firstSetRecipe ) {
+                    return refuse(firstSetRecipe.refusalMessage);
+                }
+                firstSetFilteredRecipe = firstSetRecipe.filteredRecipe;
+            }
 
         }
 
@@ -10728,20 +10753,34 @@ export class RecipeCockpitService {
 
         const insertConfirmationContent = this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail, typedLookupIds);
         const confirmTitle = `Generate ${treeLabel} and insert it into ${orgLabel}?`;
+        const recordTypeSetLines = firstSetFilteredRecipe
+            ? RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLines(recordTypeSetsPlan.sets, new Map([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(firstSetFilteredRecipe.recipeText)]
+                .filter(([objectApiName]) => insertObjectApiNameSet.has(objectApiName))))
+            : [];
         const confirmOptions: IRecipeCockpitConfirmOptions = {
             ...( recordTypePlan.isRecipeDerived
-                ? this.addRecordTypesToInsertConfirmation(insertConfirmationContent, generationRecipeText, recordTypeWarnings)
+                ? this.addRecordTypesToInsertConfirmation(insertConfirmationContent, generationRecipeText, recordTypeWarnings, recordTypeSetLines)
                 : { ...insertConfirmationContent, warnings: [...( insertConfirmationContent.warnings ?? [] ), ...recordTypeWarnings] } ),
             org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
             isDestructive: true,
             changeOrg: { restartMessage: this.buildInsertTreeMessage(insertAction), isSandboxOnly: true }
         };
 
-        // THE FOLDED QUESTION ONLY WHEN SOME OBJECT HAS A CHOICE (#623); AN ANSWER NAMING NO MODE THE DIALOG OFFERED IS CANCEL
+        /*
+            THE MODE QUESTION ONLY WHEN SOME OBJECT HAS A CHOICE (#623): folded, AND separate FOR TWO SETS
+            OR MORE (#624), DRAWN DISABLED WITH ITS REASON PAST THE CAP. AN ANSWER NAMING NO MODE THE DIALOG
+            OFFERED IS CANCEL, SO A DISABLED separate POSTED ANYWAY IS CANCEL TOO.
+        */
         let confirmation: string | undefined;
+        let chosenRecordTypeSetMode: RecordTypeSetMode | undefined;
         if ( recordTypePlan.offeredModes.length > 0 ) {
-            const modeAnswer = await this.confirmInPanelWithRecordTypeSetModes(confirmTitle, { ...confirmOptions, recordTypeSetModes: recordTypePlan.offeredModes }, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
-            confirmation = modeAnswer.recordTypeSetMode === 'folded' ? modeAnswer.chosenLabel : undefined;
+            const offeredModes: RecordTypeSetMode[] = [...recordTypePlan.offeredModes, ...( recordTypeSetsPlan.sets.length > 0 ? ['separate' as const] : [] )];
+            const disabledModes = recordTypeSetsPlan.separateDisabledReason !== undefined
+                ? [{ recordTypeSetMode: 'separate' as const, disabledReason: recordTypeSetsPlan.separateDisabledReason }]
+                : [];
+            const modeAnswer = await this.confirmInPanelWithRecordTypeSetModes(confirmTitle, { ...confirmOptions, recordTypeSetModes: offeredModes, disabledRecordTypeSetModes: disabledModes }, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
+            chosenRecordTypeSetMode = modeAnswer.recordTypeSetMode;
+            confirmation = chosenRecordTypeSetMode !== undefined ? modeAnswer.chosenLabel : undefined;
         } else {
             confirmation = await this.confirmInPanel(confirmTitle, confirmOptions, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
         }
@@ -10761,11 +10800,11 @@ export class RecipeCockpitService {
             run each start a new one, and the readiness checked before the dialog belongs to the one
             the reader confirmed.
         */
-        const isSameSelection = this.recipeCockpitPanel === cockpitPanel
-                                    && this.recipeCockpitPanelState === panelState
-                                    && panelState.dataOrgSelection === dataOrgSelection;
+        const isSameSelection = () => this.recipeCockpitPanel === cockpitPanel
+                                        && this.recipeCockpitPanelState === panelState
+                                        && panelState.dataOrgSelection === dataOrgSelection;
 
-        if ( !isSameSelection ) {
+        if ( !isSameSelection() ) {
             return refuse(`The org selection changed after ${orgLabel} was confirmed (another org was chosen, the orgs were checked again, or the run was reloaded), so nothing was inserted. Choose "${RECIPE_COCKPIT_INSERT_ACTION_LABEL}" again.`);
         }
 
@@ -10818,6 +10857,28 @@ export class RecipeCockpitService {
             this.saveRecordTypeSelection(panelState, rememberedRecordTypeSelection);
         }
 
+        const buildRecordPreparer = () => this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), orgRecordIdsByObjectField);
+
+        if ( chosenRecordTypeSetMode === 'separate' && firstSetFilteredRecipe ) {
+
+            const setOutcomes = await this.insertRecordTypeSets({
+                panelState, recipeDataMessage, tree, treeLabel, recipeFilePath, connection, allOrNoneSelection, buildRecordPreparer, isSameSelection, onDatasetFolderMade,
+                orgUsername: orgDetail.username,
+                orgAlias: orgDetail.alias,
+                recordTypeSets: recordTypeSetsPlan.sets,
+                firstSetFilteredRecipe: firstSetFilteredRecipe
+            });
+
+            onInsertFinished();
+            this.showRecordTypeSetsNotification(setOutcomes, treeLabel, orgLabel, panelState.workspaceRoot, {
+                runFolderName: recipeDataMessage.recipe.selectedRunFolderName,
+                treeFolderName: tree.folderName
+            });
+
+            return setOutcomes.some(setOutcome => setOutcome.isDatasetWritten);
+
+        }
+
         const datasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, filteredRecipe);
 
         if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
@@ -10826,7 +10887,7 @@ export class RecipeCockpitService {
         onDatasetFolderMade(datasetFolderPath);
 
         const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, {
-            prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), orgRecordIdsByObjectField),
+            prepareRecords: buildRecordPreparer(),
             isFailureReportedByCaller: true,
             orgUsername: orgDetail.username,
             orgAlias: orgDetail.alias
@@ -10854,6 +10915,155 @@ export class RecipeCockpitService {
         }
 
         return typeof datasetFolderPath === 'string' && SfdxProjectService.isExistingDirectory(datasetFolderPath) ? datasetFolderPath : undefined;
+
+    }
+
+    /*
+        The ticked record types' recipe (#623), built in memory and given the card's settings, ready
+        to be Run Faker's filtered recipe. A refusal is a warning to show, already escaped.
+    */
+    private static async buildRecordTypeFilteredRecipe(panelState: IRecipeCockpitPanelState,
+                                                        recipeDataMessage: IRecipeCockpitRecipeDataMessage,
+                                                        tree: IRecipeCockpitTreeViewModel,
+                                                        treeLabel: string,
+                                                        recordTypeSelection: Readonly<Record<string, string[]>>
+                                                    ): Promise<{ filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; warnings: string[]; droppedTicks: IDroppedRecordTypeTick[] } | { refusalMessage: string } | 'cancelled'> {
+
+        const derivedRecipe = tree.folderName
+            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection)
+            : 'treeNotBuilt';
+        if ( derivedRecipe === 'cancelled' ) {
+            return 'cancelled';
+        }
+        if ( derivedRecipe === 'treeNotBuilt' ) {
+            return { refusalMessage: `Nothing was generated or inserted for ${treeLabel}: the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.` };
+        }
+
+        const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(
+            derivedRecipe.recipeText,
+            this.listRunFirstNicknamesByObject(recipeDataMessage.recipe, tree),
+            recordTypeSelection
+        );
+
+        // THE CARD, ITS READINESS AND THE CONFIRMATION'S TOTALS ARE THE RUN'S OBJECTS, SO A RECIPE WITH AN OBJECT THE RUN LACKS IS NOT GENERATED
+        const treeObjectApiNames = new Set(tree.objects.map(treeObject => treeObject.objectApiName));
+        const objectsNewToTree = settingPlacer.derivedObjectApiNames.filter(objectApiName => !treeObjectApiNames.has(objectApiName));
+        if ( objectsNewToTree.length > 0 ) {
+            return { refusalMessage: `Nothing was generated or inserted for ${treeLabel}: the object metadata now puts ${objectsNewToTree.map(objectApiName => RecipeYamlScalar.escapeForNotification(objectApiName)).join(', ')} in this tree, which this run does not have. Run "Generate Treecipe" again, then tick the record types.` };
+        }
+
+        const derivedFilteredRecipe = this.buildRunFakerFilteredRecipe(derivedRecipe.recipeText, tree, panelState.objectLevelsByApiName, recipeDataMessage.recipe, settingPlacer);
+        if ( 'refusalMessage' in derivedFilteredRecipe ) {
+            return { refusalMessage: `Nothing was generated or inserted for ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(derivedFilteredRecipe.refusalMessage)} The recipe built for the ticked record types could not take this card's settings.` };
+        }
+
+        return {
+            // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
+            filteredRecipe: { ...derivedFilteredRecipe, recordTypeSelection: Object.fromEntries(Object.entries(recordTypeSelection)) },
+            warnings: RecipeCockpitRecordTypeRecipe.buildConfirmationWarnings(derivedRecipe.droppedTicks, settingPlacer),
+            droppedTicks: derivedRecipe.droppedTicks
+        };
+
+    }
+
+    /*
+        "A data set for each record type" (#624), once every guard has held: each set is built (the
+        first was built for the confirmation), generated as its own data set and inserted, one after
+        another, under the insert lock the caller holds. A set that does not land -- its insert
+        stopped, was cancelled or lost a record, or its recipe or data set could not be made -- ends
+        the run, and every set after it is not started. A set already inserted stays. Before each later
+        set the org selection must still be the one confirmed.
+    */
+    private static async insertRecordTypeSets(setRun: IRecipeCockpitRecordTypeSetRun): Promise<Array<IRecordTypeSetOutcome & { isDatasetWritten: boolean; fullInsertResult?: IDataSetInsertResult }>> {
+
+        const setOutcomes: Array<IRecordTypeSetOutcome & { isDatasetWritten: boolean; fullInsertResult?: IDataSetInsertResult }> = [];
+        let isRunStopped = false;
+
+        for ( const [setIndex, recordTypeSet] of setRun.recordTypeSets.entries() ) {
+
+            const setName = RecipeYamlScalar.escapeForNotification(recordTypeSet.setName);
+
+            if ( isRunStopped || ( setIndex > 0 && !setRun.isSameSelection() ) ) {
+                isRunStopped = true;
+                setOutcomes.push({ setName, unrunReason: 'notStarted', isDatasetWritten: false });
+                continue;
+            }
+
+            let setFilteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined = setRun.firstSetFilteredRecipe;
+            if ( setIndex > 0 ) {
+                const builtSetRecipe = await this.buildRecordTypeFilteredRecipe(setRun.panelState, setRun.recipeDataMessage, setRun.tree, setRun.treeLabel, recordTypeSet.recordTypeSelection);
+                setFilteredRecipe = builtSetRecipe !== 'cancelled' && !( 'refusalMessage' in builtSetRecipe ) ? builtSetRecipe.filteredRecipe : undefined;
+                if ( builtSetRecipe === 'cancelled' || !setFilteredRecipe ) {
+                    isRunStopped = true;
+                    setOutcomes.push({ setName, unrunReason: builtSetRecipe === 'cancelled' ? 'buildCancelled' : 'notGenerated', isDatasetWritten: false });
+                    continue;
+                }
+            }
+
+            const datasetFolderPath = await this.generateConfirmedDataset(setRun.recipeFilePath, setFilteredRecipe);
+            if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, setRun.panelState.workspaceRoot) ) {
+                isRunStopped = true;
+                setOutcomes.push({ setName, unrunReason: 'notGenerated', isDatasetWritten: false });
+                continue;
+            }
+            setRun.onDatasetFolderMade(datasetFolderPath);
+
+            const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, setRun.connection, setRun.allOrNoneSelection, {
+                prepareRecords: setRun.buildRecordPreparer(),
+                isFailureReportedByCaller: true,
+                orgUsername: setRun.orgUsername,
+                orgAlias: setRun.orgAlias
+            });
+
+            isRunStopped = !RecipeCockpitRecordCreation.isRecordTypeSetLanded(insertResult);
+            setOutcomes.push({ setName, insertResult, fullInsertResult: insertResult, isDatasetWritten: true });
+
+        }
+
+        return setOutcomes;
+
+    }
+
+    /*
+        The one notification of a 'separate' run (#624): every set's outcome in order, with View errors
+        on the set that failed and, when a file of it failed, View failed file and Open Troubleshooting
+        as a single insert offers them. NOT AWAITED. treeLabel and orgLabel arrive escaped.
+    */
+    static showRecordTypeSetsNotification(setOutcomes: ReadonlyArray<IRecordTypeSetOutcome & { fullInsertResult?: IDataSetInsertResult }>,
+                                            treeLabel: string, orgLabel: string, workspaceRoot: string,
+                                            insertedTree: { runFolderName: string; treeFolderName: string }) {
+
+        const { severity, text } = RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes(treeLabel, orgLabel, setOutcomes);
+        const failedInsertResult = setOutcomes
+            .map(setOutcome => setOutcome.fullInsertResult)
+            .find((insertResult): insertResult is IDataSetInsertResult => !!insertResult && insertResult.outcome !== 'cancelled' && !RecipeCockpitRecordCreation.isRecordTypeSetLanded(insertResult));
+
+        if ( !failedInsertResult ) {
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, text, [], workspaceRoot);
+            return;
+        }
+
+        const resultsFileAction = {
+            label: RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
+            filePath: failedInsertResult.resultsFilePath && fs.existsSync(failedInsertResult.resultsFilePath) ? failedInsertResult.resultsFilePath : undefined,
+            missingFileText: 'The insert results file no longer exists in this workspace.'
+        };
+        const failedFilePath = failedInsertResult.failedFilePath;
+
+        if ( typeof failedFilePath !== 'string' ) {
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, text, [resultsFileAction], workspaceRoot);
+            return;
+        }
+
+        const troubleshootingSubTab = RecipeCockpitInsertFailureTriage.resolveSubTab(failedInsertResult.firstFailure);
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity,
+            `${text} The first file that failed is ${RecipeYamlScalar.escapeForNotification(path.basename(failedFilePath))}; its ${RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS[troubleshootingSubTab]} in the Troubleshooting tab may fix it.`, [
+            { label: RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL, filePath: fs.existsSync(failedFilePath) ? failedFilePath : undefined, missingFileText: 'The generated file that failed no longer exists in this workspace.' },
+            resultsFileAction
+        ], workspaceRoot, insertedTree.treeFolderName !== '' ? [{
+            label: RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
+            run: () => this.openTroubleshootingAfterInsert(workspaceRoot, { ...insertedTree, troubleshootingSubTab: troubleshootingSubTab })
+        }] : []);
 
     }
 
@@ -11233,7 +11443,7 @@ export class RecipeCockpitService {
     }
 
     // THE CONFIRMATION OF A RECIPE BUILT FOR THE TICKED RECORD TYPES (#623): WHAT IT WARNS OF, AND THE RECORD TYPES EACH OBJECT IS GENERATED WITH
-    static addRecordTypesToInsertConfirmation(insertConfirmationContent: IRecipeCockpitConfirmContent, generationRecipeText: string, recordTypeWarnings: readonly string[]): IRecipeCockpitConfirmContent {
+    static addRecordTypesToInsertConfirmation(insertConfirmationContent: IRecipeCockpitConfirmContent, generationRecipeText: string, recordTypeWarnings: readonly string[], recordTypeSetLines: readonly string[] = []): IRecipeCockpitConfirmContent {
 
         const recordTypeLines = [...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(generationRecipeText)]
             .map(([objectApiName, developerNames]) => `  ${objectApiName}: ${developerNames.join(', ')}`);
@@ -11245,6 +11455,8 @@ export class RecipeCockpitService {
             sections: [
                 ...( recordsSection ? [recordsSection] : [] ),
                 { title: RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE, count: recordTypeLines.length, lines: recordTypeLines },
+                // "A data set for each record type" (#624): EACH SET IT WOULD MAKE, WITH THE TOTALS EVERY SET INSERTS
+                ...( recordTypeSetLines.length > 0 ? [{ title: RECIPE_COCKPIT_INSERT_RECORD_TYPE_SETS_SECTION_TITLE, count: recordTypeSetLines.length, lines: [...recordTypeSetLines] }] : [] ),
                 ...otherSections
             ]
         };
