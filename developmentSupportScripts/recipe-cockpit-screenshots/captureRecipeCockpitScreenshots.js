@@ -166,9 +166,11 @@ class RecipeCockpitScreenshots {
             throw new Error(`${containerSelector} or ${startSelector} #${index} is not on the page.`);
         }
 
+        // boundingBox IS VIEWPORT-RELATIVE AND A fullPage CLIP IS IN PAGE COORDINATES: THE SCROLL JOINS THEM, SO A SCROLLED PAGE CLIPS WHERE IT SHOULD (#677)
+        const scrollY = await page.evaluate(() => window.scrollY);
         return page.screenshot({
             fullPage: true,
-            clip: { x: containerBox.x, y: startBox.y, width: containerBox.width, height: containerBox.y + containerBox.height - startBox.y }
+            clip: { x: containerBox.x, y: startBox.y + scrollY, width: containerBox.width, height: containerBox.y + containerBox.height - startBox.y }
         });
 
     }
@@ -208,7 +210,8 @@ class RecipeCockpitScreenshots {
             page = await this.openCockpit(browser, this.applyFixtureSelection(RecipeCockpitService, this.loadFixtureRecipe(RecipeCockpitService)));
             await this.openFirstCard(page);
             await this.clickNth(page, '.treeCard .treeObject .treeObjectToggle', 0);
-            await this.writeIfChanged('changes-without-editing-the-yaml.png', await page.locator('.treeCard').first().screenshot());
+            // FROM THE FIRST OBJECT ROW DOWN: THE CARD'S BUTTONS ABOVE IT ARE what-edits-the-yaml.png's, AND WITH THEM THE SHOT PASSED THE SIZE LIMIT (#677)
+            await this.writeIfChanged('changes-without-editing-the-yaml.png', await this.screenshotFrom(page, '.treeCard:not(.hidden)', '.treeCard:not(.hidden) .treeObject', 0));
             await page.close();
 
             // THE SAME CARD UNTOUCHED, Contact OPENED ON ITS LOOKUP THE WIRE BUTTONS FILL

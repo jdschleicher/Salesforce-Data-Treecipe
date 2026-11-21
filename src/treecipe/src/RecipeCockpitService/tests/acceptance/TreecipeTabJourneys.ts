@@ -91,9 +91,20 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
 
             await journey.click('checkbox', 'LastName: Unticked — click to generate this field');
 
-            await journey.step('one ticked field brings Contact and Visit__c back', () => {
+            // #677: AccountId IS STILL UNTICKED, AND IT IS CONTACT'S ONLY LOOKUP INTO THE TREE
+            await journey.step('one ticked field clears the red message, and Contact stays cut off by its removed lookup with its boxes still clickable', () => {
                 const screen = journey.screen();
                 expectEqual(screen.findAll('text', 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED').length, 0, 'The red message is gone');
+                screen.get('text', 'cut off — Contact.AccountId removed');
+                const contactLink = screen.get('button', 'Contact: Cut off because Contact.AccountId was removed. Tick it to include Contact');
+                expectEqual(contactLink.states.includes('disabled'), true, 'Contact\'s chain link is disabled');
+                screen.get('button', 'Visit__c: Excluded because parent Contact is excluded');
+            });
+
+            await journey.click('checkbox', 'AccountId: Unticked — click to generate this field');
+
+            await journey.step('ticking the lookup brings Contact and Visit__c back', () => {
+                const screen = journey.screen();
                 screen.get('button', 'Contact: Included — click to exclude');
                 screen.get('button', 'Visit__c: Included — click to exclude');
             });

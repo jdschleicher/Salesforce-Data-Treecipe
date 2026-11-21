@@ -118,7 +118,8 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
 
         });
 
-        it('cuts off a kept child whose only ticked field was its lookup to the no-fields parent, until nothing changes', () => {
+        // #677: THE UNTICKED Ratio__c IS NO EDGE TO Account, SO THE CHILD FOLLOWS ITS NO-FIELDS PARENT OUT
+        it('cuts off a child whose only kept lookup is to the no-fields parent', () => {
 
             const recipe = loadRecipe();
             // OtherChildObject__c GIVEN Account AS A SECOND PARENT THROUGH Ratio__c, WHICH IS UNTICKED: ITS ONE TICKED FIELD IS Contact__c
@@ -128,7 +129,7 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
 
             expect(exclusionsOf(tree)).toEqual([
                 { objectApiName: 'Contact', kind: 'noFieldsSelected' },
-                { objectApiName: 'OtherChildObject__c', kind: 'noFieldsSelected' }
+                { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
             ]);
 
         });
@@ -250,7 +251,7 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             disposeHandler = undefined;
         });
 
-        it('refuses the chain link of a no-fields object, and a ticked field brings it back', async () => {
+        it('refuses the chain link of a no-fields object, and a ticked field brings it back, cut off by its still-unticked lookup (#677)', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedFieldSelections({ [ACCOUNT_TREE_KEY]: { Contact: CONTACT_FIELDS } }) });
             await openAndDraw(workspaceState);
@@ -263,7 +264,10 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName', included: true });
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedFieldSelections({ [ACCOUNT_TREE_KEY]: { Contact: ['AccountId'] } }));
-            expect(lastPosted('objectSelection').objectSelection).toBeUndefined();
+            expect(lastPosted('objectSelection').objectSelection.exclusions).toEqual([
+                { objectApiName: 'Contact', kind: 'autoExcluded', removedLookupFieldApiName: 'AccountId' },
+                { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+            ]);
 
         });
 

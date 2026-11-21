@@ -1,5 +1,53 @@
 # Change Log
 
+## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
+
+### Customize and create new recipe
+
+- **A new button on each card's Treecipe tab** opens the card's objects in a modal.
+  - Each object row reads left to right: a big red **✕**, the chain link, the chevron, then the name, its lookups and its kept field count. The chevron opens its fields, each with its own red **✕**.
+  - **✕** takes an object or a field out of the new recipe, by the card's own rules: children with no other parent go with an object, and an object goes with its only lookup into the tree (the rule below). **↺** brings back exactly what it took.
+  - A field the card holds ticked (`RecordTypeId` under a record type section, a controlling field with a dependent kept) has its ✕ off, with the reason. A field your org requires is still caught by the insert's own check.
+  - Removing the first object asks first, since nothing would be left. **Cancel**, the modal's ✕ and Escape write nothing.
+  - The chain link keeps its meaning: the object stays in the recipe but is left out of a run. The new tree starts with those chain links.
+- **Save as new Treecipe**, bottom right, writes beside the source tree, in the same run:
+  - `custom-<original tree>/<prefix>--custom-<original tree>-<UTC stamp>.yml`: Run Faker's own filtered copy of the source, so every kept line is byte-identical, and the card's record counts, fixed values and switched-off validation rules are carried. The prefix (`recipe-fakerjs` or `recipe`) is the source's, which Run Faker and the insert read the backend from.
+  - `customTreecipe.json`: names only. It records the source run, tree and recipe file, the original generated tree, what was removed, the chain links, the optional name and when.
+  - A second copy is `-2`, `-3` and so on. Folders are made non-recursively and files written `wx`; a failed write takes them back out.
+  - The source recipe and its folder are never written.
+- **A custom tree is its own entry in the run list**, under its run (`<run> · custom-<tree>`). Choosing it shows that one card, marked `custom copy of <tree>`, which generates, inserts, keeps its own data sets and can be customized again (as `custom-<original tree>-2`, never `custom-custom-`).
+  - A run leaves its `custom-` folders out, because a run keeps one view model per object and a custom recipe holds the same objects again.
+- **The modal behaves in a long list and around redraws:**
+  - After a ✕ or ↺, focus stays on that row and the list keeps its scroll, rather than jumping to the top.
+  - A name typed on the save step survives a preview arriving.
+  - The modal closes when the cockpit draws a new model, so it never posts for a card that is gone.
+- **Loading and saving are more defensive:**
+  - An unreadable `custom-` folder is left out of the run list rather than stopping the cockpit from loading.
+  - A reused folder name starts with no old selection, count or name.
+  - A failed save removes only a folder it made, and a `customTreecipe.json` over 64 KB is not read.
+- **The modal stays quick with a large tree:**
+  - A ✕ or ↺ rebuilds only the rows it changed, and leaves every other row in place.
+  - With 40 objects × 300 fields all open, a click takes about 36 ms, against 1.48 s, and opening them one by one takes 0.8 s against 11 s.
+- **The host half is its own module,** `RecipeCockpitCustomTreecipeHost.ts`, like each tab's since #665–#668. The hub keeps only how a run loads its custom trees.
+- The ? help and the guide say so, and three of the guide's pictures were re-taken.
+
+### An unticked lookup cuts off what it linked
+
+- **An unticked lookup field is no longer an edge of the tree.** Before, an object whose only lookup into the tree was unticked stayed included, with no link to its parent. Now it is cut off with its subtree, and its row says `cut off — Contact.AccountId removed`.
+  - An object that still has another lookup to an included parent stays included.
+  - Unticking a self-lookup, or a lookup to a parent outside the tree, cuts nothing off.
+  - Only a lookup to an object earlier in the tree's insert order counts. In an `Account ⇄ Contact` cycle, unticking `Account.Primary_Contact__c` (the cycle-closing lookup, already a TODO) cuts nothing off, and unticking `Contact.AccountId` cuts off Contact and its children but keeps Account.
+  - An object with iterations is read under its first occurrence's nickname, as its field rows are.
+  - Ticking the lookup again brings back exactly what it cut off.
+- **A cut-off object's field boxes stay clickable,** like a no-fields object's (#611), since re-ticking the lookup is how it comes back. Its chain link is a disabled status naming the field.
+- **"No fields selected" outranks a removed lookup.** Unticking every field also unticks the lookup, and the object still reads as `no fields selected`.
+- **The insert confirmation's Left out section** says `not generated, cut off by removing <Object>.<Field>`.
+- **Changed expectations:** two #611 tests and the #611 journey. A child whose second lookup is unticked now follows its no-fields parent out, and the journey ticks the lookup again to bring Contact back.
+
+### Tests
+
+- New: `RecipeCockpitCustomTreecipe.test.ts` (names, file names, `customTreecipe.json` read back), `RecipeCockpitCustomTreecipeHost.test.ts` (preview, router refusals, save, a copy of a copy, counts carried, rollback, loading and switching entries), `CustomTreecipeJourneys.test.ts` (the modal end to end on a faker-js tree, then generate and insert from the custom tree), and the modal's row types in `RecipeCockpitRowPresentation.test.ts`.
+- Changed: the rendered baselines gain the card's new button; the primary-button inventory gains the modal's two Save buttons, which a dialog owns.
 ## [3.204.0] - Standard master-detail and lookup fields on Quote, Order, Asset and other standard objects are wired to their parents (#680)
 
 Closes [#680](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/680).

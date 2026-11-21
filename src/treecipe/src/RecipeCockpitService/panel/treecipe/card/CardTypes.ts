@@ -19,6 +19,8 @@ import type { IRecordTypesTreeObjectState } from '../recordTypes/RecordTypeTypes
 export interface ICardRun {
     runFolderName: string;
     label: string;
+    // A CUSTOM TREE'S OWN ENTRY UNDER ITS RUN (#677)
+    customTreeFolderName?: string;
 }
 
 export interface ICardIterationField {
@@ -86,6 +88,8 @@ export interface ICardTree {
     customName?: string;
     isFavorite?: boolean;
     runFakerRecipeFileName?: string;
+    // THE TREE A CUSTOM TREE WAS COPIED FROM (#677)
+    customCopyOf?: string;
     objects: ICardTreeObject[];
     // THE COUNTS THE READER SET (#255), AS THE HOST LAST POSTED THEM
     objectCounts?: unknown[];
@@ -95,6 +99,7 @@ export interface ICardTree {
 export interface ICardModel {
     runs: ICardRun[];
     selectedRunFolderName: string;
+    selectedCustomTreeFolderName?: string;
     objects: ICardObject[];
     trees?: ICardTree[];
     notices: string[];

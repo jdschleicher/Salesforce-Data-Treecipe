@@ -865,6 +865,7 @@
     .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }
     /* include: ../../CockpitKit/panel/CockpitConfirmDialog.css */
     /* include: treecipe/objectRefresh/ObjectRefreshDialog.css */
+    /* include: treecipe/customTreecipe/CustomTreecipeDialog.css */
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             transition: none !important;

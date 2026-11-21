@@ -1,0 +1,30 @@
+/*
+    The words of "Customize and create new recipe" (#677): the card's button, the modal, its save
+    step and the notification a save ends in. Imports nothing, so the panel bundles it; re-exported
+    by the service.
+*/
+
+export const RECIPE_COCKPIT_CUSTOMIZE_TREE_LABEL = 'Customize and create new recipe';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_TITLE = 'Customize and create new recipe';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_SOURCE_NOTE = 'The source recipe is not changed.';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_SAVE_LABEL = 'Save as new Treecipe';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_CONFIRM_SAVE_LABEL = 'Save';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_BACK_LABEL = 'Back to editing';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_CANCEL_LABEL = 'Cancel';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_CLOSE_LABEL = 'Close without saving';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_LABEL = 'Name (optional)';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_NAME_PLACEHOLDER = 'For example "Accounts with contacts only"';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_REMOVED_NOTE = 'Remove an object or a field with ✕ to make a new Treecipe.';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_LEFT_NOTE = 'Nothing is left to save. Restore the root object to keep the tree.';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_OPEN_RECIPE_LABEL = 'Open recipe';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_COPY_LABEL_PREFIX = 'custom copy of ';
+
+// AN OBJECT ROW'S STATE AFTER ITS NAME, WHEN THE MODAL'S CASCADE TOOK IT OUT OF THE NEW RECIPE OR OUT OF A RUN
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_TEXT = 'Removed from the new recipe';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_EVERY_FIELD_REMOVED_TEXT = 'Removed: every field removed';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_PREFIX = 'Removed with ';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_OUT_OF_RUN_TEXT = 'Left out of a run, kept in the recipe';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_OUT_OF_RUN_WITH_PREFIX = 'Left out of a run with ';
+
+// THE MOST NAMES ONE MODAL CAN POST: MORE THAN ANY GENERATED TREE HOLDS, FEW ENOUGH THAT A FORGED MESSAGE COSTS NOTHING TO REFUSE
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES = 5000;
