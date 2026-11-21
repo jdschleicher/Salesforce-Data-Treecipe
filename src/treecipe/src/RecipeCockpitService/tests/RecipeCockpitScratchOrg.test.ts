@@ -49,19 +49,22 @@ import { execFile } from 'child_process';
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
-    RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
-    RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT,
-    RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
-    RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL,
-    RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT,
-    RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL,
-    RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
-    RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
+    RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
+    RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
+    RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL,
+    RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
+    RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT,
+    RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL,
+    RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT,
+    RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
+    RecipeCockpitTreecipeDataOrgs
+} from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../SalesforceOrgService/tests/OrgConnectionPings';
@@ -288,8 +291,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
             SalesforceOrgService.clearDescribeCache();
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
-            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
@@ -1080,8 +1083,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
             postedPanelMessages = [];
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
-            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).scratchOrgRunStateMessage = undefined;
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
             (execFile as unknown as jest.Mock).mockReset();
@@ -1134,7 +1137,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
         it('runs nothing while the window already has a run in flight, even for a panel state that does not know it', async () => {
 
             await openCockpit();
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = true;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = true;
             const resolvePlanSpy = jest.spyOn(ScratchOrgService, 'resolveScratchOrgPlan');
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
@@ -1172,7 +1175,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
-            expect((RecipeCockpitService as any).isScratchOrgSetupInFlight).toBe(false);
+            expect((RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight).toBe(false);
 
         });
 
@@ -1231,7 +1234,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('escapes the holder it names, since an input box renders [label](command:...) as a link', () => {
 
-            const validationMessage = RecipeCockpitService.validateScratchOrgAliasInput('qa', new Map([['qa', '[click](command:workbench.action.terminal.new)']])) as vscode.InputBoxValidationMessage;
+            const validationMessage = RecipeCockpitTreecipeDataOrgs.validateScratchOrgAliasInput('qa', new Map([['qa', '[click](command:workbench.action.terminal.new)']])) as vscode.InputBoxValidationMessage;
 
             expect(validationMessage.message).toBe(RecipeYamlScalar.escapeForNotification('"qa" is currently [click](command:workbench.action.terminal.new). Creating will move it to the new org.'));
             expect(validationMessage.message).not.toContain('](command:');
@@ -1240,14 +1243,14 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('reads a missing value as an empty alias', () => {
 
-            expect(RecipeCockpitService.validateScratchOrgAliasInput(undefined as unknown as string, new Map())).toBe('Enter an alias for the new scratch org.');
+            expect(RecipeCockpitTreecipeDataOrgs.validateScratchOrgAliasInput(undefined as unknown as string, new Map())).toBe('Enter an alias for the new scratch org.');
 
         });
 
         it('does not read an alias named __proto__ off a prototype', () => {
 
-            expect(RecipeCockpitService.validateScratchOrgAliasInput('constructor', new Map())).toBeUndefined();
-            expect(RecipeCockpitService.validateScratchOrgAliasInput('toString', new Map([['constructor', 'x@example.com']]))).toBeUndefined();
+            expect(RecipeCockpitTreecipeDataOrgs.validateScratchOrgAliasInput('constructor', new Map())).toBeUndefined();
+            expect(RecipeCockpitTreecipeDataOrgs.validateScratchOrgAliasInput('toString', new Map([['constructor', 'x@example.com']]))).toBeUndefined();
 
         });
 

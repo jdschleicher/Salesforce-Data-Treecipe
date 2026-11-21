@@ -43,9 +43,12 @@ import {
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH,
     RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
+    RecipeCockpitTreecipeInsert
+} from '../RecipeCockpitTreecipeInsert';
 import { IRecipeFixedValue, RecipeCockpitRecipeWriter, RecipeFilterResult } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
@@ -1407,7 +1410,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const recipe = loadRecipe();
             applyFixedValues(recipe, { [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: '[x](command:y)' } } });
 
-            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitService.buildInsertConfirmationContent('my-sandbox', undefined, treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml'));
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 'my-sandbox', undefined, treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml'));
 
             expect(detail).toContain('Edited fields: Account.Legacy_Code__c = [x](command:y)');
 

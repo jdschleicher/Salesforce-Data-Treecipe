@@ -52,6 +52,7 @@ import {
     RECIPE_COCKPIT_RECORD_LINK_TITLE,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import {
     RecipeCockpitRecordLinkPreviewKind,
@@ -300,7 +301,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
-            (RecipeCockpitService as any).isOrgOpenInFlightForWindow = false;
+            (RecipeCockpitTreecipeDataOrgs as any).isOrgOpenInFlightForWindow = false;
             (execFile as unknown as jest.Mock).mockReset();
             (Org.create as jest.Mock).mockReset();
             (vscode.env.openExternal as jest.Mock).mockReset();

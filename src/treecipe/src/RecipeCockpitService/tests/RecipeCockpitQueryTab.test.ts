@@ -49,6 +49,7 @@ import {
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
     RECIPE_COCKPIT_TREE_TABS
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY,
     RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL,
@@ -285,7 +286,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             pickedOrgTypeDetail = { isSandbox: false, organizationType: 'Enterprise Edition' };
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockImplementation(async () => ({ orgDetails: listedOrgDetails, hiddenOrgReasonCounts: {} }) as any);
             promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (listing: any) => (await listing).orgDetails[0]);
-            selectSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+            selectSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg').mockImplementation(async (_hub: any, _cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, orgTypeDetail: pickedOrgTypeDetail };
             });
             connectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
@@ -472,7 +473,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await openCockpit();
             await loadQueries();
             const selectionHolds: unknown[] = [];
-            selectSpy.mockImplementationOnce((_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+            selectSpy.mockImplementationOnce((_hub: any, _cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2 };
                 // THE CHECK, WITH A SANDBOX'S DESCRIBES OF EVERY TREE OBJECT, NEVER ANSWERS HERE
                 return new Promise(() => undefined);
@@ -501,7 +502,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await openCockpit();
             await loadQueries();
             const capturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined as any);
-            selectSpy.mockImplementationOnce((_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+            selectSpy.mockImplementationOnce((_hub: any, _cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2 };
                 return Promise.reject(new Error('describe failed'));
             });

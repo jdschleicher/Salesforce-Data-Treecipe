@@ -73,6 +73,7 @@ import type {
     IRecipeCockpitPanelState,
     RecipeCockpitPanelAction
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     The Treecipe Adapter's record runs (#416, #418, #419; moved out of the hub by #668): load records
@@ -166,7 +167,7 @@ export class RecipeCockpitAdapterRecords {
             let isSandboxSelected = false;
             panelState.isUpdaterOrgPromptOpen = true;
             try {
-                isSandboxSelected = await hub.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                isSandboxSelected = await RecipeCockpitTreecipeDataOrgs.promptAndSelectDataOrg(hub, cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER, 'Records were not loaded', 'the Treecipe Adapter reads only from a sandbox or scratch org');
             } finally {
                 panelState.isUpdaterOrgPromptOpen = false;

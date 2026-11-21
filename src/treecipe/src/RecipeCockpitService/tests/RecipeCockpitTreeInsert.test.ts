@@ -56,20 +56,26 @@ jest.mock('child_process', () => ({
 import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
-    RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
-    RECIPE_COCKPIT_OPEN_COMMAND,
-    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-    RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
-    RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
+    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER,
+    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
+    RecipeCockpitTreecipeInsert
+} from '../RecipeCockpitTreecipeInsert';
+import {
+    RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
+    RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
+    RECIPE_COCKPIT_OPEN_COMMAND,
+    RecipeCockpitTreecipeDataOrgs
+} from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
     RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
@@ -545,7 +551,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
                 useConnection(buildFakeConnection());
                 await openUnselectedCockpit(FAKER_JS_RUN);
-                const selectDataOrgSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg');
+                const selectDataOrgSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg');
 
                 // ANOTHER SELECTION REPLACED THE ONE THE PICK MADE
                 selectDataOrgSpy.mockImplementationOnce(async () => { panelState().dataOrgSelection = undefined; });
@@ -555,7 +561,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
                 // A SCRATCH ORG RUN STARTED WHILE THE ORG WAS CHECKED: THE ROUTER REFUSES THE INSERT AS IT WOULD A CLICK
-                selectDataOrgSpy.mockImplementationOnce(async (_panel: unknown, checkedPanelState: IRecipeCockpitPanelState, orgIndex: number) => {
+                selectDataOrgSpy.mockImplementationOnce(async (_hub: unknown, _panel: unknown, checkedPanelState: IRecipeCockpitPanelState, orgIndex: number) => {
                     checkedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: checkedPanelState.dataOrgDetails[orgIndex], requestSequence: 50, orgTypeDetail: SANDBOX_TYPE } as any;
                     checkedPanelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
                 });
@@ -605,7 +611,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 expectsCapturedError = true;
                 useConnection(buildFakeConnection());
                 await openUnselectedCockpit(FAKER_JS_RUN);
-                jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockRejectedValue(new Error('describe exploded'));
+                jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg').mockRejectedValue(new Error('describe exploded'));
                 postedPanelMessages.length = 0;
 
                 await insertAccountTree();
@@ -622,10 +628,10 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 const connection = buildFakeConnection();
                 useConnection(connection);
                 await openUnselectedCockpit(FAKER_JS_RUN);
-                const realSelectDataOrg = ( RecipeCockpitService as any ).selectDataOrg.bind(RecipeCockpitService);
+                const realSelectDataOrg = (RecipeCockpitTreecipeDataOrgs as any).selectDataOrg.bind(RecipeCockpitTreecipeDataOrgs);
                 let heldDuringCheck: unknown;
                 let routedDuringCheck: unknown;
-                jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (...selectArguments: any[]) => {
+                jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg').mockImplementation(async (...selectArguments: any[]) => {
                     heldDuringCheck = panelState().insertStateMessage;
                     routedDuringCheck = RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState());
                     return realSelectDataOrg(...selectArguments);
@@ -1251,7 +1257,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             postedPanelMessages.length = 0;
             const focusTree = { treeKey: ACCOUNT_TREE_KEY, tab: 'troubleshooting', troubleshootingSubTab: 'fields' };
 
-            await RecipeCockpitService.openTroubleshootingAfterInsert(temporaryWorkspaceRoot, { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
+            await RecipeCockpitTreecipeDataOrgs.openTroubleshootingAfterInsert(RecipeCockpitService, temporaryWorkspaceRoot, { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
 
             expect(cockpitPanel.reveal).toHaveBeenCalled();
             expect(postedNamed('focusTree')).toEqual([]);
@@ -1272,7 +1278,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             executeCommand.mockClear();
             const focusRequest = { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'todos' as const };
 
-            await RecipeCockpitService.openTroubleshootingAfterInsert(temporaryWorkspaceRoot, focusRequest);
+            await RecipeCockpitTreecipeDataOrgs.openTroubleshootingAfterInsert(RecipeCockpitService, temporaryWorkspaceRoot, focusRequest);
 
             expect(postedNamed('focusTree')).toEqual([]);
             expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_OPEN_COMMAND, { focusTroubleshooting: true, ...focusRequest });
@@ -1284,12 +1290,12 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const focusRequest = { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'permissions' as const };
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
 
-            await RecipeCockpitService.openTroubleshootingAfterInsert(temporaryWorkspaceRoot, focusRequest);
+            await RecipeCockpitTreecipeDataOrgs.openTroubleshootingAfterInsert(RecipeCockpitService, temporaryWorkspaceRoot, focusRequest);
             expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_OPEN_COMMAND, { focusTroubleshooting: true, ...focusRequest });
 
             executeCommand.mockClear();
             fs.rmSync(path.join(generatedRecipesFolderPath(), FAKER_JS_RUN), { recursive: true, force: true });
-            await RecipeCockpitService.openTroubleshootingAfterInsert(temporaryWorkspaceRoot, focusRequest);
+            await RecipeCockpitTreecipeDataOrgs.openTroubleshootingAfterInsert(RecipeCockpitService, temporaryWorkspaceRoot, focusRequest);
 
             expect(executeCommand).not.toHaveBeenCalled();
             expect(showWarningMessageSpy).toHaveBeenCalledWith(`The run ${FAKER_JS_RUN} or its tree ${ACCOUNT_TREE_KEY} no longer exists, so the Troubleshooting tab was not opened.`);
@@ -1956,14 +1962,14 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 // A DATA SET WHOSE RUN IS GONE ("version unknown") HAS NO TREE FOLDER TO OPEN TROUBLESHOOTING ON
                 datasetRow.runFolderName = null;
                 panelState().dataOrgSelection.orgDetail = { ...panelState().dataOrgSelection.orgDetail, alias: undefined };
-                const notificationSpy = jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+                const notificationSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs, 'showTreeInsertNotification').mockImplementation(() => undefined);
 
                 await insertDatasetRow();
 
                 expect(inPanelConfirmations()[0][0]).toBe('Insert Smoke run into qa@example.com.qa?');
                 expect(notificationSpy).toHaveBeenCalledTimes(1);
-                expect(notificationSpy.mock.calls[0].slice(1, 3)).toEqual(['Smoke run', 'qa@example.com.qa']);
-                expect(notificationSpy.mock.calls[0][4]).toBeUndefined();
+                expect(notificationSpy.mock.calls[0].slice(2, 4)).toEqual(['Smoke run', 'qa@example.com.qa']);
+                expect(notificationSpy.mock.calls[0][5]).toBeUndefined();
 
             });
 
@@ -1974,14 +1980,14 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     .find(dataset => dataset.datasetFolderName === insertedDatasetFolderName);
                 datasetRow.customName = 'Smoke [run]';
                 panelState().dataOrgSelection.orgDetail = { ...panelState().dataOrgSelection.orgDetail, alias: 'qa (team)' };
-                const notificationSpy = jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+                const notificationSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs, 'showTreeInsertNotification').mockImplementation(() => undefined);
 
                 await insertDatasetRow();
 
                 expect(inPanelConfirmations()[0][0]).toBe('Insert Smoke [run] into qa (team) (qa@example.com.qa)?');
                 expect(inPanelConfirmations()[0][1].detail).toContain('Insert 14 records from this data set into qa (team) (qa@example.com.qa), parents first.');
                 expect(inPanelConfirmations()[0][1].detail).toContain('Data set: Smoke [run] (' + insertedDatasetFolderName + ')');
-                expect(notificationSpy.mock.calls[0].slice(1, 3)).toEqual([
+                expect(notificationSpy.mock.calls[0].slice(2, 4)).toEqual([
                     RecipeYamlScalar.escapeForNotification('Smoke [run]'),
                     `${RecipeYamlScalar.escapeForNotification('qa (team)')} (qa@example.com.qa)`
                 ]);
@@ -2245,7 +2251,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         it('lists each record Id on a field the org describes as a lookup, with its parent, and none for a polymorphic one', () => {
 
-            const typedLookupIds = RecipeCockpitService.listTreeInsertTypedLookupIds(typedTree([
+            const typedLookupIds = RecipeCockpitTreecipeInsert.listTreeInsertTypedLookupIds(typedTree([
                 fixedValue('SellerId', '001000000000001AAA'),
                 fixedValue('SourceProductId', '01t000000000001AAA'),
                 fixedValue('OwnerId', '005000000000001AAA'),
@@ -2268,9 +2274,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 fixedValue('StockKeepingUnit', '001000000000001AAA')
             ]);
 
-            expect(RecipeCockpitService.listTreeInsertTypedLookupIds(tree, new Set(['Product2']), () => productDescribe)).toEqual([]);
-            expect(RecipeCockpitService.listTreeInsertTypedLookupIds(typedTree([fixedValue('SellerId', '001000000000001AAA')]), new Set(['Account']), () => productDescribe)).toEqual([]);
-            expect(RecipeCockpitService.listTreeInsertTypedLookupIds(typedTree([fixedValue('SellerId', '001000000000001AAA')]), new Set(['Product2']), () => undefined)).toEqual([]);
+            expect(RecipeCockpitTreecipeInsert.listTreeInsertTypedLookupIds(tree, new Set(['Product2']), () => productDescribe)).toEqual([]);
+            expect(RecipeCockpitTreecipeInsert.listTreeInsertTypedLookupIds(typedTree([fixedValue('SellerId', '001000000000001AAA')]), new Set(['Account']), () => productDescribe)).toEqual([]);
+            expect(RecipeCockpitTreecipeInsert.listTreeInsertTypedLookupIds(typedTree([fixedValue('SellerId', '001000000000001AAA')]), new Set(['Product2']), () => undefined)).toEqual([]);
 
         });
 
@@ -2280,7 +2286,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         // AN EXISTING FILE INSIDE THE WORKSPACE STANDS IN FOR THE INSERT'S RESULTS FILE
         const RESULTS_FILE_PATH = path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'treecipeObjectsWrapper-2026-09-20T10-00-00.json');
-        const showInsertNotification = (insertResult: Record<string, unknown>) => ( RecipeCockpitService as any ).showTreeInsertNotification(
+        const showInsertNotification = (insertResult: Record<string, unknown>) => (RecipeCockpitTreecipeDataOrgs as any).showTreeInsertNotification(RecipeCockpitService, 
             { resultsFilePath: RESULTS_FILE_PATH, isRolledBack: false, savedRecordCount: 0, failedRecordCount: 0, ...insertResult },
             'Account-thru-OtherChildObject__c',
             'qa',
@@ -2358,7 +2364,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             const FAILED_FILE_PATH = path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'recipe--Account-thru-OtherChildObject__c-2026-09-20T10-00-00.yml');
             const INSERTED_TREE = { runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY };
-            const showFailure = (insertResult: Record<string, unknown>, insertedTree: unknown = INSERTED_TREE) => ( RecipeCockpitService as any ).showTreeInsertNotification(
+            const showFailure = (insertResult: Record<string, unknown>, insertedTree: unknown = INSERTED_TREE) => (RecipeCockpitTreecipeDataOrgs as any).showTreeInsertNotification(RecipeCockpitService, 
                 { resultsFilePath: RESULTS_FILE_PATH, isRolledBack: false, savedRecordCount: 1, failedRecordCount: 1, outcome: 'completed', failedFilePath: FAILED_FILE_PATH, ...insertResult },
                 'Account-thru-OtherChildObject__c',
                 'qa',
@@ -2373,7 +2379,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 [undefined, 'TODO\'s', 'todos']
             ])('names the file and the sub-tab for %o, and opens that sub-tab from Open Troubleshooting', async (firstFailure, subTabLabel, subTab) => {
 
-                const openTroubleshootingSpy = jest.spyOn(RecipeCockpitService, 'openTroubleshootingAfterInsert').mockResolvedValue(undefined);
+                const openTroubleshootingSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs, 'openTroubleshootingAfterInsert').mockResolvedValue(undefined);
                 (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL);
 
                 showFailure({ firstFailure });
@@ -2385,7 +2391,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
                     RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL
                 ]]);
-                expect(openTroubleshootingSpy).toHaveBeenCalledWith(TREE_WORKSPACE_ROOT, { ...INSERTED_TREE, troubleshootingSubTab: subTab });
+                expect(openTroubleshootingSpy).toHaveBeenCalledWith(RecipeCockpitService, TREE_WORKSPACE_ROOT, { ...INSERTED_TREE, troubleshootingSubTab: subTab });
 
             });
 
@@ -2482,10 +2488,10 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             const recipe = loadSnowfakeryModel();
 
-            expect(RecipeCockpitService.collectInsertableTreeKeys(recipe)).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
+            expect(RecipeCockpitTreecipeDataOrgs.collectInsertableTreeKeys(recipe)).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
 
             recipe.trees[1].runFakerRecipeFileName = undefined;
-            expect(RecipeCockpitService.collectInsertableTreeKeys(recipe)).toEqual([ACCOUNT_TREE_KEY]);
+            expect(RecipeCockpitTreecipeDataOrgs.collectInsertableTreeKeys(recipe)).toEqual([ACCOUNT_TREE_KEY]);
 
         });
 
@@ -2494,7 +2500,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const recipe = loadSnowfakeryModel();
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
 
-            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, accountTree)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, accountTree)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
 
             accountTree.objectSelection = {
                 includedObjectCount: 1,
@@ -2504,7 +2510,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
                 ]
             } as any;
-            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, accountTree)).toEqual(['Account']);
+            expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, accountTree)).toEqual(['Account']);
 
         });
 
@@ -2516,7 +2522,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         const contentOf = (recordTotals: Array<[string, number]>, outsideParents: string[] = []) => {
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
-            return RecipeCockpitService.buildInsertConfirmationContent('qa (qa@example.com.qa)', SANDBOX_TYPE, accountTree, recipe, new Map(recordTotals), outsideParents, 'snowfakery', 'recipe.yml');
+            return RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 'qa (qa@example.com.qa)', SANDBOX_TYPE, accountTree, recipe, new Map(recordTotals), outsideParents, 'snowfakery', 'recipe.yml');
         };
         const detailOf = (recordTotals: Array<[string, number]>, outsideParents: string[] = []) => RecipeCockpitService.flattenConfirmContent(contentOf(recordTotals, outsideParents));
 
@@ -2557,7 +2563,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
             const typeFor = (scratchOrgDetail?: { isScratchOrg: boolean; expirationDate?: string }) => {
-                const content = RecipeCockpitService.buildInsertConfirmationContent(
+                const content = RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 
                     'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], scratchOrgDetail
                 );
                 const orgSection = content.sections?.find(section => section.title === 'Org and recipe');
@@ -2578,7 +2584,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 { objectApiName: 'Contact', fieldApiName: 'OwnerId', value: '005000000000001AAA', kind: 'text' },
                 { objectApiName: 'Contact', fieldApiName: 'LastName', value: 'Smith', kind: 'text' }
             ] } as any;
-            const content = RecipeCockpitService.buildInsertConfirmationContent('qa', SANDBOX_TYPE, accountTree, recipe, new Map([['Contact', 1]]), [], 'snowfakery', 'recipe.yml', [], undefined, [
+            const content = RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 'qa', SANDBOX_TYPE, accountTree, recipe, new Map([['Contact', 1]]), [], 'snowfakery', 'recipe.yml', [], undefined, [
                 { objectApiName: 'Contact', fieldApiName: 'Region__c', recordId: 'a05000000000001AAA', parentObjectApiName: 'Region__c' },
                 { objectApiName: 'Contact', fieldApiName: 'OwnerId', recordId: '005000000000001AAA' }
             ]);
@@ -2623,8 +2629,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             const querySource = { query: jest.fn().mockImplementation(async (soql: string) => ({ records: soql.includes('FROM Region__c') ? [{ Id: 'a05000000000001AAA' }] : [] })) };
 
-            expect(await RecipeCockpitService.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001')])).toBeUndefined();
-            expect(await RecipeCockpitService.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001AAA'), lookupTo('Zone__c', 'a06000000000001AAA')]))
+            expect(await RecipeCockpitTreecipeInsert.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001')])).toBeUndefined();
+            expect(await RecipeCockpitTreecipeInsert.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001AAA'), lookupTo('Zone__c', 'a06000000000001AAA')]))
                 .toEqual(lookupTo('Zone__c', 'a06000000000001AAA'));
             expect(querySource.query).toHaveBeenCalledTimes(3);
 
@@ -2632,7 +2638,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         it('answers a failed query as that lookup\'s failure, never as "it exists"', async () => {
 
-            const missing = await RecipeCockpitService.findMissingOrgRecordLookup({ query: jest.fn().mockRejectedValue(new Error('INVALID_TYPE')) }, [lookupTo('Region__c', 'a05000000000001AAA')]);
+            const missing = await RecipeCockpitTreecipeInsert.findMissingOrgRecordLookup({ query: jest.fn().mockRejectedValue(new Error('INVALID_TYPE')) }, [lookupTo('Region__c', 'a05000000000001AAA')]);
 
             expect(missing).toEqual({ ...lookupTo('Region__c', 'a05000000000001AAA'), failureMessage: 'INVALID_TYPE' });
 
@@ -2658,7 +2664,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         it('gives an unwired Contact an Account this run inserted, and keeps an Id the insert already resolved', () => {
 
-            const prepare = RecipeCockpitService.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map(), () => 1);
+            const prepare = RecipeCockpitTreecipeInsert.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map(), () => 1);
 
             const prepared = prepare('Contact', [
                 { attributes: { type: 'Contact', referenceId: 'Contact_Reference_1__Contact_NickName' }, LastName: 'Ng', AccountId: null, ReportsToId: 'Contact_NickName' },
@@ -2676,7 +2682,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         it('counts each created Id once as the insert moves from file to file, and reads an Id with no nickname suffix (#259 review)', () => {
 
             const choiceCounts: number[] = [];
-            const prepare = RecipeCockpitService.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map(),
+            const prepare = RecipeCockpitTreecipeInsert.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map(),
                 choiceCount => { choiceCounts.push(choiceCount); return choiceCount - 1; });
             const growingIds: Record<string, string> = { 'Account_Reference_1__Account_NickName': '001000000000001AAA' };
 
@@ -2693,7 +2699,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         it('never hands a record the Id of a parent that failed to insert', () => {
 
             const choiceCounts: number[] = [];
-            const prepare = RecipeCockpitService.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map(),
+            const prepare = RecipeCockpitTreecipeInsert.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map(),
                 choiceCount => { choiceCounts.push(choiceCount); return choiceCount - 1; });
 
             const [prepared] = prepare('Contact', [{ LastName: 'Ng', AccountId: null }], {
@@ -2708,7 +2714,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         it('never takes an Id of an object the tree does not insert, and sends an object it has no describe for as generated', () => {
 
-            const prepare = RecipeCockpitService.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Contact']), new Map(), () => 0);
+            const prepare = RecipeCockpitTreecipeInsert.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Contact']), new Map(), () => 0);
             const [prepared] = prepare('Contact', [{ AccountId: 'TODO' }], createdIds) as any[];
             expect(prepared).not.toHaveProperty('AccountId');
 
@@ -2720,7 +2726,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         it('fills a required lookup to a parent outside the tree from the org Ids it was handed', () => {
 
             jest.spyOn(SalesforceOrgService, 'getCachedDescribe').mockImplementation(() => SalesforceOrgService.normalizeDescribeResult('Contact', (buildRawDescribes(true) as any).Contact) as any);
-            const prepare = RecipeCockpitService.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map([['Region__c', OUTSIDE_REGION_IDS]]), () => 0);
+            const prepare = RecipeCockpitTreecipeInsert.buildTreeInsertRecordPreparer(SANDBOX_ORG.username, new Set(['Account', 'Contact']), new Map([['Region__c', OUTSIDE_REGION_IDS]]), () => 0);
 
             const [prepared] = prepare('Contact', [{ LastName: 'Ng', Region__c: '### TODO' }], createdIds) as any[];
 

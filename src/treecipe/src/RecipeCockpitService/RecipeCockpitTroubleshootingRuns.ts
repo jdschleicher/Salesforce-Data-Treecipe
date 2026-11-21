@@ -83,6 +83,7 @@ import type {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 // #326: ASKED EVERY TIME, IN THE COMMAND PALETTE, OVER EVERY CONNECTED ORG: A RETRIEVE ONLY READS
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose the org to retrieve this tree\'s validation rules from';
@@ -243,9 +244,9 @@ export class RecipeCockpitTroubleshootingRuns {
                 }
 
                 if ( !assignSelection && closingState.isConfirmed === true && closingState.orgDetail && currentPanel && currentPanelState.recipeDataMessage ) {
-                    hub.rememberDataOrgUsername(closingState.orgDetail.username);
+                    RecipeCockpitTreecipeDataOrgs.rememberDataOrgUsername(hub, closingState.orgDetail.username);
                     currentPanelState.dataOrgUsername = closingState.orgDetail.username;
-                    await hub.loadDataOrgs(currentPanel, currentPanelState);
+                    await RecipeCockpitTreecipeDataOrgs.loadDataOrgs(hub, currentPanel, currentPanelState);
                 }
 
             } finally {
@@ -337,7 +338,7 @@ export class RecipeCockpitTroubleshootingRuns {
         return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
             SalesforceOrgService.listDataOrgDetails().then(dataOrgListing => ({
                 orgDetails: dataOrgListing.orgDetails,
-                emptyListMessage: hub.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts)
+                emptyListMessage: RecipeCockpitTreecipeDataOrgs.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts)
             })),
             RECIPE_COCKPIT_DEPLOY_ORG_PLACEHOLDER
         );
@@ -494,7 +495,7 @@ export class RecipeCockpitTroubleshootingRuns {
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
         const currentPanelState = hub.recipeCockpitPanelState;
-        if ( hub.isScratchOrgSetupInFlight
+        if ( RecipeCockpitTreecipeDataOrgs.isScratchOrgSetupInFlight
                 || currentPanelState.insertStateMessage
                 || currentPanelState.permissionSetAssignStateMessage?.isRunning
                 || hub.isMetadataRetrieveInFlight ) {
@@ -1163,7 +1164,7 @@ export class RecipeCockpitTroubleshootingRuns {
         }
 
         // listTreeInsertObjectApiNames ANSWERS ONLY OBJECTS THE RECIPE HOLDS, SO EACH IS ONE OF recipeViewModel.objects
-        const insertObjectApiNames = new Set(hub.listTreeInsertObjectApiNames(recipeViewModel, tree));
+        const insertObjectApiNames = new Set(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(hub, recipeViewModel, tree));
         const plan = await RecipeCockpitPermissionSetGenerate.buildPermissionSetPlan(objectsDirectoryPath, recipeViewModel.objects
             .filter(objectViewModel => insertObjectApiNames.has(objectViewModel.objectApiName))
             .map(objectViewModel => ({
@@ -1344,7 +1345,7 @@ export class RecipeCockpitTroubleshootingRuns {
         return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
             SalesforceOrgService.listDataOrgDetails().then(dataOrgListing => ({
                 orgDetails: dataOrgListing.orgDetails,
-                emptyListMessage: hub.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts)
+                emptyListMessage: RecipeCockpitTreecipeDataOrgs.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts)
             })),
             RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER
         );
