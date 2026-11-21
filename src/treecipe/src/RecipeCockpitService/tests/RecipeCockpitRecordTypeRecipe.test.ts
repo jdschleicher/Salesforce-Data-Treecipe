@@ -2,8 +2,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { IRecordTypeSetOutcome, IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
-import { IDataSetInsertResult } from '../../CollectionsApiService/CollectionsApiService';
+import { IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
@@ -175,80 +174,6 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
 
             expect(Object.getPrototypeOf(plan.recordTypeSelection)).toBeNull();
             expect(Object.keys(plan.recordTypeSelection)).toEqual(['__proto__']);
-
-        });
-
-    });
-
-    describe('buildRecordTypeSetsNotification (#624)', () => {
-
-        const insertResult = (overrides: Partial<IDataSetInsertResult>): IDataSetInsertResult => ({ outcome: 'completed', isRolledBack: false, resultsFilePath: '', savedRecordCount: 3, failedRecordCount: 0, ...overrides });
-        const SET_LABELS = ['Set 1 · Account · Business', 'Set 2 · Account · Partner', 'Set 3 · Account · Other'];
-
-        it('is information naming every set when each landed', () => {
-
-            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification([
-                { setLabel: SET_LABELS[0], status: 'inserted', insertResult: insertResult({}) },
-                { setLabel: SET_LABELS[1], status: 'inserted', insertResult: insertResult({ savedRecordCount: 1 }) }
-            ], 'Account tree', 'qa')).toEqual({
-                severity: 'information',
-                notificationText: 'A data set for each record type of Account tree into qa: 2 of 2 data sets inserted. Set 1 · Account · Business: 3 records inserted. Set 2 · Account · Partner: 1 record inserted.'
-            });
-
-        });
-
-        it('is an error when set 2 of 3 stopped under all-or-none: set 1 kept, set 2 rolled back, set 3 not started', () => {
-
-            const setOutcomes: IRecordTypeSetOutcome[] = [
-                { setLabel: SET_LABELS[0], status: 'inserted', insertResult: insertResult({}) },
-                { setLabel: SET_LABELS[1], status: 'inserted', insertResult: insertResult({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0, failedRecordCount: 1 }) },
-                { setLabel: SET_LABELS[2], status: 'notStarted' }
-            ];
-
-            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification(setOutcomes, 'Account tree', 'qa')).toEqual({
-                severity: 'error',
-                notificationText: 'A data set for each record type of Account tree into qa: 1 of 3 data sets inserted. Set 1 · Account · Business: 3 records inserted. '
-                    + 'Set 2 · Account · Partner: stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen (1 record failed). '
-                    + 'Set 3 · Account · Other: not started.'
-            });
-
-        });
-
-        it.each([
-            ['a cancel that rolled back', { status: 'inserted', insertResult: insertResult({ outcome: 'cancelled', isRolledBack: true }) }, 'warning', 'cancelled, and every record it had inserted was deleted'],
-            ['a cancel before anything was sent', { status: 'inserted', insertResult: insertResult({ outcome: 'cancelled' }) }, 'warning', 'cancelled'],
-            ['a failed record without all-or-none', { status: 'inserted', insertResult: insertResult({ savedRecordCount: 2, failedRecordCount: 1 }) }, 'error', '2 records inserted and 1 failed; nothing was rolled back'],
-            ['a stop without all-or-none', { status: 'inserted', insertResult: insertResult({ outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }) }, 'error', 'stopped at a file that could not be inserted; 1 record was kept, because all-or-none was not chosen, and 2 failed'],
-            ['a recipe the metadata no longer builds', { status: 'notGenerated', notGeneratedReason: 'building its recipe was cancelled' }, 'warning', 'not generated: building its recipe was cancelled']
-        ] as Array<[string, Omit<IRecordTypeSetOutcome, 'setLabel'>, string, string]>)('names %s on set 2', (_description, secondSet, severity, secondSetText) => {
-
-            const { severity: shownSeverity, notificationText } = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification([
-                { setLabel: SET_LABELS[0], status: 'inserted', insertResult: insertResult({}) },
-                { setLabel: SET_LABELS[1], ...secondSet },
-                { setLabel: SET_LABELS[2], status: 'notStarted' }
-            ], 'T', 'qa');
-
-            expect(shownSeverity).toBe(severity);
-            expect(notificationText).toContain(`Set 2 · Account · Partner: ${secondSetText}. Set 3 · Account · Other: not started.`);
-
-        });
-
-        it('escapes a set\'s label, so a record type name cannot write a command link', () => {
-
-            const { notificationText } = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification([
-                { setLabel: 'Set 1 · Account · [x](command:evil)', status: 'notStarted' }
-            ], 'T', 'qa');
-
-            expect(notificationText).not.toContain('[x](command:evil)');
-
-        });
-
-        it('lands a set only when every file was sent and every record saved', () => {
-
-            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({}))).toBe(true);
-            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({ failedRecordCount: 1 }))).toBe(false);
-            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({ outcome: 'cancelled' }))).toBe(false);
-            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({ outcome: 'stopped' }))).toBe(false);
 
         });
 

@@ -1,10 +1,8 @@
 import * as vscode from 'vscode';
-import { IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor, IRecipeGenerationProgress, RecipeGenerationCancelledError } from '../DirectoryProcessingService/DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
-import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
@@ -52,19 +50,6 @@ export interface IRecordTypeGenerationPlan {
     recordTypeSelection: Record<string, string[]>;
     // WHAT 'separate' GENERATES, ONE SELECTION PER DATA SET (#624); EMPTY UNLESS 'separate' IS OFFERED AND ENABLED
     recordTypeSets: Record<string, string[]>[];
-}
-
-/*
-    How one set of "A data set for each record type" (#624) ended: inserted (insertResult says how),
-    not generated (notGeneratedReason says why, escaped), or not started because a set before it did
-    not wholly land.
-*/
-export interface IRecordTypeSetOutcome {
-    setLabel: string;
-    status: 'inserted' | 'notGenerated' | 'notStarted';
-    datasetFolderPath?: string;
-    insertResult?: IDataSetInsertResult;
-    notGeneratedReason?: string;
 }
 
 export interface IDroppedRecordTypeTick {
@@ -208,67 +193,6 @@ export class RecipeCockpitRecordTypeRecipe {
         }
 
         return { offer: { mode: 'separate' }, recordTypeSets: recordTypeSets };
-
-    }
-
-    // A SET THAT WHOLLY LANDED (#624): EVERY FILE SENT AND EVERY RECORD SAVED; ANY OTHER ENDS THE RUN OF SETS
-    static isInsertWhollyLanded(insertResult: IDataSetInsertResult): boolean {
-
-        return insertResult.outcome === 'completed' && insertResult.failedRecordCount === 0;
-
-    }
-
-    static buildRecordTypeSetsWarning(setCount: number): string {
-
-        return `${RECORD_TYPE_SET_MODE_LABELS.separate} makes ${setCount} data sets, inserted one after another. A set that is cancelled, stops or has a record that fails ends the run there: the sets before it stay, it is rolled back as a single insert is, and the sets after it are not started.`;
-
-    }
-
-    /*
-        The one notification of "A data set for each record type" (#624): every set by name and how
-        it ended, in order. An error when a set stopped or had a record fail, a warning when one was
-        cancelled or not generated, information when every set landed. treeLabel and orgLabel arrive
-        escaped; a set's label is escaped here.
-    */
-    static buildRecordTypeSetsNotification(setOutcomes: readonly IRecordTypeSetOutcome[], treeLabel: string, orgLabel: string): { severity: 'information' | 'warning' | 'error'; notificationText: string } {
-
-        const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
-        const wasOrWere = (recordCount: number) => recordCount === 1 ? 'was' : 'were';
-        const isLanded = (setOutcome: IRecordTypeSetOutcome) => !!setOutcome.insertResult && RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(setOutcome.insertResult);
-
-        const describeSet = (setOutcome: IRecordTypeSetOutcome): string => {
-            const insertResult = setOutcome.insertResult;
-            if ( setOutcome.status === 'notStarted' ) {
-                return 'not started';
-            }
-            if ( !insertResult ) {
-                return `not generated: ${setOutcome.notGeneratedReason ?? 'it was not generated'}`;
-            }
-            if ( insertResult.outcome === 'cancelled' ) {
-                return insertResult.isRolledBack ? 'cancelled, and every record it had inserted was deleted' : 'cancelled';
-            }
-            if ( insertResult.outcome === 'stopped' ) {
-                return insertResult.isRolledBack
-                    ? `stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen (${recordsText(insertResult.failedRecordCount)} failed)`
-                    : `stopped at a file that could not be inserted; ${recordsText(insertResult.savedRecordCount)} ${wasOrWere(insertResult.savedRecordCount)} kept, because all-or-none was not chosen, and ${insertResult.failedRecordCount} failed`;
-            }
-            if ( insertResult.failedRecordCount > 0 ) {
-                return `${recordsText(insertResult.savedRecordCount)} inserted and ${insertResult.failedRecordCount} failed; nothing was rolled back`;
-            }
-            return `${recordsText(insertResult.savedRecordCount)} inserted`;
-        };
-
-        const insertResults = setOutcomes.map(setOutcome => setOutcome.insertResult).filter((insertResult): insertResult is IDataSetInsertResult => !!insertResult);
-        const hasError = insertResults.some(insertResult => insertResult.outcome === 'stopped' || ( insertResult.outcome === 'completed' && insertResult.failedRecordCount > 0 ));
-        const landedSetCount = setOutcomes.filter(isLanded).length;
-        const requestFailureDetail = insertResults.find(insertResult => !!insertResult.requestFailureDetail)?.requestFailureDetail;
-
-        return {
-            severity: hasError ? 'error' : landedSetCount === setOutcomes.length ? 'information' : 'warning',
-            notificationText: `${RECORD_TYPE_SET_MODE_LABELS.separate} of ${treeLabel} into ${orgLabel}: ${landedSetCount} of ${setOutcomes.length} data sets inserted. `
-                + setOutcomes.map(setOutcome => `${RecipeYamlScalar.escapeForNotification(setOutcome.setLabel)}: ${describeSet(setOutcome)}.`).join(' ')
-                + ( requestFailureDetail ? ` The request for ${RecipeYamlScalar.escapeForNotification(requestFailureDetail)}` : '' )
-        };
 
     }
 
