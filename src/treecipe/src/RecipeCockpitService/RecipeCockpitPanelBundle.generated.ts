@@ -5251,6 +5251,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       typedName: "",
       openerElement,
       controls: [],
+      rowsByObject: /* @__PURE__ */ new Map(),
       frameControls: [
         { key: "frame:close", element: closeElement },
         { key: "frame:cancel", element: cancelElement },
@@ -5724,6 +5725,40 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       element.focus({ preventScroll: true });
     }
   }
+  function placeBodyElements(bodyElement, nextElements) {
+    const keptElements = new Set(nextElements);
+    Array.prototype.slice.call(bodyElement.children).forEach(function(previousElement) {
+      if (!keptElements.has(previousElement)) {
+        bodyElement.removeChild(previousElement);
+      }
+    });
+    nextElements.forEach(function(element, elementIndex) {
+      const elementAtIndex = bodyElement.children[elementIndex];
+      if (elementAtIndex !== element) {
+        bodyElement.insertBefore(element, elementAtIndex || null);
+      }
+    });
+  }
+  function signatureOfObjectRows(dialog, dialogObject) {
+    const objectApiName = dialogObject.objectApiName;
+    const preview = dialog.preview;
+    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : void 0;
+    return JSON.stringify([
+      !!preview,
+      dialog.removedObjects.has(objectApiName),
+      dialog.outOfRunObjects.has(objectApiName),
+      dialog.expandedObjects.has(objectApiName),
+      preview ? preview.removedByObject.get(objectApiName) || null : null,
+      preview ? preview.outOfRunByObject.get(objectApiName) || null : null,
+      Array.from(removedFieldsOf(dialog, objectApiName)).sort(),
+      lockedFields ? Array.from(lockedFields.entries()).sort() : [],
+      dialogObject.fields.filter(function(field) {
+        return !!preview && preview.cutLookupKeys.has(objectApiName + "\\n" + field.fieldApiName);
+      }).map(function(field) {
+        return field.fieldApiName;
+      })
+    ]);
+  }
   function hasRemovals(dialog) {
     return dialog.removedObjects.size > 0 || countRemovedFields(dialog) > 0;
   }
@@ -5747,22 +5782,39 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     });
     const focusedKey = focusedControl ? focusedControl.key : null;
     const scrollTop = dialog.bodyElement.scrollTop;
-    dialog.bodyElement.textContent = "";
     dialog.nameInputElement = null;
     dialog.controls = [];
+    const nextElements = [];
     if (dialog.isRootRemovalAsked) {
-      dialog.bodyElement.appendChild(buildRootConfirmation(dialog));
+      nextElements.push(buildRootConfirmation(dialog));
     }
     dialog.objects.forEach(function(dialogObject) {
-      dialog.bodyElement.appendChild(buildObjectRow(dialog, dialogObject));
+      const signature = signatureOfObjectRows(dialog, dialogObject);
+      const drawnRows = dialog.rowsByObject.get(dialogObject.objectApiName);
+      if (drawnRows && drawnRows.signature === signature) {
+        drawnRows.elements.forEach(function(element) {
+          nextElements.push(element);
+        });
+        drawnRows.controls.forEach(function(control) {
+          dialog.controls.push(control);
+        });
+        return;
+      }
+      const firstControlIndex = dialog.controls.length;
+      const elements = [buildObjectRow(dialog, dialogObject)];
       const isRemoved = dialog.removedObjects.has(dialogObject.objectApiName) || !!preview && preview.removedByObject.has(dialogObject.objectApiName);
       if (dialog.expandedObjects.has(dialogObject.objectApiName) && !isRemoved) {
-        dialog.bodyElement.appendChild(buildFieldList(dialog, dialogObject));
+        elements.push(buildFieldList(dialog, dialogObject));
       }
+      elements.forEach(function(element) {
+        nextElements.push(element);
+      });
+      dialog.rowsByObject.set(dialogObject.objectApiName, { signature, elements, controls: dialog.controls.slice(firstControlIndex) });
     });
     if (dialog.step === "save") {
-      dialog.bodyElement.appendChild(buildSaveForm(dialog));
+      nextElements.push(buildSaveForm(dialog));
     }
+    placeBodyElements(dialog.bodyElement, nextElements);
     const isNothingLeft = keptObjectCount === 0;
     if (dialog.step === "edit") {
       dialog.saveElement.classList.remove("hidden");

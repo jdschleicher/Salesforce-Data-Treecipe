@@ -105,6 +105,19 @@ interface ICustomTreecipeDialog {
     */
     controls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
     frameControls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
+    // EACH OBJECT'S ROW AND FIELD LIST AS LAST DRAWN, UNDER THE SIGNATURE OF WHAT IT WAS DRAWN FROM
+    rowsByObject: Map<string, IDrawnObjectRows>;
+}
+
+/*
+    One object's row and, when open, its field list, kept between redraws: a ✕ changes the rows of the
+    object it was on and of what the cascade took with it, so every other object's rows -- hundreds of
+    fields, for a tree with every object open -- are put back as they were rather than built again.
+*/
+interface IDrawnObjectRows {
+    signature: string;
+    elements: HTMLElement[];
+    controls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
 }
 
 let customTreecipeDialog: ICustomTreecipeDialog | null = null;
@@ -210,6 +223,7 @@ export function openCustomTreecipeDialog(treeState: CardTreeState, openerElement
         typedName: '',
         openerElement: openerElement,
         controls: [],
+        rowsByObject: new Map(),
         frameControls: [
             { key: 'frame:close', element: closeElement },
             { key: 'frame:cancel', element: cancelElement },
@@ -688,6 +702,47 @@ function focusWithoutScrolling(element: HTMLElement): void {
     if (typeof element.focus === 'function') { element.focus({ preventScroll: true }); }
 }
 
+/*
+    The body's rows put in place with as little moved as possible: a row drawn last time stays where it
+    is, a row no longer drawn is taken out, and a new or rebuilt one is put in at its place, so the
+    browser lays out what changed rather than every row of every open object. Rows keep their order
+    from draw to draw, so a kept row never has to move.
+*/
+function placeBodyElements(bodyElement: HTMLElement, nextElements: HTMLElement[]): void {
+
+    const keptElements = new Set(nextElements);
+    (Array.prototype.slice.call(bodyElement.children) as HTMLElement[]).forEach(function (previousElement) {
+        if (!keptElements.has(previousElement)) { bodyElement.removeChild(previousElement); }
+    });
+
+    nextElements.forEach(function (element, elementIndex) {
+        const elementAtIndex = bodyElement.children[elementIndex] as HTMLElement | undefined;
+        if (elementAtIndex !== element) { bodyElement.insertBefore(element, elementAtIndex || null); }
+    });
+
+}
+
+// EVERYTHING AN OBJECT'S ROW AND FIELD LIST ARE DRAWN FROM: THE SAME SIGNATURE IS THE SAME ROWS, SO THEY ARE REUSED
+function signatureOfObjectRows(dialog: ICustomTreecipeDialog, dialogObject: IDialogObject): string {
+
+    const objectApiName = dialogObject.objectApiName;
+    const preview = dialog.preview;
+    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : undefined;
+
+    return JSON.stringify([
+        !!preview,
+        dialog.removedObjects.has(objectApiName),
+        dialog.outOfRunObjects.has(objectApiName),
+        dialog.expandedObjects.has(objectApiName),
+        preview ? preview.removedByObject.get(objectApiName) || null : null,
+        preview ? preview.outOfRunByObject.get(objectApiName) || null : null,
+        Array.from(removedFieldsOf(dialog, objectApiName)).sort(),
+        lockedFields ? Array.from(lockedFields.entries()).sort() : [],
+        dialogObject.fields.filter(function (field) { return !!preview && preview.cutLookupKeys.has(objectApiName + '\n' + field.fieldApiName); }).map(function (field) { return field.fieldApiName; })
+    ]);
+
+}
+
 function hasRemovals(dialog: ICustomTreecipeDialog): boolean {
     return dialog.removedObjects.size > 0 || countRemovedFields(dialog) > 0;
 }
@@ -709,21 +764,32 @@ function drawCustomTreecipeDialog(): void {
     const focusedControl = dialog.controls.find(function (control) { return control.element === document.activeElement; });
     const focusedKey = focusedControl ? focusedControl.key : null;
     const scrollTop = dialog.bodyElement.scrollTop;
-    dialog.bodyElement.textContent = '';
     dialog.nameInputElement = null;
     dialog.controls = [];
+    const nextElements: HTMLElement[] = [];
 
-    if (dialog.isRootRemovalAsked) { dialog.bodyElement.appendChild(buildRootConfirmation(dialog)); }
+    if (dialog.isRootRemovalAsked) { nextElements.push(buildRootConfirmation(dialog)); }
 
     dialog.objects.forEach(function (dialogObject) {
-        dialog.bodyElement.appendChild(buildObjectRow(dialog, dialogObject));
+        const signature = signatureOfObjectRows(dialog, dialogObject);
+        const drawnRows = dialog.rowsByObject.get(dialogObject.objectApiName);
+        if (drawnRows && drawnRows.signature === signature) {
+            drawnRows.elements.forEach(function (element) { nextElements.push(element); });
+            drawnRows.controls.forEach(function (control) { dialog.controls.push(control); });
+            return;
+        }
+        const firstControlIndex = dialog.controls.length;
+        const elements = [buildObjectRow(dialog, dialogObject)];
         const isRemoved = dialog.removedObjects.has(dialogObject.objectApiName) || (!!preview && preview.removedByObject.has(dialogObject.objectApiName));
         if (dialog.expandedObjects.has(dialogObject.objectApiName) && !isRemoved) {
-            dialog.bodyElement.appendChild(buildFieldList(dialog, dialogObject));
+            elements.push(buildFieldList(dialog, dialogObject));
         }
+        elements.forEach(function (element) { nextElements.push(element); });
+        dialog.rowsByObject.set(dialogObject.objectApiName, { signature: signature, elements: elements, controls: dialog.controls.slice(firstControlIndex) });
     });
 
-    if (dialog.step === 'save') { dialog.bodyElement.appendChild(buildSaveForm(dialog)); }
+    if (dialog.step === 'save') { nextElements.push(buildSaveForm(dialog)); }
+    placeBodyElements(dialog.bodyElement, nextElements);
 
     const isNothingLeft = keptObjectCount === 0;
     if (dialog.step === 'edit') { dialog.saveElement.classList.remove('hidden'); } else { dialog.saveElement.classList.add('hidden'); }

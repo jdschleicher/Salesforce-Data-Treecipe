@@ -25,6 +25,10 @@
   - An unreadable `custom-` folder is left out of the run list rather than stopping the cockpit from loading.
   - A reused folder name starts with no old selection, count or name.
   - A failed save removes only a folder it made, and a `customTreecipe.json` over 64 KB is not read.
+- **The modal stays quick with a large tree:**
+  - A ✕ or ↺ rebuilds only the rows it changed, and leaves every other row in place.
+  - With 40 objects × 300 fields all open, a click takes about 36 ms, against 1.48 s, and opening them one by one takes 0.8 s against 11 s.
+- **The host half is its own module,** `RecipeCockpitCustomTreecipeHost.ts`, like each tab's since #665–#668. The hub keeps only how a run loads its custom trees.
 - The ? help and the guide say so, and three of the guide's pictures were re-taken.
 
 ### An unticked lookup cuts off what it linked

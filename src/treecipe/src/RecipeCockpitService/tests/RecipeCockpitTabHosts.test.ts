@@ -27,6 +27,12 @@ import * as RecipeCockpitAdapterRecordsModule from '../RecipeCockpitAdapterRecor
 import * as RecipeCockpitAdapterStateModule from '../RecipeCockpitAdapterState';
 import * as RecipeCockpitRecordLinksHostModule from '../RecipeCockpitRecordLinksHost';
 import * as RecipeCockpitRecordLinksModule from '../RecipeCockpitRecordLinks';
+import * as RecipeCockpitCustomTreecipeHostModule from '../RecipeCockpitCustomTreecipeHost';
+import {
+    RECIPE_COCKPIT_CUSTOM_TREECIPE_ACTION_KINDS,
+    RECIPE_COCKPIT_CUSTOM_TREECIPE_COMMANDS,
+    RecipeCockpitCustomTreecipeHost
+} from '../RecipeCockpitCustomTreecipeHost';
 import {
     RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
     RECIPE_COCKPIT_ADAPTER_COMMANDS,
@@ -298,6 +304,24 @@ const TAB_HOSTS: ITabHost[] = [
         loadsOtherHosts: [
             { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitQueryHost.ts', reason: 'a query preview\'s row is opened from the result the Query host holds' },
             { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitAdapterState.ts', reason: 'a loaded preview\'s row is opened from the records the Adapter holds' }
+        ]
+    },
+    {
+        tabName: 'custom treecipe',
+        hostClassName: 'RecipeCockpitCustomTreecipeHost',
+        hostFileNames: ['RecipeCockpitCustomTreecipeHost.ts'],
+        hostModules: [RecipeCockpitCustomTreecipeHostModule],
+        commands: RECIPE_COCKPIT_CUSTOM_TREECIPE_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_CUSTOM_TREECIPE_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitCustomTreecipeHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: ['RecipeCockpitCustomTreecipe.ts'],
+        hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitCustomTreecipe.ts',
+                importedNames: ['RecipeCockpitCustomTreecipe'],
+                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'resolveOriginalTreeFolderName'],
+                owedBy: '#677: a run loads its custom- trees in the hub, where every run loads, and lists each as its own run picker entry'
+            }
         ]
     }
 ];

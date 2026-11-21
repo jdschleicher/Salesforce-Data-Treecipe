@@ -89,6 +89,22 @@ describe('the "Customize and create new recipe" modal (#677)', () => {
 
     });
 
+    it('rebuilds only the rows a change touched: a ✕ on a Contact field leaves Account\'s row the same element', () => {
+
+        const panel = openModal();
+        const objectRowNamed = (objectApiName: string) => panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeObject')
+            .find((rowElement: any) => panel.findAll(rowElement, 'customTreecipeObjectName')[0].textContent === objectApiName);
+        const accountRowBefore = objectRowNamed('Account');
+        const contactRowBefore = objectRowNamed('Contact');
+
+        buttonLabelled(panel, 'Remove Contact.LastName from the new recipe').dispatch('click');
+
+        expect(objectRowNamed('Account')).toBe(accountRowBefore);
+        expect(objectRowNamed('Contact')).not.toBe(contactRowBefore);
+        expect(buttonLabelled(panel, 'Restore Contact.LastName')).toBeDefined();
+
+    });
+
     it('drops a preview for an older change', () => {
 
         const panel = openModal();

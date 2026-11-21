@@ -16,6 +16,7 @@ jest.mock('vscode', () => ({
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RecipeCockpitCustomTreecipe } from '../RecipeCockpitCustomTreecipe';
+import { RecipeCockpitCustomTreecipeHost } from '../RecipeCockpitCustomTreecipeHost';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
@@ -146,7 +147,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 treeHistoryTargets: { runFakerRecipeFilePathsByTreeKey: new Map([[SOURCE_TREE_KEY, '/recipe.yml']]) }
             } as any;
 
-            expect(RecipeCockpitService.routePanelMessage({ treeKey: SOURCE_TREE_KEY, renderSequence: 2, ...removal(), ...postedFields } as any, panelState)).toBeUndefined();
+            expect(RecipeCockpitCustomTreecipeHost.routePanelMessage({ treeKey: SOURCE_TREE_KEY, renderSequence: 2, ...removal(), ...postedFields } as any, panelState, RecipeCockpitService)).toBeUndefined();
 
         });
 
@@ -448,7 +449,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         it('refuses a card whose recipe is not in a tree folder of its own', () => {
 
-            expect(RecipeCockpitService.planCustomTreecipeLocation(path.join(runFolderPath, 'Lead-ONLY', 'recipe--Lead-ONLY.yml'), { folderName: SOURCE_TREE_KEY } as any))
+            expect(RecipeCockpitCustomTreecipeHost.planCustomTreecipeLocation(path.join(runFolderPath, 'Lead-ONLY', 'recipe--Lead-ONLY.yml'), { folderName: SOURCE_TREE_KEY } as any))
                 .toEqual({ refusal: 'its recipe recipe--Lead-ONLY.yml is not in a tree folder of its own.' });
 
         });
@@ -461,7 +462,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 String(folderPath) === runFolderPath ? takenFolderNames : (readdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest)
             )) as typeof fs.readdirSync);
 
-            expect(RecipeCockpitService.planCustomTreecipeLocation(path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), { folderName: SOURCE_TREE_KEY } as any))
+            expect(RecipeCockpitCustomTreecipeHost.planCustomTreecipeLocation(path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), { folderName: SOURCE_TREE_KEY } as any))
                 .toEqual({ refusal: `${RUN_FOLDER_NAME} already holds every custom copy number of ${SOURCE_TREE_KEY}. Remove one you no longer need.` });
 
         });
@@ -479,7 +480,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 originalTreeFolderName: SOURCE_TREE_KEY, removedObjectApiNames: [], removedFields: [], outOfRunObjectApiNames: [], savedAt: '2026-11-20T22:24:09.000Z'
             }).replace('{', '{' + ' '.repeat(65 * 1024)));
 
-            expect(RecipeCockpitService.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
+            expect(RecipeCockpitCustomTreecipeHost.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
 
         });
 
