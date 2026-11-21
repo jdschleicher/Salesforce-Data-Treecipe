@@ -337,9 +337,9 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitCustomTreecipe.ts',
-                importedNames: ['RecipeCockpitCustomTreecipe'],
-                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'resolveOriginalTreeFolderName'],
-                owedBy: '#677: a run loads its custom- trees in the hub, where every run loads, and lists each as its own run picker entry'
+                importedNames: ['ICustomTreecipeDefinition', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES', 'RecipeCockpitCustomTreecipe'],
+                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'readDefinition', 'resolveOriginalTreeFolderName'],
+                owedBy: '#677, #684: a run loads its custom- trees in the hub, where every run loads, reads each one\'s customTreecipe.json there, and lists each as its own run picker entry'
             }
         ]
     },

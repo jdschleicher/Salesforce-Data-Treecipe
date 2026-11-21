@@ -5329,6 +5329,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       openerElement,
       controls: [],
       rowsByObject: /* @__PURE__ */ new Map(),
+      fieldListsByObject: /* @__PURE__ */ new Map(),
       frameControls: [
         { key: "frame:close", element: closeElement },
         { key: "frame:cancel", element: cancelElement },
@@ -5816,10 +5817,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
     });
   }
-  function signatureOfObjectRows(dialog, dialogObject) {
+  function signatureOfObjectRow(dialog, dialogObject) {
     const objectApiName = dialogObject.objectApiName;
     const preview = dialog.preview;
-    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : void 0;
     return JSON.stringify([
       !!preview,
       dialog.removedObjects.has(objectApiName),
@@ -5827,6 +5827,15 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       dialog.expandedObjects.has(objectApiName),
       preview ? preview.removedByObject.get(objectApiName) || null : null,
       preview ? preview.outOfRunByObject.get(objectApiName) || null : null,
+      countKeptFields(dialog, dialogObject)
+    ]);
+  }
+  function signatureOfFieldList(dialog, dialogObject) {
+    const objectApiName = dialogObject.objectApiName;
+    const preview = dialog.preview;
+    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : void 0;
+    return JSON.stringify([
+      !!preview,
       Array.from(removedFieldsOf(dialog, objectApiName)).sort(),
       lockedFields ? Array.from(lockedFields.entries()).sort() : [],
       dialogObject.fields.filter(function(field) {
@@ -5835,6 +5844,19 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         return field.fieldApiName;
       })
     ]);
+  }
+  function reuseOrBuild(dialog, drawnByObject, objectApiName, signature, build) {
+    const drawnElement = drawnByObject.get(objectApiName);
+    if (drawnElement && drawnElement.signature === signature) {
+      drawnElement.controls.forEach(function(control) {
+        dialog.controls.push(control);
+      });
+      return drawnElement.element;
+    }
+    const firstControlIndex = dialog.controls.length;
+    const element = build();
+    drawnByObject.set(objectApiName, { signature, element, controls: dialog.controls.slice(firstControlIndex) });
+    return element;
   }
   function hasRemovals(dialog) {
     return dialog.removedObjects.size > 0 || countRemovedFields(dialog) > 0;
@@ -5866,27 +5888,16 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       nextElements.push(buildRootConfirmation(dialog));
     }
     dialog.objects.forEach(function(dialogObject) {
-      const signature = signatureOfObjectRows(dialog, dialogObject);
-      const drawnRows = dialog.rowsByObject.get(dialogObject.objectApiName);
-      if (drawnRows && drawnRows.signature === signature) {
-        drawnRows.elements.forEach(function(element) {
-          nextElements.push(element);
-        });
-        drawnRows.controls.forEach(function(control) {
-          dialog.controls.push(control);
-        });
-        return;
+      const objectApiName = dialogObject.objectApiName;
+      nextElements.push(reuseOrBuild(dialog, dialog.rowsByObject, objectApiName, signatureOfObjectRow(dialog, dialogObject), function() {
+        return buildObjectRow(dialog, dialogObject);
+      }));
+      const isRemoved = dialog.removedObjects.has(objectApiName) || !!preview && preview.removedByObject.has(objectApiName);
+      if (dialog.expandedObjects.has(objectApiName) && !isRemoved) {
+        nextElements.push(reuseOrBuild(dialog, dialog.fieldListsByObject, objectApiName, signatureOfFieldList(dialog, dialogObject), function() {
+          return buildFieldList(dialog, dialogObject);
+        }));
       }
-      const firstControlIndex = dialog.controls.length;
-      const elements = [buildObjectRow(dialog, dialogObject)];
-      const isRemoved = dialog.removedObjects.has(dialogObject.objectApiName) || !!preview && preview.removedByObject.has(dialogObject.objectApiName);
-      if (dialog.expandedObjects.has(dialogObject.objectApiName) && !isRemoved) {
-        elements.push(buildFieldList(dialog, dialogObject));
-      }
-      elements.forEach(function(element) {
-        nextElements.push(element);
-      });
-      dialog.rowsByObject.set(dialogObject.objectApiName, { signature, elements, controls: dialog.controls.slice(firstControlIndex) });
     });
     if (dialog.step === "save") {
       nextElements.push(buildSaveForm(dialog));
