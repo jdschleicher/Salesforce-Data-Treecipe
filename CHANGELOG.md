@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.205.1] - Recipe Cockpit: the "Customize and create new recipe" modal keeps each field list on its own, so a chain link answers at once on a big tree (#684)
+
+### Customize and create new recipe
+
+- **A chain link no longer rebuilds the fields under it.** Each object's row and its field list are now kept apart. A chain toggle, or an object's ✕ or ↺, redraws rows and puts the field lists back as they were. A field list closed or removed for a while comes back as the same list when nothing about its fields changed.
+  - With 40 objects × 300 fields all open, toggling the root's chain link takes about 31 ms, against 0.55–0.8 s. One with 13 objects below it takes about 23 ms, against about 200 ms.
+  - ↺ on the root now reuses all 40 field lists. It still takes about 0.6 s, which is the browser laying out the 72,000 elements put back on screen, not the modal building them.
+- **Under the hood (behaviour unchanged):**
+  - The hub reads a custom tree's `customTreecipe.json` itself (`RecipeCockpitService.readCustomTreecipeDefinition`), so loading a run calls no code of the custom treecipe host. The host reads it through its hub.
+  - The panel test harness now moves an element already on the page, as a browser does, rather than showing it twice.
+  - New tests cover the modal reusing rows and field lists across a chain toggle, a restore, a cut lookup, a dropped lock, closing one object, the root's confirmation, the save step and focus.
+
 ## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
 ### Customize and create new recipe

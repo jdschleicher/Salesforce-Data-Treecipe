@@ -105,18 +105,21 @@ interface ICustomTreecipeDialog {
     */
     controls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
     frameControls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
-    // EACH OBJECT'S ROW AND FIELD LIST AS LAST DRAWN, UNDER THE SIGNATURE OF WHAT IT WAS DRAWN FROM
-    rowsByObject: Map<string, IDrawnObjectRows>;
+    // EACH OBJECT'S ROW, AND ITS FIELD LIST, AS LAST DRAWN, EACH UNDER THE SIGNATURE OF WHAT IT WAS DRAWN FROM
+    rowsByObject: Map<string, IDrawnElement>;
+    fieldListsByObject: Map<string, IDrawnElement>;
 }
 
 /*
-    One object's row and, when open, its field list, kept between redraws: a ✕ changes the rows of the
-    object it was on and of what the cascade took with it, so every other object's rows -- hundreds of
-    fields, for a tree with every object open -- are put back as they were rather than built again.
+    An object's row or its field list, kept between redraws: a ✕ changes the rows of the object it was
+    on and of what the cascade took with it, so every other object's rows -- hundreds of fields, for a
+    tree with every object open -- are put back as they were rather than built again. The two are kept
+    apart (#684) because a chain toggle or a ↺ changes rows but not the fields under them, and a field
+    list stays kept while its object is closed or removed, ready for when it opens again.
 */
-interface IDrawnObjectRows {
+interface IDrawnElement {
     signature: string;
-    elements: HTMLElement[];
+    element: HTMLElement;
     controls: Array<{ key: string; element: HTMLButtonElement | HTMLInputElement }>;
 }
 
@@ -224,6 +227,7 @@ export function openCustomTreecipeDialog(treeState: CardTreeState, openerElement
         openerElement: openerElement,
         controls: [],
         rowsByObject: new Map(),
+        fieldListsByObject: new Map(),
         frameControls: [
             { key: 'frame:close', element: closeElement },
             { key: 'frame:cancel', element: cancelElement },
@@ -722,12 +726,11 @@ function placeBodyElements(bodyElement: HTMLElement, nextElements: HTMLElement[]
 
 }
 
-// EVERYTHING AN OBJECT'S ROW AND FIELD LIST ARE DRAWN FROM: THE SAME SIGNATURE IS THE SAME ROWS, SO THEY ARE REUSED
-function signatureOfObjectRows(dialog: ICustomTreecipeDialog, dialogObject: IDialogObject): string {
+// EVERYTHING buildObjectRow READS: THE SAME SIGNATURE IS THE SAME ROW, SO IT IS REUSED
+function signatureOfObjectRow(dialog: ICustomTreecipeDialog, dialogObject: IDialogObject): string {
 
     const objectApiName = dialogObject.objectApiName;
     const preview = dialog.preview;
-    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : undefined;
 
     return JSON.stringify([
         !!preview,
@@ -736,10 +739,40 @@ function signatureOfObjectRows(dialog: ICustomTreecipeDialog, dialogObject: IDia
         dialog.expandedObjects.has(objectApiName),
         preview ? preview.removedByObject.get(objectApiName) || null : null,
         preview ? preview.outOfRunByObject.get(objectApiName) || null : null,
+        countKeptFields(dialog, dialogObject)
+    ]);
+
+}
+
+// EVERYTHING buildFieldList READS, AND NOTHING ELSE: A CHAIN OR AN OBJECT'S ✕ AND ↺ LEAVE IT THE SAME, SO THE FIELDS UNDER THEM ARE REUSED
+function signatureOfFieldList(dialog: ICustomTreecipeDialog, dialogObject: IDialogObject): string {
+
+    const objectApiName = dialogObject.objectApiName;
+    const preview = dialog.preview;
+    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : undefined;
+
+    return JSON.stringify([
+        !!preview,
         Array.from(removedFieldsOf(dialog, objectApiName)).sort(),
         lockedFields ? Array.from(lockedFields.entries()).sort() : [],
         dialogObject.fields.filter(function (field) { return !!preview && preview.cutLookupKeys.has(objectApiName + '\n' + field.fieldApiName); }).map(function (field) { return field.fieldApiName; })
     ]);
+
+}
+
+// THE ELEMENT DRAWN LAST TIME WHEN ITS SIGNATURE IS UNCHANGED, ELSE A NEW ONE; EITHER WAY ITS CONTROLS JOIN THE TAB ORDER HERE
+function reuseOrBuild(dialog: ICustomTreecipeDialog, drawnByObject: Map<string, IDrawnElement>, objectApiName: string, signature: string, build: () => HTMLElement): HTMLElement {
+
+    const drawnElement = drawnByObject.get(objectApiName);
+    if (drawnElement && drawnElement.signature === signature) {
+        drawnElement.controls.forEach(function (control) { dialog.controls.push(control); });
+        return drawnElement.element;
+    }
+
+    const firstControlIndex = dialog.controls.length;
+    const element = build();
+    drawnByObject.set(objectApiName, { signature: signature, element: element, controls: dialog.controls.slice(firstControlIndex) });
+    return element;
 
 }
 
@@ -771,21 +804,12 @@ function drawCustomTreecipeDialog(): void {
     if (dialog.isRootRemovalAsked) { nextElements.push(buildRootConfirmation(dialog)); }
 
     dialog.objects.forEach(function (dialogObject) {
-        const signature = signatureOfObjectRows(dialog, dialogObject);
-        const drawnRows = dialog.rowsByObject.get(dialogObject.objectApiName);
-        if (drawnRows && drawnRows.signature === signature) {
-            drawnRows.elements.forEach(function (element) { nextElements.push(element); });
-            drawnRows.controls.forEach(function (control) { dialog.controls.push(control); });
-            return;
+        const objectApiName = dialogObject.objectApiName;
+        nextElements.push(reuseOrBuild(dialog, dialog.rowsByObject, objectApiName, signatureOfObjectRow(dialog, dialogObject), function () { return buildObjectRow(dialog, dialogObject); }));
+        const isRemoved = dialog.removedObjects.has(objectApiName) || (!!preview && preview.removedByObject.has(objectApiName));
+        if (dialog.expandedObjects.has(objectApiName) && !isRemoved) {
+            nextElements.push(reuseOrBuild(dialog, dialog.fieldListsByObject, objectApiName, signatureOfFieldList(dialog, dialogObject), function () { return buildFieldList(dialog, dialogObject); }));
         }
-        const firstControlIndex = dialog.controls.length;
-        const elements = [buildObjectRow(dialog, dialogObject)];
-        const isRemoved = dialog.removedObjects.has(dialogObject.objectApiName) || (!!preview && preview.removedByObject.has(dialogObject.objectApiName));
-        if (dialog.expandedObjects.has(dialogObject.objectApiName) && !isRemoved) {
-            elements.push(buildFieldList(dialog, dialogObject));
-        }
-        elements.forEach(function (element) { nextElements.push(element); });
-        dialog.rowsByObject.set(dialogObject.objectApiName, { signature: signature, elements: elements, controls: dialog.controls.slice(firstControlIndex) });
     });
 
     if (dialog.step === 'save') { nextElements.push(buildSaveForm(dialog)); }
@@ -800,7 +824,7 @@ function drawCustomTreecipeDialog(): void {
         : preview && preview.folderName ? 'Ready to save as ' + preview.folderName + '.'
         : '';
 
-    // A REDRAW KEEPS THE READER'S PLACE: THE CONTROL THAT WAS FOCUSED, BY ITS LABEL, OR THE NAME BOX ON THE SAVE STEP
+    // A REDRAW KEEPS THE READER'S PLACE: THE CONTROL THAT WAS FOCUSED, BY ITS KEY, OR THE NAME BOX ON THE SAVE STEP
     // THE BODY KEEPS ITS SCROLL, AND FOCUS RETURNS WITHOUT SCROLLING, SO A ✕ DEEP IN A LONG LIST LEAVES THE READER WHERE THEY WERE
     dialog.bodyElement.scrollTop = scrollTop;
     if (dialog.step === 'save' && dialog.nameInputElement) {
