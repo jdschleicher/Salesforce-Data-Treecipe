@@ -14,7 +14,7 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
   - `postInsertState`, the insert lock both inserts hold.
   - The selection checks other tabs' routers read, `changeOrgAndRestart`, `buildConfirmOrg` and `toSingleLine`.
   - The Troubleshooting focus that opening the cockpit reads.
-- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to #669 part b.
+- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to [#688](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/688), #669's part b.
 - **The words the moved code says moved with it.** `RECIPE_COCKPIT_DATA_ORG_STATE_KEY`, the scratch org prompts, the insert confirmation's labels and `RECIPE_COCKPIT_RUN_FAKER_COMMAND` are among them, so a host never loads the hub.
 - **`RecipeCockpitTabHosts.test.ts` has a Treecipe org row.**
   - `RecipeCockpitRecordCreation`, which the Adapter's Add to data set also imports, is listed exactly as shared.

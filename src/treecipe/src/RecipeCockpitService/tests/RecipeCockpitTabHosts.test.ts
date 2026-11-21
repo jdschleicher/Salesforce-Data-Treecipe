@@ -176,7 +176,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
                 importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject', 'RecipeCockpitMetadataDeploy'],
                 members: ['readApiVersion', 'toManifestRelativePath', 'writePackageXml'],
-                owedBy: '#669 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
+                owedBy: '#688 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
             },
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeployPackage.ts',
@@ -206,7 +206,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
                 importedNames: ['RecipeCockpitPermissionSetGenerate'],
                 members: ['resolveDefaultPackageDirectoryPath'],
-                owedBy: '#669 (Get latest object detail)'
+                owedBy: '#688 (Get latest object detail)'
             },
             {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
@@ -218,7 +218,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitRemovedTodoStore.ts',
                 importedNames: ['IRemovedTodoFileRead', 'RecipeCockpitRemovedTodoStore'],
                 members: ['addEntry', 'buildFilePath', 'isSameEntry', 'parse', 'removeEntry', 'serialize'],
-                owedBy: '#669: removing and restoring a TODO writes the recipe, and the model reads the removed list'
+                owedBy: '#688: removing and restoring a TODO writes the recipe, and the model reads the removed list'
             }
         ],
         sharedWithHosts: [
@@ -293,13 +293,13 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitRecordUpdate.ts',
                 importedNames: ['IUpdateSnapshotObject'],
                 members: [],
-                owedBy: '#669: buildOrgOnlyFieldsResult, which the Adapter reads through the hub, is shared with Get latest object detail'
+                owedBy: '#688: buildOrgOnlyFieldsResult, which the Adapter reads through the hub, is shared with Get latest object detail'
             },
             {
                 pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
                 importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
                 members: ['buildPackageXmlFilePath', 'buildRetrieveArguments', 'buildStagingFolderPath', 'copyMetadataFiles', 'makeStagingFolder', 'readRetrieveSucceeded', 'toOutputDirectoryArgument'],
-                owedBy: '#669: Get latest object detail stages and copies through the same retrieve, and offerStagedField is shared with it'
+                owedBy: '#688: Get latest object detail stages and copies through the same retrieve, and offerStagedField is shared with it'
             },
             {
                 pureModuleFileName: 'RecipeCockpitAdaptedDataset.ts',
@@ -360,13 +360,13 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
                 importedNames: ['IRecipeCockpitCreateReadinessViewModel', 'RecipeCockpitRecordCreation'],
                 members: ['areChosenParentIdsReturnedBySearch'],
-                owedBy: '#669 part b: "Use existing … from org" holds a chosen Id to what the search answered, and the model types a card\'s create readiness'
+                owedBy: '#688: "Use existing … from org" holds a chosen Id to what the search answered, and the model types a card\'s create readiness'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRecordTypeRecipe.ts',
                 importedNames: ['OccurrenceSettingPlacer', 'RECORD_TYPE_SET_MODE_LABELS', 'RECORD_TYPE_SET_MODE_LEGEND', 'RecordTypeSetMode'],
                 members: [],
-                owedBy: 'the in-panel confirmation every tab asks through offers the record type set modes, and #669 part b moves buildRunFakerFilteredRecipe\'s setting placer'
+                owedBy: 'the in-panel confirmation every tab asks through offers the record type set modes, and #688 moves buildRunFakerFilteredRecipe\'s setting placer'
             }
         ],
         sharedWithHosts: [
