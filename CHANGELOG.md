@@ -1,5 +1,22 @@
 # Change Log
 
+## [3.206.0] - Recipe Cockpit: "A data set for each record type" makes one data set per record type combination, inserted one after another (#624)
+
+### A data set for each record type
+
+- **The Generate fake data and insert confirmation has a second choice** when the record types ticked under **Manage record types** make two data sets or more. **A data set for each record type** comes first and is chosen when the confirmation opens; **One data set with the record types folded together** is still there.
+  - Each data set holds exactly one record type per object, and the data sets are the combinations: Account {Business, Partner} × Opportunity {New} makes two, in tick order, with the first object varying slowest.
+  - The confirmation lists each data set by name with its totals (`Set 1 · Account · Business: Account 1, Contact 1, Visit__c 1`), and says how the data sets are inserted.
+  - Above 10 data sets the choice is drawn disabled, with a reason that names each object's count (`Account has 3 ticked, Opportunity has 4 ticked`). The folded data set can still be picked.
+  - One ticked record type that is not the default makes one data set, so the folded data set is the only choice, as before.
+- **Each data set is its own folder, tag and row.** It has its own `BaseArtifactFiles/` recipe and `datasetSource.json` naming its record types, and its own row in Previously Used Data Sets, added in place.
+- **The data sets are inserted one after another, after one confirmation and one all-or-none answer.** The window's insert lock is held throughout. Each data set after the first starts only while the org selection is the one confirmed, and its recipe is built just before it runs.
+- **A data set that does not wholly land ends the run.** That covers a cancel, a stop, a record that fails, or a recipe that cannot be built. The data sets before it stay, it is rolled back as a single insert is (all-or-none or Cancel), and the ones after it are not started.
+- **One notification names every data set's outcome**, such as `Set 1 · Account · Business: 3 records inserted. Set 2 · Account · Partner: stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen (1 record failed).` The one that failed offers **View errors**, **View failed file** and **Open Troubleshooting**.
+- **A ticked record type gone from the object metadata** is dropped before the data sets are planned, so no data set is named for a record type it would not carry.
+- **An answer naming a mode the confirmation did not enable** (a disabled `separate`, or any other name) is read as Cancel.
+- The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe both choices.
+
 ## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
 ### Customize and create new recipe

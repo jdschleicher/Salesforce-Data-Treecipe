@@ -190,6 +190,57 @@ describe('RecordTypeSelection', () => {
 
     });
 
+    describe('listRecordTypeCombinations and countRecordTypeCombinations (#624)', () => {
+
+        test('gives one selection per combination, one record type per object, the first object varying slowest', () => {
+
+            const combinations = RecordTypeSelection.listRecordTypeCombinations({ Account: ['Business', 'Partner'], Opportunity: ['New', 'Renewal'] }, 10);
+
+            expect(combinations?.map(combination => ({ ...combination }))).toEqual([
+                { Account: ['Business'], Opportunity: ['New'] },
+                { Account: ['Business'], Opportunity: ['Renewal'] },
+                { Account: ['Partner'], Opportunity: ['New'] },
+                { Account: ['Partner'], Opportunity: ['Renewal'] }
+            ]);
+
+        });
+
+        test('Account {Business, Partner} x Opportunity {New} is two sets, in tick order', () => {
+
+            expect(RecordTypeSelection.listRecordTypeCombinations({ Account: ['Partner', 'Business'], Opportunity: ['New'] }, 10)?.map(combination => ({ ...combination })))
+                .toEqual([{ Account: ['Partner'], Opportunity: ['New'] }, { Account: ['Business'], Opportunity: ['New'] }]);
+            expect(RecordTypeSelection.countRecordTypeCombinations({ Account: ['Partner', 'Business'], Opportunity: ['New'] })).toBe(2);
+
+        });
+
+        test('builds up to the cap and none above it, counting either way', () => {
+
+            const atCap = { Account: ['A', 'B'], Opportunity: ['C', 'D', 'E', 'F', 'G'] };
+            const overCap = { Account: ['A', 'B', 'C'], Opportunity: ['D', 'E', 'F', 'G'] };
+
+            expect(RecordTypeSelection.listRecordTypeCombinations(atCap, 10)).toHaveLength(10);
+            expect(RecordTypeSelection.listRecordTypeCombinations(overCap, 10)).toBeUndefined();
+            expect(RecordTypeSelection.countRecordTypeCombinations(overCap)).toBe(12);
+
+        });
+
+        test('each selection has no prototype, so an object named __proto__ is an own key', () => {
+
+            const developerNamesByObject: Record<string, string[]> = Object.create(null);
+            developerNamesByObject['__proto__'] = ['A', 'B'];
+
+            const combinations = RecordTypeSelection.listRecordTypeCombinations(developerNamesByObject, 10) ?? [];
+
+            expect(combinations).toHaveLength(2);
+            combinations.forEach(combination => {
+                expect(Object.getPrototypeOf(combination)).toBeNull();
+                expect(Object.keys(combination)).toEqual(['__proto__']);
+            });
+
+        });
+
+    });
+
     describe('getRecordTypePicklistValues', () => {
 
         test('answers the record type\'s values for a field it lists, and undefined for one it does not', () => {

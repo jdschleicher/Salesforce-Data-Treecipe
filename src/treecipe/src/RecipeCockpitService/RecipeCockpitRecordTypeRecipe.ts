@@ -1,23 +1,30 @@
 import * as vscode from 'vscode';
+import { IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor, IRecipeGenerationProgress, RecipeGenerationCancelledError } from '../DirectoryProcessingService/DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 
 /*
-    How the record types ticked under "Manage record types" become ONE generate (#623, slice C of
-    #620). The ticks are used at "Generate fake data and insert": when they ask for anything the run's
-    recipe does not already write, the tree's recipe is built again in memory from the object
-    metadata, and no Generate Treecipe run is written. Slice D adds the 'separate' mode.
+    How the record types ticked under "Manage record types" become a generate (#623, slice C of #620).
+    The ticks are used at "Generate fake data and insert": when they ask for anything the run's recipe
+    does not already write, the tree's recipe is built again in memory from the object metadata, and
+    no Generate Treecipe run is written. 'folded' is one data set with every ticked record type in it;
+    'separate' (#624) is one data set per combination of one record type per object, inserted in turn.
 */
-export type RecordTypeSetMode = 'folded';
+export type RecordTypeSetMode = 'separate' | 'folded';
 
 export const RECORD_TYPE_SET_MODE_LABELS: Readonly<Record<RecordTypeSetMode, string>> = Object.freeze({
+    separate: 'A data set for each record type',
     folded: 'One data set with the record types folded together'
 });
+
+// MORE SETS THAN THIS IS A LONG RUN OF INSERTS THE READER DID NOT MEAN, SO "A data set for each record type" IS DRAWN DISABLED ABOVE IT
+export const RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS = 10;
 
 export const RECORD_TYPE_SET_MODE_LEGEND = 'Record types ticked under Manage record types';
 export const RECORD_TYPE_RECIPE_PROGRESS_TITLE = 'Building the recipe for the ticked record types';
@@ -30,13 +37,34 @@ export interface IRecordTypeTickObject {
     generatedDeveloperNames: readonly string[];
 }
 
+// ONE RADIO OF THE CONFIRMATION, IN THE ORDER DRAWN; A DISABLED ONE IS DRAWN WITH ITS REASON AND IS NEVER AN ANSWER
+export interface IRecordTypeSetModeOffer {
+    mode: RecordTypeSetMode;
+    disabledReason?: string;
+}
+
 export interface IRecordTypeGenerationPlan {
     // FALSE: THE RUN'S RECIPE ON DISK IS GENERATED FROM, EXACTLY AS BEFORE #623
     isRecipeDerived: boolean;
     // EMPTY: THE CONFIRMATION ASKS NOTHING NEW
-    offeredModes: RecordTypeSetMode[];
+    offeredModes: IRecordTypeSetModeOffer[];
     // ONLY THE OBJECTS WITH A CHOICE; ANY OTHER OBJECT IS GENERATED WITH ITS DEFAULT, AS GENERATE TREECIPE WRITES IT
     recordTypeSelection: Record<string, string[]>;
+    // WHAT 'separate' GENERATES, ONE SELECTION PER DATA SET (#624); EMPTY UNLESS 'separate' IS OFFERED AND ENABLED
+    recordTypeSets: Record<string, string[]>[];
+}
+
+/*
+    How one set of "A data set for each record type" (#624) ended: inserted (insertResult says how),
+    not generated (notGeneratedReason says why, escaped), or not started because a set before it did
+    not wholly land.
+*/
+export interface IRecordTypeSetOutcome {
+    setLabel: string;
+    status: 'inserted' | 'notGenerated' | 'notStarted';
+    datasetFolderPath?: string;
+    insertResult?: IDataSetInsertResult;
+    notGeneratedReason?: string;
 }
 
 export interface IDroppedRecordTypeTick {
@@ -114,13 +142,140 @@ export class RecipeCockpitRecordTypeRecipe {
 
         });
 
+        return RecipeCockpitRecordTypeRecipe.planModes(recordTypeSelection, Object.keys(recordTypeSelection).length > 0 || isAnyObjectChangedFromRun);
+
+    }
+
+    /*
+        The plan once the folded recipe's build dropped stale ticks (#624): each object it dropped
+        is generated with its default, so it is no choice, and the sets are the combinations of what
+        is left. The recipe is still the derived one.
+    */
+    static withoutDroppedTicks(recordTypePlan: IRecordTypeGenerationPlan, droppedTicks: readonly IDroppedRecordTypeTick[]): IRecordTypeGenerationPlan {
+
+        if ( droppedTicks.length === 0 ) {
+            return recordTypePlan;
+        }
+
+        const droppedObjectApiNames = new Set(droppedTicks.map(droppedTick => droppedTick.objectApiName));
+        const recordTypeSelection: Record<string, string[]> = Object.create(null);
+        Object.keys(recordTypePlan.recordTypeSelection)
+            .filter(objectApiName => !droppedObjectApiNames.has(objectApiName))
+            .forEach(objectApiName => { recordTypeSelection[objectApiName] = recordTypePlan.recordTypeSelection[objectApiName]; });
+
+        return RecipeCockpitRecordTypeRecipe.planModes(recordTypeSelection, recordTypePlan.isRecipeDerived);
+
+    }
+
+    private static planModes(recordTypeSelection: Record<string, string[]>, isRecipeDerived: boolean): IRecordTypeGenerationPlan {
+
         const hasChoice = Object.keys(recordTypeSelection).length > 0;
+        const separateModeOffer = hasChoice ? RecipeCockpitRecordTypeRecipe.planSeparateMode(recordTypeSelection) : undefined;
 
         return {
-            isRecipeDerived: hasChoice || isAnyObjectChangedFromRun,
-            offeredModes: hasChoice ? ['folded'] : [],
-            recordTypeSelection: recordTypeSelection
+            isRecipeDerived: isRecipeDerived,
+            offeredModes: [
+                ...( separateModeOffer ? [separateModeOffer.offer] : [] ),
+                ...( hasChoice ? [{ mode: 'folded' as const }] : [] )
+            ],
+            recordTypeSelection: recordTypeSelection,
+            recordTypeSets: separateModeOffer?.recordTypeSets ?? []
         };
+
+    }
+
+    /*
+        "A data set for each record type" (#624): offered only when it makes two sets or more -- one set
+        is the folded data set -- and disabled above RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, with a reason
+        that names each object's count.
+    */
+    private static planSeparateMode(recordTypeSelection: Readonly<Record<string, string[]>>): { offer: IRecordTypeSetModeOffer; recordTypeSets: Record<string, string[]>[] } | undefined {
+
+        const setCount = RecordTypeSelection.countRecordTypeCombinations(recordTypeSelection);
+        if ( setCount < 2 ) {
+            return undefined;
+        }
+
+        const recordTypeSets = RecordTypeSelection.listRecordTypeCombinations(recordTypeSelection, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS);
+        if ( !recordTypeSets ) {
+            const objectCounts = Object.keys(recordTypeSelection)
+                .map(objectApiName => `${objectApiName} has ${recordTypeSelection[objectApiName].length} ticked`)
+                .join(', ');
+            return {
+                offer: { mode: 'separate', disabledReason: `Not available: one data set per record type would make ${setCount} data sets, more than ${RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS} (${objectCounts}). Untick record types to make ${RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS} or fewer.` },
+                recordTypeSets: []
+            };
+        }
+
+        return { offer: { mode: 'separate' }, recordTypeSets: recordTypeSets };
+
+    }
+
+    // A SET THAT WHOLLY LANDED (#624): EVERY FILE SENT AND EVERY RECORD SAVED; ANY OTHER ENDS THE RUN OF SETS
+    static isInsertWhollyLanded(insertResult: IDataSetInsertResult): boolean {
+
+        return insertResult.outcome === 'completed' && insertResult.failedRecordCount === 0;
+
+    }
+
+    static buildRecordTypeSetsWarning(setCount: number): string {
+
+        return `${RECORD_TYPE_SET_MODE_LABELS.separate} makes ${setCount} data sets, inserted one after another. A set that is cancelled, stops or has a record that fails ends the run there: the sets before it stay, it is rolled back as a single insert is, and the sets after it are not started.`;
+
+    }
+
+    /*
+        The one notification of "A data set for each record type" (#624): every set by name and how
+        it ended, in order. An error when a set stopped or had a record fail, a warning when one was
+        cancelled or not generated, information when every set landed. treeLabel and orgLabel arrive
+        escaped; a set's label is escaped here.
+    */
+    static buildRecordTypeSetsNotification(setOutcomes: readonly IRecordTypeSetOutcome[], treeLabel: string, orgLabel: string): { severity: 'information' | 'warning' | 'error'; notificationText: string } {
+
+        const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+        const wasOrWere = (recordCount: number) => recordCount === 1 ? 'was' : 'were';
+        const isLanded = (setOutcome: IRecordTypeSetOutcome) => !!setOutcome.insertResult && RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(setOutcome.insertResult);
+
+        const describeSet = (setOutcome: IRecordTypeSetOutcome): string => {
+            const insertResult = setOutcome.insertResult;
+            if ( setOutcome.status === 'notStarted' ) {
+                return 'not started';
+            }
+            if ( !insertResult ) {
+                return `not generated: ${setOutcome.notGeneratedReason ?? 'it was not generated'}`;
+            }
+            if ( insertResult.outcome === 'cancelled' ) {
+                return insertResult.isRolledBack ? 'cancelled, and every record it had inserted was deleted' : 'cancelled';
+            }
+            if ( insertResult.outcome === 'stopped' ) {
+                return insertResult.isRolledBack
+                    ? `stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen (${recordsText(insertResult.failedRecordCount)} failed)`
+                    : `stopped at a file that could not be inserted; ${recordsText(insertResult.savedRecordCount)} ${wasOrWere(insertResult.savedRecordCount)} kept, because all-or-none was not chosen, and ${insertResult.failedRecordCount} failed`;
+            }
+            if ( insertResult.failedRecordCount > 0 ) {
+                return `${recordsText(insertResult.savedRecordCount)} inserted and ${insertResult.failedRecordCount} failed; nothing was rolled back`;
+            }
+            return `${recordsText(insertResult.savedRecordCount)} inserted`;
+        };
+
+        const insertResults = setOutcomes.map(setOutcome => setOutcome.insertResult).filter((insertResult): insertResult is IDataSetInsertResult => !!insertResult);
+        const hasError = insertResults.some(insertResult => insertResult.outcome === 'stopped' || ( insertResult.outcome === 'completed' && insertResult.failedRecordCount > 0 ));
+        const landedSetCount = setOutcomes.filter(isLanded).length;
+        const requestFailureDetail = insertResults.find(insertResult => !!insertResult.requestFailureDetail)?.requestFailureDetail;
+
+        return {
+            severity: hasError ? 'error' : landedSetCount === setOutcomes.length ? 'information' : 'warning',
+            notificationText: `${RECORD_TYPE_SET_MODE_LABELS.separate} of ${treeLabel} into ${orgLabel}: ${landedSetCount} of ${setOutcomes.length} data sets inserted. `
+                + setOutcomes.map(setOutcome => `${RecipeYamlScalar.escapeForNotification(setOutcome.setLabel)}: ${describeSet(setOutcome)}.`).join(' ')
+                + ( requestFailureDetail ? ` The request for ${RecipeYamlScalar.escapeForNotification(requestFailureDetail)}` : '' )
+        };
+
+    }
+
+    // HOW A SET IS NAMED IN THE CONFIRMATION AND THE NOTIFICATION (#624): "Set 2 · Account · Partner, Opportunity · New"
+    static buildRecordTypeSetLabel(recordTypeSet: Readonly<Record<string, string[]>>, setIndex: number): string {
+
+        return `Set ${setIndex + 1} · ${Object.keys(recordTypeSet).map(objectApiName => `${objectApiName} · ${recordTypeSet[objectApiName].join(', ')}`).join(', ')}`;
 
     }
 

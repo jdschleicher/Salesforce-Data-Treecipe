@@ -2,7 +2,8 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { IRecordTypeTickObject, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { IRecordTypeSetOutcome, IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { IDataSetInsertResult } from '../../CollectionsApiService/CollectionsApiService';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
@@ -59,27 +60,81 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
 
         it('given no ticks posted, generates from the run\'s recipe and offers no mode', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], undefined)).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], undefined)).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
         it('given each object ticked at its default, generates from the run\'s recipe and offers no mode', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Business'] })).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Business'] })).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
-        it('given more than one record type ticked, builds the recipe and offers folded', () => {
+        it('given more than one record type ticked, builds the recipe and offers a data set for each record type first, then folded (#624)', () => {
 
             expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Business', 'Partner'] }))
-                .toEqual({ isRecipeDerived: true, offeredModes: ['folded'], recordTypeSelection: { Account: ['Business', 'Partner'] } });
+                .toEqual({
+                    isRecipeDerived: true,
+                    offeredModes: [{ mode: 'separate' }, { mode: 'folded' }],
+                    recordTypeSelection: { Account: ['Business', 'Partner'] },
+                    recordTypeSets: [{ Account: ['Business'] }, { Account: ['Partner'] }]
+                });
 
         });
 
-        it('given one record type ticked that is not the default, builds the recipe and offers folded', () => {
+        it('given one record type ticked that is not the default, builds the recipe and offers folded only: one set is the folded data set (#624)', () => {
 
             expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Partner'] }))
-                .toEqual({ isRecipeDerived: true, offeredModes: ['folded'], recordTypeSelection: { Account: ['Partner'] } });
+                .toEqual({ isRecipeDerived: true, offeredModes: [{ mode: 'folded' }], recordTypeSelection: { Account: ['Partner'] }, recordTypeSets: [] });
+
+        });
+
+        it('makes one set per combination across objects, in tree order, the first object varying slowest (#624)', () => {
+
+            const OPPORTUNITY: IRecordTypeTickObject = { objectApiName: 'Opportunity', defaultDeveloperName: 'New', generatedDeveloperNames: ['New'] };
+
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Opportunity: ['Renewal'], Account: ['Business', 'Partner'] }).recordTypeSets)
+                .toEqual([{ Account: ['Business'], Opportunity: ['Renewal'] }, { Account: ['Partner'], Opportunity: ['Renewal'] }]);
+
+        });
+
+        it('draws a data set for each record type disabled above the cap, naming each object\'s count, and keeps folded (#624)', () => {
+
+            const OPPORTUNITY: IRecordTypeTickObject = { objectApiName: 'Opportunity', defaultDeveloperName: 'A', generatedDeveloperNames: ['A'] };
+            const atCap = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Account: ['Business', 'Partner'], Opportunity: ['A', 'B', 'C', 'D', 'E'] });
+            const overCap = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Account: ['Business', 'Partner', 'Other'], Opportunity: ['A', 'B', 'C', 'D'] });
+
+            expect(RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS).toBe(10);
+            expect(atCap.offeredModes).toEqual([{ mode: 'separate' }, { mode: 'folded' }]);
+            expect(atCap.recordTypeSets).toHaveLength(10);
+            expect(overCap.offeredModes).toEqual([{
+                mode: 'separate',
+                disabledReason: 'Not available: one data set per record type would make 12 data sets, more than 10 (Account has 3 ticked, Opportunity has 4 ticked). Untick record types to make 10 or fewer.'
+            }, { mode: 'folded' }]);
+            expect(overCap.recordTypeSets).toEqual([]);
+
+        });
+
+        it('plans the sets again without an object whose ticks the build dropped, so no set is named for a record type the metadata lost (#624)', () => {
+
+            const OPPORTUNITY: IRecordTypeTickObject = { objectApiName: 'Opportunity', defaultDeveloperName: 'New', generatedDeveloperNames: ['New'] };
+            const plan = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Account: ['Business', 'Partner'], Opportunity: ['New', 'Renewal'] });
+
+            expect(RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(plan, [])).toBe(plan);
+            expect(RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(plan, [{ objectApiName: 'Opportunity', missingDeveloperNames: ['Renewal'] }])).toEqual({
+                isRecipeDerived: true,
+                offeredModes: [{ mode: 'separate' }, { mode: 'folded' }],
+                recordTypeSelection: { Account: ['Business', 'Partner'] },
+                recordTypeSets: [{ Account: ['Business'] }, { Account: ['Partner'] }]
+            });
+            expect(RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(plan, [{ objectApiName: 'Opportunity', missingDeveloperNames: ['Renewal'] }, { objectApiName: 'Account', missingDeveloperNames: ['Partner'] }]))
+                .toEqual({ isRecipeDerived: true, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
+
+        });
+
+        it('names each set by its record types, in order (#624)', () => {
+
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLabel({ Account: ['Partner'], Opportunity: ['New'] }, 1)).toBe('Set 2 · Account · Partner, Opportunity · New');
 
         });
 
@@ -92,13 +147,13 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
         it('given a run that already writes both blocks and the same ticks, still builds the recipe, so each block gets its children', () => {
 
             expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_WITH_BLOCKS], { Account: ['Business', 'Partner'] }))
-                .toEqual({ isRecipeDerived: true, offeredModes: ['folded'], recordTypeSelection: { Account: ['Business', 'Partner'] } });
+                .toMatchObject({ isRecipeDerived: true, recordTypeSelection: { Account: ['Business', 'Partner'] } });
 
         });
 
         it('given a run that writes both blocks and only the default ticked, builds the default recipe and offers no mode', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_WITH_BLOCKS], { Account: ['Business'] })).toEqual({ isRecipeDerived: true, offeredModes: [], recordTypeSelection: {} });
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_WITH_BLOCKS], { Account: ['Business'] })).toEqual({ isRecipeDerived: true, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
@@ -107,8 +162,8 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
             const plan = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Opportunity: ['New', 'Renewal'] });
             const inheritedPlan = RecipeCockpitRecordTypeRecipe.planGeneration([{ ...ACCOUNT_AT_DEFAULT, objectApiName: 'constructor' }], {});
 
-            expect(plan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
-            expect(inheritedPlan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
+            expect(plan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
+            expect(inheritedPlan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
@@ -120,6 +175,80 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
 
             expect(Object.getPrototypeOf(plan.recordTypeSelection)).toBeNull();
             expect(Object.keys(plan.recordTypeSelection)).toEqual(['__proto__']);
+
+        });
+
+    });
+
+    describe('buildRecordTypeSetsNotification (#624)', () => {
+
+        const insertResult = (overrides: Partial<IDataSetInsertResult>): IDataSetInsertResult => ({ outcome: 'completed', isRolledBack: false, resultsFilePath: '', savedRecordCount: 3, failedRecordCount: 0, ...overrides });
+        const SET_LABELS = ['Set 1 · Account · Business', 'Set 2 · Account · Partner', 'Set 3 · Account · Other'];
+
+        it('is information naming every set when each landed', () => {
+
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification([
+                { setLabel: SET_LABELS[0], status: 'inserted', insertResult: insertResult({}) },
+                { setLabel: SET_LABELS[1], status: 'inserted', insertResult: insertResult({ savedRecordCount: 1 }) }
+            ], 'Account tree', 'qa')).toEqual({
+                severity: 'information',
+                notificationText: 'A data set for each record type of Account tree into qa: 2 of 2 data sets inserted. Set 1 · Account · Business: 3 records inserted. Set 2 · Account · Partner: 1 record inserted.'
+            });
+
+        });
+
+        it('is an error when set 2 of 3 stopped under all-or-none: set 1 kept, set 2 rolled back, set 3 not started', () => {
+
+            const setOutcomes: IRecordTypeSetOutcome[] = [
+                { setLabel: SET_LABELS[0], status: 'inserted', insertResult: insertResult({}) },
+                { setLabel: SET_LABELS[1], status: 'inserted', insertResult: insertResult({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0, failedRecordCount: 1 }) },
+                { setLabel: SET_LABELS[2], status: 'notStarted' }
+            ];
+
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification(setOutcomes, 'Account tree', 'qa')).toEqual({
+                severity: 'error',
+                notificationText: 'A data set for each record type of Account tree into qa: 1 of 3 data sets inserted. Set 1 · Account · Business: 3 records inserted. '
+                    + 'Set 2 · Account · Partner: stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen (1 record failed). '
+                    + 'Set 3 · Account · Other: not started.'
+            });
+
+        });
+
+        it.each([
+            ['a cancel that rolled back', { status: 'inserted', insertResult: insertResult({ outcome: 'cancelled', isRolledBack: true }) }, 'warning', 'cancelled, and every record it had inserted was deleted'],
+            ['a cancel before anything was sent', { status: 'inserted', insertResult: insertResult({ outcome: 'cancelled' }) }, 'warning', 'cancelled'],
+            ['a failed record without all-or-none', { status: 'inserted', insertResult: insertResult({ savedRecordCount: 2, failedRecordCount: 1 }) }, 'error', '2 records inserted and 1 failed; nothing was rolled back'],
+            ['a stop without all-or-none', { status: 'inserted', insertResult: insertResult({ outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }) }, 'error', 'stopped at a file that could not be inserted; 1 record was kept, because all-or-none was not chosen, and 2 failed'],
+            ['a recipe the metadata no longer builds', { status: 'notGenerated', notGeneratedReason: 'building its recipe was cancelled' }, 'warning', 'not generated: building its recipe was cancelled']
+        ] as Array<[string, Omit<IRecordTypeSetOutcome, 'setLabel'>, string, string]>)('names %s on set 2', (_description, secondSet, severity, secondSetText) => {
+
+            const { severity: shownSeverity, notificationText } = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification([
+                { setLabel: SET_LABELS[0], status: 'inserted', insertResult: insertResult({}) },
+                { setLabel: SET_LABELS[1], ...secondSet },
+                { setLabel: SET_LABELS[2], status: 'notStarted' }
+            ], 'T', 'qa');
+
+            expect(shownSeverity).toBe(severity);
+            expect(notificationText).toContain(`Set 2 · Account · Partner: ${secondSetText}. Set 3 · Account · Other: not started.`);
+
+        });
+
+        it('escapes a set\'s label, so a record type name cannot write a command link', () => {
+
+            const { notificationText } = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetsNotification([
+                { setLabel: 'Set 1 · Account · [x](command:evil)', status: 'notStarted' }
+            ], 'T', 'qa');
+
+            expect(notificationText).not.toContain('[x](command:evil)');
+
+        });
+
+        it('lands a set only when every file was sent and every record saved', () => {
+
+            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({}))).toBe(true);
+            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({ failedRecordCount: 1 }))).toBe(false);
+            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({ outcome: 'cancelled' }))).toBe(false);
+            expect(RecipeCockpitRecordTypeRecipe.isInsertWhollyLanded(insertResult({ outcome: 'stopped' }))).toBe(false);
 
         });
 
