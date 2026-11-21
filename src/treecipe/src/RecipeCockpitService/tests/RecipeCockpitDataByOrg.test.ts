@@ -15,21 +15,24 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
-    RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
-    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
-    RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
-    RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX
+    RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX } from '../RecipeCockpitTreecipeOrgHost';
+import {
+    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE,
+    RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
+    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
+    RecipeCockpitTreecipeDataOrgs
+} from '../RecipeCockpitTreecipeDataOrgs';
 import { AuthInfo } from '@salesforce/core';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
@@ -101,7 +104,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         it('lists every object a tree card lists, once, in Recipe Trees order', () => {
 
-            expect(RecipeCockpitService.collectDataOrgObjectApiNames(loadTreeRecipe())).toEqual(TREE_OBJECT_API_NAMES);
+            expect(RecipeCockpitTreecipeDataOrgs.collectDataOrgObjectApiNames(loadTreeRecipe())).toEqual(TREE_OBJECT_API_NAMES);
 
         });
 
@@ -110,7 +113,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             const recipe = loadTreeRecipe();
             recipe.trees[0].objects.push({ objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' });
 
-            expect(RecipeCockpitService.collectDataOrgObjectApiNames(recipe)).toEqual(TREE_OBJECT_API_NAMES);
+            expect(RecipeCockpitTreecipeDataOrgs.collectDataOrgObjectApiNames(recipe)).toEqual(TREE_OBJECT_API_NAMES);
 
         });
 
@@ -120,8 +123,8 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         it('labels an org by alias, or by username when it has none', () => {
 
-            expect(RecipeCockpitService.buildDataOrgLabel(SANDBOX_ORG)).toBe('qa');
-            expect(RecipeCockpitService.buildDataOrgLabel(SECOND_ORG)).toBe('prod@example.com');
+            expect(RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(SANDBOX_ORG)).toBe('qa');
+            expect(RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(SECOND_ORG)).toBe('prod@example.com');
 
         });
 

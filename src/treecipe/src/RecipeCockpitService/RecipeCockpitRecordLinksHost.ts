@@ -7,11 +7,13 @@ import { RecipeCockpitRecordLinks } from './RecipeCockpitRecordLinks';
 import type { IRecipeCockpitOpenableRecordPreview } from './RecipeCockpitRecordLinks';
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
+import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import type {
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     RecipeCockpitService
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     Opening a preview row's record (#556; moved out of the hub by #668): the router case and the two
@@ -22,8 +24,7 @@ import type {
 // WHAT OPENING A PREVIEW ROW'S RECORD READS AND CALLS ON THE HUB, AND NOTHING ELSE
 export type IRecipeCockpitHubForRecordLinks = Readonly<Pick<typeof RecipeCockpitService,
     'isSelectionHeldByPromptOrUpdater' |
-    'openDataOrgInBrowser' |
-    'recipeCockpitPanelState'>>;
+    'recipeCockpitPanelState'>> & IRecipeCockpitHubForTreecipeDataOrgs;
 
 /*
     A record Id opened from a preview (#556): every refusal is one of these FIXED texts, worded with no
@@ -173,7 +174,7 @@ export class RecipeCockpitRecordLinksHost {
             return;
         }
 
-        await hub.openDataOrgInBrowser(panelState, orgDetail, recordId);
+        await RecipeCockpitTreecipeDataOrgs.openDataOrgInBrowser(hub, panelState, orgDetail, recordId);
 
     }
 

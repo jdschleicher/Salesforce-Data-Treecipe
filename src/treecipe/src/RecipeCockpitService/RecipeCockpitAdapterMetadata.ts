@@ -49,6 +49,7 @@ import type {
     IRecipeCockpitTreeViewModel,
     RecipeCockpitPanelAction
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     The Treecipe Adapter's metadata runs (#445, #447; moved out of the hub by #668): Retrieve latest
@@ -199,7 +200,7 @@ export class RecipeCockpitAdapterMetadata {
             let isSandboxSelected = false;
             panelState.isUpdaterOrgPromptOpen = true;
             try {
-                isSandboxSelected = await hub.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                isSandboxSelected = await RecipeCockpitTreecipeDataOrgs.promptAndSelectDataOrg(hub, cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                     RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER, 'Nothing was retrieved', 'the Treecipe Adapter reads only from a sandbox or scratch org');
             } finally {
                 panelState.isUpdaterOrgPromptOpen = false;

@@ -40,7 +40,6 @@ import {
     RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
     RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_INSERT_RUNNING_LABEL,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
@@ -49,6 +48,8 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_CUSTOM_PROPERTIES
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_RUN_FAKER_COMMAND } from '../RecipeCockpitTreecipeInsert';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
     RECIPE_COCKPIT_DATASET_INSERT_NO_ORG_REFUSAL,
@@ -2035,8 +2036,8 @@ describe('RecipeCockpitService', () => {
 
         it('names the alias with the username it points at, or the username alone', () => {
 
-            expect(RecipeCockpitService.buildOrgLabel({ targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' })).toBe('devhub (jd@example.com)');
-            expect(RecipeCockpitService.buildOrgLabel({ targetOrgIdentifier: 'jd@example.com', username: 'jd@example.com' })).toBe('jd@example.com');
+            expect(RecipeCockpitTreecipeDataOrgs.buildOrgLabel({ targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' })).toBe('devhub (jd@example.com)');
+            expect(RecipeCockpitTreecipeDataOrgs.buildOrgLabel({ targetOrgIdentifier: 'jd@example.com', username: 'jd@example.com' })).toBe('jd@example.com');
 
         });
 

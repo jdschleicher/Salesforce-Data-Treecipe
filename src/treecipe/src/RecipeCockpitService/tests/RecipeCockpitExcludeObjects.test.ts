@@ -21,13 +21,14 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
     RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_RUN_FAKER_COMMAND } from '../RecipeCockpitTreecipeInsert';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { RecipeCockpitObjectSelection } from '../RecipeCockpitObjectSelection';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -359,12 +360,12 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             treeOf(recipe, ACCOUNT_TREE_KEY).objects.push({ objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' });
 
             // User IS A LOOKUP TARGET WITH NO RECIPE, SO NOTHING INSERTS IT
-            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
 
             RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
-            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account']);
-            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, treeOf(recipe, LEAD_TREE_KEY))).toEqual(['Lead']);
+            expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account']);
+            expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, treeOf(recipe, LEAD_TREE_KEY))).toEqual(['Lead']);
 
         });
 

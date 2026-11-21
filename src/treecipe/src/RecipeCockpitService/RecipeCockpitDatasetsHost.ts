@@ -40,6 +40,7 @@ import {
 } from './RecipeCockpitDatasetJourney';
 import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from './RecipeCockpitNavigationConstants';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForDatasetsTab
+import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import type {
     IRecipeCockpitInsertStateMessage,
     IRecipeCockpitPanelMessage,
@@ -51,6 +52,7 @@ import type {
     IRecipeCockpitWorkspaceState,
     RecipeCockpitService
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     The Previously Used Data Sets tab's host half (moved out of the hub by #667, after #665's pattern):
@@ -77,15 +79,13 @@ export type IRecipeCockpitHubForDatasetsTab = Readonly<Pick<typeof RecipeCockpit
     'loadRecipeIntoPanel' |
     'postNameEditResult' |
     'postToPanel' |
-    'promptAndSelectDataOrg' |
     'readNamePreferences' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'resolveTreeSnapshotLocations' |
-    'showTreeInsertNotification' |
     'toDisplayedRelativePath' |
-    'writeNamePreferences'>>;
+    'writeNamePreferences'>> & IRecipeCockpitHubForTreecipeDataOrgs;
 
 // WHAT workspaceState HOLDS FOR THE DATA SET ROWS, BY DATA SET FOLDER NAME; NEITHER IS A PLAIN {}
 export interface IRecipeCockpitDatasetPreferences {
@@ -998,7 +998,7 @@ export class RecipeCockpitDatasetsHost {
 
         if ( insertAction.isOrgToPrompt ) {
             const isSandboxSelected = !!clickedRecipeDataMessage
-                && await hub.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                && await RecipeCockpitTreecipeDataOrgs.promptAndSelectDataOrg(hub, cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                     RECIPE_COCKPIT_DATASET_INSERT_ORG_PLACEHOLDER, RECIPE_COCKPIT_DATASET_INSERT_REFUSAL_PREFIX, RECIPE_COCKPIT_DATASET_INSERT_SANDBOX_ONLY_REASON);
             if ( !isSandboxSelected ) {
                 return 'notSent';
@@ -1101,7 +1101,7 @@ export class RecipeCockpitDatasetsHost {
         });
 
         const runFolderName = datasetEntry?.dataset.runFolderName;
-        hub.showTreeInsertNotification(insertResult, datasetLabel, orgLabel, panelState.workspaceRoot,
+        RecipeCockpitTreecipeDataOrgs.showTreeInsertNotification(hub, insertResult, datasetLabel, orgLabel, panelState.workspaceRoot,
             runFolderName && datasetEntry?.tree.folderName ? { runFolderName: runFolderName, treeFolderName: datasetEntry.tree.folderName } : undefined);
 
         return true;

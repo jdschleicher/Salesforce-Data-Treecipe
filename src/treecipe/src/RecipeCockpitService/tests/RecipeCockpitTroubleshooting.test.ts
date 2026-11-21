@@ -56,6 +56,7 @@ import {
     RECIPE_COCKPIT_TREE_TABS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL,
@@ -371,8 +372,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
             (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
-            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];

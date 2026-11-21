@@ -18,6 +18,7 @@ import {
     IRecipeCockpitTreeObjectViewModel,
     IRecipeCockpitTreeViewModel
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -52,7 +53,7 @@ describe('RecipeCockpitService, an unticked lookup field (#677)', () => {
             { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
         ]);
         expect(RecipeCockpitService.listFieldReadOnlyObjectApiNames(tree)).toEqual(['OtherChildObject__c']);
-        expect(RecipeCockpitService.buildInsertLeftOutLines(tree).lines).toEqual(expect.arrayContaining([
+        expect(RecipeCockpitTreecipeInsert.buildInsertLeftOutLines(RecipeCockpitService, tree).lines).toEqual(expect.arrayContaining([
             'Contact: not generated, cut off by removing Contact.AccountId',
             'OtherChildObject__c: not generated, auto-excluded with its parent Contact'
         ]));

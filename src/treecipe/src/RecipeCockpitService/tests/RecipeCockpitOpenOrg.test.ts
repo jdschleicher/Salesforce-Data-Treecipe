@@ -50,6 +50,7 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_OPEN_ORG_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { ORG_FRONT_DOOR_FAILURE_TEXTS, ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -360,7 +361,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279,
             expect(JSON.stringify((vscode.window.showErrorMessage as jest.Mock).mock.calls)).not.toContain(ONE_TIME_CODE);
             expect(postedPanelMessages.at(-1)).toEqual(IDLE_STATE);
             expect(panelState().isOrgOpenInFlight).toBe(false);
-            expect((RecipeCockpitService as any).isOrgOpenInFlightForWindow).toBe(false);
+            expect((RecipeCockpitTreecipeDataOrgs as any).isOrgOpenInFlightForWindow).toBe(false);
 
         });
 

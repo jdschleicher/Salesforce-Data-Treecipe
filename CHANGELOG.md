@@ -15,6 +15,31 @@ With record types ticked under **Manage record types**, **Generate fake data and
 - The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new choice, and say that each set's row names its own record type, the default included. The guide's pictures were not re-taken. The rendered `help-section` baseline gains the two new help lines.
 - **Tests.** `RecordTypeSelection.listRecordTypeCombinations`: order, the cap, prototype keys. `planRecordTypeSets` and the set lines. The set outcomes and their notification. The disabled radio, in the panel and the host. Both backends build a set's recipe as one block per object. Journeys: two sets each with its own `RecordTypeId` and row; set 2 rolled back with set 1 kept; set 1 losing a record so set 2 is not started; cancels during a set's build and during its insert.
 
+## [3.205.1] - Target Org Manager and the tree insert's host code are three modules of their own (#669 part a, slice 5a of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **Target Org Manager and a tree's insert left the hub.** They are three files, which load one way: Host, then Insert, then DataOrgs.
+  - `RecipeCockpitTreecipeOrgHost.ts`: the 7 commands (`loadDataOrgs`, `selectDataOrg`, `refreshDataOrgs`, `createScratchOrg`, `authorizeOrg`, `insertTree`, `openDataOrg`), 11 action kinds, the pure router and the executor.
+  - `RecipeCockpitTreecipeInsert.ts`: "Generate fake data and insert", with its confirmation, generate, record preparer and org-record lookup check.
+  - `RecipeCockpitTreecipeDataOrgs.ts`: the org list, a selection and its check, the remembered org, "+ New scratch org", "Authorize org", Open org, create readiness, the org asked for when none is chosen, and the insert notification.
+  - One file would have been about 2,800 lines, and would have loaded the Data Sets host while that host loaded it.
+- **Other tabs call the Target Org Manager directly.** The Data Sets, Treecipe Adapter, Troubleshooting and record link hosts call `RecipeCockpitTreecipeDataOrgs` instead of the hub, and their hub types include `IRecipeCockpitHubForTreecipeDataOrgs`.
+- **Some code stays in the hub, because the hub or other tabs use it:**
+  - `postInsertState`, the insert lock both inserts hold.
+  - The selection checks other tabs' routers read, `changeOrgAndRestart`, `buildConfirmOrg` and `toSingleLine`.
+  - The Troubleshooting focus that opening the cockpit reads.
+- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to #669 part b.
+- **The words the moved code says moved with it.** `RECIPE_COCKPIT_DATA_ORG_STATE_KEY`, the scratch org prompts, the insert confirmation's labels and `RECIPE_COCKPIT_RUN_FAKER_COMMAND` are among them, so a host never loads the hub.
+- **`RecipeCockpitTabHosts.test.ts` has a Treecipe org row.**
+  - `RecipeCockpitRecordCreation`, which the Adapter's Add to data set also imports, is listed exactly as shared.
+  - Four tabs' rows list their new loads of `RecipeCockpitTreecipeDataOrgs`.
+- **Tests changed only to reach code where it now lives.**
+  - They import the moved names from the new files.
+  - Spies such as `selectDataOrg`, `promptAndSelectDataOrg` and `showTreeInsertNotification` sit on the new classes, and their argument indexes move up by one for the hub passed first.
+  - The confirmation count reads the two new files too.
+- **`RecipeCockpitService.ts` went from 14,298 lines to 11,764.**
+
 ## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
 ### Customize and create new recipe
