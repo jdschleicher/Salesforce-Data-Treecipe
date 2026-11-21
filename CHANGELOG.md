@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.205.2] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
+## [3.205.3] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
 
@@ -16,8 +16,19 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
   - Seven cross-tab module uses are listed exactly as shared.
 - **Tests changed only to reach code where it now lives.** They import moved names from the new files, and the confirmation scan reads the four new files too.
 - **The #669 owed entries now name #688.** This came from #687's follow-up commit, which landed after that PR merged.
-- **`RecipeCockpitService.ts` went from 11,764 lines to 8,803.**
+- **`RecipeCockpitService.ts` went from 11,780 lines to 8,819.**
 
+## [3.205.2] - Recipe Cockpit: the "Customize and create new recipe" modal keeps each field list on its own, so a chain link answers at once on a big tree (#684)
+
+### Customize and create new recipe
+
+- **A chain link no longer rebuilds the fields under it.** Each object's row and its field list are now kept apart. A chain toggle, or an object's ✕ or ↺, redraws rows and puts the field lists back as they were. A field list closed or removed for a while comes back as the same list when nothing about its fields changed.
+  - With 40 objects × 300 fields all open, toggling the root's chain link takes about 31 ms, against 0.55–0.8 s. One with 13 objects below it takes about 23 ms, against about 200 ms.
+  - ↺ on the root now reuses all 40 field lists. It still takes about 0.6 s, which is the browser laying out the 72,000 elements put back on screen, not the modal building them.
+- **Under the hood (behaviour unchanged):**
+  - The hub reads a custom tree's `customTreecipe.json` itself (`RecipeCockpitService.readCustomTreecipeDefinition`), so loading a run calls no code of the custom treecipe host. The host reads it through its hub.
+  - The panel test harness now moves an element already on the page, as a browser does, rather than showing it twice.
+  - New tests cover the modal reusing rows and field lists across a chain toggle, a restore, a cut lookup, a dropped lock, closing one object, the root's confirmation, the save step and focus.
 ## [3.205.1] - Target Org Manager and the tree insert's host code are three modules of their own (#669 part a, slice 5a of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

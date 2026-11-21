@@ -802,8 +802,8 @@ import {
     ObjectRefreshKind
 } from './RecipeCockpitObjectRefresh';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
-// A RUN LOADS ITS custom- TREES HERE (#677): THE HUB STILL READS THE NAME RULES; SAVING THEM IS RecipeCockpitCustomTreecipeHost's
-import { RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
+// A RUN LOADS ITS custom- TREES HERE (#677): THE HUB READS THE NAME RULES AND customTreecipe.json; SAVING THEM IS RecipeCockpitCustomTreecipeHost's
+import { ICustomTreecipeDefinition, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME, RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES, RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
 import {
     RECIPE_COCKPIT_TREECIPE_ORG_CHANGE_ACTION_KINDS,
     RecipeCockpitTreecipeOrgHost,
@@ -7503,6 +7503,22 @@ export class RecipeCockpitService {
 
     }
 
+    // A TREE FOLDER'S customTreecipe.json (#677), OR undefined FOR A GENERATED TREE, A MISSING FILE OR ONE THAT DOES NOT READ BACK
+    static readCustomTreecipeDefinition(treeFolderPath: string): ICustomTreecipeDefinition | undefined {
+
+        const definitionFilePath = path.join(treeFolderPath, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME);
+        try {
+            const definitionFileStats = fs.lstatSync(definitionFilePath);
+            if ( !definitionFileStats.isFile() || definitionFileStats.size > RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES ) {
+                return undefined;
+            }
+            return RecipeCockpitCustomTreecipe.readDefinition(fs.readFileSync(definitionFilePath, 'utf8'));
+        } catch {
+            return undefined;
+        }
+
+    }
+
     /*
         A custom tree (#677) as one card: its objects in the order its original generated tree
         inserts them -- the wrapper's tree of that folder name -- then any its recipe holds that the
@@ -7514,7 +7530,7 @@ export class RecipeCockpitService {
                                     runFolderPath: string,
                                     customTreeFolderName: string): IRecipeCockpitCustomTreeSource {
 
-        const definition = RecipeCockpitCustomTreecipeHost.readCustomTreecipeDefinition(path.join(runFolderPath, customTreeFolderName));
+        const definition = this.readCustomTreecipeDefinition(path.join(runFolderPath, customTreeFolderName));
         const originalTreeFolderName = RecipeCockpitCustomTreecipe.resolveOriginalTreeFolderName(customTreeFolderName, definition);
         const recipeObjectApiNames = recipeSourceFiles.flatMap(recipeSourceFile => [...recipeSourceFile.objectEntries.keys()]);
         const recipeObjectApiNameSet = new Set(recipeObjectApiNames);

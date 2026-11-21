@@ -38,6 +38,12 @@ export function copyAsVsCodeDelivers<TMessage>(message: TMessage): TMessage {
     return message === undefined ? message : JSON.parse(JSON.stringify(message));
 }
 
+function detachFromParent(childElement: any): void {
+    const parentElement = childElement && childElement.parentNode;
+    const childIndex = parentElement && Array.isArray(parentElement.children) ? parentElement.children.indexOf(childElement) : -1;
+    if ( childIndex !== -1 ) { parentElement.children.splice(childIndex, 1); }
+}
+
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const postedHostMessages: any[] = [];
@@ -86,10 +92,13 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             select() { this.selectedCount++; },
             setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = String(attributeValue); },
             removeAttribute(attributeName: string) { delete this.attributes[attributeName]; },
-            appendChild(childElement: any) { this.children.push(childElement); childElement.parentNode = this; return childElement; },
+            // AN ELEMENT ALREADY IN THE PAGE MOVES, AS IN THE DOM (#684): IT LEAVES ITS PARENT FIRST, SO A MISORDERED REDRAW SHOWS AS A MOVE, NOT A COPY
+            appendChild(childElement: any) { detachFromParent(childElement); this.children.push(childElement); childElement.parentNode = this; return childElement; },
             // A ROW ADDED IN PLACE (#226) GOES ABOVE THE ROWS ALREADY THERE; A REFERENCE THAT IS NOT A CHILD THROWS, AS THE DOM'S DOES
             insertBefore(childElement: any, referenceElement: any) {
                 if ( referenceElement === null ) { return this.appendChild(childElement); }
+                if ( referenceElement === childElement ) { return childElement; }
+                detachFromParent(childElement);
                 const referenceIndex = this.children.indexOf(referenceElement);
                 if ( referenceIndex === -1 ) { throw new Error('insertBefore: the reference element is not a child of this element'); }
                 this.children.splice(referenceIndex, 0, childElement);

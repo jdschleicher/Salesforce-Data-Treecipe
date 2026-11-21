@@ -8,7 +8,6 @@ import type { IObjectSelectionExclusion } from './RecipeCockpitObjectSelection';
 import {
     ICustomTreecipeDefinition,
     RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME,
-    RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES,
     RECIPE_COCKPIT_CUSTOM_TREECIPE_VERSION,
     RECIPE_COCKPIT_CUSTOM_TREE_NAME_MAX_LENGTH,
     RecipeCockpitCustomTreecipe
@@ -46,6 +45,7 @@ export type IRecipeCockpitHubForCustomTreecipe = Readonly<Pick<typeof RecipeCock
     'describeThrown' |
     'listExcludedObjectApiNames' |
     'loadRecipeIntoPanel' |
+    'readCustomTreecipeDefinition' |
     'postToPanel' |
     'readTreePreferences' |
     'readTreeSelections' |
@@ -265,7 +265,7 @@ export class RecipeCockpitCustomTreecipeHost {
         first free "custom-" folder name there. A card whose recipe is not in its own tree folder
         under a run cannot be copied.
     */
-    static planCustomTreecipeLocation(recipeFilePath: string,
+    static planCustomTreecipeLocation(hub: IRecipeCockpitHubForCustomTreecipe, recipeFilePath: string,
                                         tree: IRecipeCockpitTreeViewModel): { runFolderPath: string; sourceTreeFolderPath: string; originalTreeFolderName: string; folderName: string } | { refusal: string } {
 
         const sourceTreeFolderPath = path.dirname(recipeFilePath);
@@ -274,7 +274,7 @@ export class RecipeCockpitCustomTreecipeHost {
         }
 
         const runFolderPath = path.dirname(sourceTreeFolderPath);
-        const originalTreeFolderName = RecipeCockpitCustomTreecipe.resolveOriginalTreeFolderName(tree.folderName, this.readCustomTreecipeDefinition(sourceTreeFolderPath));
+        const originalTreeFolderName = RecipeCockpitCustomTreecipe.resolveOriginalTreeFolderName(tree.folderName, hub.readCustomTreecipeDefinition(sourceTreeFolderPath));
 
         let takenFolderNames: Set<string>;
         try {
@@ -291,22 +291,6 @@ export class RecipeCockpitCustomTreecipeHost {
 
     }
 
-    // A TREE FOLDER'S customTreecipe.json, OR undefined FOR A GENERATED TREE, A MISSING FILE OR ONE THAT DOES NOT READ BACK
-    static readCustomTreecipeDefinition(treeFolderPath: string): ICustomTreecipeDefinition | undefined {
-
-        const definitionFilePath = path.join(treeFolderPath, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME);
-        try {
-            const definitionFileStats = fs.lstatSync(definitionFilePath);
-            if ( !definitionFileStats.isFile() || definitionFileStats.size > RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES ) {
-                return undefined;
-            }
-            return RecipeCockpitCustomTreecipe.readDefinition(fs.readFileSync(definitionFilePath, 'utf8'));
-        } catch {
-            return undefined;
-        }
-
-    }
-
     private static previewCustomTreecipe(hub: IRecipeCockpitHubForCustomTreecipe, cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             panelAction: Extract<RecipeCockpitCustomTreecipePanelAction, { kind: 'previewCustomTreecipe' }>) {
@@ -318,7 +302,7 @@ export class RecipeCockpitCustomTreecipeHost {
             return;
         }
 
-        const location = this.planCustomTreecipeLocation(recipeFilePath, tree);
+        const location = this.planCustomTreecipeLocation(hub, recipeFilePath, tree);
 
         hub.postToPanel(cockpitPanel, {
             command: 'customTreecipePreview',
@@ -401,7 +385,7 @@ export class RecipeCockpitCustomTreecipeHost {
                 return;
             }
 
-            const location = this.planCustomTreecipeLocation(recipeFilePath, tree);
+            const location = this.planCustomTreecipeLocation(hub, recipeFilePath, tree);
             if ( 'refusal' in location ) {
                 refuse(location.refusal);
                 return;
@@ -499,7 +483,6 @@ export class RecipeCockpitCustomTreecipeHost {
         }
 
     }
-
 
     private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
         return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
