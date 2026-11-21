@@ -31,6 +31,15 @@ import * as RecipeCockpitCustomTreecipeHostModule from '../RecipeCockpitCustomTr
 import * as RecipeCockpitTreecipeOrgHostModule from '../RecipeCockpitTreecipeOrgHost';
 import * as RecipeCockpitTreecipeInsertModule from '../RecipeCockpitTreecipeInsert';
 import * as RecipeCockpitTreecipeDataOrgsModule from '../RecipeCockpitTreecipeDataOrgs';
+import * as RecipeCockpitTreecipeHostModule from '../RecipeCockpitTreecipeHost';
+import * as RecipeCockpitTreecipeSelectionModule from '../RecipeCockpitTreecipeSelection';
+import * as RecipeCockpitTreecipeObjectRefreshModule from '../RecipeCockpitTreecipeObjectRefresh';
+import * as RecipeCockpitTreecipeRecipeEditsModule from '../RecipeCockpitTreecipeRecipeEdits';
+import {
+    RECIPE_COCKPIT_TREECIPE_ACTION_KINDS,
+    RECIPE_COCKPIT_TREECIPE_COMMANDS,
+    RecipeCockpitTreecipeHost
+} from '../RecipeCockpitTreecipeHost';
 import {
     RECIPE_COCKPIT_TREECIPE_ORG_ACTION_KINDS,
     RECIPE_COCKPIT_TREECIPE_ORG_COMMANDS,
@@ -175,8 +184,8 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
                 importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject', 'RecipeCockpitMetadataDeploy'],
-                members: ['readApiVersion', 'toManifestRelativePath', 'writePackageXml'],
-                owedBy: '#688 (Get latest object detail); readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
+                members: ['readApiVersion'],
+                owedBy: 'the shared retrieve runner and listTreeDeployObjects, which reads the cockpit\'s model, stay in the hub; readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
             },
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeployPackage.ts',
@@ -203,12 +212,6 @@ const TAB_HOSTS: ITabHost[] = [
                 owedBy: 'runCancellableCli\'s default output buffer: the one CLI runner every tab shares stays in the hub'
             },
             {
-                pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
-                importedNames: ['RecipeCockpitPermissionSetGenerate'],
-                members: ['resolveDefaultPackageDirectoryPath'],
-                owedBy: '#688 (Get latest object detail)'
-            },
-            {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
                 importedNames: ['RecipeCockpitValidationRuleList'],
                 members: ['buildRuleSourceKey', 'resolveRuleSourceFilePaths'],
@@ -217,8 +220,8 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitRemovedTodoStore.ts',
                 importedNames: ['IRemovedTodoFileRead', 'RecipeCockpitRemovedTodoStore'],
-                members: ['addEntry', 'buildFilePath', 'isSameEntry', 'parse', 'removeEntry', 'serialize'],
-                owedBy: '#688: removing and restoring a TODO writes the recipe, and the model reads the removed list'
+                members: ['buildFilePath', 'parse'],
+                owedBy: 'the model reads each recipe\'s removed TODOs, and only the hub builds the model'
             }
         ],
         sharedWithHosts: [
@@ -235,6 +238,27 @@ const TAB_HOSTS: ITabHost[] = [
                 importedNames: ['RecipeCockpitPermissionSetGenerate'],
                 members: ['resolveDefaultPackageDirectoryPath'],
                 reason: 'Apply retrieved files writes into the same default package directory'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
+                hostFileName: 'RecipeCockpitTreecipeObjectRefresh.ts',
+                importedNames: ['IMetadataDeployComponent', 'RecipeCockpitMetadataDeploy'],
+                members: ['toManifestRelativePath', 'writePackageXml'],
+                reason: 'Get latest object detail (#612) retrieves one object through the same package.xml'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitPermissionSetGenerate.ts',
+                hostFileName: 'RecipeCockpitTreecipeObjectRefresh.ts',
+                importedNames: ['RecipeCockpitPermissionSetGenerate'],
+                members: ['resolveDefaultPackageDirectoryPath'],
+                reason: 'Get latest object detail applies the ticked items into the same default package directory'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitRemovedTodoStore.ts',
+                hostFileName: 'RecipeCockpitTreecipeRecipeEdits.ts',
+                importedNames: ['RecipeCockpitRemovedTodoStore'],
+                members: ['addEntry', 'buildFilePath', 'isSameEntry', 'removeEntry', 'serialize'],
+                reason: 'removing or restoring a TODO (#391) writes the recipe and the removed-TODOs file beside it, as the Treecipe tab\'s other recipe edits do'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRunHistory.ts',
@@ -293,19 +317,28 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitRecordUpdate.ts',
                 importedNames: ['IUpdateSnapshotObject'],
                 members: [],
-                owedBy: '#688: buildOrgOnlyFieldsResult, which the Adapter reads through the hub, is shared with Get latest object detail'
+                owedBy: 'buildOrgOnlyFieldsResult, which the Adapter and Get latest object detail both read, stays in the hub'
             },
             {
                 pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
                 importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
-                members: ['buildPackageXmlFilePath', 'buildRetrieveArguments', 'buildStagingFolderPath', 'copyMetadataFiles', 'makeStagingFolder', 'readRetrieveSucceeded', 'toOutputDirectoryArgument'],
-                owedBy: '#688: Get latest object detail stages and copies through the same retrieve, and offerStagedField is shared with it'
+                members: ['toOutputDirectoryArgument'],
+                owedBy: 'offerStagedField, which the Adapter and Get latest object detail both read, and the staging an open dialog leaves when the panel reloads stay in the hub'
             },
             {
                 pureModuleFileName: 'RecipeCockpitAdaptedDataset.ts',
                 importedNames: ['RecipeCockpitAdaptedDataset'],
                 members: ['isAdaptedRecipeFileName'],
                 owedBy: 'the hub lists a run\'s recipes when it loads the model, and leaves an adapted recipe out'
+            }
+        ],
+        sharedWithHosts: [
+            {
+                pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
+                hostFileName: 'RecipeCockpitTreecipeObjectRefresh.ts',
+                importedNames: ['RecipeCockpitOrgChangeDetection'],
+                members: ['buildPackageXmlFilePath', 'buildRetrieveArguments', 'buildStagingFolderPath', 'copyMetadataFiles', 'makeStagingFolder', 'readRetrieveSucceeded', 'toOutputDirectoryArgument'],
+                reason: 'Get latest object detail (#612) stages one object through the same retrieve folder and copy as Retrieve latest metadata (#445)'
             }
         ]
     },
@@ -358,9 +391,9 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
-                importedNames: ['IRecipeCockpitCreateReadinessViewModel', 'RecipeCockpitRecordCreation'],
-                members: ['areChosenParentIdsReturnedBySearch'],
-                owedBy: '#688: "Use existing … from org" holds a chosen Id to what the search answered, and the model types a card\'s create readiness'
+                importedNames: ['IRecipeCockpitCreateReadinessViewModel'],
+                members: [],
+                owedBy: 'the model\'s types name a card\'s create readiness'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRecordTypeRecipe.ts',
@@ -376,6 +409,59 @@ const TAB_HOSTS: ITabHost[] = [
                 importedNames: ['RecipeCockpitRecordCreation'],
                 members: ['spreadParentIds'],
                 reason: 'Add to data set spreads its new child records over their parents as the tree insert does'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
+                hostFileName: 'RecipeCockpitTreecipeRecipeEdits.ts',
+                importedNames: ['RecipeCockpitRecordCreation'],
+                members: ['areChosenParentIdsReturnedBySearch'],
+                reason: '"Use existing … from org" holds a chosen Id to what the org search answered, the rule the insert\'s parent picker keeps'
+            }
+        ]
+    },
+    {
+        tabName: 'Treecipe',
+        hostClassName: 'RecipeCockpitTreecipeHost',
+        hostFileNames: ['RecipeCockpitTreecipeHost.ts', 'RecipeCockpitTreecipeSelection.ts', 'RecipeCockpitTreecipeObjectRefresh.ts', 'RecipeCockpitTreecipeRecipeEdits.ts'],
+        hostModules: [RecipeCockpitTreecipeHostModule, RecipeCockpitTreecipeSelectionModule, RecipeCockpitTreecipeObjectRefreshModule, RecipeCockpitTreecipeRecipeEditsModule],
+        commands: RECIPE_COCKPIT_TREECIPE_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_TREECIPE_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitTreecipeHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: ['RecipeCockpitObjectSelection.ts', 'RecipeCockpitFixedValueStore.ts', 'RecipeCockpitObjectRefresh.ts'],
+        hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitObjectSelection.ts',
+                importedNames: ['IObjectSelectionDisabledLookup', 'IObjectSelectionExclusion', 'IObjectSelectionRemovedLookup', 'RecipeCockpitObjectSelection'],
+                members: ['computeObjectSelection'],
+                owedBy: 'the model draws a card\'s object selection cascade (#219), and only the hub builds the model'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitFixedValueStore.ts',
+                importedNames: ['IFixedValueEntry', 'IFixedValueFileRead', 'RecipeCockpitFixedValueStore'],
+                members: ['buildFilePath', 'isSalesforceRecordId', 'listValuesByObject', 'parse'],
+                owedBy: 'the model reads each recipe\'s pinned fixed values (#342), and findLookupValueRefusal, which the model and a fixed value\'s save both read, stays in the hub'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitObjectRefresh.ts',
+                importedNames: ['IObjectRefreshComparisonRequest', 'IObjectRefreshItem', 'IObjectRefreshPlannedItem', 'ObjectRefreshKind'],
+                members: [],
+                owedBy: 'the hub\'s message types and the open dialog\'s session, which a reload discards, name them'
+            }
+        ],
+        sharedWithHosts: [
+            {
+                pureModuleFileName: 'RecipeCockpitObjectSelection.ts',
+                hostFileName: 'RecipeCockpitCustomTreecipeHost.ts',
+                importedNames: ['IObjectSelectionExclusion'],
+                members: [],
+                reason: 'Customize and create new recipe (#677) carries a card\'s exclusions in the same shape'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitFixedValueStore.ts',
+                hostFileName: 'RecipeCockpitTreecipeInsert.ts',
+                importedNames: ['RecipeCockpitFixedValueStore'],
+                members: ['isSalesforceRecordId'],
+                reason: 'the tree insert checks a typed lookup Id with the same rule a fixed value is saved with'
             }
         ]
     }

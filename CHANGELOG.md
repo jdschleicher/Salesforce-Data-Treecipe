@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.205.2] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **The rest of the Treecipe tab's host code left the hub.** It is four files, which load one way: Host, then Selection, then ObjectRefresh, then RecipeEdits.
+  - `RecipeCockpitTreecipeHost.ts`: the 22 commands and 24 action kinds, the pure router, the executor, and a card's rename and favourite.
+  - `RecipeCockpitTreecipeSelection.ts`: objects, fields, counts, fixed values, picklist choices, validation rule toggles and reset.
+  - `RecipeCockpitTreecipeObjectRefresh.ts`: Get latest object detail.
+  - `RecipeCockpitTreecipeRecipeEdits.ts`: friends, lookup wiring, parents, "Use existing … from org", TODO remove and restore, and the recipe and sidecar writes the other files share.
+  - One file would have been about 3,300 lines.
+- **What the model build also reads stays in the hub:** the lock reasons, the TODO, friend and wiring keys, the selection and fixed-value readers, and the object selection cascade. So do name preferences and the staged-field reads the Treecipe Adapter shares.
+- **`RecipeCockpitTabHosts.test.ts` has a Treecipe row.**
+  - Every owed entry that named #688 is cleared or now gives the shared hub service that keeps it.
+  - Seven cross-tab module uses are listed exactly as shared.
+- **Tests changed only to reach code where it now lives.** They import moved names from the new files, and the confirmation scan reads the four new files too.
+- **The #669 owed entries now name #688.** This came from #687's follow-up commit, which landed after that PR merged.
+- **`RecipeCockpitService.ts` went from 11,764 lines to 8,803.**
+
 ## [3.205.1] - Target Org Manager and the tree insert's host code are three modules of their own (#669 part a, slice 5a of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

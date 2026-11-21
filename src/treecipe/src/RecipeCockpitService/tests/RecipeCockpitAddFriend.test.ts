@@ -18,10 +18,10 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL,
     RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
     RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL } from '../RecipeCockpitTreecipeRecipeEdits';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

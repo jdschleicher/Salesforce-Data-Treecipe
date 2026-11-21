@@ -23,6 +23,7 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeSelection } from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -102,8 +103,8 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             // ITS FIELDS STAY ON THE CARD, SO THE PANEL CAN TICK ONE AGAIN; NONE IS LISTED FOR GENERATION, SINCE THE OBJECT GOES WHOLE
             expect(tree.fieldSelection?.objects.find(objectFieldSelection => objectFieldSelection.objectApiName === 'Contact')).toMatchObject({ excludedFieldApiNames: CONTACT_FIELDS, isEveryFieldExcluded: true });
             expect([...RecipeCockpitService.listExcludedFieldApiNamesByObject(tree)]).toEqual([]);
-            expect(RecipeCockpitService.listNoFieldsSelectedObjectApiNames(tree)).toEqual(['Contact']);
-            expect(RecipeCockpitService.listFieldReadOnlyObjectApiNames(tree)).toEqual(['OtherChildObject__c']);
+            expect(RecipeCockpitTreecipeSelection.listNoFieldsSelectedObjectApiNames(tree)).toEqual(['Contact']);
+            expect(RecipeCockpitTreecipeSelection.listFieldReadOnlyObjectApiNames(tree)).toEqual(['OtherChildObject__c']);
 
         });
 

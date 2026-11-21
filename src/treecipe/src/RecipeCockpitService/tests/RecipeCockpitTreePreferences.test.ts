@@ -27,6 +27,7 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeHost } from '../RecipeCockpitTreecipeHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -181,7 +182,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             ['a name the full length allows', 'n'.repeat(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)]
         ])('accepts %s', (_caseName, candidateName) => {
 
-            expect(RecipeCockpitService.validateTreeName(candidateName, LEAD_TREE_KEY, buildPreferences({ [LEAD_TREE_KEY]: 'Leads' }), trees())).toBeUndefined();
+            expect(RecipeCockpitTreecipeHost.validateTreeName(RecipeCockpitService, candidateName, LEAD_TREE_KEY, buildPreferences({ [LEAD_TREE_KEY]: 'Leads' }), trees())).toBeUndefined();
 
         });
 
@@ -201,7 +202,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const treePreferences = buildPreferences({ [LEAD_TREE_KEY]: 'Leads', 'Opportunity-ONLY': 'Opportunities' });
 
-            expect(RecipeCockpitService.validateTreeName(candidateName, LEAD_TREE_KEY, treePreferences, trees())).toContain(expectedProblem);
+            expect(RecipeCockpitTreecipeHost.validateTreeName(RecipeCockpitService, candidateName, LEAD_TREE_KEY, treePreferences, trees())).toContain(expectedProblem);
 
         });
 
@@ -233,12 +234,12 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const recipeTrees = RecipeCockpitService.applyTreePreferences(loadRecipe().trees, buildPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [LEAD_TREE_KEY]));
 
-            expect(RecipeCockpitService.buildTreePreferencesMessage(recipeTrees, LEAD_TREE_KEY, 9)).toEqual({
+            expect(RecipeCockpitTreecipeHost.buildTreePreferencesMessage(recipeTrees, LEAD_TREE_KEY, 9)).toEqual({
                 command: 'treePreferences',
                 renderSequence: 9,
                 trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Leads', isFavorite: true }]
             });
-            expect(RecipeCockpitService.buildTreePreferencesMessage(recipeTrees, ACCOUNT_TREE_KEY, 9).trees).toEqual([{ treeKey: ACCOUNT_TREE_KEY, isFavorite: false }]);
+            expect(RecipeCockpitTreecipeHost.buildTreePreferencesMessage(recipeTrees, ACCOUNT_TREE_KEY, 9).trees).toEqual([{ treeKey: ACCOUNT_TREE_KEY, isFavorite: false }]);
 
         });
 
@@ -505,7 +506,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 return fileSource.slice(methodStart, fileSource.indexOf('\n    }\n', methodStart));
             };
 
-            [['RecipeCockpitService.ts', 'renameTree'], ['RecipeCockpitDatasetsHost.ts', 'renameDataset']].forEach(([fileName, methodName]) => {
+            [['RecipeCockpitTreecipeHost.ts', 'renameTree'], ['RecipeCockpitDatasetsHost.ts', 'renameDataset']].forEach(([fileName, methodName]) => {
                 expect(methodSourceOf(fileName, methodName)).toContain('validate');
                 expect(methodSourceOf(fileName, methodName)).not.toContain('showInputBox');
             });

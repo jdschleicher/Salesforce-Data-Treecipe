@@ -18,9 +18,9 @@ jest.mock('vscode', () => ({
 import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL
+    IRecipeCockpitRecipeViewModel
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL } from '../RecipeCockpitTreecipeRecipeEdits';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

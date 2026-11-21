@@ -23,9 +23,9 @@ import {
     RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
     RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL,
     RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL } from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -48,6 +48,10 @@ const ADAPTER_METADATA_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitAd
 const ADAPTER_RECORDS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitAdapterRecords.ts');
 const TREECIPE_INSERT_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeInsert.ts');
 const TREECIPE_DATA_ORGS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeDataOrgs.ts');
+const TREECIPE_HOST_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeHost.ts');
+const TREECIPE_SELECTION_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeSelection.ts');
+const TREECIPE_OBJECT_REFRESH_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeObjectRefresh.ts');
+const TREECIPE_RECIPE_EDITS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeRecipeEdits.ts');
 const EXTENSION_COMMAND_SERVICE_SOURCE_PATH = path.join(__dirname, '..', '..', 'ExtensionCommandService', 'ExtensionCommandService.ts');
 
 const flushMicrotasks = () => new Promise(resolve => setImmediate(resolve));
@@ -725,8 +729,8 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         it('asks no cockpit confirmation in VS Code\'s modal', () => {
 
-            // THE HUB AND THE TAB HOSTS IT HANDS RUNS TO (#666, #667, #668, #669), WHICH ASK THROUGH THE HUB'S confirmInPanel
-            const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH, DATASETS_HOST_SOURCE_PATH, ADAPTER_METADATA_SOURCE_PATH, ADAPTER_RECORDS_SOURCE_PATH, TREECIPE_INSERT_SOURCE_PATH, TREECIPE_DATA_ORGS_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
+            // THE HUB AND THE TAB HOSTS IT HANDS RUNS TO (#666, #667, #668, #669, #688), WHICH ASK THROUGH THE HUB'S confirmInPanel
+            const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH, DATASETS_HOST_SOURCE_PATH, ADAPTER_METADATA_SOURCE_PATH, ADAPTER_RECORDS_SOURCE_PATH, TREECIPE_INSERT_SOURCE_PATH, TREECIPE_DATA_ORGS_SOURCE_PATH, TREECIPE_HOST_SOURCE_PATH, TREECIPE_SELECTION_SOURCE_PATH, TREECIPE_OBJECT_REFRESH_SOURCE_PATH, TREECIPE_RECIPE_EDITS_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
             expect(serviceSource.match(/(this|hub)\.confirmInPanel\(/g) ?? []).toHaveLength(23);
