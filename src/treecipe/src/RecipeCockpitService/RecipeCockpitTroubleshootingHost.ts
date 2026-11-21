@@ -21,11 +21,13 @@ import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RecipeCockpitTroubleshootingRuns
 } from './RecipeCockpitTroubleshootingRuns';
+import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import type {
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     RecipeCockpitService
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     The Troubleshooting tab's host half (moved out of the hub by #666, after #665's pattern): the
@@ -42,17 +44,13 @@ import type {
 */
 export type IRecipeCockpitHubForTroubleshootingTab = Readonly<Pick<typeof RecipeCockpitService,
     'buildConfirmOrg' |
-    'buildDataOrgNoOrgsMessage' |
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
     'describeThrown' |
     'findRetrievedFilesApplyRefusal' |
-    'isScratchOrgSetupInFlight' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
     'listTreeDeployObjects' |
-    'listTreeInsertObjectApiNames' |
-    'loadDataOrgs' |
     'metadataDeployRunStateMessage' |
     'metadataRetrieveRunStateMessage' |
     'postToPanel' |
@@ -60,7 +58,6 @@ export type IRecipeCockpitHubForTroubleshootingTab = Readonly<Pick<typeof Recipe
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'refreshDataOrgReadinessForTrees' |
-    'rememberDataOrgUsername' |
     'resolveSelectedReadOrg' |
     'resolveTreeRunArtifactsLocation' |
     'resolveTreeSnapshotLocations' |
@@ -72,7 +69,7 @@ export type IRecipeCockpitHubForTroubleshootingTab = Readonly<Pick<typeof Recipe
     'setMetadataRetrieveState' |
     'showMetadataRetrieveNotification' |
     'toSingleLine' |
-    'withRunArtifactsGitIgnoreNote'>> & Pick<typeof RecipeCockpitService,
+    'withRunArtifactsGitIgnoreNote'>> & IRecipeCockpitHubForTreecipeDataOrgs & Pick<typeof RecipeCockpitService,
     'isMetadataDeployInFlight' |
     'isMetadataRetrieveInFlight'>;
 
@@ -368,7 +365,7 @@ export class RecipeCockpitTroubleshootingHost {
 
                 const tree = recipeDataMessage.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
 
-                return tree && hub.listTreeInsertObjectApiNames(recipeDataMessage.recipe, tree).length > 0
+                return tree && RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(hub, recipeDataMessage.recipe, tree).length > 0
                     ? { kind: 'generateTreePermissionSet', treeKey: treeKey }
                     : undefined;
 

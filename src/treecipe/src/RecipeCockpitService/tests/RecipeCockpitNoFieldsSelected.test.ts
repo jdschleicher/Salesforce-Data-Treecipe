@@ -23,6 +23,7 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -153,7 +154,7 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             const recipe = loadRecipe();
             untick(recipe, { Contact: CONTACT_FIELDS });
 
-            expect(RecipeCockpitService.buildInsertLeftOutLines(treeOf(recipe)).lines).toEqual(expect.arrayContaining([
+            expect(RecipeCockpitTreecipeInsert.buildInsertLeftOutLines(RecipeCockpitService, treeOf(recipe)).lines).toEqual(expect.arrayContaining([
                 'Contact: not generated, no fields selected',
                 'OtherChildObject__c: not generated, auto-excluded with its parent Contact'
             ]));

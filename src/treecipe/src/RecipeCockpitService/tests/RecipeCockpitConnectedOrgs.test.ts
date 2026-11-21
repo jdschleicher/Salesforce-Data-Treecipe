@@ -42,7 +42,13 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
-import { RECIPE_COCKPIT_DATA_ORG_STATE_KEY, RECIPE_COCKPIT_HIDDEN_ORGS_NOTE, RecipeCockpitService } from '../RecipeCockpitService';
+import {
+    RecipeCockpitService
+} from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RECIPE_COCKPIT_HIDDEN_ORGS_NOTE
+} from '../RecipeCockpitTreecipeDataOrgs';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
