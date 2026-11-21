@@ -218,7 +218,10 @@ import {
     RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
-    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
+    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
+    RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP
 } from './RecipeCockpitDataOrgConstants';
 import {
     RECIPE_COCKPIT_UPDATER_INTRO,
@@ -669,23 +672,6 @@ import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, SalesforceCli 
 import { PERMISSION_SET_MAX_BUFFER_BYTES } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
-import {
-    AuthorizedOrgPlacement,
-    IOrgAuthorizePlan,
-    IOrgAuthorizeResult,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PLACEHOLDER,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT,
-    RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP,
-    RecipeCockpitOrgAuthorize
-} from './RecipeCockpitOrgAuthorize';
-import { IOrgLoginRun, OrgLoginMethod, OrgLoginOutcome, SalesforceOrgLogin } from '../SalesforceOrgService/SalesforceOrgLogin';
 import { RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -696,39 +682,48 @@ import { RecipeCockpitMetadataDeployPackage } from './RecipeCockpitMetadataDeplo
 import { IMetadataRetrieveConnection, METADATA_RETRIEVE_METHOD_SETTING, MetadataRetrieveDestination, RecipeCockpitMetadataRetrievePackage } from './RecipeCockpitMetadataRetrievePackage';
 import { METADATA_RETRIEVE_TIMEOUT_MILLISECONDS } from './RecipeCockpitMetadataRetrieve';
 import {
-    DevHubConfigSource,
-    IDataOrgDetail,
-    IDataOrgListing,
     IOrgDescribeSource,
     IOrgQuerySource,
     IScratchOrgDetail,
     IOrgTypeDetail,
-    IHiddenAuthorizedOrg,
     INormalizedOrgField,
-    IHiddenOrgReasonCounts,
-    NO_AUTHORIZED_ORGS_MESSAGE,
-    OrgConnectionStatusUnavailableError,
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { CreateParentRefusalReason, ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRecipeRecordTypeBlocks, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from '../RecipeWriter/RecipeCockpitRecipeWriter';
+import {
+    CreateParentRefusalReason,
+    ILookupWiringContext,
+    ILookupWiringRequest,
+    IParentObjectAdditionRequest,
+    IParentObjectAdditionWiring,
+    IPinnedFieldRestoreRequest,
+    IRecipeFilterLookup,
+    IRecipeFixedValue,
+    IRecipeUnconstrainedValue,
+    IRecipeRecordTypeBlocks,
+    IRemovedTodoComment,
+    IScannedObject,
+    RecipeCockpitRecipeWriter,
+    RecipeFixedValueKind,
+    RecipeParentObjectAdditionResult,
+    RecipeTodoRemoveLock
+} from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup, IObjectSelectionRemovedLookup } from './RecipeCockpitObjectSelection';
-import { IDroppedRecordTypeTick, IRecordTypeSetModeOffer, IRecordTypeTickObject, OccurrenceSettingPlacer, RECORD_TYPE_SET_MODE_LABELS, RECORD_TYPE_SET_MODE_LEGEND, RecipeCockpitRecordTypeRecipe, RecordTypeSetMode } from './RecipeCockpitRecordTypeRecipe';
-import { IRecordTypeSet, IRecordTypeSetOutcome, RecipeCockpitRecordTypeSets } from './RecipeCockpitRecordTypeSets';
 import {
-    ICreateReadinessInput,
+    IRecordTypeSetModeOffer,
+    OccurrenceSettingPlacer,
+    RECORD_TYPE_SET_MODE_LABELS,
+    RECORD_TYPE_SET_MODE_LEGEND,
+    RecordTypeSetMode
+} from './RecipeCockpitRecordTypeRecipe';
+import {
     IRecipeCockpitCreateReadinessViewModel,
-    RecipeCockpitCreateReasonCode,
-    RecipeCockpitRecordCreation,
-    ICreateObjectDescribe,
-    RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
+    RecipeCockpitRecordCreation
 } from './RecipeCockpitRecordCreation';
-import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
-import { RecipeCockpitInsertFailureTriage } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedFields';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
@@ -745,8 +740,10 @@ import {
     RecipeCockpitTreeHistory
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { RunFakerConfirmation } from '../RunFakerConfirmation/RunFakerConfirmation';
-import { IScratchOrgAliasChoice, IScratchOrgPlan, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, SCRATCH_ORG_DURATION_DAYS, SCRATCH_ORG_MAX_DURATION_DAYS, SCRATCH_ORG_MIN_DURATION_DAYS, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
+import {
+    SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES,
+    ScratchOrgService
+} from '../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
     IRecipeCockpitTreeQueriesMessage,
@@ -804,8 +801,14 @@ import { IOrgNewFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCoc
 import { RecipeService } from '../RecipeService/RecipeService';
 import { IObjectRefreshComparisonRequest, IObjectRefreshItem, IObjectRefreshPlannedItem, OBJECT_REFRESH_KIND_LABELS, OBJECT_REFRESH_KINDS, OBJECT_REFRESH_OPERATION_NAME, ObjectRefreshKind, RecipeCockpitObjectRefresh } from './RecipeCockpitObjectRefresh';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
-// A RUN LOADS ITS custom- TREES HERE (#677): THE HUB STILL READS THE NAME RULES; SAVING THEM IS RecipeCockpitCustomTreecipeHost's
-import { RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
+// A RUN LOADS ITS custom- TREES HERE (#677): THE HUB READS THE NAME RULES AND customTreecipe.json; SAVING THEM IS RecipeCockpitCustomTreecipeHost's
+import { ICustomTreecipeDefinition, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME, RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES, RecipeCockpitCustomTreecipe } from './RecipeCockpitCustomTreecipe';
+import {
+    RECIPE_COCKPIT_TREECIPE_ORG_CHANGE_ACTION_KINDS,
+    RecipeCockpitTreecipeOrgHost,
+    RecipeCockpitTreecipeOrgPanelAction
+} from './RecipeCockpitTreecipeOrgHost';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 export * from './RecipeCockpitCustomTreecipeConstants';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
@@ -828,12 +831,7 @@ export const RECIPE_COCKPIT_LOAD_PHASES = {
     readingRun: 'Reading the generated recipe run…'
 };
 
-
-
-
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
-// A FAILED INSERT'S "Open Troubleshooting" (#375) OPENS A CLOSED COCKPIT THROUGH ITS OWN COMMAND, SO THE FEATURE FLAG STILL DECIDES
-export const RECIPE_COCKPIT_OPEN_COMMAND = 'treecipe.openRecipeCockpit';
 // THE COCKPIT RELOADS THE RUN GENERATION WROTE, SO ITS COMPLETION TOAST WOULD ONLY PULL THE READER OUT OF THE PANEL (#206)
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificationSuppressed: true };
 
@@ -882,8 +880,6 @@ export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
 // WHY A FIELD'S CHECKBOX IS DISABLED (#220); EACH IS THE HOST'S ANSWER, WHICH THE PANEL DRAWS
 export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections depend on it';
 export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
-// THE INSERT CONFIRMATION'S SECTION OF WHAT THE CARD LEAVES OUT, ONE OBJECT AT A TIME (#483)
-export const RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE = 'Left out, per object';
 
 // WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
 // A PIN WRITES THE RECIPE FILE (#342): HOW AN INLINE EDIT ENDS WHEN THAT WRITE DOES NOT HAPPEN
@@ -920,9 +916,6 @@ export const RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL = 'Nothing to reset: 
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
-// A TREE CARD'S GENERATE BUTTON HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
-export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
-
 export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
 // AN OBJECT HEADER IS ITS PADDING, THE CHAIN LINK, ONE GAP, THEN THE ▸ (#494): THE FIELD CHECKBOXES START WHERE THE ▸ DOES
 export const RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM = 0.6;
@@ -948,8 +941,6 @@ export const RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL = 'Remove TODO';
 export const RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL = 'Restore TODO';
 export const RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX = 'The TODO was not removed';
 export const RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX = 'The TODO was not put back';
-export const RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE = 'Record types, one block each';
-export { RECIPE_COCKPIT_INSERT_RECORD_TYPE_SETS_SECTION_TITLE } from './RecipeCockpitRecordTypeSets';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 // THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
 export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING;
@@ -1878,15 +1869,6 @@ export interface IRecipeCockpitDataOrgListMessage {
     renderSequence: number;
 }
 
-export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = "The Treecipe tab lists only sandboxes and scratch orgs that answer when checked, plus the CLI's default org, and inserts only into a sandbox or scratch org.";
-
-// THE PALETTE COMMANDS KEEP NO_AUTHORIZED_ORGS_MESSAGE: ONLY THE COCKPIT HAS THE BUTTON TO POINT AT (#630)
-export const RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesforce orgs were found. Press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", and try again.';
-
-export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", and try again.';
-
-export const RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX = ' (default)';
-
 // ONE TURN OF THE ORG CHECK'S SPINNER (#305): A LOOP RATHER THAN A TRANSITION, SO IT IS NOT HELD TO THE 120-180 MS OF MOTION (#227)
 export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = COCKPIT_SPINNER_ROTATION_MILLISECONDS;
 
@@ -1903,8 +1885,6 @@ export interface IRecipeCockpitDataOrgProvisionalMessage {
     requestSequence: number;
     renderSequence: number;
 }
-
-export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. The Treecipe tab lists only orgs that answer when checked: press Authorize org, or run "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
 
 /*
     The org Data-by-Org has selected. orgTypeLabel is '' while the Organization query is still
@@ -2064,8 +2044,6 @@ export interface IRecipeCockpitDataOrgListingRefusedMessage {
     message: string;
 }
 
-export const RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX = ', so the orgs were not checked again. Use ⟳ once it ends.';
-
 /*
     The version and the CHANGELOG link at the top right (#333). The URL is the HOST's: the shell's
     default-src 'none' would make a link in the panel dead, and a URL interpolated into the shell is
@@ -2092,8 +2070,6 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate 
 // EVERY STANDALONE ACTION IS A CARD (#381, #384): ITS VERBS, EMOJI AND WORDS ARE IN RecipeCockpitPanelConstants.ts, WHICH THE PANEL IMPORTS (#638)
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
 export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = COCKPIT_ACTION_CARD_HEIGHT;
-
-
 
 // A PRIMARY BUTTON THAT STAYS A BUTTON BUT NAMES ITS VERB (#384): ITS EMOJI IS DRAWN BEFORE ITS LABEL BY THE STYLESHEET
 export type RecipeCockpitVerbButtonClassName = 'treeInsert' | 'dataOrgNewScratch' | 'dataOrgAuthorize';
@@ -2133,32 +2109,6 @@ export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL = 'Nothing was 
 export const RECIPE_COCKPIT_OBJECT_REFRESH_CHANGED_REFUSAL = 'Nothing was applied: the retrieved files, the project or the recipe changed since the review, so what it listed is no longer what would be written. Get the latest object detail again.';
 // A FIELD ONLY THE ORG HOLDS (#446) IS READ FROM ITS STAGED FILE, WHICH SAYS WHETHER IT IS A FORMULA
 export const RECIPE_COCKPIT_UPDATER_FORMULA_REASON = 'a formula: Salesforce calculates its value';
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create with Salesforce CLI';
-
-// #507: THE SAME CREATE THROUGH @salesforce/core, OFFERED ONLY WHEN IT WOULD MAKE THE SAME ORG
-export const RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL = 'Create with @salesforce/core';
-
-// NO CANCEL STOPS IT, SO THE PROGRESS SAYS HOW LONG IT MAY HOLD THE ORG PICKER
-export const RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT = 'Creating scratch org with @salesforce/core… this can take several minutes and cannot be cancelled.';
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
-
-// #279: THE READER NAMES THE ORG; THERE IS NO DEFAULT ALIAS, SO THE PLACEHOLDER IS ONLY AN EXAMPLE
-export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT = 'Alias for the new scratch org: the name the Salesforce CLI, the org picker and later commands will know it by.';
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER = 'for example qa-accounts';
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT = `How many days the new scratch org lives: ${SCRATCH_ORG_MIN_DURATION_DAYS} to ${SCRATCH_ORG_MAX_DURATION_DAYS} days (Salesforce's maximum is ${SCRATCH_ORG_MAX_DURATION_DAYS}).`;
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL = 'View output';
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL = 'Copy deploy command';
-
-export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase | 'listing', string> = {
-    creating: 'Creating scratch org…',
-    listing: 'Listing the new scratch org…'
-};
 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitCustomTreecipePreviewMessage
@@ -2240,7 +2190,7 @@ export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = COCKPIT_CONFIRM_WARNINGS_LA
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
 
 // THE ACTIONS WHOSE CONFIRMATION OFFERS "Change org…" (#480): THE RETRIEVES, THE DEPLOYS, THE ASSIGNMENT AND THE TREE INSERT
-const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set([...RECIPE_COCKPIT_TROUBLESHOOTING_ORG_CHANGE_ACTION_KINDS, ...RECIPE_COCKPIT_DATASETS_ORG_CHANGE_ACTION_KINDS, 'insertTree', 'promptInsertOrg']);
+const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set([...RECIPE_COCKPIT_TROUBLESHOOTING_ORG_CHANGE_ACTION_KINDS, ...RECIPE_COCKPIT_DATASETS_ORG_CHANGE_ACTION_KINDS, ...RECIPE_COCKPIT_TREECIPE_ORG_CHANGE_ACTION_KINDS]);
 
 // THE BUTTON BESIDE A CONFIRMATION'S ORG (#480), AND WHAT IT SAYS WHEN THE ACTION IS NOT STARTED AGAIN
 export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = COCKPIT_CONFIRM_CHANGE_ORG_LABEL;
@@ -2306,22 +2256,11 @@ interface IRecipeCockpitPendingConfirmation {
     actionContext?: IRecipeCockpitPanelActionContext;
 }
 
-export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
-
-export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
-
-// A FAILED INSERT'S OTHER TWO BUTTONS (#375): THE FIRST GENERATED FILE THAT FAILED, AND THE CARD'S TROUBLESHOOTING TAB
-export const RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL = 'View failed file';
-
-export const RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL = 'Open Troubleshooting';
-
 // THE SLICE OF vscode.Memento THE COCKPIT USES, SO A TEST CAN HAND IN A MAP
 export interface IRecipeCockpitWorkspaceState {
     get<T>(key: string): T | undefined;
     update(key: string, value: unknown): Thenable<void>;
 }
-
-export const RECIPE_COCKPIT_DATA_ORG_STATE_KEY = 'treecipe.recipeCockpit.dataByOrgUsername';
 
 /*
     Host-only: the org Data-by-Org has selected. orgDetail carries the USERNAME, which the panel is
@@ -2396,6 +2335,7 @@ export type RecipeCockpitPanelAction =
     | RecipeCockpitAdapterPanelAction
     | RecipeCockpitRecordLinksPanelAction
     | RecipeCockpitCustomTreecipePanelAction
+    | RecipeCockpitTreecipeOrgPanelAction
     | { kind: 'activateActions' }
     | { kind: 'activateDatasetActions' }
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
@@ -2405,13 +2345,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'generateTreecipe' }
     | { kind: 'openHelpGuide' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
-    | { kind: 'promptInsertOrg'; treeKey: string; recipeFilePath: string; recordTypeSelection?: Record<string, string[]>; isRemembered?: true }
-    | { kind: 'loadDataOrgs' }
-    | { kind: 'selectDataOrg'; orgIndex: number }
-    | { kind: 'refreshDataOrgs' }
-    | { kind: 'refuseDataOrgListing'; hostMessage: IRecipeCockpitDataOrgListingRefusedMessage }
-    // recordTypeSelection: THE RECORD TYPES TICKED AT THE CLICK (#623), EVERY NAME ONE THE DRAWN MODEL OFFERED
-    | { kind: 'insertTree'; treeKey: string; recipeFilePath: string; recordTypeSelection?: Record<string, string[]>; isRemembered?: true }
     | { kind: 'postInsertState'; hostMessage: IRecipeCockpitInsertStateMessage }
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
@@ -2433,9 +2366,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'resetPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string }
     | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
-    | { kind: 'createScratchOrg' }
-    | { kind: 'authorizeOrg' }
-    | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'activateTroubleshootingHistory'; treeKey: string }
     | { kind: 'activateDatasetJourney'; datasetFolderName: string }
     // "Get latest object detail from target org" (#612): THE ROW ON SCREEN, THEN ONLY THE OPEN DIALOG'S ID, KINDS AND ITEM INDEXES
@@ -2450,9 +2380,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'activateRecordLinks'; recordLinkSequence: number }
     // THE UPDATER'S RESTORE (#419): THE SNAPSHOT LIST THE PANEL DREW, WHICH A RESTORE THEN NAMES BY FILE NAME
     | { kind: 'activateUpdaterSnapshots'; treeKey: string }
-    // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
-    | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
-    | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
     | { kind: 'openChangelog' }
     | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown; recordTypeSetMode: unknown; isChangeOrg: boolean };
 
@@ -2809,7 +2736,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
+    static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
 
         return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
 
@@ -5805,7 +5732,7 @@ export class RecipeCockpitService {
             ...recipeDataMessage,
             recipe: { ...recipeDataMessage.recipe, trees: recipeDataMessage.recipe.trees.filter(isTreeRefreshed) }
         };
-        const createTargets = ( await this.collectCreateTargets(panelState, folderRecipeDataMessage) )
+        const createTargets = ( await RecipeCockpitTreecipeDataOrgs.collectCreateTargets(this, panelState, folderRecipeDataMessage) )
             .filter(createTarget => panelState.dataOrgObjectApiNames.has(createTarget.objectApiName));
 
         if ( !isRefreshCurrent() || createTargets.length === 0 ) {
@@ -5814,7 +5741,7 @@ export class RecipeCockpitService {
 
         let readinessByTarget: IRecipeCockpitCreateReadinessByTarget;
         try {
-            readinessByTarget = await this.computeCreateReadinessByTarget(
+            readinessByTarget = await RecipeCockpitTreecipeDataOrgs.computeCreateReadinessByTarget(
                 dataOrgSelection.orgDetail.username,
                 () => SalesforceOrgService.getConnection(dataOrgSelection.orgDetail.username),
                 [...new Set(createTargets.map(createTarget => createTarget.objectApiName))],
@@ -6292,13 +6219,13 @@ export class RecipeCockpitService {
         this.cancelPendingConfirmation();
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
-        this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
+        RecipeCockpitTreecipeDataOrgs.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         RecipeCockpitTroubleshootingRuns.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
         this.adoptMetadataRetrieveRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
         RecipeCockpitQueryHost.adoptTreeQueryRunState(this.recipeCockpitPanelState);
         RecipeCockpitAdapterState.adoptUpdaterLoadRunState(this.recipeCockpitPanelState);
-        this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
+        this.recipeCockpitPanelState.isOrgOpenInFlight = RecipeCockpitTreecipeDataOrgs.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
             // THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
@@ -6743,11 +6670,11 @@ export class RecipeCockpitService {
             describe, so a new model ends whatever selection was being checked for the old one. The org list and the org
             chosen survive it -- the panel asks again once the new model is drawn.
         */
-        panelState.pendingDataOrgObjectApiNames = new Set(this.collectDataOrgObjectApiNames(recipeViewModel));
+        panelState.pendingDataOrgObjectApiNames = new Set(RecipeCockpitTreecipeDataOrgs.collectDataOrgObjectApiNames(recipeViewModel));
         panelState.dataOrgObjectApiNames = new Set();
-        panelState.pendingInsertableTreeKeys = new Set(this.collectInsertableTreeKeys(recipeViewModel));
+        panelState.pendingInsertableTreeKeys = new Set(RecipeCockpitTreecipeDataOrgs.collectInsertableTreeKeys(recipeViewModel));
         panelState.insertableTreeKeys = new Set();
-        panelState.pendingAssignableTreeKeys = new Set(this.collectAssignableTreeKeys(recipeViewModel));
+        panelState.pendingAssignableTreeKeys = new Set(RecipeCockpitTreecipeDataOrgs.collectAssignableTreeKeys(recipeViewModel));
         panelState.assignableTreeKeys = new Set();
         // A "+" OF THE OLD MODEL NAMES AN ITERATION THE NEW ONE'S ROWS MAY NOT DRAW WHERE IT WAS
         panelState.pendingInsertableFriendTargets = this.collectInsertableFriendTargets(recipeViewModel);
@@ -6895,7 +6822,7 @@ export class RecipeCockpitService {
         let isOrgSelected = false;
         panelState.isOrgPromptOpen = true;
         try {
-            isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+            isOrgSelected = await RecipeCockpitTreecipeDataOrgs.promptAndSelectDataOrg(this, cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                 RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER,
                 RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX,
                 orgChange.isSandboxOnly ? RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON : undefined,
@@ -6955,6 +6882,11 @@ export class RecipeCockpitService {
 
         if ( RecipeCockpitRecordLinksHost.isRecordLinksPanelAction(panelAction) ) {
             await RecipeCockpitRecordLinksHost.executePanelAction(this, cockpitPanel, panelAction);
+            return;
+        }
+
+        if ( RecipeCockpitTreecipeOrgHost.isTreecipeOrgPanelAction(panelAction) ) {
+            await RecipeCockpitTreecipeOrgHost.executePanelAction(this, cockpitPanel, panelAction);
             return;
         }
 
@@ -7130,36 +7062,6 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
-            case 'loadDataOrgs':
-
-                await this.loadDataOrgs(cockpitPanel, panelState);
-                return;
-
-            case 'selectDataOrg':
-
-                await this.selectDataOrg(cockpitPanel, panelState, panelAction.orgIndex);
-                return;
-
-            case 'refreshDataOrgs':
-
-                await this.loadDataOrgs(cockpitPanel, panelState, true);
-                return;
-
-            case 'refuseDataOrgListing':
-
-                this.postToPanel(cockpitPanel, panelAction.hostMessage);
-                return;
-
-            case 'insertTree':
-
-                await this.insertTreeIntoOrg(cockpitPanel, panelState, panelAction);
-                return;
-
-            case 'promptInsertOrg':
-
-                await this.insertTreeIntoPromptedOrg(cockpitPanel, panelState, panelAction);
-                return;
-
             case 'postInsertState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
@@ -7240,7 +7142,6 @@ export class RecipeCockpitService {
                 await this.resetTreeSelection(cockpitPanel, panelState, panelAction.folderName);
                 return;
 
-
             case 'setObjectCount':
 
                 await this.setObjectCount(cockpitPanel, panelState, panelAction);
@@ -7280,21 +7181,6 @@ export class RecipeCockpitService {
                 return;
 
             }
-
-            case 'createScratchOrg':
-
-                await this.createScratchOrgFromPanel(cockpitPanel);
-                return;
-
-            case 'authorizeOrg':
-
-                await this.authorizeOrgFromPanel(cockpitPanel);
-                return;
-
-            case 'postScratchOrgState':
-
-                this.postToPanel(cockpitPanel, panelAction.hostMessage);
-                return;
 
             case 'activateTroubleshootingHistory': {
 
@@ -7369,19 +7255,9 @@ export class RecipeCockpitService {
 
             }
 
-            case 'openDataOrg':
-
-                await this.openDataOrgInBrowser(panelState, panelAction.orgDetail);
-                return;
-
             case 'openChangelog':
 
                 await this.openChangelogInBrowser();
-                return;
-
-            case 'postOrgOpenState':
-
-                this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
         }
@@ -8037,854 +7913,10 @@ export class RecipeCockpitService {
 
     }
 
-    // EVERY OBJECT A TREE CARD LISTS, ONCE -- A LATER OCCURRENCE OF AN OBJECT IS THE SAME OBJECT IN THE ORG
-    static collectDataOrgObjectApiNames(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
-
-        return [...new Set(recipeViewModel.trees.flatMap(tree => tree.objects
-            .filter(treeObject => treeObject.iterationNickname === undefined)
-            .map(treeObject => treeObject.objectApiName)))];
-
-    }
-
-    // BY ALIAS, OR BY USERNAME WHEN THE ORG HAS NONE
-    static buildDataOrgLabel(orgDetail: IAuthenticatedOrgDetail): string {
-
-        return orgDetail.alias || orgDetail.username;
-
-    }
-
-    // THE DROPDOWN'S LABEL: THE CLI'S DEFAULT ORG SAYS SO (#305)
-    static buildDataOrgListLabel(orgDetail: IDataOrgDetail): string {
-
-        return this.buildDataOrgLabel(orgDetail) + ( orgDetail.isDefault === true ? RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX : '' );
-
-    }
-
-    // THE PICKER'S LABEL (#678): "alias -- instance url", THEN " (default)"; AN ORG WITH NO INSTANCE URL IS ITS ALIAS ALONE
-    static buildDataOrgPickerLabel(orgDetail: IDataOrgDetail): string {
-
-        const instanceUrlPart = orgDetail.instanceUrl ? RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR + orgDetail.instanceUrl : '';
-        return this.buildDataOrgLabel(orgDetail) + instanceUrlPart + ( orgDetail.isDefault === true ? RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX : '' );
-
-    }
-
-    /*
-        What the dropdown shows while the connections are checked: the org chosen last, else the
-        CLI's default. Read locally; a read that fails shows nothing rather than holding the check.
-    */
-    private static async readProvisionalDataOrgDetail(panelState: IRecipeCockpitPanelState): Promise<IDataOrgDetail | undefined> {
-
-        try {
-            return await SalesforceOrgService.readLocalDataOrgDetail(panelState.dataOrgUsername ?? this.readRememberedDataOrgUsername(), panelState.workspaceRoot);
-        } catch {
-            return undefined;
-        }
-
-    }
-
-    private static readRememberedDataOrgUsername(): string | undefined {
-
-        try {
-            const rememberedUsername = this.recipeCockpitWorkspaceState?.get<unknown>(RECIPE_COCKPIT_DATA_ORG_STATE_KEY);
-            return typeof rememberedUsername === 'string' && rememberedUsername ? rememberedUsername : undefined;
-        } catch {
-            return undefined;
-        }
-
-    }
-
-    // A FAILED WRITE ONLY MEANS THE NEXT OPEN DOES NOT PRESELECT -- NOTHING THE READER HAS TO BE TOLD
-    static rememberDataOrgUsername(orgUsername: string | undefined) {
-
-        try {
-            Promise.resolve(this.recipeCockpitWorkspaceState?.update(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, orgUsername)).catch(() => undefined);
-        } catch {
-            return;
-        }
-
-    }
-
-    /*
-        Lists the orgs and, when the org chosen last is still among them, selects it. Listing asks
-        the Salesforce CLI which authorized orgs are connected, which pings each one's token -- once
-        per session, or per ⟳ (isRefresh), since the answer is cached in SalesforceOrgService. The
-        extension itself contacts only the org selected.
-
-        The list in hand is dropped BEFORE the check, so no org can be selected until it answers; a
-        new model, a ready or a later listing bumps dataOrgRequestSequence meanwhile, and the answer
-        is then discarded rather than drawn over whatever replaced it. While it runs, the org chosen
-        last (else the CLI's default) is posted as dataOrgProvisional, a label read from local files
-        (#305). A remembered org that the CLI now reports expired, deleted or not connected is
-        forgotten, and the view says so once; with no remembered org listed, the default is selected.
-    */
-    // keepUnlistedUsername: A SCRATCH ORG JUST CREATED THE CLI DOES NOT LIST YET IS STILL THE ONE TO SELECT ONCE IT DOES
-    static async loadDataOrgs(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, isRefresh = false, keepUnlistedUsername = false) {
-
-        const listedRecipeDataMessage = panelState.recipeDataMessage;
-        panelState.dataOrgDetails = [];
-        panelState.dataOrgSelection = undefined;
-        const listingRequestSequence = ++panelState.dataOrgRequestSequence;
-
-        const isListingCurrent = () => this.recipeCockpitPanel === cockpitPanel
-                                        && this.recipeCockpitPanelState === panelState
-                                        && panelState.recipeDataMessage === listedRecipeDataMessage
-                                        && panelState.dataOrgRequestSequence === listingRequestSequence;
-
-        // THE CHECK STARTS FIRST: THE LOCAL READ OF THE ORG SHOWN MEANWHILE MUST NEVER DELAY IT
-        const dataOrgListingRequest = ( async () => {
-            if ( isRefresh ) {
-                await SalesforceOrgService.refreshConnectedOrgAuthorizations();
-            }
-            return await SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot);
-        } )();
-        dataOrgListingRequest.catch(() => undefined);
-
-        const provisionalOrgDetail = await this.readProvisionalDataOrgDetail(panelState);
-
-        if ( provisionalOrgDetail && isListingCurrent() ) {
-            this.postToPanel(cockpitPanel, {
-                command: 'dataOrgProvisional',
-                orgLabel: this.buildDataOrgListLabel(provisionalOrgDetail),
-                requestSequence: listingRequestSequence,
-                renderSequence: listedRecipeDataMessage.renderSequence
-            });
-        }
-
-        let orgDetails: IDataOrgDetail[] = [];
-        let hiddenOrgs: IHiddenAuthorizedOrg[] = [];
-        let hiddenOrgNote = '';
-        let noOrgsMessage = NO_AUTHORIZED_ORGS_MESSAGE;
-        let isListed = false;
-
-        try {
-
-            const dataOrgListing = await dataOrgListingRequest;
-            isListed = true;
-            orgDetails = dataOrgListing.orgDetails;
-            hiddenOrgs = dataOrgListing.hiddenOrgs;
-            hiddenOrgNote = this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts);
-            noOrgsMessage = this.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts);
-
-        } catch (listError) {
-
-            noOrgsMessage = listError instanceof OrgConnectionStatusUnavailableError
-                ? listError.message
-                : `The authorized Salesforce orgs could not be listed: ${listError?.message ?? listError}`;
-
-        }
-
-        if ( !isListingCurrent() ) {
-            return;
-        }
-
-        /*
-            ⟳ forgets what was described in each org it listed (#537), once the listing has answered:
-            a describe taken before a permission change, a deploy made elsewhere or a re-login would
-            otherwise outlive it. A listing that failed lists nothing, so it forgets nothing.
-        */
-        if ( isRefresh && isListed ) {
-            orgDetails.forEach(orgDetail => SalesforceOrgService.clearDescribeCacheForOrg(orgDetail.username));
-        }
-
-        panelState.dataOrgDetails = orgDetails;
-
-        const rememberedUsername = panelState.dataOrgUsername ?? this.readRememberedDataOrgUsername();
-        const rememberedOrgIndex = rememberedUsername ? orgDetails.findIndex(orgDetail => orgDetail.username === rememberedUsername) : -1;
-        // THE ORG CHOSEN LAST WINS; WITH NONE LISTED, THE CLI'S DEFAULT IS SELECTED -- UNLESS A SCRATCH ORG JUST CREATED IS STILL TO BE
-        const selectedOrgIndex = rememberedOrgIndex >= 0 || ( rememberedUsername && keepUnlistedUsername )
-            ? rememberedOrgIndex
-            : orgDetails.findIndex(orgDetail => orgDetail.isDefault === true);
-        let forgottenOrgNotice = '';
-
-        // CHECKED AGAINST THE REMEMBERED ORG ITSELF: FALLING BACK TO THE DEFAULT MUST NOT SKIP SAYING WHY THE LAST ONE WENT
-        if ( rememberedUsername && rememberedOrgIndex === -1 && !keepUnlistedUsername ) {
-
-            const disconnectedRememberedOrg = hiddenOrgs.find(hiddenOrg => hiddenOrg.username === rememberedUsername && hiddenOrg.reason !== 'production');
-
-            if ( disconnectedRememberedOrg ) {
-                forgottenOrgNotice = `The last org used, ${disconnectedRememberedOrg.label}, is no longer connected.`;
-            }
-
-            panelState.dataOrgUsername = undefined;
-            this.rememberDataOrgUsername(undefined);
-
-        }
-
-        this.postToPanel(cockpitPanel, {
-            command: 'dataOrgList',
-            orgLabels: orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
-            orgPickerLabels: orgDetails.map(orgDetail => this.buildDataOrgPickerLabel(orgDetail)),
-            selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
-            noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
-            hiddenOrgNote: hiddenOrgNote,
-            forgottenOrgNotice: forgottenOrgNotice,
-            renderSequence: listedRecipeDataMessage.renderSequence
-        });
-
-        if ( selectedOrgIndex >= 0 ) {
-            await this.selectDataOrg(cockpitPanel, panelState, selectedOrgIndex);
-        }
-
-    }
-
-    /*
-        "+ New scratch org" (#200). The plan is resolved on the host and refused before any process
-        when an input is missing; the modal names what was resolved, and Cancel runs nothing. Then
-        the create alone runs under one cancellable notification (#358: nothing is deployed) -- or,
-        when the reader picks "Create with @salesforce/core" (#507, offered only where it would make
-        the same org), in the extension host under a notification with no Cancel -- and how
-        the run ended is a notification with a "View output" button (#301). Once a username exists the org is kept whatever followed, and the
-        connected-org cache is dropped BEFORE re-listing -- the session's cached connection check
-        predates the org -- so it is selected by username from a fresh answer, or reported not
-        listed yet with nothing selected in its place.
-
-        One run per WINDOW, and its state is the window's too: a panel closed and reopened mid-run
-        gets a fresh panel state, and without the static copy its router would let a second run, a
-        Create or an org selection through while the first is still going. Every state the run
-        posts goes to whichever panel the window has NOW. The closing state is posted last, because
-        the panel disabled the button, every "+ Create" and the dropdown on the click.
-    */
-    static isScratchOrgSetupInFlight = false;
-
-    private static scratchOrgRunStateMessage: IRecipeCockpitScratchOrgStateMessage | undefined;
-
-    private static async createScratchOrgFromPanel(cockpitPanel: vscode.WebviewPanel) {
-
-        await this.runHoldingOrgPicker(cockpitPanel, { command: 'scratchOrgState', isRunning: true },
-            () => this.performScratchOrgSetup(this.recipeCockpitPanelState.workspaceRoot));
-
-    }
-
-    // "Authorize org" (#630) RUNS UNDER THE SCRATCH ORG RUN'S LOCK: BOTH ADD AN ORG TO THE PICKER, AND ONLY ONE DOES AT A TIME
-    private static async authorizeOrgFromPanel(cockpitPanel: vscode.WebviewPanel) {
-
-        await this.runHoldingOrgPicker(cockpitPanel, { command: 'scratchOrgState', isRunning: true, isAuthorizing: true },
-            () => this.performOrgAuthorize(this.recipeCockpitPanelState.workspaceRoot));
-
-    }
-
-    private static async runHoldingOrgPicker(cockpitPanel: vscode.WebviewPanel,
-                                                runningStateMessage: IRecipeCockpitScratchOrgStateMessage,
-                                                performRun: () => Promise<void>) {
-
-        // A PANEL THAT DID NOT KNOW A RUN WAS GOING HAS ALREADY DISABLED ITS BUTTON, SO IT IS TOLD WHERE THE RUN IS
-        if ( this.isScratchOrgSetupInFlight ) {
-            if ( this.scratchOrgRunStateMessage ) {
-                this.recipeCockpitPanelState.scratchOrgStateMessage = this.scratchOrgRunStateMessage;
-                this.postToPanel(cockpitPanel, this.scratchOrgRunStateMessage);
-            }
-            return;
-        }
-
-        this.isScratchOrgSetupInFlight = true;
-        this.setScratchOrgState(runningStateMessage);
-
-        try {
-
-            await performRun();
-
-        } finally {
-
-            this.isScratchOrgSetupInFlight = false;
-            this.setScratchOrgState({ command: 'scratchOrgState', isRunning: false });
-
-        }
-
-    }
-
-    // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
-    private static setScratchOrgState(scratchOrgStateMessage: IRecipeCockpitScratchOrgStateMessage) {
-
-        this.scratchOrgRunStateMessage = scratchOrgStateMessage.isRunning ? scratchOrgStateMessage : undefined;
-        this.recipeCockpitPanelState.scratchOrgStateMessage = scratchOrgStateMessage;
-
-        if ( this.recipeCockpitPanel ) {
-            this.postToPanel(this.recipeCockpitPanel, scratchOrgStateMessage);
-        }
-
-    }
-
-    // A PANEL STATE BUILT WHILE A RUN IS GOING STARTS FROM THE RUN'S STATE, SO ITS ROUTER REFUSES WHAT THE RUN HOLDS
-    private static adoptScratchOrgRunState(panelState: IRecipeCockpitPanelState) {
-
-        if ( this.isScratchOrgSetupInFlight && this.scratchOrgRunStateMessage ) {
-            panelState.scratchOrgStateMessage = this.scratchOrgRunStateMessage;
-        }
-
-    }
-
-    /*
-        "Authorize org" (#630): a browser login to an existing org, run by "sf org login web" or by
-        @salesforce/core in VS Code, as the confirmation's button says. The login address and the
-        alias are asked by VS Code, as "+ New scratch org" asks its alias; the panel confirms, and its
-        one checkbox asks for the org to be selected and made this workspace's default org. Both answers are checked again after the confirmation.
-        Only an org the fresh listing shows -- a sandbox or scratch org that answered its ping --
-        is selected or made the default. How the login ended is one notification.
-    */
-    private static async performOrgAuthorize(workspaceRoot: string): Promise<void> {
-
-        const authorizePlan = await this.promptForOrgAuthorizePlan();
-
-        if ( !authorizePlan ) {
-            return;
-        }
-
-        const confirmation = await this.confirmInPanelWithCheckbox(
-            RecipeCockpitOrgAuthorize.buildConfirmMessage(authorizePlan),
-            { ...RecipeCockpitOrgAuthorize.buildConfirmContent(authorizePlan), checkboxLabel: RECIPE_COCKPIT_AUTHORIZE_ORG_DEFAULT_CHECKBOX_LABEL },
-            RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
-            RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL
-        );
-
-        const loginMethod: OrgLoginMethod | undefined = confirmation.chosenLabel === RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL
-            ? 'salesforceCli'
-            : confirmation.chosenLabel === RECIPE_COCKPIT_AUTHORIZE_ORG_LIBRARY_CONFIRM_LABEL ? 'coreLibrary' : undefined;
-
-        if ( loginMethod === undefined ) {
-            return;
-        }
-
-        const loginUrl = SalesforceOrgLogin.buildSandboxLoginUrl(authorizePlan.loginUrl);
-        const alias = authorizePlan.alias;
-
-        if ( loginUrl === undefined || ( alias !== undefined && RecipeCockpitOrgAuthorize.validateAlias(alias) !== undefined ) ) {
-            return;
-        }
-
-        const isDefaultRequested = confirmation.isChecked === true;
-
-        const loginOutcome: OrgLoginOutcome = await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Recipe Cockpit: authorize org at ${RecipeCockpitOrgAuthorize.buildLoginHostName(loginUrl)}`,
-            cancellable: true
-        }, async (progress, cancellationToken) => {
-
-            progress.report({ message: 'Waiting for you to log in in your browser…' });
-
-            const loginRun: IOrgLoginRun = {
-                onCancellationRequested: cancelLogin => {
-                    cancellationToken.onCancellationRequested(cancelLogin);
-                    if ( cancellationToken.isCancellationRequested ) {
-                        cancelLogin();
-                    }
-                }
-            };
-
-            return loginMethod === 'salesforceCli'
-                ? await SalesforceOrgLogin.authorizeWithSalesforceCli(loginUrl, loginRun)
-                : await SalesforceOrgLogin.authorizeWithCoreLibrary(loginUrl, {
-                    ...loginRun,
-                    openLoginPage: authorizationUrl => vscode.env.openExternal(vscode.Uri.parse(authorizationUrl, true))
-                });
-
-        });
-
-        const showAuthorizeNotification = (listedDetail: Partial<IOrgAuthorizeResult> = {}) => {
-            const notification = RecipeCockpitOrgAuthorize.buildNotification({
-                loginOutcome: loginOutcome,
-                ...( alias !== undefined ? { alias: alias } : {} ),
-                isDefaultRequested: isDefaultRequested,
-                ...listedDetail
-            });
-            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(notification.severity, RecipeYamlScalar.escapeForNotification(notification.text), [], workspaceRoot);
-        };
-
-        if ( loginOutcome.kind !== 'authorized' ) {
-            showAuthorizeNotification();
-            return;
-        }
-
-        const username = loginOutcome.username;
-
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: 'Recipe Cockpit: authorize org'
-        }, async progress => {
-
-            progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT.listing });
-
-            const placement = await this.findAuthorizedOrgPlacement(username);
-
-            // AN ALIAS IS SET, AND A HELD ONE MOVED, ONLY ONTO A SANDBOX OR SCRATCH ORG: NEVER SILENTLY ONTO PRODUCTION
-            if ( placement !== 'listed' ) {
-                await this.relistDataOrgs(undefined);
-                showAuthorizeNotification({ placement: placement });
-                return;
-            }
-
-            const aliasFailureMessage = alias === undefined ? undefined : await SalesforceOrgLogin.setAlias(alias, username);
-            // THE ALIAS WHEN IT LANDED, AS "sf config set target-org" WOULD STORE IT; ELSE THE USERNAME
-            const targetOrgIdentifier = alias !== undefined && aliasFailureMessage === undefined ? alias : username;
-            const targetOrgWrite = isDefaultRequested ? SalesforceOrgLogin.writeWorkspaceTargetOrg(workspaceRoot, targetOrgIdentifier) : undefined;
-            // SF_TARGET_ORG IS READ BEFORE THE WORKSPACE CONFIG, SO THE WRITE ALONE MAY NOT CHANGE THE DEFAULT
-            const resolvedDefaultOrgIdentifier = targetOrgWrite?.isWritten === true
-                ? SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot)?.identifier
-                : undefined;
-
-            await this.relistDataOrgs(isDefaultRequested ? username : undefined);
-
-            showAuthorizeNotification({
-                placement: placement,
-                ...( aliasFailureMessage !== undefined ? { aliasFailureMessage: aliasFailureMessage } : {} ),
-                ...( targetOrgWrite ? { targetOrgWrite: targetOrgWrite } : {} ),
-                ...( resolvedDefaultOrgIdentifier !== undefined && resolvedDefaultOrgIdentifier !== targetOrgIdentifier ? { overridingDefaultOrgIdentifier: resolvedDefaultOrgIdentifier } : {} )
-            });
-
-        });
-
-    }
-
-    // THE CONNECTION CHECK IN HAND PREDATES THE LOGIN, SO IT IS DROPPED FIRST; THE LISTING HERE IGNORES THE WORKSPACE DEFAULT, WHICH IS LISTED WHATEVER ITS TYPE
-    private static async findAuthorizedOrgPlacement(username: string): Promise<AuthorizedOrgPlacement> {
-
-        SalesforceOrgService.clearConnectedOrgStatusCache();
-
-        try {
-
-            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
-
-            if ( dataOrgListing.orgDetails.some(orgDetail => orgDetail.username === username) ) {
-                return 'listed';
-            }
-
-            return dataOrgListing.hiddenOrgs.some(hiddenOrg => hiddenOrg.username === username && hiddenOrg.reason === 'production')
-                ? 'notSandboxOrScratch'
-                : 'notConnected';
-
-        } catch {
-            return 'notConnected';
-        }
-
-    }
-
-    // DRAWS THE FRESH LISTING IN A WINDOW WITH A DRAWN PICKER; A USERNAME GIVEN IS REMEMBERED AND SELECTED, ELSE THE SELECTION IS KEPT
-    private static async relistDataOrgs(selectedUsername: string | undefined): Promise<void> {
-
-        if ( selectedUsername !== undefined ) {
-            this.rememberDataOrgUsername(selectedUsername);
-        }
-
-        const cockpitPanel = this.recipeCockpitPanel;
-        const panelState = this.recipeCockpitPanelState;
-
-        if ( !cockpitPanel || !panelState.recipeDataMessage ) {
-            return;
-        }
-
-        if ( selectedUsername !== undefined ) {
-            panelState.dataOrgUsername = selectedUsername;
-        }
-
-        await this.loadDataOrgs(cockpitPanel, panelState, false, selectedUsername !== undefined);
-
-    }
-
-    // ESCAPE AT EITHER QUESTION IS A CANCEL
-    private static async promptForOrgAuthorizePlan(): Promise<IOrgAuthorizePlan | undefined> {
-
-        const typedSubdomain = await vscode.window.showInputBox({
-            title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
-            prompt: RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PROMPT,
-            placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_SANDBOX_SUBDOMAIN_PLACEHOLDER,
-            ignoreFocusOut: true,
-            validateInput: (typedText: string) => SalesforceOrgLogin.validateSandboxSubdomain(typedText)
-        });
-        const loginUrl = SalesforceOrgLogin.buildSandboxLoginUrl(typedSubdomain);
-
-        if ( loginUrl === undefined ) {
-            return undefined;
-        }
-
-        let aliasHolders = new Map<string, string>();
-
-        try {
-            aliasHolders = await SalesforceOrgService.listAliasHolders();
-        } catch {
-            // NO WARNING TO GIVE: THE LOGIN ITSELF STILL WORKS
-        }
-
-        const enteredAlias = await vscode.window.showInputBox({
-            title: RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
-            prompt: RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT,
-            placeHolder: RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PLACEHOLDER,
-            ignoreFocusOut: true,
-            validateInput: (typedAlias: string) => this.validateOrgAuthorizeAliasInput(typedAlias, aliasHolders)
-        });
-
-        if ( enteredAlias === undefined ) {
-            return undefined;
-        }
-
-        const alias = enteredAlias.trim();
-
-        if ( alias === '' ) {
-            return { loginUrl: loginUrl };
-        }
-
-        const aliasHolderUsername = aliasHolders.get(alias);
-
-        return { loginUrl: loginUrl, alias: alias, ...( aliasHolderUsername ? { aliasHolderUsername: aliasHolderUsername } : {} ) };
-
-    }
-
-    // AN INPUT BOX'S MESSAGE RENDERS [label](command:...) AS A NOTIFICATION DOES, SO THE HOLDER'S USERNAME IS ESCAPED
-    static validateOrgAuthorizeAliasInput(typedAlias: string, aliasHolders: Map<string, string>): string | vscode.InputBoxValidationMessage | undefined {
-
-        const alias = String(typedAlias ?? '').trim();
-        const aliasRefusal = RecipeCockpitOrgAuthorize.validateAlias(alias);
-
-        if ( aliasRefusal ) {
-            return aliasRefusal;
-        }
-
-        const aliasHolderUsername = aliasHolders.get(alias);
-
-        return aliasHolderUsername
-            ? {
-                message: RecipeYamlScalar.escapeForNotification(`"${alias}" is currently ${aliasHolderUsername}. Authorizing will move it to the org you log in to.`),
-                severity: vscode.InputBoxValidationSeverity.Warning
-            }
-            : undefined;
-
-    }
-
-    private static async performScratchOrgSetup(workspaceRoot: string): Promise<void> {
-
-        let scratchOrgPlan: IScratchOrgPlan | undefined;
-
-        try {
-            scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(
-                workspaceRoot,
-                () => VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
-                    SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot),
-                    RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER
-                ),
-                () => this.promptForScratchOrgAlias(),
-                () => this.promptForScratchOrgDurationDays()
-            );
-        } catch (planError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(String(planError?.message ?? planError)));
-            return;
-        }
-
-        // NO DEV HUB PICKED -- DISMISSED, OR NONE TO OFFER, WHICH THE PICKER HAS ALREADY SAID -- OR NO ALIAS ENTERED, IS A CANCEL
-        if ( !scratchOrgPlan ) {
-            return;
-        }
-
-        const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
-        const libraryRefusal = ScratchOrgService.findLibraryCreateRefusal(workspaceRoot);
-
-        const confirmation = await this.confirmInPanel(
-            `Create a scratch org through the Dev Hub ${devHubLabel}? Nothing is deployed to it.`,
-            { ...this.buildScratchOrgConfirmationContent(scratchOrgPlan, libraryRefusal), isDestructive: true },
-            RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
-            ...( libraryRefusal ? [] : [RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL] )
-        );
-
-        if ( confirmation !== RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL && ( libraryRefusal || confirmation !== RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL ) ) {
-            return;
-        }
-
-        // NOTHING IN scratchOrgCreate STOPS A POLL, SO THAT PROGRESS OFFERS NO CANCEL IT COULD NOT HONOUR
-        const setupOutcome: ScratchOrgSetupOutcome = confirmation === RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CONFIRM_LABEL
-            ? await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Recipe Cockpit: scratch org ${scratchOrgPlan.alias}`,
-                cancellable: false
-            }, async progress => await ScratchOrgService.runScratchOrgSetupWithLibrary(scratchOrgPlan, {
-                onPhase: () => {
-                    progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_LIBRARY_CREATING_TEXT });
-                }
-            }))
-            : await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Recipe Cockpit: scratch org ${scratchOrgPlan.alias}`,
-            cancellable: true
-        }, async (progress, cancellationToken) => {
-
-            let killCurrentProcess: (() => void) | undefined;
-            cancellationToken.onCancellationRequested(() => killCurrentProcess?.());
-
-            return await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, {
-                onPhase: (setupPhase: ScratchOrgSetupPhase) => {
-                    progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT[setupPhase] });
-                },
-                registerCancellation: (killChildProcess: () => void) => {
-                    killCurrentProcess = killChildProcess;
-                    if ( cancellationToken.isCancellationRequested ) {
-                        killChildProcess();
-                    }
-                },
-                isCancellationRequested: () => cancellationToken.isCancellationRequested
-            });
-
-        });
-
-        const alias = scratchOrgPlan.alias;
-        const showScratchOrgNotification = (severity: 'information' | 'warning' | 'error', notificationText: string, outputFilePath?: string) =>
-            VSCodeWorkspaceService.showNotificationWithWorkspaceFile(severity, RecipeYamlScalar.escapeForNotification(notificationText), RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
-                outputFilePath, workspaceRoot, 'The scratch org result file no longer exists in this workspace.');
-
-        if ( setupOutcome.kind === 'createFailed' ) {
-            showScratchOrgNotification('error', `The scratch org ${alias} was not created: ${setupOutcome.failureMessage}`, setupOutcome.outputFilePath);
-            return;
-        }
-
-        if ( setupOutcome.kind === 'createCancelled' ) {
-            showScratchOrgNotification('information', `Cancelled while the scratch org ${alias} was being created. A scratch org may still have been created: check with "sf org list".`);
-            return;
-        }
-
-        const isListed = await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Recipe Cockpit: scratch org ${alias}`
-        }, async progress => {
-            progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT.listing });
-            return await this.listAndSelectNewScratchOrg(setupOutcome.username);
-        });
-        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THE NOTIFICATION IS NOW ALL THE READER SEES OF THE RUN (#301)
-        const orgText = `${alias} · ${setupOutcome.username}`;
-        const selectionText = isListed
-            ? 'It is selected in the Treecipe tab.'
-            : `${orgText} did not answer the connection check yet, so no org was selected in its place: press ⟳ to check again.`;
-        const createdText = setupOutcome.incompleteMessage
-            ? `Scratch org ${orgText} was created, but setting it up stopped: ${setupOutcome.incompleteMessage}. It is kept.`
-            : `Scratch org ${orgText} is ready.`;
-
-        this.showCreatedScratchOrgNotification(isListed && !setupOutcome.incompleteMessage ? 'information' : 'warning',
-            `${createdText} Nothing was deployed to it. ${selectionText}`,
-            setupOutcome.username,
-            setupOutcome.outputFilePath,
-            workspaceRoot);
-
-    }
-
-    /*
-        #358: the run deploys nothing, so the notification hands the reader the deploy to run
-        themselves -- to the CLIPBOARD only, never run -- beside the create's own output. Not
-        awaited: the run ends without waiting for a click.
-    */
-    private static showCreatedScratchOrgNotification(severity: 'information' | 'warning',
-                                                        notificationText: string,
-                                                        username: string,
-                                                        outputFilePath: string | undefined,
-                                                        workspaceRoot: string) {
-
-        const actions = [RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL, ...( outputFilePath ? [RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL] : [] )];
-        const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
-
-        Promise.resolve(severity === 'information'
-            ? vscode.window.showInformationMessage(escapedText, ...actions)
-            : vscode.window.showWarningMessage(escapedText, ...actions))
-            .then(async chosenAction => {
-
-                if ( chosenAction === RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL ) {
-                    await vscode.env.clipboard.writeText(ScratchOrgService.buildSourceDeployCommandText(username));
-                } else if ( chosenAction === RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL && outputFilePath ) {
-                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The scratch org result file no longer exists in this workspace.');
-                }
-
-            })
-            .catch(() => undefined);
-
-    }
-
-    /*
-        "Open in browser" (#279, #501): a ONE-TIME frontdoor address for the selected org's USERNAME,
-        asked of Salesforce over the org's own connection (no CLI), handed to the reader's browser
-        by VS Code. The address logs the reader in, so it goes to openExternal and nowhere else:
-        never posted, saved, logged or quoted in a notification, and every failure is a fixed text.
-        Notifications are not awaited, so the button comes back without a click.
-
-        One open per WINDOW, like the scratch org run: a panel closed and reopened mid-open starts
-        from this flag, is told the open is running when its document loads, and is the panel the
-        closing state goes to. Anything that throws is answered with a fixed message rather than
-        the error's own text, which the generic handler would carry into a Report Issue URL.
-    */
-    private static isOrgOpenInFlightForWindow = false;
-
-    // WITH A RECORD Id (#556) THE SAME ONE-TIME ADDRESS OPENS THAT RECORD, AND SHARES THE ONE OPEN PER WINDOW
-    static async openDataOrgInBrowser(panelState: IRecipeCockpitPanelState, orgDetail: IAuthenticatedOrgDetail, recordId?: string) {
-
-        this.isOrgOpenInFlightForWindow = true;
-        panelState.isOrgOpenInFlight = true;
-        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
-        const openedLabel = recordId === undefined ? orgLabel : `Record ${recordId} in ${orgLabel}`;
-
-        try {
-
-            const openOutcome = await SalesforceOrgService.requestOrgFrontDoorUrl(orgDetail.username, recordId);
-
-            if ( 'failureMessage' in openOutcome ) {
-                this.showOrgOpenError(`${openedLabel} was not opened: ${openOutcome.failureMessage}`);
-                return;
-            }
-
-            const isOpened = await vscode.env.openExternal(vscode.Uri.parse(openOutcome.url, true));
-
-            if ( !isOpened ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${openedLabel} was not opened: the browser did not accept the address.`));
-            }
-
-        } catch {
-
-            this.showOrgOpenError(`${openedLabel} was not opened: the browser could not be started.`);
-
-        } finally {
-
-            this.isOrgOpenInFlightForWindow = false;
-            panelState.isOrgOpenInFlight = false;
-            this.recipeCockpitPanelState.isOrgOpenInFlight = false;
-
-            if ( this.recipeCockpitPanel ) {
-                this.postToPanel(this.recipeCockpitPanel, { command: 'orgOpenState', isRunning: false });
-            }
-
-        }
-
-    }
-
-    // NOT AWAITED: THE BUTTON COMES BACK WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
-    private static showOrgOpenError(errorText: string) {
-
-        Promise.resolve(vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(errorText))).catch(() => undefined);
-
-    }
-
-    /*
-        The new org's alias, asked after the Dev Hub and before the modal (#279). There is no
-        default: the box starts empty and an empty or unusable alias cannot be submitted. An alias
-        another authorized org holds is a WARNING, not a refusal -- the CLI moves it to the new org,
-        which may be exactly what the reader wants -- and the modal repeats it. Escape is a cancel.
-        Which org holds which alias is read from the local authorizations only, and a failure to
-        read them costs only the warning.
-    */
-    private static async promptForScratchOrgAlias(): Promise<IScratchOrgAliasChoice | undefined> {
-
-        let aliasHolders = new Map<string, string>();
-
-        try {
-            aliasHolders = await SalesforceOrgService.listAliasHolders();
-        } catch {
-            // NO WARNING TO GIVE: THE CREATE ITSELF STILL WORKS
-        }
-
-        const enteredAlias = await vscode.window.showInputBox({
-            title: 'New scratch org',
-            prompt: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
-            placeHolder: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
-            ignoreFocusOut: true,
-            validateInput: (typedAlias: string) => this.validateScratchOrgAliasInput(typedAlias, aliasHolders)
-        });
-
-        if ( enteredAlias === undefined ) {
-            return undefined;
-        }
-
-        const alias = enteredAlias.trim();
-        const aliasHolderUsername = aliasHolders.get(alias);
-
-        return aliasHolderUsername ? { alias: alias, aliasHolderUsername: aliasHolderUsername } : { alias: alias };
-
-    }
-
-    // AFTER THE ALIAS (#534): STARTS ON TODAY'S 7 SO ENTER KEEPS IT, AND ESCAPE IS A CANCEL. THE TEXT IS PASSED AS TYPED; THE PLAN CHECKS IT AGAIN
-    private static async promptForScratchOrgDurationDays(): Promise<string | undefined> {
-
-        return vscode.window.showInputBox({
-            title: 'New scratch org',
-            prompt: RECIPE_COCKPIT_SCRATCH_ORG_DURATION_PROMPT,
-            value: String(SCRATCH_ORG_DURATION_DAYS),
-            ignoreFocusOut: true,
-            validateInput: (typedDurationDays: string) => ScratchOrgService.validateScratchOrgDurationDays(typedDurationDays)
-        });
-
-    }
-
-    // AN INPUT BOX'S MESSAGE RENDERS [label](command:...) AS A NOTIFICATION DOES, SO THE HOLDER'S USERNAME IS ESCAPED
-    static validateScratchOrgAliasInput(typedAlias: string, aliasHolders: Map<string, string>): string | vscode.InputBoxValidationMessage | undefined {
-
-        const alias = String(typedAlias ?? '').trim();
-        const aliasRefusal = ScratchOrgService.validateScratchOrgAlias(alias);
-
-        if ( aliasRefusal ) {
-            return aliasRefusal;
-        }
-
-        const aliasHolderUsername = aliasHolders.get(alias);
-
-        return aliasHolderUsername
-            ? {
-                message: RecipeYamlScalar.escapeForNotification(`"${alias}" is currently ${aliasHolderUsername}. Creating will move it to the new org.`),
-                severity: vscode.InputBoxValidationSeverity.Warning
-            }
-            : undefined;
-
-    }
-
-    // THE ALIAS AND THE USERNAME BOTH: THE ALIAS IS WHAT THE CONFIG NAMES, THE USERNAME IS WHICH ORG THAT IS
-    static buildDevHubLabel(scratchOrgPlan: IScratchOrgPlan): string {
-
-        const devHub = scratchOrgPlan.devHub;
-
-        return devHub.alias ? `${devHub.alias} (${devHub.username})` : devHub.username;
-
-    }
-
     // A MODAL DETAIL IS PLAIN TEXT, BUT A VALUE CARRYING A LINE BREAK -- OF EITHER PARSER'S KIND -- COULD STILL ADD A LINE THAT LOOKS LIKE OURS
     static toSingleLine(text: string): string {
 
         return String(text ?? '').replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
-
-    }
-
-    /*
-        Names what was resolved AND what the repository's own files decide, since the reader is
-        confirming both: where the Dev Hub setting came from (a cloned project's .sf/config.json can
-        choose among the reader's Dev Hubs) and what the definition sets for the admin. Nothing is
-        deployed (#358), so no package directory or replacement is named.
-    */
-    static buildScratchOrgConfirmationContent(scratchOrgPlan: IScratchOrgPlan, libraryRefusal?: string): IRecipeCockpitConfirmContent {
-
-        const devHubSourceText: Record<DevHubConfigSource, string> = {
-            environment: 'set by an environment variable',
-            project: 'set by this project\'s .sf or .sfdx config',
-            global: 'your global Salesforce CLI setting'
-        };
-        const definitionSummary = scratchOrgPlan.definitionSummary;
-        const definitionLines = [
-            definitionSummary.edition ? `  Edition: ${definitionSummary.edition}` : '',
-            definitionSummary.adminEmail ? `  Admin email: ${definitionSummary.adminEmail}` : '',
-            definitionSummary.username ? `  Username: ${definitionSummary.username}` : ''
-        ].filter(Boolean).map(definitionLine => this.toSingleLine(definitionLine));
-
-        return {
-            summary: [
-                // WHERE THE SETTING CAME FROM IS SAID ONLY OF THE DEFAULT: ANY OTHER DEV HUB WAS NAMED BY THE READER ALONE
-                scratchOrgPlan.devHub.configSource
-                    ? `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))} — the Salesforce CLI's default, ${devHubSourceText[scratchOrgPlan.devHub.configSource]}`
-                    : `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))}`,
-                scratchOrgPlan.aliasHolderUsername
-                    ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
-                    : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
-                `Duration: ${scratchOrgPlan.durationDays} ${scratchOrgPlan.durationDays === 1 ? 'day' : 'days'}`,
-                // WHAT THE REPOSITORY DECIDES STAYS ON SCREEN
-                `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
-                ...definitionLines
-            ],
-            warnings: ['The definition file, authored in this repository, decides who administers the new org.'],
-            sections: [
-                { title: 'What happens next', lines: ['Nothing is deployed to the new org: deploy what you need yourself once it is ready.', 'The scratch org is kept whatever happens, and nothing here deletes an org.'] },
-                {
-                    title: 'Salesforce CLI or @salesforce/core',
-                    lines: libraryRefusal
-                        ? ['Create with Salesforce CLI runs sf org create scratch from this workspace.', this.toSingleLine(`Create with @salesforce/core is not offered: ${libraryRefusal}`)]
-                        : ['Create with Salesforce CLI runs sf org create scratch from this workspace, and can be cancelled.',
-                            'Create with @salesforce/core creates the same org inside VS Code, without starting the CLI, and saves it where the CLI keeps its orgs. It cannot be cancelled once it starts.']
-                }
-            ]
-        };
 
     }
 
@@ -8929,7 +7961,7 @@ export class RecipeCockpitService {
 
         const usableSelectedOrg = (dataOrgSelection: IRecipeCockpitDataOrgSelection) => {
             if ( dataOrgSelection.isConnectionFailed ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${connectionFailedAdvice}`));
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${connectionFailedAdvice}`));
                 return undefined;
             }
             return dataOrgSelection.orgDetail;
@@ -8961,7 +7993,7 @@ export class RecipeCockpitService {
         let isOrgSelected = false;
         panelState[promptFlag] = true;
         try {
-            isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+            isOrgSelected = await RecipeCockpitTreecipeDataOrgs.promptAndSelectDataOrg(this, cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                 placeholder, refusalPrefix);
         } finally {
             panelState[promptFlag] = false;
@@ -8974,7 +8006,7 @@ export class RecipeCockpitService {
     // WHAT A TREE'S DEPLOYS ARE READ FOR: THE OBJECTS ITS INSERT SENDS, EACH WITH ITS RECIPE FIELDS LESS THE UNTICKED ONES
     static listTreeDeployObjects(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): IMetadataDeployObject[] {
 
-        const insertObjectApiNames = new Set(this.listTreeInsertObjectApiNames(recipeViewModel, tree));
+        const insertObjectApiNames = new Set(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(this, recipeViewModel, tree));
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         /*
             A field is left out of a deploy only when EVERY occurrence of its object leaves it out
@@ -9068,25 +8100,6 @@ export class RecipeCockpitService {
         }
 
         return undefined;
-
-    }
-
-    private static refuseDataOrgListingWhileHeld(panelState: IRecipeCockpitPanelState): RecipeCockpitPanelAction | undefined {
-
-        const holdingRun = this.describeSelectionHoldingRun(panelState);
-
-        if ( !holdingRun || !panelState.recipeDataMessage ) {
-            return undefined;
-        }
-
-        return {
-            kind: 'refuseDataOrgListing',
-            hostMessage: {
-                command: 'dataOrgListingRefused',
-                renderSequence: panelState.recipeDataMessage.renderSequence,
-                message: `${holdingRun}${RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX}`
-            }
-        };
 
     }
 
@@ -9944,1227 +8957,6 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        Remembered by USERNAME first, so the listing selects it, and kept even when it is not listed
-        yet -- the next ⟳ selects it then. A window with no drawn picker only remembers it.
-    */
-    private static async listAndSelectNewScratchOrg(orgUsername: string): Promise<boolean> {
-
-        SalesforceOrgService.clearConnectedOrgStatusCache();
-        this.rememberDataOrgUsername(orgUsername);
-
-        const cockpitPanel = this.recipeCockpitPanel;
-        const panelState = this.recipeCockpitPanelState;
-
-        if ( cockpitPanel && panelState.recipeDataMessage ) {
-            panelState.dataOrgUsername = orgUsername;
-            await this.loadDataOrgs(cockpitPanel, panelState, false, true);
-            return panelState.dataOrgDetails.some(orgDetail => orgDetail.username === orgUsername);
-        }
-
-        try {
-            return ( await SalesforceOrgService.listDataOrgDetails() ).orgDetails.some(orgDetail => orgDetail.username === orgUsername);
-        } catch {
-            return false;
-        }
-
-    }
-
-    // ONLY WHY AN AUTHORIZED ORG MAY BE MISSING, NEVER HOW MANY OR WHICH REASONS (#284)
-    static buildDataOrgHiddenNote(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
-
-        return SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts) === 0 ? '' : RECIPE_COCKPIT_HIDDEN_ORGS_NOTE;
-
-    }
-
-    // WITH NOTHING LISTED: NONE AUTHORIZED, ONLY PRODUCTION AUTHORIZED, OR NONE STILL CONNECTED
-    static buildDataOrgNoOrgsMessage(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
-
-        if ( SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts) === 0 ) {
-            return RECIPE_COCKPIT_NO_AUTHORIZED_ORGS_MESSAGE;
-        }
-
-        return hiddenOrgReasonCounts.expired + hiddenOrgReasonCounts.deleted + hiddenOrgReasonCounts.notConnected > 0
-            ? RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE
-            : RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE;
-
-    }
-
-    /*
-        Connects to the chosen org by USERNAME, asks the Organization row whether it is a sandbox,
-        then describes every object the rendered trees list to say whether "+ Create" is offered.
-        It counts no records (#238).
-
-        Every post first checks that this selection is still the current one -- same panel, same
-        model, and no later selection or refresh -- and the describes stop as soon as it is not,
-        so choosing another org mid-check discards this one's answers rather than drawing them over
-        the next. Nothing here writes to an org.
-    */
-    private static async selectDataOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, orgIndex: number) {
-
-        const orgDetail = panelState.dataOrgDetails[orgIndex];
-        const selectedRecipeDataMessage = panelState.recipeDataMessage;
-        const renderSequence = selectedRecipeDataMessage.renderSequence;
-        const objectApiNames = [...panelState.dataOrgObjectApiNames];
-        const requestSequence = ++panelState.dataOrgRequestSequence;
-        const dataOrgSelection: IRecipeCockpitDataOrgSelection = { orgIndex: orgIndex, orgDetail: orgDetail, requestSequence: requestSequence };
-        const orgLabel = this.buildDataOrgLabel(orgDetail);
-        let isOrgTypeAnswered = false;
-        let isScratchOrgDetailAnswered = false;
-
-        panelState.dataOrgSelection = dataOrgSelection;
-        panelState.dataOrgUsername = orgDetail.username;
-        this.rememberDataOrgUsername(orgDetail.username);
-
-        const isSelectionCurrent = () => this.recipeCockpitPanel === cockpitPanel
-                                            && this.recipeCockpitPanelState === panelState
-                                            && panelState.dataOrgRequestSequence === requestSequence
-                                            && panelState.recipeDataMessage === selectedRecipeDataMessage;
-
-        const postSelection = (failureMessage = '') => isSelectionCurrent() && this.postToPanel(cockpitPanel, {
-            command: 'dataOrgSelection',
-            orgIndex: orgIndex,
-            orgLabel: orgLabel,
-            orgTypeLabel: buildSelectionTypeLabel(),
-            isSandbox: dataOrgSelection.orgTypeDetail?.isSandbox ?? null,
-            failureMessage: failureMessage,
-            requestSequence: requestSequence,
-            renderSequence: renderSequence
-        });
-
-        /*
-            A sandbox's label waits for the local authorization to say whether it is a scratch org
-            (#458, read in process since #499); nothing else does. It is read only once the org has
-            answered that it is a sandbox -- the Organization row decides sandbox or not -- and it
-            runs beside the describes, never ahead of them.
-        */
-        const buildSelectionTypeLabel = () => {
-            if ( !isOrgTypeAnswered ) {
-                return '';
-            }
-            if ( dataOrgSelection.orgTypeDetail?.isSandbox === true && !isScratchOrgDetailAnswered ) {
-                return '';
-            }
-            return SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.scratchOrgDetail);
-        };
-
-        postSelection();
-
-        let connection: Connection;
-        let querySource: IOrgQuerySource;
-
-        try {
-            connection = await SalesforceOrgService.getConnection(orgDetail.username);
-            querySource = SalesforceOrgService.toQuerySource(connection);
-        } catch (connectionError) {
-            isOrgTypeAnswered = true;
-            dataOrgSelection.isConnectionFailed = true;
-            postSelection(`Could not connect to ${orgLabel}: ${connectionError?.message ?? connectionError}. Re-authorize the org with "sf org login web" and try again.`);
-            return;
-        }
-
-        if ( !isSelectionCurrent() ) {
-            return;
-        }
-
-        dataOrgSelection.orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
-        isOrgTypeAnswered = true;
-
-        /*
-            Listed because the CLI knew it as a sandbox or scratch org, or because it is the CLI's
-            default org (#305) -- but the org's own answer is the one that counts. An org that
-            answers it is not a sandbox, or cannot say, is asked NOTHING more: no describe, no insert.
-        */
-        if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
-
-            postSelection(`${orgLabel} ${dataOrgSelection.orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)}` : 'could not say whether it is a sandbox'}, so the Treecipe tab asked it nothing more. It inserts records only into a sandbox or scratch org.`);
-
-            if ( isSelectionCurrent() ) {
-                this.postToPanel(cockpitPanel, {
-                    command: 'dataOrgReadiness',
-                    objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
-                    createTargets: [],
-                    requestSequence: requestSequence,
-                    renderSequence: renderSequence
-                });
-            }
-
-            return;
-
-        }
-
-        postSelection();
-
-        void SalesforceOrgService.readScratchOrgDetail(orgDetail.username).then(scratchOrgDetail => {
-            dataOrgSelection.scratchOrgDetail = scratchOrgDetail;
-            isScratchOrgDetailAnswered = true;
-            postSelection();
-        });
-
-        // WHETHER A TREE'S INSERT IS OFFERED NEEDS EACH OBJECT'S DESCRIBE, NONE OF WHICH IS ASKED OF AN ORG THAT HAS NOT ANSWERED IT IS A SANDBOX
-        let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
-        let readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
-
-        try {
-            const createTargets = await this.collectCreateTargets(panelState, selectedRecipeDataMessage);
-            const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail, createTargets, () => !isSelectionCurrent());
-            readinessByObjectApiName = readinessByTarget.byObjectApiName;
-            readinessByCreateKey = readinessByTarget.byCreateKey;
-        } catch (describeError) {
-            const describeFailureMessage = String(describeError?.message ?? describeError);
-            readinessByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, {
-                objectApiName: objectApiName,
-                disabledReason: `The objects could not be described in this org (${describeFailureMessage}), so nothing is inserted into it.`,
-                requiredLookups: []
-            }]));
-        }
-
-        if ( !isSelectionCurrent() ) {
-            return;
-        }
-
-
-        dataOrgSelection.isReadinessPosted = true;
-        this.postToPanel(cockpitPanel, {
-            command: 'dataOrgReadiness',
-            objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
-            createTargets: [...readinessByCreateKey.values()],
-            requestSequence: requestSequence,
-            renderSequence: renderSequence
-        });
-
-    }
-
-    /*
-        "+ Create" for each object, in one org: fail-closed guards (RecipeCockpitRecordCreation) fed
-        with what the org says. An org that has not answered that it is a sandbox is asked nothing
-        more -- its answer is the same for every object. Otherwise each object is described (from
-        the session cache where it can be). No parent is counted: Create asks for parent Ids only
-        after the reader confirms.
-    */
-    static async computeCreateReadiness(orgUsername: string,
-                                        describeSource: IOrgDescribeSource,
-                                        objectApiNames: string[],
-                                        orgTypeDetail: IOrgTypeDetail | undefined,
-                                        isCancellationRequested?: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
-
-        return ( await this.computeCreateReadinessByTarget(orgUsername, describeSource, objectApiNames, orgTypeDetail, [], isCancellationRequested) ).byObjectApiName;
-
-    }
-
-    /*
-        The same, plus one readiness per tree and object (#210): the object's guards, then whether
-        that tree's block could be cut and whether it leaves out a field the org requires, against
-        the describe the guards already loaded -- so no target costs a request of its own. A block
-        field the org lacks is not a reason (#264). A target whose object was not asked about gets
-        no readiness.
-    */
-    static async computeCreateReadinessByTarget(orgUsername: string,
-                                                describeSource: IOrgDescribeSource | (() => Promise<IOrgDescribeSource>),
-                                                objectApiNames: string[],
-                                                orgTypeDetail: IOrgTypeDetail | undefined,
-                                                createTargets: IRecipeCockpitCreateTarget[],
-                                                isCancellationRequested?: () => boolean): Promise<IRecipeCockpitCreateReadinessByTarget> {
-
-        const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
-        const readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
-        const createTargetsByObjectApiName = new Map<string, IRecipeCockpitCreateTarget[]>();
-        createTargets.forEach(createTarget => createTargetsByObjectApiName.set(createTarget.objectApiName, [...( createTargetsByObjectApiName.get(createTarget.objectApiName) ?? [] ), createTarget]));
-
-        const setReadiness = (readinessInput: ICreateReadinessInput) => {
-            readinessByObjectApiName.set(readinessInput.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness(readinessInput));
-            ( createTargetsByObjectApiName.get(readinessInput.objectApiName) ?? [] )
-                .forEach(createTarget => {
-                    const createKey = this.buildTreeObjectKey(createTarget.treeKey, createTarget.objectApiName);
-                    const targetReadiness: IRecipeCockpitCreateReadinessViewModel = {
-                        ...RecipeCockpitRecordCreation.buildCreateReadiness({
-                            ...readinessInput,
-                            recipeFieldRefusalReason: createTarget.recipeFieldRefusalReason,
-                            excludedFieldApiNames: createTarget.excludedFieldApiNames
-                        }),
-                        treeKey: createTarget.treeKey
-                    };
-                    readinessByCreateKey.set(createKey, targetReadiness);
-                });
-        };
-
-        if ( orgTypeDetail?.isSandbox !== true ) {
-            objectApiNames.forEach(objectApiName => setReadiness({ objectApiName: objectApiName, orgTypeDetail: orgTypeDetail }));
-            return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
-        }
-
-        const describeSourceFactory = typeof describeSource === 'function' ? describeSource : async () => describeSource;
-        const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, describeSourceFactory, { isCancellationRequested });
-
-        describeResult.outcomes.forEach(describeOutcome => setReadiness({
-            objectApiName: describeOutcome.objectApiName,
-            orgTypeDetail: orgTypeDetail,
-            describe: describeOutcome.describe,
-            describeFailureMessage: describeOutcome.failureMessage
-        }));
-
-        return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
-
-    }
-
-    private static buildUnreadableRecipeCreateTarget(treeKey: string, objectApiName: string): IRecipeCockpitCreateTarget {
-
-        return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} records could not be prepared.` };
-
-    }
-
-    private static buildCreateTargetFromListing(treeKey: string, objectApiName: string, listed: RecipeBlockFieldListResult, excludedFieldApiNames: string[] = []): IRecipeCockpitCreateTarget {
-
-        return 'refusal' in listed
-            ? { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The ${objectApiName} block could not be cut from this tree's recipe: ${listed.refusal.message}` }
-            : {
-                treeKey: treeKey,
-                objectApiName: objectApiName,
-                recipeFieldApiNames: listed.fieldApiNames,
-                ...( excludedFieldApiNames.length > 0 ? { excludedFieldApiNames: [...excludedFieldApiNames] } : {} )
-            };
-
-    }
-
-    private static readCreateObjectNickname(recipeObject: IRecipeCockpitObjectViewModel | undefined): string | undefined {
-
-        return recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
-
-    }
-
-    /*
-        Every object of every tree the insert is offered on in the model on screen (or of one tree),
-        as a target with the fields its block in the tree's recipe sends. Each recipe is read once,
-        off the event loop, only from inside the workspace, and SCANNED once for all of its objects
-        (listCreateBlockFieldApiNamesForObjects); a recipe that cannot be read is every one of its
-        objects' refusal.
-    */
-    static async collectCreateTargets(panelState: IRecipeCockpitPanelState, recipeDataMessage: IRecipeCockpitRecipeDataMessage, onlyTreeKey?: string): Promise<IRecipeCockpitCreateTarget[]> {
-
-        const recipeObjectsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
-        recipeDataMessage.recipe.objects.forEach(recipeObject => {
-            if ( !recipeObjectsByApiName.has(recipeObject.objectApiName) ) {
-                recipeObjectsByApiName.set(recipeObject.objectApiName, recipeObject);
-            }
-        });
-
-        const createTargets: IRecipeCockpitCreateTarget[] = [];
-
-        for ( const tree of recipeDataMessage.recipe.trees.filter(candidateTree => !!candidateTree.runFakerRecipeFileName && ( onlyTreeKey === undefined || candidateTree.treeKey === onlyTreeKey )) ) {
-
-            const objectApiNames = tree.objects
-                .filter(treeObject => treeObject.iterationNickname === undefined)
-                .map(treeObject => treeObject.objectApiName);
-
-            const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
-            const recipeText = recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
-                ? await fs.promises.readFile(recipeFilePath, 'utf-8').catch((): undefined => undefined)
-                : undefined;
-
-            if ( recipeText === undefined ) {
-                objectApiNames.forEach(objectApiName => createTargets.push(this.buildUnreadableRecipeCreateTarget(tree.treeKey, objectApiName)));
-                continue;
-            }
-
-            const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
-            const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
-                objectApiName: objectApiName,
-                objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName)),
-                excludedFieldApiNames: excludedFieldApiNamesByObject.get(objectApiName) ?? []
-            })));
-
-            objectApiNames.forEach((objectApiName, objectIndex) => createTargets.push(
-                this.buildCreateTargetFromListing(tree.treeKey, objectApiName, listings[objectIndex], excludedFieldApiNamesByObject.get(objectApiName) ?? [])
-            ));
-
-        }
-
-        return createTargets;
-
-    }
-
-    static buildTreeObjectKey(treeKey: string, objectApiName: string): string {
-
-        return `${treeKey}\n${objectApiName}`;
-
-    }
-
-    // EVERY CARD THAT CAN GENERATE: "Generate fake data and insert" GENERATES THE SAME WAY, SO IT IS OFFERED ON THE SAME CARDS
-    static collectInsertableTreeKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
-
-        return recipeViewModel.trees
-            .filter(tree => !!tree.runFakerRecipeFileName)
-            .map(tree => tree.treeKey);
-
-    }
-
-    // EVERY CARD WITH A FOLDER AND AN OBJECT: "Assign permission sets to me…" IS OFFERED WHATEVER THE ORG ANSWERED (#274)
-    static collectAssignableTreeKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
-
-        return recipeViewModel.trees
-            .filter(tree => tree.folderName !== '' && tree.objects.length > 0)
-            .map(tree => tree.treeKey);
-
-    }
-
-    // THE OBJECTS A TREE'S INSERT SENDS: ONCE EACH, WITH A RECIPE, NOT EXCLUDED -- A SELF-LOOKUP'S ITERATION IS THE SAME OBJECT
-    static listTreeInsertObjectApiNames(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): string[] {
-
-        const recipeObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
-        const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
-
-        return [...new Set(tree.objects
-            .filter(treeObject => treeObject.iterationNickname === undefined)
-            .map(treeObject => treeObject.objectApiName))]
-            .filter(objectApiName => recipeObjectApiNames.has(objectApiName) && !excludedObjectApiNames.has(objectApiName));
-
-    }
-
-    /*
-        "Generate fake data and insert into <org>" (#255): the tree generated exactly as Run Faker by Recipe
-        generates it -- the card's selection and counts, the same data set folder, datasetSource.json
-        and filtered copy -- then inserted, parents first, through the one insert every command uses
-        (CollectionsApiService.insertDataSetFolderIntoOrg): the same all-or-none choice, the same
-        InsertAttempts results file, and the same rollback on Cancel or an all-or-none failure.
-
-        Once a data set folder was made, an insert that finished on the model it was clicked on posts
-        only its card's result and the new data set (#226), so the org selection and every other card
-        stay on screen. One that threw, or whose run changed meanwhile, or whose data
-        set the host cannot place, reloads the run onto the card's Treecipe tab, as before. The state
-        message is posted last, because the panel disabled the card's button on the click.
-    */
-    private static async insertTreeIntoOrg(cockpitPanel: vscode.WebviewPanel,
-                                            panelState: IRecipeCockpitPanelState,
-                                            insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertTree' }>) {
-
-        const { treeKey } = insertAction;
-        const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
-
-        panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: treeKey };
-        this.postToPanel(cockpitPanel, panelState.insertStateMessage);
-
-        const clickedRecipeDataMessage = panelState.recipeDataMessage;
-        let isDatasetWritten = false;
-        // ONE PER DATA SET WRITTEN, IN ORDER: "A data set for each record type" (#624) WRITES SEVERAL
-        const insertedDatasetFolderPaths: string[] = [];
-        let isInsertFinished = false;
-        let hasInsertFailed = false;
-        let insertError: unknown;
-
-        try {
-
-            isDatasetWritten = await this.performTreeInsert(cockpitPanel, panelState, insertAction, datasetFolderPath => {
-                isDatasetWritten = true;
-                insertedDatasetFolderPaths.push(datasetFolderPath);
-            }, () => { isInsertFinished = true; });
-
-        } catch (thrownError) {
-
-            hasInsertFailed = true;
-            insertError = thrownError;
-
-        } finally {
-
-            panelState.insertStateMessage = undefined;
-
-            if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
-
-                // ONLY AN INSERT THAT REACHED THE END ADDS ITS DATA SET IN PLACE; ONE THAT THREW RELOADS
-                const isAddedInPlace = isInsertFinished
-                                        && panelState.recipeDataMessage === clickedRecipeDataMessage
-                                        && insertedDatasetFolderPaths.every(datasetFolderPath =>
-                                            RecipeCockpitDatasetsHost.postAddedDataset(this, cockpitPanel, panelState, clickedRecipeDataMessage, datasetFolderPath));
-
-                if ( !isAddedInPlace ) {
-                    await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
-                }
-
-            }
-
-            if ( isPanelStillCurrent() ) {
-                this.postToPanel(cockpitPanel, { command: 'insertState', isRunning: false, treeKey: treeKey });
-            }
-
-        }
-
-        if ( hasInsertFailed ) {
-            throw insertError;
-        }
-
-    }
-
-    /*
-        "Generate fake data and insert" with no org chosen yet (#375). The org is asked for in the
-        command palette over the same listing the Target Org Manager dropdown draws (sandbox,
-        scratch and the CLI's default only), then put in the dropdown and checked exactly as a pick
-        there is -- connection, Organization row, describes -- and remembered. Only an org that
-        answered it is a sandbox goes on to the insert, through the router like a click, so every
-        guard of a click holds; the insert re-checks readiness and the Organization row as always.
-        The insert's state holds the window while the reader chooses, and is given back on every
-        way out, because the panel disabled the button on the click.
-    */
-    private static async insertTreeIntoPromptedOrg(cockpitPanel: vscode.WebviewPanel,
-                                                    panelState: IRecipeCockpitPanelState,
-                                                    promptAction: Extract<RecipeCockpitPanelAction, { kind: 'promptInsertOrg' }>) {
-
-        const { treeKey } = promptAction;
-        const clickedRecipeDataMessage = panelState.recipeDataMessage;
-        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
-                                            && this.recipeCockpitPanelState === panelState
-                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
-        const giveButtonBack = () => isClickStillCurrent() && this.postToPanel(cockpitPanel, { command: 'insertState', isRunning: false, treeKey: treeKey });
-
-        panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: treeKey };
-        this.postToPanel(cockpitPanel, panelState.insertStateMessage);
-
-        // THE INSERT'S STATE HOLDS THE WINDOW UNTIL THE PICK HAS BEEN CHECKED, SO NO RUN THAT CHANGES THE SELECTION STARTS MEANWHILE AND A REVEAL REPLAYS IT
-        try {
-
-            let isSandboxSelected = false;
-
-            try {
-                isSandboxSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
-                    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER, 'Nothing was generated or inserted', 'the Treecipe tab inserts only into a sandbox or scratch org');
-            } catch (promptError) {
-                // THE PANEL DISABLED THE BUTTON ON THE CLICK, SO A LISTING OR A CHECK THAT THREW STILL GIVES IT BACK
-                giveButtonBack();
-                throw promptError;
-            }
-
-            if ( !isSandboxSelected ) {
-                giveButtonBack();
-                return;
-            }
-
-        } finally {
-            // RELEASED ONLY HERE: THE ROUTER BELOW ANSWERS ANY INSERT STILL IN FLIGHT WITH ITS STATE INSTEAD OF ROUTING IT
-            panelState.insertStateMessage = undefined;
-        }
-
-        const routedInsert = this.routePanelMessage(this.buildInsertTreeMessage(promptAction), panelState);
-        if ( routedInsert?.kind !== 'insertTree' ) {
-            giveButtonBack();
-            return;
-        }
-
-        await this.insertTreeIntoOrg(cockpitPanel, panelState, routedInsert);
-
-    }
-
-    /*
-        The org asked for in the command palette over the listing the Target Org Manager dropdown
-        draws (sandbox, scratch and the CLI's default only), put in the dropdown and checked exactly
-        as a pick there is -- connection, Organization row, describes -- and remembered (#375). The
-        insert (#375) and the Treecipe Adapter's load (#416) both ask through it. True only when the
-        pick is now the selection and answered it is a sandbox; a listing the CLI could not answer, a
-        dismissed pick, a new model, an org chosen in the dropdown meanwhile and an org that is not a
-        sandbox are false, the last two with a warning. Anything else thrown is the caller's. With no
-        sandboxOnlyReason (a query, #439, only reads) any org that could be connected to is true.
-    */
-    static async promptAndSelectDataOrg(cockpitPanel: vscode.WebviewPanel,
-                                                        panelState: IRecipeCockpitPanelState,
-                                                        clickedRecipeDataMessage: IRecipeCockpitRecipeDataMessage,
-                                                        isClickStillCurrent: () => boolean,
-                                                        placeholder: string,
-                                                        refusalPrefix: string,
-                                                        sandboxOnlyReason?: string,
-                                                        selectionBeforePrompt?: IRecipeCockpitDataOrgSelection): Promise<boolean> {
-
-        let dataOrgListing: IDataOrgListing | undefined;
-        let chosenOrgDetail: IDataOrgDetail | undefined;
-
-        try {
-            chosenOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
-                SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot).then(listing => {
-                    dataOrgListing = listing;
-                    return { orgDetails: listing.orgDetails, emptyListMessage: this.buildDataOrgNoOrgsMessage(listing.hiddenOrgReasonCounts) };
-                }),
-                placeholder
-            );
-        } catch (listingError) {
-            if ( listingError instanceof OrgConnectionStatusUnavailableError ) {
-                VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix}: ${RecipeYamlScalar.escapeForNotification(listingError.message)}`);
-                return false;
-            }
-            throw listingError;
-        }
-
-        // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
-        // ("Change org…", #480, REPLACES THE SELECTION IT WAS ASKED OVER, AND ONLY THAT ONE)
-        const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
-        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection !== selectionBeforePrompt ) {
-            return false;
-        }
-
-        panelState.dataOrgDetails = dataOrgListing.orgDetails;
-        this.postToPanel(cockpitPanel, {
-            command: 'dataOrgList',
-            orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
-            orgPickerLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgPickerLabel(orgDetail)),
-            selectedOrgIndex: orgIndex,
-            noOrgsMessage: '',
-            hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),
-            forgottenOrgNotice: '',
-            renderSequence: clickedRecipeDataMessage.renderSequence
-        });
-
-        /*
-            A query (#439) only reads and opens its own connection, so it goes on as soon as the pick
-            IS the selection -- selectDataOrg sets it before its first await -- and the check, with a
-            sandbox's describes of every tree object, finishes behind it rather than in front of it.
-        */
-        if ( sandboxOnlyReason === undefined ) {
-            this.selectDataOrg(cockpitPanel, panelState, orgIndex).catch(selectError => ErrorHandlingService.handleCapturedError(selectError, 'openRecipeCockpit'));
-            return isClickStillCurrent() && panelState.dataOrgSelection?.orgDetail.username === chosenOrgDetail.username;
-        }
-
-        await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
-
-        const dataOrgSelection = panelState.dataOrgSelection;
-        if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
-            return false;
-        }
-
-        if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
-            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix}: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'could not be checked'}, and ${sandboxOnlyReason}.`);
-            return false;
-        }
-
-        return true;
-
-    }
-
-    // THE MESSAGE THAT STARTS THIS INSERT AGAIN -- AFTER THE ORG WAS ASKED FOR, OR "Change org…" -- WITH THE RECORD TYPES TICKED AT THE CLICK (#623), ROUTED AND MATCHED AGAIN
-    private static buildInsertTreeMessage(insertAction: { treeKey: string; recordTypeSelection?: Record<string, string[]>; isRemembered?: true }): IRecipeCockpitPanelMessage {
-
-        return {
-            command: 'insertTree',
-            treeKey: insertAction.treeKey,
-            ...( insertAction.recordTypeSelection ? { recordTypeSelection: insertAction.recordTypeSelection } : {} ),
-            ...( insertAction.isRemembered ? { isRemembered: true } : {} )
-        };
-
-    }
-
-    // WHAT THE RECORD TYPE PLAN (#623) READS OF EACH LISTED OBJECT WITH RECORD TYPES: ITS DEFAULT, AND WHAT THE RUN'S RECIPE WRITES
-    static listRecordTypeTickObjects(recipeViewModel: IRecipeCockpitRecipeViewModel, objectApiNames: readonly string[]): IRecordTypeTickObject[] {
-
-        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
-
-        return [...new Set(objectApiNames)]
-            .map(objectApiName => objectsByApiName.get(objectApiName))
-            .filter((objectViewModel): objectViewModel is IRecipeCockpitObjectViewModel => !!objectViewModel?.recordTypes?.length)
-            .map(objectViewModel => {
-                const generatedDeveloperNames = objectViewModel.generatedRecordTypeDeveloperNames ?? [];
-                const firstActiveRecordType = objectViewModel.recordTypes.find(recordType => recordType.isActive) ?? objectViewModel.recordTypes[0];
-                return {
-                    objectApiName: objectViewModel.objectApiName,
-                    // A RUN GENERATED WITH NO CHOICE WRITES THE DEFAULT ITSELF
-                    defaultDeveloperName: objectViewModel.isRecordTypeSelectionApplied !== true && generatedDeveloperNames.length === 1
-                        ? generatedDeveloperNames[0]
-                        : firstActiveRecordType.developerName,
-                    generatedDeveloperNames: generatedDeveloperNames
-                };
-            });
-
-    }
-
-    // THE NICKNAME OF THE FIRST BLOCK OF EACH OBJECT THE RUN'S RECIPE WRITES MORE THAN ONCE (#467): WHAT ITS FIRST BLOCK'S SETTINGS ARE STORED UNDER
-    static listRunFirstNicknamesByObject(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): Map<string, string> {
-
-        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
-        const runFirstNicknameByObject = new Map<string, string>();
-
-        tree.objects
-            .filter(treeObject => treeObject.iterationNickname === undefined)
-            .forEach(treeObject => {
-                const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
-                const firstNickname = objectViewModel ? this.readOccurrenceNickname(objectViewModel) : undefined;
-                if ( firstNickname !== undefined ) {
-                    runFirstNicknameByObject.set(treeObject.objectApiName, firstNickname);
-                }
-            });
-
-        return runFirstNicknameByObject;
-
-    }
-
-    // TRUE WHEN A DATA SET FOLDER WAS MADE; onDatasetFolderMade SAYS SO EVEN WHEN A LATER STEP THROWS
-    private static async performTreeInsert(cockpitPanel: vscode.WebviewPanel,
-                                            panelState: IRecipeCockpitPanelState,
-                                            insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertTree' }>,
-                                            onDatasetFolderMade: (datasetFolderPath: string) => void,
-                                            onInsertFinished: () => void): Promise<boolean> {
-
-        const { treeKey, recipeFilePath } = insertAction;
-        const dataOrgSelection = panelState.dataOrgSelection;
-        const recipeDataMessage = panelState.recipeDataMessage;
-        const tree = recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
-        const orgDetail = dataOrgSelection?.orgDetail;
-        const refuse = (refusalMessage: string) => { VSCodeWorkspaceService.showWarningMessage(refusalMessage); return false; };
-
-        if ( !dataOrgSelection || !orgDetail || !recipeDataMessage || !tree ) {
-            return refuse('Choose an org in the Treecipe tab before inserting a tree.');
-        }
-
-        // EACH NAME ESCAPED ON ITS OWN, SO THE PARENTHESES AROUND THE USERNAME STAY READABLE
-        const orgLabel = orgDetail.alias
-            ? `${RecipeYamlScalar.escapeForNotification(orgDetail.alias)} (${RecipeYamlScalar.escapeForNotification(orgDetail.username)})`
-            : RecipeYamlScalar.escapeForNotification(orgDetail.username);
-        const treeLabel = RecipeYamlScalar.escapeForNotification(tree.customName ?? tree.title);
-        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
-
-        if ( !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
-            return refuse(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so ${treeLabel} was not inserted.`);
-        }
-
-        const generatedRecipesFolderPath = path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
-        const recipeFakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath);
-        const selectedFakerService = ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery';
-
-        if ( recipeFakerService !== selectedFakerService ) {
-            return refuse(recipeFakerService
-                ? `This recipe was generated for ${recipeFakerService} — switch with "Select Faker Implementation".`
-                : `"${recipeFileLabel}" has a file name and folder that disagree on which faker implementation generated it, so nothing was inserted.`);
-        }
-
-        /*
-            The record types ticked at the click (#623). When they ask for anything the run's recipe
-            does not already write, the tree's recipe is built again in memory for them and the
-            card's settings are applied to that; no Generate Treecipe run is written. Otherwise the
-            run's recipe is generated from, exactly as before.
-        */
-        let recordTypePlan = RecipeCockpitRecordTypeRecipe.planGeneration(
-            this.listRecordTypeTickObjects(recipeDataMessage.recipe, tree.objects.map(treeObject => treeObject.objectApiName)),
-            insertAction.recordTypeSelection
-        );
-        let recordTypeWarnings: string[] = [];
-        let filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined;
-
-        if ( !recordTypePlan.isRecipeDerived ) {
-            // READ AT THE CLICK FROM THE MODEL ON SCREEN, WHICH IS WHAT THE CARD SHOWS; A COPY THAT DOES NOT READ BACK IS NEVER REPLACED BY THE WHOLE TREE
-            const filteredRecipeResult = this.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated or inserted for');
-            if ( filteredRecipeResult && 'refusalMessage' in filteredRecipeResult ) {
-                return refuse(filteredRecipeResult.refusalMessage);
-            }
-            filteredRecipe = filteredRecipeResult as IRecipeCockpitRunFakerFilteredRecipe | undefined;
-        }
-
-        const insertObjectApiNames = this.listTreeInsertObjectApiNames(recipeDataMessage.recipe, tree);
-        const insertObjectApiNameSet = new Set(insertObjectApiNames);
-
-        const connection = await SalesforceOrgService.getConnection(orgDetail.username);
-        const querySource = SalesforceOrgService.toQuerySource(connection);
-
-        // EVERY OBJECT THE TREE SENDS, AGAINST THE FIELDS OF ITS OWN BLOCK, BEFORE THE READER IS ASKED ANYTHING
-        const treeTargets = ( await this.collectCreateTargets(panelState, recipeDataMessage, treeKey) )
-            .filter(createTarget => insertObjectApiNameSet.has(createTarget.objectApiName));
-        const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, insertObjectApiNames, dataOrgSelection.orgTypeDetail, treeTargets);
-        const readinessByObjectApiName = new Map(insertObjectApiNames.map(objectApiName => [
-            objectApiName,
-            readinessByTarget.byCreateKey.get(this.buildTreeObjectKey(treeKey, objectApiName)) ?? readinessByTarget.byObjectApiName.get(objectApiName)
-        ]));
-
-        const unreadyEntry = [...readinessByObjectApiName].find(([, readiness]) => !readiness || readiness.disabledReason);
-        if ( unreadyEntry ) {
-            return refuse(`Nothing was inserted into ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(unreadyEntry[1]?.disabledReason ?? `${unreadyEntry[0]} could not be checked.`)}`);
-        }
-
-        // BUILT ONLY NOW, ONCE THE ORG CAN TAKE THE TREE: THE BUILD WALKS EVERY OBJECT'S METADATA
-        const deriveRecipe = (recordTypeSelection: Readonly<Record<string, string[]>>) =>
-            this.buildRecordTypeFilteredRecipe(panelState, recipeDataMessage.recipe, tree, recordTypeSelection);
-        // "A data set for each record type" (#624): EVERY SET'S RECIPE IS BUILT NOW, SO THE CONFIRMATION LISTS ITS OWN TOTALS AND WARNINGS, AND NO WALK RUNS AFTER THE ANSWER
-        const recordTypeSets: IRecordTypeSet<IRecipeCockpitRunFakerFilteredRecipe>[] = [];
-
-        if ( recordTypePlan.isRecipeDerived ) {
-
-            const derivedRecipe = await deriveRecipe(recordTypePlan.recordTypeSelection);
-            if ( derivedRecipe === 'cancelled' ) {
-                VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
-                return false;
-            }
-            if ( 'refusalReason' in derivedRecipe ) {
-                return refuse(`Nothing was generated or inserted for ${treeLabel}: ${derivedRecipe.refusalReason}`);
-            }
-
-            filteredRecipe = derivedRecipe.filteredRecipe;
-            recordTypeWarnings = derivedRecipe.confirmationWarnings;
-            // A SET IS NEVER BUILT FOR A RECORD TYPE THE METADATA NO LONGER HAS: IT WOULD BE THE DEFAULT, UNDER A NAME THAT SAYS OTHERWISE
-            recordTypePlan = RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(recordTypePlan, derivedRecipe.droppedTicks);
-
-            for ( const [setIndex, recordTypeSet] of recordTypePlan.recordTypeSets.entries() ) {
-                const setLabel = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLabel(recordTypeSet, setIndex);
-                const setRecipe = await deriveRecipe(recordTypeSet);
-                if ( setRecipe === 'cancelled' ) {
-                    VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
-                    return false;
-                }
-                if ( 'refusalReason' in setRecipe ) {
-                    return refuse(`Nothing was generated or inserted for ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(setLabel)}: ${setRecipe.refusalReason}`);
-                }
-                // THE FOLDED BUILD ALREADY DROPPED STALE TICKS: ONE DROPPED NOW IS METADATA CHANGED BETWEEN WALKS, AND THE SET WOULD CARRY A NAME IT DOES NOT INSERT
-                if ( setRecipe.droppedTicks.length > 0 ) {
-                    return refuse(`Nothing was generated or inserted for ${treeLabel}: the object metadata changed while the recipes for the ticked record types were built (${RecipeYamlScalar.escapeForNotification(setLabel)} no longer has its record types). Choose "${RECIPE_COCKPIT_INSERT_ACTION_LABEL}" again.`);
-                }
-                recordTypeSets.push({
-                    setLabel: setLabel,
-                    recipe: setRecipe.filteredRecipe,
-                    recordTotalsByObject: RecipeCockpitRecipeWriter.countRecipeRecordsByObject(setRecipe.filteredRecipe.recipeText),
-                    warnings: setRecipe.confirmationWarnings
-                });
-            }
-
-        }
-
-        const generationRecipeText = filteredRecipe ? filteredRecipe.recipeText : fs.readFileSync(recipeFilePath, 'utf-8');
-
-        // "Remember this selection" (#196): EVERY OBJECT WITH A CHOICE, IN ANY TREE. THE CONFIRMATION SAYS WHAT THE FILE WILL HOLD, AND IT IS SAVED ONLY WHEN THE GENERATE RUNS
-        const rememberedRecordTypeSelection = insertAction.isRemembered && insertAction.recordTypeSelection
-            ? RecipeCockpitRecordTypeRecipe.planGeneration(
-                this.listRecordTypeTickObjects(recipeDataMessage.recipe, recipeDataMessage.recipe.objects.map(objectViewModel => objectViewModel.objectApiName)),
-                insertAction.recordTypeSelection
-            ).recordTypeSelection
-            : undefined;
-        if ( rememberedRecordTypeSelection ) {
-            recordTypeWarnings = [...recordTypeWarnings, RecipeCockpitRecordTypeRecipe.buildRememberWarning(rememberedRecordTypeSelection)];
-        }
-
-        /*
-            A lookup the reader set to an existing org record (#421) keeps that Id. Every other lookup
-            to a parent the tree does not insert asks nothing (#254's picker is gone): an optional one
-            is left blank, and a required one gets a random existing record of its parent.
-        */
-        const orgRecordLookups = this.listTreeInsertOrgRecordLookups(tree, insertObjectApiNameSet);
-        const typedLookupIds = this.listTreeInsertTypedLookupIds(tree, insertObjectApiNameSet, objectApiName => SalesforceOrgService.getCachedDescribe(orgDetail.username, objectApiName));
-        const orgRecordLookupKeys = new Set([...orgRecordLookups, ...typedLookupIds].map(keptLookup => `${keptLookup.objectApiName}\n${keptLookup.fieldApiName}`));
-        const outsideParentObjectApiNames = [...new Set([...readinessByObjectApiName.values()]
-            .flatMap(readiness => readiness.requiredLookups.map(requiredLookup => ({ objectApiName: readiness.objectApiName, requiredLookup: requiredLookup })))
-            .filter(({ objectApiName, requiredLookup }) => !insertObjectApiNameSet.has(requiredLookup.parentObjectApiName) && !orgRecordLookupKeys.has(`${objectApiName}\n${requiredLookup.fieldApiName}`))
-            .map(({ requiredLookup }) => requiredLookup.parentObjectApiName))];
-
-        const recordTotalsByObject = new Map([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(generationRecipeText)]
-            .filter(([objectApiName]) => insertObjectApiNameSet.has(objectApiName)));
-
-        const insertConfirmationContent = this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.scratchOrgDetail, typedLookupIds);
-        const confirmTitle = `Generate ${treeLabel} and insert it into ${orgLabel}?`;
-        const recordTypeConfirmationContent = recordTypePlan.isRecipeDerived
-            ? this.addRecordTypesToInsertConfirmation(insertConfirmationContent, generationRecipeText, recordTypeWarnings)
-            : { ...insertConfirmationContent, warnings: [...( insertConfirmationContent.warnings ?? [] ), ...recordTypeWarnings] };
-        const confirmOptions: IRecipeCockpitConfirmOptions = {
-            ...( recordTypeSets.length > 0
-                ? RecipeCockpitRecordTypeSets.addRecordTypeSetsToConfirmation(recordTypeConfirmationContent, recordTypeSets, insertObjectApiNames)
-                : recordTypeConfirmationContent ),
-            org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
-            isDestructive: true,
-            changeOrg: { restartMessage: this.buildInsertTreeMessage(insertAction), isSandboxOnly: true }
-        };
-
-        // THE FOLDED QUESTION ONLY WHEN SOME OBJECT HAS A CHOICE (#623); AN ANSWER NAMING NO MODE THE DIALOG OFFERED IS CANCEL
-        let confirmation: string | undefined;
-        let recordTypeSetMode: RecordTypeSetMode | undefined;
-        if ( recordTypePlan.offeredModes.length > 0 ) {
-            const modeAnswer = await this.confirmInPanelWithRecordTypeSetModes(confirmTitle, { ...confirmOptions, recordTypeSetModes: recordTypePlan.offeredModes }, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
-            confirmation = modeAnswer.recordTypeSetMode !== undefined ? modeAnswer.chosenLabel : undefined;
-            recordTypeSetMode = modeAnswer.recordTypeSetMode;
-        } else {
-            confirmation = await this.confirmInPanel(confirmTitle, confirmOptions, RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
-        }
-
-        if ( confirmation !== RECIPE_COCKPIT_INSERT_CONFIRM_LABEL ) {
-            return false;
-        }
-
-        // THE SAME QUESTION INSERT DATA SET BY DIRECTORY ASKS: EVERY INSERT CHOOSES ALL-OR-NONE THE SAME WAY
-        const allOrNoneSelection = await CollectionsApiService.promptForAllOrNoneInsertDecision();
-        if ( allOrNoneSelection === undefined ) {
-            return false;
-        }
-
-        /*
-            The SAME selection, not merely the same org: another org chosen, ⟳, or a reload of the
-            run each start a new one, and the readiness checked before the dialog belongs to the one
-            the reader confirmed.
-        */
-        const isSameSelection = this.recipeCockpitPanel === cockpitPanel
-                                    && this.recipeCockpitPanelState === panelState
-                                    && panelState.dataOrgSelection === dataOrgSelection;
-
-        if ( !isSameSelection ) {
-            return refuse(`The org selection changed after ${orgLabel} was confirmed (another org was chosen, the orgs were checked again, or the run was reloaded), so nothing was inserted. Choose "${RECIPE_COCKPIT_INSERT_ACTION_LABEL}" again.`);
-        }
-
-        // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON, ON THE CONNECTION IT INSERTS WITH
-        const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
-        if ( orgTypeDetail?.isSandbox !== true ) {
-            return refuse(`Nothing was inserted into ${orgLabel} (${RecipeYamlScalar.escapeForNotification(SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail))}): the Recipe Cockpit inserts only into a sandbox or scratch org.`);
-        }
-
-        const orgRecordIdsByObject = new Map<string, string[]>();
-        const queryOrgRecordIds = async (parentObjectApiName: string) => {
-            if ( !orgRecordIdsByObject.has(parentObjectApiName) ) {
-                orgRecordIdsByObject.set(parentObjectApiName, await SalesforceOrgService.queryRecordIds(querySource, parentObjectApiName));
-            }
-            return orgRecordIdsByObject.get(parentObjectApiName) as string[];
-        };
-
-        for ( const parentObjectApiName of outsideParentObjectApiNames ) {
-            if ( ( await queryOrgRecordIds(parentObjectApiName) ).length === 0 ) {
-                return refuse(`${treeLabel} needs an existing ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} record for a required lookup, and ${orgLabel} returned none, so nothing was generated or inserted.`);
-            }
-        }
-
-        /*
-            EVERY Id A LOOKUP WAS SET TO -- CHOSEN IN AN ORG (#421) OR TYPED WITH THE PENCIL (#627) -- MUST BE A
-            RECORD OF ITS PARENT IN THE ORG INSERTED INTO, OR NOTHING IS WRITTEN. A POLYMORPHIC LOOKUP'S TYPED Id
-            HAS NO ONE PARENT TO ASK, SO ITS RECORD'S INSERT ANSWERS FOR IT.
-        */
-        const checkedTypedLookupIds = typedLookupIds.filter((typedLookupId): typedLookupId is IRecipeCockpitTypedLookupId & { parentObjectApiName: string } => typedLookupId.parentObjectApiName !== undefined);
-        const missingLookup = await this.findMissingOrgRecordLookup<ICheckedRecordIdLookup>(querySource, [...orgRecordLookups, ...checkedTypedLookupIds]);
-        if ( missingLookup ) {
-            const { objectApiName, fieldApiName, parentObjectApiName, recordId, failureMessage } = missingLookup;
-            const lookupLabel = `${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
-            const parentLabel = RecipeYamlScalar.escapeForNotification(parentObjectApiName);
-            const recordIdLabel = RecipeYamlScalar.escapeForNotification(recordId);
-            return refuse(failureMessage !== undefined
-                ? `Nothing was generated or inserted for ${treeLabel}: ${orgLabel} could not be asked whether it holds the ${parentLabel} records ${lookupLabel} points at (${RecipeYamlScalar.escapeForNotification(failureMessage)}).`
-                : 'orgLabel' in missingLookup
-                    ? `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} points at the ${parentLabel} record ${recordIdLabel}, chosen in ${RecipeYamlScalar.escapeForNotification(String(missingLookup.orgLabel))}, and ${orgLabel} has no such record. Clear it, or choose a record of this org with "Use existing ${parentLabel} from org…".`
-                    : `Nothing was generated or inserted for ${treeLabel}: ${lookupLabel} holds the ${parentLabel} Id ${recordIdLabel}, typed with its pencil, and ${orgLabel} has no such record. Change it with the pencil, or Clear it.`);
-        }
-        const orgRecordIdsByObjectField = new Map<string, Map<string, Set<string>>>();
-        [...orgRecordLookups, ...typedLookupIds].forEach(orgRecordLookup => {
-            const recordIdsByField = orgRecordIdsByObjectField.get(orgRecordLookup.objectApiName) ?? new Map<string, Set<string>>();
-            recordIdsByField.set(orgRecordLookup.fieldApiName, new Set([...( recordIdsByField.get(orgRecordLookup.fieldApiName) ?? [] ), orgRecordLookup.recordId]));
-            orgRecordIdsByObjectField.set(orgRecordLookup.objectApiName, recordIdsByField);
-        });
-
-        if ( rememberedRecordTypeSelection ) {
-            this.saveRecordTypeSelection(panelState, rememberedRecordTypeSelection);
-        }
-
-        const prepareRecords = () => this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), orgRecordIdsByObjectField);
-        const insertOptions = () => ({ prepareRecords: prepareRecords(), isFailureReportedByCaller: true, orgUsername: orgDetail.username, orgAlias: orgDetail.alias });
-        const insertedTree = { runFolderName: recipeDataMessage.recipe.selectedRunFolderName, treeFolderName: tree.folderName };
-
-        if ( recordTypeSetMode === 'separate' && recordTypeSets.length > 0 ) {
-            const setOutcomes = await RecipeCockpitRecordTypeSets.insertRecordTypeSets(recordTypeSets, {
-                generateDataset: async setRecipe => {
-                    const setDatasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, setRecipe);
-                    return setDatasetFolderPath && this.isUsableWorkspacePath(setDatasetFolderPath, panelState.workspaceRoot) ? setDatasetFolderPath : undefined;
-                },
-                onDatasetFolderMade: onDatasetFolderMade,
-                isSameSelection: () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState && panelState.dataOrgSelection === dataOrgSelection,
-                insertDataset: datasetFolderPath => CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, insertOptions())
-            });
-            onInsertFinished();
-            this.showRecordTypeSetsNotification(setOutcomes, treeLabel, orgLabel, panelState.workspaceRoot, insertedTree);
-            return setOutcomes.some(setOutcome => setOutcome.datasetFolderPath !== undefined);
-        }
-
-        const datasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, filteredRecipe);
-
-        if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
-            return refuse(`${treeLabel} was not generated, so nothing was inserted into ${orgLabel}.`);
-        }
-        onDatasetFolderMade(datasetFolderPath);
-
-        const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, insertOptions());
-
-        onInsertFinished();
-        this.showTreeInsertNotification(insertResult, treeLabel, orgLabel, panelState.workspaceRoot, insertedTree);
-
-        return true;
-
-    }
-
-    /*
-        The tree's recipe for some record types (#623), built in memory with the card's settings
-        applied: the confirmation's warnings with it, or why it cannot be built -- the part of a
-        notification after the tree's name, escaped -- or 'cancelled'.
-    */
-    private static async buildRecordTypeFilteredRecipe(panelState: IRecipeCockpitPanelState,
-                                                        recipeViewModel: IRecipeCockpitRecipeViewModel,
-                                                        tree: IRecipeCockpitTreeViewModel,
-                                                        recordTypeSelection: Readonly<Record<string, string[]>>):
-        Promise<{ filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; confirmationWarnings: string[]; droppedTicks: IDroppedRecordTypeTick[] } | { refusalReason: string } | 'cancelled'> {
-
-        const derivedRecipe = tree.folderName
-            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection)
-            : 'treeNotBuilt';
-        if ( derivedRecipe === 'cancelled' ) {
-            return 'cancelled';
-        }
-        if ( derivedRecipe === 'treeNotBuilt' ) {
-            return { refusalReason: 'the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.' };
-        }
-
-        const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(
-            derivedRecipe.recipeText,
-            this.listRunFirstNicknamesByObject(recipeViewModel, tree),
-            recordTypeSelection
-        );
-
-        // THE CARD, ITS READINESS AND THE CONFIRMATION'S TOTALS ARE THE RUN'S OBJECTS, SO A RECIPE WITH AN OBJECT THE RUN LACKS IS NOT GENERATED
-        const treeObjectApiNames = new Set(tree.objects.map(treeObject => treeObject.objectApiName));
-        const objectsNewToTree = settingPlacer.derivedObjectApiNames.filter(objectApiName => !treeObjectApiNames.has(objectApiName));
-        if ( objectsNewToTree.length > 0 ) {
-            return { refusalReason: `the object metadata now puts ${objectsNewToTree.map(objectApiName => RecipeYamlScalar.escapeForNotification(objectApiName)).join(', ')} in this tree, which this run does not have. Run "Generate Treecipe" again, then tick the record types.` };
-        }
-
-        const derivedFilteredRecipe = this.buildRunFakerFilteredRecipe(derivedRecipe.recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel, settingPlacer);
-        if ( 'refusalMessage' in derivedFilteredRecipe ) {
-            return { refusalReason: `${RecipeYamlScalar.escapeForNotification(derivedFilteredRecipe.refusalMessage)} The recipe built for the ticked record types could not take this card's settings.` };
-        }
-
-        return {
-            // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
-            filteredRecipe: { ...derivedFilteredRecipe, recordTypeSelection: Object.fromEntries(Object.entries(recordTypeSelection)) },
-            confirmationWarnings: RecipeCockpitRecordTypeRecipe.buildConfirmationWarnings(derivedRecipe.droppedTicks, settingPlacer),
-            droppedTicks: derivedRecipe.droppedTicks
-        };
-
-    }
-
-    /*
-        How "A data set for each record type" ended (#624), as ONE notification naming every set's
-        outcome. The first set that failed or stopped offers "View errors" on its results file, and
-        "View failed file" and "Open Troubleshooting" as a single tree insert's does. NOT AWAITED.
-        treeLabel and orgLabel arrive escaped.
-    */
-    static showRecordTypeSetsNotification(setOutcomes: readonly IRecordTypeSetOutcome[], treeLabel: string, orgLabel: string, workspaceRoot: string, insertedTree: { runFolderName: string; treeFolderName: string }) {
-
-        const { severity, notificationText } = RecipeCockpitRecordTypeSets.buildRecordTypeSetsNotification(setOutcomes, treeLabel, orgLabel);
-        const failedSetResult = setOutcomes
-            .map(setOutcome => setOutcome.insertResult)
-            .find((insertResult): insertResult is IDataSetInsertResult => !!insertResult && insertResult.outcome !== 'cancelled' && !RecipeCockpitRecordTypeSets.isInsertWhollyLanded(insertResult));
-
-        if ( !failedSetResult ) {
-            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [], workspaceRoot);
-            return;
-        }
-
-        const resultsFileAction = {
-            label: RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
-            filePath: failedSetResult.resultsFilePath && fs.existsSync(failedSetResult.resultsFilePath) ? failedSetResult.resultsFilePath : undefined,
-            missingFileText: 'The insert results file no longer exists in this workspace.'
-        };
-        const failedFilePath = failedSetResult.failedFilePath;
-
-        if ( typeof failedFilePath !== 'string' ) {
-            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [resultsFileAction], workspaceRoot);
-            return;
-        }
-
-        const troubleshootingSubTab = RecipeCockpitInsertFailureTriage.resolveSubTab(failedSetResult.firstFailure);
-        VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity,
-            `${notificationText} The first file that failed is ${RecipeYamlScalar.escapeForNotification(path.basename(failedFilePath))}; its ${RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS[troubleshootingSubTab]} in the Troubleshooting tab may fix it.`, [
-            { label: RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL, filePath: fs.existsSync(failedFilePath) ? failedFilePath : undefined, missingFileText: 'The generated file that failed no longer exists in this workspace.' },
-            resultsFileAction
-        ], workspaceRoot, insertedTree.treeFolderName !== '' ? [{
-            label: RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
-            run: () => this.openTroubleshootingAfterInsert(workspaceRoot, { ...insertedTree, troubleshootingSubTab: troubleshootingSubTab })
-        }] : []);
-
-    }
-
-    // Run Faker by Recipe WITH ITS MODAL ALREADY ANSWERED BY THE INSERT'S: THE DATA SET FOLDER IT WROTE, OR undefined
-    private static async generateConfirmedDataset(recipeFilePath: string, filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined): Promise<string | undefined> {
-
-        const confirmationToken = RunFakerConfirmation.issue();
-        let datasetFolderPath: unknown;
-        try {
-            datasetFolderPath = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, filteredRecipe, { confirmationToken: confirmationToken });
-        } finally {
-            RunFakerConfirmation.revoke(confirmationToken);
-        }
-
-        return typeof datasetFolderPath === 'string' && SfdxProjectService.isExistingDirectory(datasetFolderPath) ? datasetFolderPath : undefined;
-
-    }
-
-    // THE LOOKUPS SET TO AN EXISTING ORG RECORD (#421) THAT THE INSERT SENDS: ONLY AN OBJECT IT INSERTS, AND ONLY WHAT NO LOCK HOLDS BACK
-    static listTreeInsertOrgRecordLookups(tree: IRecipeCockpitTreeViewModel, insertObjectApiNames: ReadonlySet<string>): IRecipeCockpitOrgRecordLookupViewModel[] {
-
-        // AN ORG RECORD'S PIN HOLDS EVERY OCCURRENCE, SO AN OBJECT WITH iterations LISTS IT PER OCCURRENCE (#467); IT IS ONE LOOKUP
-        const listedFieldKeys = new Set<string>();
-        return ( tree.fixedValues ?? [] ).flatMap(fixedValue => {
-            const fieldKey = `${fixedValue.objectApiName}\n${fixedValue.fieldApiName}`;
-            const orgRecordLookup = fixedValue.orgRecord && insertObjectApiNames.has(fixedValue.objectApiName) && !listedFieldKeys.has(fieldKey)
-                ? this.findOrgRecordLookup(tree, fixedValue.objectApiName, fixedValue.fieldApiName, fixedValue.value)
-                : undefined;
-            if ( orgRecordLookup ) {
-                listedFieldKeys.add(fieldKey);
-            }
-            return orgRecordLookup ? [orgRecordLookup] : [];
-        });
-
-    }
-
-    /*
-        The record Ids typed into a lookup's pencil (#627) that the insert sends and keeps: a pinned
-        value that is a Salesforce Id, on a field the org inserted into describes as a lookup. Any
-        other pinned value is left to prepareTreeInsertRecords, which replaces a lookup's as before.
-    */
-    static listTreeInsertTypedLookupIds(tree: IRecipeCockpitTreeViewModel,
-                                        insertObjectApiNames: ReadonlySet<string>,
-                                        findDescribe: (objectApiName: string) => ICreateObjectDescribe | undefined): IRecipeCockpitTypedLookupId[] {
-
-        const listedKeys = new Set<string>();
-        return ( tree.fixedValues ?? [] ).flatMap(fixedValue => {
-            if ( fixedValue.orgRecord || !insertObjectApiNames.has(fixedValue.objectApiName) || !RecipeCockpitFixedValueStore.isSalesforceRecordId(fixedValue.value) ) {
-                return [];
-            }
-            const describe = findDescribe(fixedValue.objectApiName);
-            const insertLookup = describe
-                ? RecipeCockpitRecordCreation.findTreeInsertLookups(describe).find(candidate => candidate.fieldApiName.toLowerCase() === fixedValue.fieldApiName.toLowerCase())
-                : undefined;
-            // AN OBJECT WITH iterations PINS EACH OCCURRENCE (#467): ONE Id ON ONE FIELD IS ONE LOOKUP
-            const typedKey = `${fixedValue.objectApiName}\n${fixedValue.fieldApiName}\n${fixedValue.value}`;
-            if ( !insertLookup || listedKeys.has(typedKey) ) {
-                return [];
-            }
-            listedKeys.add(typedKey);
-            return [{
-                objectApiName: fixedValue.objectApiName,
-                fieldApiName: fixedValue.fieldApiName,
-                recordId: fixedValue.value,
-                ...( insertLookup.parentObjectApiName !== undefined ? { parentObjectApiName: insertLookup.parentObjectApiName } : {} )
-            }];
-        });
-
-    }
-
-    /*
-        The first lookup whose Id the org does not hold as a record of its parent, one query per
-        parent; a query that fails is that lookup's failureMessage, never "it exists".
-    */
-    static async findMissingOrgRecordLookup<TLookup extends ICheckedRecordIdLookup>(querySource: IOrgQuerySource, orgRecordLookups: readonly TLookup[]):
-        Promise<( TLookup & { failureMessage?: string } ) | undefined> {
-
-        const parentObjectApiNames = [...new Set(orgRecordLookups.map(orgRecordLookup => orgRecordLookup.parentObjectApiName))];
-
-        for ( const parentObjectApiName of parentObjectApiNames ) {
-            const parentLookups = orgRecordLookups.filter(orgRecordLookup => orgRecordLookup.parentObjectApiName === parentObjectApiName);
-            let existingRecordIds: string[];
-            try {
-                existingRecordIds = await SalesforceOrgService.queryExistingRecordIds(querySource, parentObjectApiName, parentLookups.map(orgRecordLookup => orgRecordLookup.recordId));
-            } catch (queryError) {
-                return { ...parentLookups[0], failureMessage: String(( queryError as Error )?.message ?? queryError) };
-            }
-            const missingLookup = parentLookups.find(orgRecordLookup => !existingRecordIds.some(existingRecordId => SalesforceOrgService.isSameRecordId(existingRecordId, orgRecordLookup.recordId)));
-            if ( missingLookup ) {
-                return missingLookup;
-            }
-        }
-
-        return undefined;
-
-    }
-
-    /*
-        How the tree insert ended, as ONE notification (#301), with the results file a button opens:
-        "View errors" when a record failed or the insert stopped, "View results" otherwise. A stopped
-        insert is an ERROR (#310), the one notification for it, since the shared insert was told not
-        to show its own. The insert writes that file once it has sent a file, so a cancel before that
-        offers no button. One that failed (#375) also names the first generated file that failed,
-        opens it with "View failed file", and offers "Open Troubleshooting" on the sub-tab the first
-        failure's error points at. The panel draws no line for it. NOT AWAITED, so the insert ends
-        without waiting for the reader. treeLabel and orgLabel arrive escaped.
-    */
-    static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string, insertedTree?: { runFolderName: string; treeFolderName: string }) {
-
-        const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
-        const hasErrors = insertResult.failedRecordCount > 0 || insertResult.outcome === 'stopped';
-        let severity: 'information' | 'warning' | 'error' = 'warning';
-        let notificationText: string;
-
-        if ( insertResult.outcome === 'cancelled' ) {
-            notificationText = `The insert of ${treeLabel} into ${orgLabel} was cancelled${insertResult.isRolledBack ? ' and every record it had inserted was deleted' : ''}.`;
-        } else if ( insertResult.outcome === 'stopped' ) {
-            severity = 'error';
-            notificationText = insertResult.isRolledBack
-                ? `The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. ${recordsText(insertResult.failedRecordCount)} failed.`
-                : `The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted. ${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} kept, because all-or-none was not chosen, and ${insertResult.failedRecordCount} failed.`;
-        } else if ( insertResult.failedRecordCount > 0 ) {
-            notificationText = `${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} inserted into ${orgLabel} from ${treeLabel} and ${insertResult.failedRecordCount} failed. Nothing was rolled back.`;
-        } else {
-            severity = 'information';
-            notificationText = `${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} inserted into ${orgLabel} from ${treeLabel}.`;
-        }
-
-        if ( insertResult.requestFailureDetail ) {
-            notificationText += ` The request for ${RecipeYamlScalar.escapeForNotification(insertResult.requestFailureDetail)}`;
-        }
-
-        const resultsFilePath = insertResult.resultsFilePath && fs.existsSync(insertResult.resultsFilePath) ? insertResult.resultsFilePath : undefined;
-        const resultsFileAction = {
-            label: hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-            filePath: resultsFilePath,
-            missingFileText: 'The insert results file no longer exists in this workspace.'
-        };
-
-        const failedFilePath = insertResult.failedFilePath;
-        const hasFailedFile = typeof failedFilePath === 'string' && insertResult.outcome !== 'cancelled';
-
-        if ( !hasFailedFile ) {
-            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [resultsFileAction], workspaceRoot);
-            return;
-        }
-
-        const troubleshootingSubTab = RecipeCockpitInsertFailureTriage.resolveSubTab(insertResult.firstFailure);
-        notificationText += ` The first file that failed is ${RecipeYamlScalar.escapeForNotification(path.basename(failedFilePath))}; its ${RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS[troubleshootingSubTab]} in the Troubleshooting tab may fix it.`;
-
-        VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [
-            { label: RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL, filePath: fs.existsSync(failedFilePath) ? failedFilePath : undefined, missingFileText: 'The generated file that failed no longer exists in this workspace.' },
-            resultsFileAction
-        ], workspaceRoot, insertedTree && insertedTree.treeFolderName !== '' ? [{
-            label: RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
-            run: () => this.openTroubleshootingAfterInsert(workspaceRoot, { ...insertedTree, troubleshootingSubTab: troubleshootingSubTab })
-        }] : []);
-
-    }
-
-    /*
-        "Open Troubleshooting" (#375). On the cockpit open now, on the same run, with a card for the
-        tree, the card is focused IN PLACE -- no reload, so the org selection and readiness stay.
-        Otherwise the cockpit is opened through its command (the feature flag still applies) on that
-        run, focused there once it is drawn. A run or tree folder gone from disk is a warning, and
-        nothing is opened.
-    */
-    static async openTroubleshootingAfterInsert(workspaceRoot: string, focusRequest: IRecipeCockpitTroubleshootingFocusRequest) {
-
-        const cockpitPanel = this.recipeCockpitPanel;
-        const panelState = this.recipeCockpitPanelState;
-        const recipeDataMessage = panelState.recipeDataMessage;
-        const focusTree = recipeDataMessage && recipeDataMessage.recipe.selectedRunFolderName === focusRequest.runFolderName
-            ? this.resolveTroubleshootingFocus(recipeDataMessage.recipe, focusRequest)
-            : undefined;
-
-        if ( cockpitPanel && panelState.workspaceRoot === workspaceRoot && recipeDataMessage && focusTree ) {
-            /*
-                A HIDDEN panel's document is gone (retainContextWhenHidden is off) and the reveal
-                reloads it, so the focus rides on the model's replay until it is drawn, as an open's does.
-            */
-            if ( !cockpitPanel.visible ) {
-                panelState.openFocusTree = focusTree;
-                cockpitPanel.reveal(vscode.ViewColumn.One);
-                return;
-            }
-            cockpitPanel.reveal(vscode.ViewColumn.One);
-            this.postToPanel(cockpitPanel, { command: 'focusTree', focusTree: focusTree, renderSequence: recipeDataMessage.renderSequence });
-            return;
-        }
-
-        const treeFolderPath = path.join(workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath(), focusRequest.runFolderName, focusRequest.treeFolderName);
-        if ( !SfdxProjectService.isExistingDirectory(treeFolderPath) || !this.isUsableWorkspacePath(treeFolderPath, workspaceRoot) ) {
-            VSCodeWorkspaceService.showWarningMessage(`The run ${RecipeYamlScalar.escapeForNotification(focusRequest.runFolderName)} or its tree ${RecipeYamlScalar.escapeForNotification(focusRequest.treeFolderName)} no longer exists, so the Troubleshooting tab was not opened.`);
-            return;
-        }
-
-        await vscode.commands.executeCommand(RECIPE_COCKPIT_OPEN_COMMAND, { focusTroubleshooting: true, ...focusRequest });
-
-    }
-
     // THE CARD OF THE NAMED TREE, ON THE TROUBLESHOOTING TAB AND SUB-TAB; undefined WHEN NO CARD HAS THAT FOLDER
     static resolveTroubleshootingFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitTroubleshootingFocusRequest): IRecipeCockpitTreeFocus | undefined {
 
@@ -11197,245 +8989,6 @@ export class RecipeCockpitService {
     }
 
     /*
-        What the insert does with a file's lookups, decided per object from the describe the
-        readiness check just cached: a lookup already naming a record of this insert is kept, and any
-        other is filled or cleared by RecipeCockpitRecordCreation.prepareTreeInsertRecords. An object
-        the cache does not hold is sent as generated.
-    */
-    static buildTreeInsertRecordPreparer(orgUsername: string,
-                                            insertObjectApiNames: ReadonlySet<string>,
-                                            orgRecordIdsByObject: ReadonlyMap<string, readonly string[]>,
-                                            pickIndex: (choiceCount: number) => number,
-                                            orgRecordIdsByObjectField: ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>> = new Map()): DataSetRecordPreparer {
-
-        // BUILT AS THE INSERT GOES: THE CREATED-Id MAP ONLY GROWS, SO EACH FILE ADDS ONLY WHAT THE FILES BEFORE IT CREATED
-        const runRecordIds = new Set<string>();
-        const runRecordIdsByObject = new Map<string, string[]>();
-        const indexedReferenceIds = new Set<string>();
-
-        return (objectApiName, records, createdRecordIdsByReferenceId) => {
-
-            Object.entries(createdRecordIdsByReferenceId).forEach(([referenceId, recordId]) => {
-                if ( indexedReferenceIds.has(referenceId) || typeof recordId !== 'string' ) {
-                    return;
-                }
-                indexedReferenceIds.add(referenceId);
-                runRecordIds.add(recordId);
-                // "<Object>_Reference_<n>", WITH "__<nickname>" ONLY WHEN THE RECORD HAD ONE
-                const referencedObjectApiName = /^(.+?)_Reference_\d+(?:__|$)/.exec(referenceId)?.[1];
-                if ( referencedObjectApiName ) {
-                    const objectRecordIds = runRecordIdsByObject.get(referencedObjectApiName);
-                    if ( objectRecordIds ) {
-                        objectRecordIds.push(recordId);
-                    } else {
-                        runRecordIdsByObject.set(referencedObjectApiName, [recordId]);
-                    }
-                }
-            });
-
-            const describe = SalesforceOrgService.getCachedDescribe(orgUsername, objectApiName);
-            if ( !describe ) {
-                return records;
-            }
-
-            // A NICKNAME OF A RECORD OF THIS SAME FILE IS RESOLVED BY A LATER INSERT ROUND
-            const sameFileNicknames = new Set(records
-                .map(record => ( record as { attributes?: { referenceId?: unknown } } | null )?.attributes?.referenceId)
-                .filter((referenceId): referenceId is string => typeof referenceId === 'string')
-                .map(referenceId => CollectionsApiService.readNicknameFromReferenceId(referenceId))
-                .filter((nickname): nickname is string => !!nickname));
-
-            return RecipeCockpitRecordCreation.prepareTreeInsertRecords(records, RecipeCockpitRecordCreation.findTreeInsertLookups(describe), {
-                isRunReference: value => runRecordIds.has(value) || sameFileNicknames.has(value),
-                runRecordIdsByObject: runRecordIdsByObject,
-                orgRecordIdsByObject: orgRecordIdsByObject,
-                inTreeObjectApiNames: insertObjectApiNames,
-                orgRecordIdsByFieldApiName: orgRecordIdsByObjectField.get(objectApiName) ?? new Map()
-            }, pickIndex);
-
-        };
-
-    }
-
-    static buildInsertConfirmationContent(orgLabel: string,
-                                            orgTypeDetail: IOrgTypeDetail | undefined,
-                                            tree: IRecipeCockpitTreeViewModel,
-                                            recipeViewModel: IRecipeCockpitRecipeViewModel,
-                                            recordTotalsByObject: ReadonlyMap<string, number>,
-                                            outsideParentObjectApiNames: string[],
-                                            fakerService: string,
-                                            recipeFileLabel: string,
-                                            orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = [],
-                                            scratchOrgDetail?: IScratchOrgDetail,
-                                            typedLookupIds: readonly IRecipeCockpitTypedLookupId[] = []): IRecipeCockpitConfirmContent {
-
-        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
-        const objectCountsByObject = this.listObjectCountsByObject(tree);
-        const totalRecordCount = [...recordTotalsByObject.values()].reduce((recordCount, objectTotal) => recordCount + objectTotal, 0);
-        const requestCount = RecipeCockpitRecordCreation.countInsertRequests(recordTotalsByObject);
-
-        const objectLines = [...recordTotalsByObject].map(([objectApiName, objectTotal]) => {
-            const objectViewModel = objectsByApiName.get(objectApiName);
-            // THE FIRST OCCURRENCE'S COUNT: ITS OWN KEY'S FOR AN OBJECT WITH iterations (#467)
-            const firstNickname = objectViewModel ? this.readOccurrenceNickname(objectViewModel) : undefined;
-            const perParentCount = objectCountsByObject.get(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, firstNickname)) ?? objectViewModel?.recordCount;
-            const perParentText = objectViewModel?.countParentObjectApiName && perParentCount !== undefined
-                ? ` (${perParentCount} per ${objectViewModel.countParentObjectApiName})`
-                : '';
-            return `  ${objectApiName}: ${objectTotal}${perParentText}`;
-        });
-        // AN OCCURRENCE'S OWN CHANGE NAMES IT (#467)
-        const describeKey = (occurrenceKey: string) => {
-            const { objectApiName, nickname } = RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey);
-            return this.describeOccurrence(objectApiName, nickname);
-        };
-        const leftOutLines = this.buildInsertLeftOutLines(tree);
-        // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM, AND SO IS AN Id TYPED INTO A LOOKUP (#627)
-        const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord
-                                                                            && !typedLookupIds.some(typedLookupId => typedLookupId.objectApiName === fixedValue.objectApiName
-                                                                                                                    && typedLookupId.fieldApiName === fixedValue.fieldApiName
-                                                                                                                    && typedLookupId.recordId === fixedValue.value));
-        const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
-            .flatMap(([occurrenceKey, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`));
-
-        const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, scratchOrgDetail);
-
-        return {
-            summary: [`Generate ${totalRecordCount} ${totalRecordCount === 1 ? 'record' : 'records'} and insert ${totalRecordCount === 1 ? 'it' : 'them'} into ${orgLabel}.`],
-            badge: orgTypeLabel,
-            warnings: [
-                'Cancel on the progress notification deletes every record this insert saved.',
-                ...( validationRulesOff.length > 0
-                    ? [`Validation rules switched off, so the org may reject these values: ${validationRulesOff.join(', ')}`]
-                    : [] ),
-                ...( totalRecordCount > RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
-                    ? [`This run will take time: ${totalRecordCount} records in at least ${requestCount} Collections API requests.`]
-                    : [] ),
-                // RECORDS POINTED AT EXISTING ORG RECORDS, AT RANDOM OR BY AN Id FROM ANOTHER ORG, ARE NOT GENERATED DATA, SO THEY ARE NEVER ONLY FOLDED
-                ...( outsideParentObjectApiNames.length > 0
-                    ? [`Required lookups to objects this tree does not insert get a random existing record of: ${outsideParentObjectApiNames.join(', ')} (none means nothing is inserted).`]
-                    : [] ),
-                ...( orgRecordLookups.length > 0
-                    ? [
-                        'Lookups set to existing org records, each checked in this org before anything is written:',
-                        ...orgRecordLookups.map(orgRecordLookup => `  ${orgRecordLookup.objectApiName}.${orgRecordLookup.fieldApiName} → ${orgRecordLookup.parentObjectApiName} ${orgRecordLookup.recordId} (from ${orgRecordLookup.orgLabel})`)
-                    ]
-                    : [] ),
-                ...( typedLookupIds.length > 0
-                    ? [
-                        'Lookups set to a record Id typed with the pencil, each checked in this org before anything is written:',
-                        ...typedLookupIds.map(typedLookupId => typedLookupId.parentObjectApiName !== undefined
-                            ? `  ${typedLookupId.objectApiName}.${typedLookupId.fieldApiName} → ${typedLookupId.parentObjectApiName} ${typedLookupId.recordId}`
-                            : `  ${typedLookupId.objectApiName}.${typedLookupId.fieldApiName} → ${typedLookupId.recordId} (can point at more than one object, so it is not checked)`)
-                    ]
-                    : [] )
-            ],
-            sections: [
-                { title: 'Records, inserted parents first', count: objectLines.length, lines: objectLines },
-                { title: 'Lookups', lines: ['Any other lookup to an object this tree does not insert is left blank.'] },
-                { title: RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE, count: leftOutLines.objectCount, lines: leftOutLines.lines },
-                {
-                    title: 'Fields changed on this card',
-                    lines: [
-                        ...( fixedValues.length > 0
-                            ? [`Edited fields: ${fixedValues.map(fixedValue => `${this.describeOccurrence(fixedValue.objectApiName, fixedValue.nickname)}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
-                            : [] )
-                    ]
-                },
-                {
-                    title: 'Org and recipe',
-                    lines: [
-                        `Org: ${orgLabel}`,
-                        `Type: ${orgTypeLabel}`,
-                        `Recipe tree: ${tree.customName ?? tree.title} (${recipeFileLabel})`,
-                        `Backend: ${fakerService}`
-                    ]
-                },
-                { title: 'What happens next', lines: ['The data set is written to FakeDataSets as Run Faker by Recipe writes it.', 'It is then inserted the way Insert Data Set by Directory inserts.', 'You choose all-or-none next.'] }
-            ]
-        };
-
-    }
-
-    // THE CONFIRMATION OF A RECIPE BUILT FOR THE TICKED RECORD TYPES (#623): WHAT IT WARNS OF, AND THE RECORD TYPES EACH OBJECT IS GENERATED WITH
-    static addRecordTypesToInsertConfirmation(insertConfirmationContent: IRecipeCockpitConfirmContent, generationRecipeText: string, recordTypeWarnings: readonly string[]): IRecipeCockpitConfirmContent {
-
-        const recordTypeLines = [...RecipeCockpitRecipeWriter.listChosenRecordTypesByObject(generationRecipeText)]
-            .map(([objectApiName, developerNames]) => `  ${objectApiName}: ${developerNames.join(', ')}`);
-        const [recordsSection, ...otherSections] = insertConfirmationContent.sections ?? [];
-
-        return {
-            ...insertConfirmationContent,
-            warnings: [...( insertConfirmationContent.warnings ?? [] ), ...recordTypeWarnings],
-            sections: [
-                ...( recordsSection ? [recordsSection] : [] ),
-                { title: RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE, count: recordTypeLines.length, lines: recordTypeLines },
-                ...otherSections
-            ]
-        };
-
-    }
-
-    /*
-        What the card leaves out of the insert, one object at a time (#483): each excluded object on
-        its own line, then each occurrence with a field left out as a lead-in with one field per line
-        under it, in the card's insert order. A field left out is one the reader unticked or a lookup
-        an excluded parent cut, the same rows "Hide unselected" hides. Nothing left out is no lines,
-        so the section is dropped.
-    */
-    static buildInsertLeftOutLines(tree: IRecipeCockpitTreeViewModel): { objectCount: number; lines: string[] } {
-
-        const objectOrder = new Map(tree.objects.map((treeObject, objectIndex) => [treeObject.objectApiName, objectIndex]));
-        const orderOf = (objectApiName: string) => objectOrder.get(objectApiName) ?? objectOrder.size;
-        const byInsertOrder = <T>(entries: T[], objectApiNameOf: (entry: T) => string) => entries
-            .map((entry, entryIndex) => ({ entry, entryIndex }))
-            .sort((first, second) => ( orderOf(objectApiNameOf(first.entry)) - orderOf(objectApiNameOf(second.entry)) ) || ( first.entryIndex - second.entryIndex ))
-            .map(({ entry }) => entry);
-
-        const exclusionLines = byInsertOrder(tree.objectSelection?.exclusions ?? [], exclusion => exclusion.objectApiName)
-            .map(exclusion => exclusion.removedLookupFieldApiName !== undefined
-                ? `${exclusion.objectApiName}: not generated, cut off by removing ${exclusion.objectApiName}.${exclusion.removedLookupFieldApiName}`
-                : exclusion.kind === 'autoExcluded'
-                ? `${exclusion.objectApiName}: not generated, ${exclusion.excludedParentObjectApiName ? `auto-excluded with its parent ${exclusion.excludedParentObjectApiName}` : 'auto-excluded with its parent'}`
-                : exclusion.kind === 'noFieldsSelected' ? `${exclusion.objectApiName}: not generated, no fields selected`
-                : `${exclusion.objectApiName}: not generated, excluded`);
-
-        const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
-        const cutParentByLookupKey = new Map(( tree.objectSelection?.disabledLookups ?? [] )
-            .map(disabledLookup => [`${disabledLookup.objectApiName}\n${disabledLookup.fieldApiName}`, disabledLookup.parentObjectApiName]));
-        const fieldEntries = byInsertOrder(( tree.fieldSelection?.objects ?? [] )
-            .filter(objectFieldSelection => !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
-            .map(objectFieldSelection => {
-                const untickedFieldApiNames = new Set(objectFieldSelection.excludedFieldApiNames);
-                const fieldLines = [
-                    ...objectFieldSelection.excludedFieldApiNames.map(fieldApiName => `  ${fieldApiName}`),
-                    ...objectFieldSelection.lockedFields
-                        .filter(lockedField => lockedField.reason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON && !untickedFieldApiNames.has(lockedField.fieldApiName))
-                        .map(lockedField => {
-                            const parentObjectApiName = cutParentByLookupKey.get(`${objectFieldSelection.objectApiName}\n${lockedField.fieldApiName}`);
-                            return `  ${lockedField.fieldApiName}, cut: parent ${parentObjectApiName ?? 'object'} excluded`;
-                        })
-                ];
-                return { objectApiName: objectFieldSelection.objectApiName, nickname: objectFieldSelection.nickname, fieldLines };
-            })
-            .filter(fieldEntry => fieldEntry.fieldLines.length > 0), fieldEntry => fieldEntry.objectApiName);
-        const fieldLines = fieldEntries.flatMap(fieldEntry => [
-            `${this.describeOccurrence(fieldEntry.objectApiName, fieldEntry.nickname)}, ${fieldEntry.fieldLines.length === 1 ? '1 field' : `${fieldEntry.fieldLines.length} fields`} left out, not sent:`,
-            ...fieldEntry.fieldLines
-        ]);
-
-        return { objectCount: exclusionLines.length + fieldEntries.length, lines: [...exclusionLines, ...fieldLines] };
-
-    }
-
-    // THE ALIAS A READER CHOSE BY, WITH THE USERNAME THAT SAYS WHICH ORG IT CURRENTLY POINTS AT
-    static buildOrgLabel(orgDetail: IAuthenticatedOrgDetail): string {
-
-        return orgDetail.alias ? `${orgDetail.alias} (${orgDetail.username})` : orgDetail.username;
-
-    }
-
-    /*
         The whole host side of the protocol, as a pure function of the message and the host's state.
 
         Separated from the subscription so every decision -- above all, every allow-list check -- is
@@ -11461,6 +9014,10 @@ export class RecipeCockpitService {
 
         if ( panelMessage && RecipeCockpitAdapterHost.isAdapterCommand(panelMessage.command) ) {
             return RecipeCockpitAdapterHost.routePanelMessage(panelMessage, panelState, this);
+        }
+
+        if ( panelMessage && RecipeCockpitTreecipeOrgHost.isTreecipeOrgCommand(panelMessage.command) ) {
+            return RecipeCockpitTreecipeOrgHost.routePanelMessage(panelMessage, panelState, this);
         }
 
         if ( panelMessage && RecipeCockpitRecordLinksHost.isRecordLinksCommand(panelMessage.command) ) {
@@ -11707,142 +9264,6 @@ export class RecipeCockpitService {
             case 'generateTree':
 
                 return undefined;
-
-            /*
-                Data-by-Org reads org names from the CLI, and the panel only ever names one by its
-                INDEX into the list the host posted -- never a username or an alias. Which objects
-                are checked is read from the confirmed-drawn model, never from the message.
-            */
-            case 'loadDataOrgs':
-
-                // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
-                // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
-                // A PERMISSION SET ASSIGNMENT HOLDS THE SELECTION IT ASSIGNS IN, AND CHECKS IT AGAIN WHEN IT ENDS
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 ) {
-                    return undefined;
-                }
-
-                return this.refuseDataOrgListingWhileHeld(panelState) ?? { kind: 'loadDataOrgs' };
-
-            case 'selectDataOrg': {
-
-                const { orgIndex } = panelMessage;
-
-                if ( typeof orgIndex !== 'number'
-                        || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.permissionSetAssignStateMessage?.isRunning
-                        || panelState.metadataDeployStateMessage?.isRunning
-                        || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) )
-                        || !Number.isInteger(orgIndex)
-                        || orgIndex < 0
-                        || orgIndex >= panelState.dataOrgDetails.length
-                        || panelState.dataOrgObjectApiNames.size === 0 ) {
-                    return undefined;
-                }
-
-                return { kind: 'selectDataOrg', orgIndex: orgIndex };
-
-            }
-
-            /*
-                ⟳ asks the CLI again which orgs are connected, re-lists them and re-selects the org
-                chosen last by USERNAME, which checks it afresh. It needs no selection: with every
-                org left out, it is how a reader who just re-authorized one sees it listed.
-            */
-            case 'refreshDataOrgs':
-
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 ) {
-                    return undefined;
-                }
-
-                return this.refuseDataOrgListingWhileHeld(panelState) ?? { kind: 'refreshDataOrgs' };
-
-            /*
-                "+ New scratch org" carries NOTHING: the Dev Hub, the definition file and the alias are
-                all the host's, and nothing is deployed (#358). It is honoured only beside a confirmed-drawn
-                Data-by-Org picker, and never while a run or a Create is in flight -- whatever the panel
-                sends. A refusal while nothing runs still answers, since the panel disabled the button.
-            */
-            // "Authorize org" (#630) CARRIES NOTHING EITHER, AND IS HELD TO THE SAME GUARDS: IT RE-LISTS THE PICKER AND MAY CHANGE THE SELECTION
-            case 'createScratchOrg':
-            case 'authorizeOrg':
-
-                if ( panelState.scratchOrgStateMessage?.isRunning ) {
-                    return undefined;
-                }
-
-                // A METADATA DEPLOY (#346) DEPLOYS TO THE ORG SELECTED, WHICH THE RUN WOULD CHANGE; A RETRIEVE DOES NOT HOLD IT, SINCE THE RUN DEPLOYS NOTHING (#358)
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
-                    return {
-                        kind: 'postScratchOrgState',
-                        hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
-                    };
-                }
-
-                return { kind: panelMessage.command };
-
-            /*
-                "Generate fake data and insert" (#255) posts the tree's KEY and nothing else, and it is
-                not taken on the panel's word: the tree must be one the confirmed-drawn model drew the
-                button on, an org must be selected now, and that org must have answered that it is a
-                sandbox. A forged message for a production org stops here, before any connection.
-                Which org, which recipe file and which counts are the host's own.
-            */
-            case 'insertTree': {
-
-                const { treeKey } = panelMessage;
-
-                // AN INSERT IN FLIGHT HOLDS ITS OWN TREE'S BUTTON; A CLICK ON ANOTHER IS ANSWERED WITH IT, SO THAT CARD GIVES ITS BUTTON BACK
-                if ( panelState.insertStateMessage ) {
-                    return panelState.insertStateMessage.treeKey === treeKey
-                        ? undefined
-                        : { kind: 'postInsertState', hostMessage: panelState.insertStateMessage };
-                }
-
-                const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
-
-                /*
-                    The record types ticked under Manage record types ride with the click (#623): NAMES
-                    only, each pair matched against what the confirmed-drawn model offered. One name
-                    it did not offer refuses the whole insert, rather than generating something
-                    other than what was ticked.
-                */
-                const postedRecordTypeSelection = panelMessage.recordTypeSelection;
-                const recordTypeSelection = postedRecordTypeSelection === undefined
-                    ? undefined
-                    : this.readPostedRecordTypeSelection(postedRecordTypeSelection, panelState.treeHistoryAllowLists.selectableRecordTypeKeys);
-                const recordTypeTicks = recordTypeSelection
-                    ? { recordTypeSelection: recordTypeSelection, ...( panelMessage.isRemembered === true ? { isRemembered: true as const } : {} ) }
-                    : {};
-
-                // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
-                const isTreeRoutable = ( postedRecordTypeSelection === undefined || !!recordTypeSelection )
-                                        && !panelState.scratchOrgStateMessage?.isRunning
-                                        && !this.isSelectionHeldByPromptOrUpdater(panelState)
-                                        && !panelState.permissionSetAssignStateMessage?.isRunning
-                                        && !panelState.metadataDeployStateMessage?.isRunning
-                                        && typeof treeKey === 'string'
-                                        && !!panelState.recipeDataMessage
-                                        && panelState.insertableTreeKeys.has(treeKey)
-                                        && !!recipeFilePath;
-
-                if ( isTreeRoutable && panelState.dataOrgSelection?.orgTypeDetail?.isSandbox === true ) {
-                    return { kind: 'insertTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath, ...recordTypeTicks };
-                }
-
-                // NO ORG CHOSEN YET (#375): THE ORG IS ASKED FOR IN THE COMMAND PALETTE, CHECKED AS A PICK IN THE DROPDOWN IS, AND ONLY THEN INSERTED INTO
-                // THE OBJECTS A SELECTION CHECKS ARE THE CONFIRMED-DRAWN MODEL'S, AS FOR A PICK IN THE DROPDOWN
-                if ( isTreeRoutable && !panelState.dataOrgSelection && panelState.dataOrgObjectApiNames.size > 0 ) {
-                    return { kind: 'promptInsertOrg', treeKey: treeKey as string, recipeFilePath: recipeFilePath, ...recordTypeTicks };
-                }
-
-                // THE PANEL DISABLED THE CARD'S BUTTON ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
-                return {
-                    kind: 'postInsertState',
-                    hostMessage: { command: 'insertState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
-                };
-
-            }
 
             /*
                 "+" on a self-lookup iteration posts four NAMES -- the card, the object, the
@@ -12264,7 +9685,6 @@ export class RecipeCockpitService {
 
             }
 
-
             /*
                 A picklist's Reset to generated (#479): the value tiles' names only, held to the same
                 drawn, free picklist a choice is. What it clears is the host's to find.
@@ -12339,7 +9759,6 @@ export class RecipeCockpitService {
                 return folderName ? { kind: 'resetTreeSelection', folderName: folderName } : undefined;
 
             }
-
 
             // THE PANEL DREW A CARD'S HISTORY ROWS, ON THE MODEL IT ACKNOWLEDGED: THEIR FILES OPEN FROM HERE
             case 'troubleshootingHistoryRendered': {
@@ -12469,41 +9888,6 @@ export class RecipeCockpitService {
 
             }
 
-            /*
-                "Open in browser" (#279) names the org by INDEX, and only the org SELECTED now is
-                opened: an index the panel could have kept from an older listing, or any other org
-                the list holds, is refused. Which username is the host's. A refusal still answers,
-                since the panel disabled the button on the click; a second click while one open is
-                in flight starts nothing and is told the open is running, and the first one's answer
-                re-enables the button.
-            */
-            case 'openDataOrg': {
-
-                const { orgIndex } = panelMessage;
-                const dataOrgSelection = panelState.dataOrgSelection;
-
-                // A RELOADED DOCUMENT MAY NOT KNOW AN OPEN IS RUNNING: IT IS TOLD, AND THE FIRST OPEN'S ANSWER RE-ENABLES IT
-                if ( panelState.isOrgOpenInFlight ) {
-                    return { kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: true } };
-                }
-
-                if ( typeof orgIndex !== 'number'
-                        || !Number.isInteger(orgIndex)
-                        || !panelState.recipeDataMessage
-                        || panelState.dataOrgObjectApiNames.size === 0
-                        || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.permissionSetAssignStateMessage?.isRunning
-                        || panelState.metadataDeployStateMessage?.isRunning
-                        || !dataOrgSelection
-                        || dataOrgSelection.orgIndex !== orgIndex
-                        || panelState.dataOrgDetails[orgIndex]?.username !== dataOrgSelection.orgDetail.username ) {
-                    return { kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: false } };
-                }
-
-                return { kind: 'openDataOrg', orgDetail: dataOrgSelection.orgDetail };
-
-            }
-
             // THE PANEL DREW A PREVIEW'S RECORD LINKS (#556), ON THE MODEL IT ACKNOWLEDGED: ITS ROWS OPEN FROM HERE
             case 'recordLinksRendered': {
 
@@ -12534,41 +9918,6 @@ export class RecipeCockpitService {
         }
 
         return undefined;
-
-    }
-
-    // WHERE THE READER ACTED FROM, KEPT ONLY IF IT NAMES A CARD OF THE MODEL ON SCREEN AND ITS DATA SETS TAB
-    /*
-        A posted record type selection (#195): a plain object of object api name -> developer names,
-        every pair one the confirmed-drawn model offered, each object's list non-empty and without
-        repeats. Anything else is undefined -- the request is refused, never trimmed to what passed.
-        The map it answers has no prototype, so an object named "__proto__" stays a key.
-    */
-    static readPostedRecordTypeSelection(postedSelection: unknown, selectableRecordTypeKeys: Set<string>): Record<string, string[]> | undefined {
-
-        if ( !this.isPlainRecord(postedSelection) ) {
-            return undefined;
-        }
-
-        const recordTypeSelection: Record<string, string[]> = Object.create(null);
-
-        for ( const objectApiName of Object.keys(postedSelection) ) {
-
-            const developerNames: unknown = postedSelection[objectApiName];
-
-            if ( !Array.isArray(developerNames)
-                    || developerNames.length === 0
-                    || new Set(developerNames).size !== developerNames.length
-                    || !developerNames.every(developerName => typeof developerName === 'string'
-                                                                && selectableRecordTypeKeys.has(this.buildSelectableRecordTypeKey(objectApiName, developerName))) ) {
-                return undefined;
-            }
-
-            recordTypeSelection[objectApiName] = [...developerNames as string[]];
-
-        }
-
-        return recordTypeSelection;
 
     }
 
@@ -13123,6 +10472,22 @@ export class RecipeCockpitService {
 
     }
 
+    // A TREE FOLDER'S customTreecipe.json (#677), OR undefined FOR A GENERATED TREE, A MISSING FILE OR ONE THAT DOES NOT READ BACK
+    static readCustomTreecipeDefinition(treeFolderPath: string): ICustomTreecipeDefinition | undefined {
+
+        const definitionFilePath = path.join(treeFolderPath, RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME);
+        try {
+            const definitionFileStats = fs.lstatSync(definitionFilePath);
+            if ( !definitionFileStats.isFile() || definitionFileStats.size > RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES ) {
+                return undefined;
+            }
+            return RecipeCockpitCustomTreecipe.readDefinition(fs.readFileSync(definitionFilePath, 'utf8'));
+        } catch {
+            return undefined;
+        }
+
+    }
+
     /*
         A custom tree (#677) as one card: its objects in the order its original generated tree
         inserts them -- the wrapper's tree of that folder name -- then any its recipe holds that the
@@ -13134,7 +10499,7 @@ export class RecipeCockpitService {
                                     runFolderPath: string,
                                     customTreeFolderName: string): IRecipeCockpitCustomTreeSource {
 
-        const definition = RecipeCockpitCustomTreecipeHost.readCustomTreecipeDefinition(path.join(runFolderPath, customTreeFolderName));
+        const definition = this.readCustomTreecipeDefinition(path.join(runFolderPath, customTreeFolderName));
         const originalTreeFolderName = RecipeCockpitCustomTreecipe.resolveOriginalTreeFolderName(customTreeFolderName, definition);
         const recipeObjectApiNames = recipeSourceFiles.flatMap(recipeSourceFile => [...recipeSourceFile.objectEntries.keys()]);
         const recipeObjectApiNameSet = new Set(recipeObjectApiNames);

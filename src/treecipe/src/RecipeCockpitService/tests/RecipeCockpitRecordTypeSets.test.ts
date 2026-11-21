@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { IRecordTypeSet, IRecordTypeSetInsertSteps, IRecordTypeSetOutcome, RECIPE_COCKPIT_INSERT_RECORD_TYPE_SETS_SECTION_TITLE, RecipeCockpitRecordTypeSets } from '../RecipeCockpitRecordTypeSets';
 import { IDataSetInsertResult } from '../../CollectionsApiService/CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -223,7 +224,7 @@ describe('RecipeCockpitRecordTypeSets (#624)', () => {
 
     });
 
-    describe('RecipeCockpitService.showRecordTypeSetsNotification', () => {
+    describe('RecipeCockpitTreecipeDataOrgs.showRecordTypeSetsNotification', () => {
 
         const INSERTED_TREE = { runFolderName: 'treecipe-run', treeFolderName: 'Account' };
         let workspaceRoot: string;
@@ -237,8 +238,8 @@ describe('RecipeCockpitRecordTypeSets (#624)', () => {
             const resultsFilePath = path.join(workspaceRoot, 'insertResults.json');
             fs.writeFileSync(resultsFilePath, '{}');
 
-            RecipeCockpitService.showRecordTypeSetsNotification([{ setLabel: SET_LABELS[0], status: 'inserted', insertResult: landed() }], 'T', 'qa', workspaceRoot, INSERTED_TREE);
-            RecipeCockpitService.showRecordTypeSetsNotification([
+            RecipeCockpitTreecipeDataOrgs.showRecordTypeSetsNotification(RecipeCockpitService, [{ setLabel: SET_LABELS[0], status: 'inserted', insertResult: landed() }], 'T', 'qa', workspaceRoot, INSERTED_TREE);
+            RecipeCockpitTreecipeDataOrgs.showRecordTypeSetsNotification(RecipeCockpitService, [
                 { setLabel: SET_LABELS[0], status: 'inserted', insertResult: landed({ outcome: 'stopped', failedRecordCount: 1, resultsFilePath: resultsFilePath }) },
                 { setLabel: SET_LABELS[1], status: 'notStarted' }
             ], 'T', 'qa', workspaceRoot, INSERTED_TREE);
@@ -254,8 +255,8 @@ describe('RecipeCockpitRecordTypeSets (#624)', () => {
 
             const showNotification = jest.spyOn(VSCodeWorkspaceService, 'showNotificationWithWorkspaceFiles').mockImplementation(() => undefined);
 
-            RecipeCockpitService.showRecordTypeSetsNotification([{ setLabel: SET_LABELS[0], status: 'inserted', insertResult: landed({ outcome: 'cancelled', resultsFilePath: 'x' }) }], 'T', 'qa', workspaceRoot, INSERTED_TREE);
-            RecipeCockpitService.showRecordTypeSetsNotification([{ setLabel: SET_LABELS[0], status: 'failed', reason: 'boom' }], 'T', 'qa', workspaceRoot, INSERTED_TREE);
+            RecipeCockpitTreecipeDataOrgs.showRecordTypeSetsNotification(RecipeCockpitService, [{ setLabel: SET_LABELS[0], status: 'inserted', insertResult: landed({ outcome: 'cancelled', resultsFilePath: 'x' }) }], 'T', 'qa', workspaceRoot, INSERTED_TREE);
+            RecipeCockpitTreecipeDataOrgs.showRecordTypeSetsNotification(RecipeCockpitService, [{ setLabel: SET_LABELS[0], status: 'failed', reason: 'boom' }], 'T', 'qa', workspaceRoot, INSERTED_TREE);
 
             expect(showNotification.mock.calls.map(([severity, , fileActions]) => [severity, fileActions])).toEqual([['warning', []], ['error', []]]);
 

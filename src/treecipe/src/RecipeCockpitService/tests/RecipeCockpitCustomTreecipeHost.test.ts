@@ -449,7 +449,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         it('refuses a card whose recipe is not in a tree folder of its own', () => {
 
-            expect(RecipeCockpitCustomTreecipeHost.planCustomTreecipeLocation(path.join(runFolderPath, 'Lead-ONLY', 'recipe--Lead-ONLY.yml'), { folderName: SOURCE_TREE_KEY } as any))
+            expect(RecipeCockpitCustomTreecipeHost.planCustomTreecipeLocation(RecipeCockpitService, path.join(runFolderPath, 'Lead-ONLY', 'recipe--Lead-ONLY.yml'), { folderName: SOURCE_TREE_KEY } as any))
                 .toEqual({ refusal: 'its recipe recipe--Lead-ONLY.yml is not in a tree folder of its own.' });
 
         });
@@ -462,7 +462,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 String(folderPath) === runFolderPath ? takenFolderNames : (readdirSync as (...args: unknown[]) => unknown)(folderPath, ...rest)
             )) as typeof fs.readdirSync);
 
-            expect(RecipeCockpitCustomTreecipeHost.planCustomTreecipeLocation(path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), { folderName: SOURCE_TREE_KEY } as any))
+            expect(RecipeCockpitCustomTreecipeHost.planCustomTreecipeLocation(RecipeCockpitService, path.join(runFolderPath, SOURCE_TREE_KEY, SOURCE_RECIPE_FILE_NAME), { folderName: SOURCE_TREE_KEY } as any))
                 .toEqual({ refusal: `${RUN_FOLDER_NAME} already holds every custom copy number of ${SOURCE_TREE_KEY}. Remove one you no longer need.` });
 
         });
@@ -480,7 +480,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 originalTreeFolderName: SOURCE_TREE_KEY, removedObjectApiNames: [], removedFields: [], outOfRunObjectApiNames: [], savedAt: '2026-11-20T22:24:09.000Z'
             }).replace('{', '{' + ' '.repeat(65 * 1024)));
 
-            expect(RecipeCockpitCustomTreecipeHost.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
+            expect(RecipeCockpitService.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
 
         });
 

@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
     RecipeCockpitDatasetsHost
@@ -332,7 +333,7 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision').mockResolvedValue(false);
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({} as any);
             jest.spyOn(SalesforceOrgService, 'queryOrganizationType').mockResolvedValue({ isSandbox: true, organizationType: 'Developer Edition' });
-            jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+            jest.spyOn(RecipeCockpitTreecipeDataOrgs, 'showTreeInsertNotification').mockImplementation(() => undefined);
             jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg').mockResolvedValue({ outcome: 'cancelled', savedRecordCount: 0, failedRecordCount: 0, isRolledBack: false } as any);
             const workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
 
@@ -366,7 +367,7 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision').mockResolvedValue(false);
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({} as any);
             jest.spyOn(SalesforceOrgService, 'queryOrganizationType').mockResolvedValue({ isSandbox: true, organizationType: 'Developer Edition' });
-            jest.spyOn(RecipeCockpitService, 'showTreeInsertNotification').mockImplementation(() => undefined);
+            jest.spyOn(RecipeCockpitTreecipeDataOrgs, 'showTreeInsertNotification').mockImplementation(() => undefined);
             const insertSpy = jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg').mockImplementation(async () => {
                 newResultsFilePath = writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', summaryOf({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 3 }));
                 return { outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 3, isRolledBack: false } as any;

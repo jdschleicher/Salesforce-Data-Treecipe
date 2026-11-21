@@ -26,6 +26,7 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
@@ -45,6 +46,8 @@ const TROUBLESHOOTING_RUNS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockp
 const DATASETS_HOST_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitDatasetsHost.ts');
 const ADAPTER_METADATA_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitAdapterMetadata.ts');
 const ADAPTER_RECORDS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitAdapterRecords.ts');
+const TREECIPE_INSERT_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeInsert.ts');
+const TREECIPE_DATA_ORGS_SOURCE_PATH = path.join(__dirname, '..', 'RecipeCockpitTreecipeDataOrgs.ts');
 const EXTENSION_COMMAND_SERVICE_SOURCE_PATH = path.join(__dirname, '..', '..', 'ExtensionCommandService', 'ExtensionCommandService.ts');
 
 const flushMicrotasks = () => new Promise(resolve => setImmediate(resolve));
@@ -477,8 +480,8 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                 let runSpy: jest.SpyInstance;
 
                 beforeEach(() => {
-                    promptSpy = jest.spyOn(RecipeCockpitService as any, 'promptAndSelectDataOrg').mockImplementation(async (...promptArguments: any[]) => {
-                        const promptPanelState = promptArguments[1] as IRecipeCockpitPanelState;
+                    promptSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'promptAndSelectDataOrg').mockImplementation(async (...promptArguments: any[]) => {
+                        const promptPanelState = promptArguments[2] as IRecipeCockpitPanelState;
                         expect(promptPanelState.isOrgPromptOpen).toBeTrue();
                         promptPanelState.dataOrgSelection = { orgIndex: 3, orgDetail: SELECTED_ORG } as any;
                         return true;
@@ -503,11 +506,11 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
                     expect(promptSpy).toHaveBeenCalledTimes(1);
                     const promptArguments = promptSpy.mock.calls[0];
-                    expect(promptArguments.slice(4)).toEqual([RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER, RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX, RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON, selectionBefore]);
+                    expect(promptArguments.slice(5)).toEqual([RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER, RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX, RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON, selectionBefore]);
                     expect(panelState().isOrgPromptOpen).toBeFalse();
 
                     await changeOrg({ ...RESTART, isSandboxOnly: false });
-                    expect(promptSpy.mock.calls[1][6]).toBeUndefined();
+                    expect(promptSpy.mock.calls[1][7]).toBeUndefined();
 
                 });
 
@@ -746,8 +749,8 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         it('asks no cockpit confirmation in VS Code\'s modal', () => {
 
-            // THE HUB AND THE TAB HOSTS IT HANDS RUNS TO (#666, #667, #668), WHICH ASK THROUGH THE HUB'S confirmInPanel
-            const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH, DATASETS_HOST_SOURCE_PATH, ADAPTER_METADATA_SOURCE_PATH, ADAPTER_RECORDS_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
+            // THE HUB AND THE TAB HOSTS IT HANDS RUNS TO (#666, #667, #668, #669), WHICH ASK THROUGH THE HUB'S confirmInPanel
+            const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH, DATASETS_HOST_SOURCE_PATH, ADAPTER_METADATA_SOURCE_PATH, ADAPTER_RECORDS_SOURCE_PATH, TREECIPE_INSERT_SOURCE_PATH, TREECIPE_DATA_ORGS_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
             expect(serviceSource.match(/(this|hub)\.confirmInPanel\(/g) ?? []).toHaveLength(23);

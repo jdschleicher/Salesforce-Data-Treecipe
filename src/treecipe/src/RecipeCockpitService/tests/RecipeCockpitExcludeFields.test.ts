@@ -26,9 +26,13 @@ import {
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
+    RecipeCockpitTreecipeInsert
+} from '../RecipeCockpitTreecipeInsert';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitRecordCreation, ICreateObjectDescribe } from '../RecipeCockpitRecordCreation';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -496,13 +500,13 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
             const recipeDataMessage = { command: 'recipeData' as const, recipe: loadedRecipe.recipeViewModel, renderSequence: 2 };
 
-            const contactTarget = ( await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage) )
+            const contactTarget = ( await RecipeCockpitTreecipeDataOrgs.collectCreateTargets(RecipeCockpitService, panelState, recipeDataMessage) )
                 .find(createTarget => createTarget.treeKey === ACCOUNT_TREE_KEY && createTarget.objectApiName === 'Contact');
 
             expect(contactTarget).toEqual({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', recipeFieldApiNames: ['AccountId'], excludedFieldApiNames: ['LastName'] });
 
             // ONE TREE'S TARGETS, AS THE INSERT OF THAT TREE ASKS FOR THEM
-            const leadTargets = await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage, LEAD_TREE_KEY);
+            const leadTargets = await RecipeCockpitTreecipeDataOrgs.collectCreateTargets(RecipeCockpitService, panelState, recipeDataMessage, LEAD_TREE_KEY);
             expect(leadTargets).toHaveLength(1);
             expect(leadTargets[0]).toMatchObject({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
             expect(leadTargets[0].excludedFieldApiNames).toBeUndefined();
@@ -513,7 +517,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             const recipe = loadRecipe();
             const totals = new Map([['Account', 1], ['Contact', 2]]);
-            const buildDetail = () => RecipeCockpitService.flattenConfirmContent(RecipeCockpitService.buildInsertConfirmationContent('qa', { isSandbox: true, organizationType: 'Enterprise Edition' } as any,
+            const buildDetail = () => RecipeCockpitService.flattenConfirmContent(RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 'qa', { isSandbox: true, organizationType: 'Enterprise Edition' } as any,
                 treeOf(recipe, ACCOUNT_TREE_KEY), recipe, totals, [], 'faker-js', 'recipe.yml'));
 
             expect(buildDetail()).not.toContain('Unticked');
@@ -736,7 +740,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
         it('re-checks only the changed folder\'s insert targets, from the cached describes and the answered org type, with no new connection', async () => {
 
             await openAndDraw(buildWorkspaceState());
-            const selectDataOrgSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg');
+            const selectDataOrgSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg');
             const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
             const describeObjectsSpy = jest.spyOn(SalesforceOrgService, 'describeObjects').mockImplementation(async (_username: string, objectApiNames: string[]) => ({
                 wasCancelled: false,

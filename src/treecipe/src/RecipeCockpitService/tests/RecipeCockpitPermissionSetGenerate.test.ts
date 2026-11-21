@@ -50,6 +50,7 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL,
     RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL,
@@ -367,7 +368,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             const panelState = buildPanelState();
             const tree = panelState.recipeDataMessage!.recipe.trees.find(recipeTree => recipeTree.treeKey === ACCOUNT_TREE_KEY)!;
-            jest.spyOn(RecipeCockpitService, 'listTreeInsertObjectApiNames').mockImplementation((_recipe, recipeTree) => recipeTree === tree ? [] : ['Account']);
+            jest.spyOn(RecipeCockpitTreecipeDataOrgs, 'listTreeInsertObjectApiNames').mockImplementation((_hub, _recipe, recipeTree) => recipeTree === tree ? [] : ['Account']);
 
             expect(RecipeCockpitService.routePanelMessage(generateMessage, panelState)).toBeUndefined();
 

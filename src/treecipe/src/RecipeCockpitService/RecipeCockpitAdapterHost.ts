@@ -29,12 +29,14 @@ import { RecipeCockpitAdapterRecords } from './RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHost';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
+import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import type {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     RecipeCockpitService
 } from './RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     The Treecipe Adapter tab's host half (moved out of the hub by #668, after #665's pattern): the
@@ -53,7 +55,6 @@ import type {
 */
 export type IRecipeCockpitHubForAdapterTab = Readonly<Pick<typeof RecipeCockpitService,
     'buildConfirmOrg' |
-    'buildDataOrgLabel' |
     'buildOrgOnlyFieldsResult' |
     'confirmInPanel' |
     'describeThrown' |
@@ -65,7 +66,6 @@ export type IRecipeCockpitHubForAdapterTab = Readonly<Pick<typeof RecipeCockpitS
     'listDeclaredPicklistValues' |
     'offerStagedField' |
     'postToPanel' |
-    'promptAndSelectDataOrg' |
     'readRecordFieldValue' |
     'readSourceApiVersion' |
     'readTreeFakerService' |
@@ -76,7 +76,7 @@ export type IRecipeCockpitHubForAdapterTab = Readonly<Pick<typeof RecipeCockpitS
     'resolveTreeSnapshotLocations' |
     'runCancellableRetrieve' |
     'showMetadataRetrieveNotification' |
-    'validateFixedValueInput'>> & IRecipeCockpitHubForDatasetsTab;
+    'validateFixedValueInput'>> & IRecipeCockpitHubForDatasetsTab & IRecipeCockpitHubForTreecipeDataOrgs;
 
 export interface IRecipeCockpitUpdaterLoadStateMessage {
     command: 'updaterLoadState';
@@ -394,7 +394,7 @@ export class RecipeCockpitAdapterHost {
                 if ( dataOrgSelection ) {
                     return {
                         kind: 'refuseUpdaterLoad',
-                        refusalText: `Records were not loaded: ${hub.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter reads only from a sandbox or scratch org.`,
+                        refusalText: `Records were not loaded: ${RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter reads only from a sandbox or scratch org.`,
                         hostMessage: notRunning
                     };
                 }
@@ -459,7 +459,7 @@ export class RecipeCockpitAdapterHost {
                 if ( dataOrgSelection ) {
                     return {
                         kind: 'refuseUpdaterLoad',
-                        refusalText: `Nothing was retrieved: ${hub.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter reads only from a sandbox or scratch org.`,
+                        refusalText: `Nothing was retrieved: ${RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter reads only from a sandbox or scratch org.`,
                         hostMessage: notRunning
                     };
                 }
@@ -706,7 +706,7 @@ export class RecipeCockpitAdapterHost {
                     return {
                         kind: 'refuseUpdaterLoad',
                         refusalText: dataOrgSelection
-                            ? `Nothing was updated: ${hub.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter updates only a sandbox or scratch org.`
+                            ? `Nothing was updated: ${RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter updates only a sandbox or scratch org.`
                             : 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Manager.',
                         hostMessage: notRunning
                     };
@@ -771,7 +771,7 @@ export class RecipeCockpitAdapterHost {
                     return {
                         kind: 'refuseUpdaterLoad',
                         refusalText: dataOrgSelection
-                            ? `Nothing was restored: ${hub.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter restores only a sandbox or scratch org.`
+                            ? `Nothing was restored: ${RecipeCockpitTreecipeDataOrgs.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter restores only a sandbox or scratch org.`
                             : 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Manager.',
                         hostMessage: notRunning
                     };

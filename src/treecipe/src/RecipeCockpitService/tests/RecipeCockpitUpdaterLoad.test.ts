@@ -48,6 +48,7 @@ import {
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
     RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON,
@@ -453,7 +454,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 return (await listing).orgDetails[0];
             });
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgReasonCounts: {} } as any);
-            const selectSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+            const selectSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg').mockImplementation(async (_hub: any, _cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
             });
 
@@ -475,7 +476,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgReasonCounts: {} } as any);
             const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockResolvedValue(undefined);
-            jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+            jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg').mockImplementation(async (_hub: any, _cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, orgTypeDetail: { isSandbox: false, organizationType: 'Enterprise Edition' } };
             });
 

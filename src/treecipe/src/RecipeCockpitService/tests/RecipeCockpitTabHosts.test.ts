@@ -28,6 +28,14 @@ import * as RecipeCockpitAdapterStateModule from '../RecipeCockpitAdapterState';
 import * as RecipeCockpitRecordLinksHostModule from '../RecipeCockpitRecordLinksHost';
 import * as RecipeCockpitRecordLinksModule from '../RecipeCockpitRecordLinks';
 import * as RecipeCockpitCustomTreecipeHostModule from '../RecipeCockpitCustomTreecipeHost';
+import * as RecipeCockpitTreecipeOrgHostModule from '../RecipeCockpitTreecipeOrgHost';
+import * as RecipeCockpitTreecipeInsertModule from '../RecipeCockpitTreecipeInsert';
+import * as RecipeCockpitTreecipeDataOrgsModule from '../RecipeCockpitTreecipeDataOrgs';
+import {
+    RECIPE_COCKPIT_TREECIPE_ORG_ACTION_KINDS,
+    RECIPE_COCKPIT_TREECIPE_ORG_COMMANDS,
+    RecipeCockpitTreecipeOrgHost
+} from '../RecipeCockpitTreecipeOrgHost';
 import {
     RECIPE_COCKPIT_CUSTOM_TREECIPE_ACTION_KINDS,
     RECIPE_COCKPIT_CUSTOM_TREECIPE_COMMANDS,
@@ -145,6 +153,10 @@ const TAB_HOSTS: ITabHost[] = [
         hostClassName: 'RecipeCockpitTroubleshootingHost',
         hostFileNames: ['RecipeCockpitTroubleshootingHost.ts', 'RecipeCockpitTroubleshootingRuns.ts', 'RecipeCockpitTroubleshootingViews.ts'],
         hostModules: [RecipeCockpitTroubleshootingHostModule, RecipeCockpitTroubleshootingRunsModule, RecipeCockpitTroubleshootingViewsModule],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitTroubleshootingHost.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'Generate permission set… is offered only for a tree with an object the insert would create, the list the tree insert reads (#669)' },
+            { fileName: 'RecipeCockpitTroubleshootingRuns.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'a deploy or retrieve that ends re-lists the Target Org Manager\'s orgs and remembers the one it ran in, and a permission set covers the objects the tree insert would create (#669)' }
+        ],
         commands: RECIPE_COCKPIT_TROUBLESHOOTING_COMMANDS,
         actionKinds: RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitTroubleshootingHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
@@ -238,6 +250,9 @@ const TAB_HOSTS: ITabHost[] = [
         hostClassName: 'RecipeCockpitDatasetsHost',
         hostFileNames: ['RecipeCockpitDatasetsHost.ts'],
         hostModules: [RecipeCockpitDatasetsHostModule],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitDatasetsHost.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'a data set row\'s insert asks for the Target Org Manager\'s org and ends in the tree insert\'s notification (#541, #669)' }
+        ],
         commands: RECIPE_COCKPIT_DATASETS_COMMANDS,
         actionKinds: RECIPE_COCKPIT_DATASETS_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitDatasetsHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
@@ -262,7 +277,10 @@ const TAB_HOSTS: ITabHost[] = [
         pureModuleFileNames: ['RecipeCockpitTreeUpdaterQuery.ts', 'RecipeCockpitRecordUpdate.ts', 'RecipeCockpitOrgChangeDetection.ts', 'RecipeCockpitAdaptedDataset.ts'],
         loadsOtherHosts: [
             { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitDatasetsHost.ts', reason: 'a landed update adds its adapted data set to Previously Used Data Sets (#448)' },
-            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitRecordLinks.ts', reason: 'a loaded or updated preview\'s rows link the records they show (#556)' }
+            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitRecordLinks.ts', reason: 'a loaded or updated preview\'s rows link the records they show (#556)' },
+            { fileName: 'RecipeCockpitAdapterRecords.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'a load or an update with no org chosen asks for the Target Org Manager\'s org (#669)' },
+            { fileName: 'RecipeCockpitAdapterHost.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'a load names the org by the Target Org Manager\'s label (#669)' },
+            { fileName: 'RecipeCockpitAdapterMetadata.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'a retrieve with no org chosen asks for the Target Org Manager\'s org (#669)' }
         ],
         hubUsesStillOwed: [
             {
@@ -303,7 +321,8 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [],
         loadsOtherHosts: [
             { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitQueryHost.ts', reason: 'a query preview\'s row is opened from the result the Query host holds' },
-            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitAdapterState.ts', reason: 'a loaded preview\'s row is opened from the records the Adapter holds' }
+            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitAdapterState.ts', reason: 'a loaded preview\'s row is opened from the records the Adapter holds' },
+            { fileName: 'RecipeCockpitRecordLinksHost.ts', otherHostFileName: 'RecipeCockpitTreecipeDataOrgs.ts', reason: 'a record opens through the same one-time address and one open per window as Open org (#669)' }
         ]
     },
     {
@@ -318,9 +337,45 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitCustomTreecipe.ts',
-                importedNames: ['RecipeCockpitCustomTreecipe'],
-                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'resolveOriginalTreeFolderName'],
-                owedBy: '#677: a run loads its custom- trees in the hub, where every run loads, and lists each as its own run picker entry'
+                importedNames: ['ICustomTreecipeDefinition', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES', 'RecipeCockpitCustomTreecipe'],
+                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'readDefinition', 'resolveOriginalTreeFolderName'],
+                owedBy: '#677, #684: a run loads its custom- trees in the hub, where every run loads, reads each one\'s customTreecipe.json there, and lists each as its own run picker entry'
+            }
+        ]
+    },
+    {
+        tabName: 'Treecipe org',
+        hostClassName: 'RecipeCockpitTreecipeOrgHost',
+        hostFileNames: ['RecipeCockpitTreecipeOrgHost.ts', 'RecipeCockpitTreecipeInsert.ts', 'RecipeCockpitTreecipeDataOrgs.ts'],
+        hostModules: [RecipeCockpitTreecipeOrgHostModule, RecipeCockpitTreecipeInsertModule, RecipeCockpitTreecipeDataOrgsModule],
+        commands: RECIPE_COCKPIT_TREECIPE_ORG_COMMANDS,
+        actionKinds: RECIPE_COCKPIT_TREECIPE_ORG_ACTION_KINDS,
+        routePanelMessage: (panelMessage, panelState) => RecipeCockpitTreecipeOrgHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
+        pureModuleFileNames: ['RecipeCockpitOrgAuthorize.ts', 'RecipeCockpitRecordCreation.ts', 'RecipeCockpitRecordTypeRecipe.ts'],
+        loadsOtherHosts: [
+            { fileName: 'RecipeCockpitTreecipeInsert.ts', otherHostFileName: 'RecipeCockpitDatasetsHost.ts', reason: 'a tree insert that lands adds its new data set to Previously Used Data Sets (#226)' }
+        ],
+        hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
+                importedNames: ['IRecipeCockpitCreateReadinessViewModel', 'RecipeCockpitRecordCreation'],
+                members: ['areChosenParentIdsReturnedBySearch'],
+                owedBy: '#669 part b: "Use existing … from org" holds a chosen Id to what the search answered, and the model types a card\'s create readiness'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitRecordTypeRecipe.ts',
+                importedNames: ['IRecordTypeSetModeOffer', 'OccurrenceSettingPlacer', 'RECORD_TYPE_SET_MODE_LABELS', 'RECORD_TYPE_SET_MODE_LEGEND', 'RecordTypeSetMode'],
+                members: [],
+                owedBy: 'the in-panel confirmation every tab asks through offers the record type set modes, and #669 part b moves buildRunFakerFilteredRecipe\'s setting placer'
+            }
+        ],
+        sharedWithHosts: [
+            {
+                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
+                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
+                importedNames: ['RecipeCockpitRecordCreation'],
+                members: ['spreadParentIds'],
+                reason: 'Add to data set spreads its new child records over their parents as the tree insert does'
             }
         ]
     }

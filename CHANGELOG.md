@@ -18,6 +18,42 @@
 - **An answer naming a mode the confirmation did not enable** (a disabled `separate`, or any other name) is read as Cancel.
 - The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe both choices.
 
+## [3.205.2] - Recipe Cockpit: the "Customize and create new recipe" modal keeps each field list on its own, so a chain link answers at once on a big tree (#684)
+
+### Customize and create new recipe
+
+- **A chain link no longer rebuilds the fields under it.** Each object's row and its field list are now kept apart. A chain toggle, or an object's ✕ or ↺, redraws rows and puts the field lists back as they were. A field list closed or removed for a while comes back as the same list when nothing about its fields changed.
+  - With 40 objects × 300 fields all open, toggling the root's chain link takes about 31 ms, against 0.55–0.8 s. One with 13 objects below it takes about 23 ms, against about 200 ms.
+  - ↺ on the root now reuses all 40 field lists. It still takes about 0.6 s, which is the browser laying out the 72,000 elements put back on screen, not the modal building them.
+- **Under the hood (behaviour unchanged):**
+  - The hub reads a custom tree's `customTreecipe.json` itself (`RecipeCockpitService.readCustomTreecipeDefinition`), so loading a run calls no code of the custom treecipe host. The host reads it through its hub.
+  - The panel test harness now moves an element already on the page, as a browser does, rather than showing it twice.
+  - New tests cover the modal reusing rows and field lists across a chain toggle, a restore, a cut lookup, a dropped lock, closing one object, the root's confirmation, the save step and focus.
+## [3.205.1] - Target Org Manager and the tree insert's host code are three modules of their own (#669 part a, slice 5a of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **Target Org Manager and a tree's insert left the hub.** They are three files, which load one way: Host, then Insert, then DataOrgs.
+  - `RecipeCockpitTreecipeOrgHost.ts`: the 7 commands (`loadDataOrgs`, `selectDataOrg`, `refreshDataOrgs`, `createScratchOrg`, `authorizeOrg`, `insertTree`, `openDataOrg`), 11 action kinds, the pure router and the executor.
+  - `RecipeCockpitTreecipeInsert.ts`: "Generate fake data and insert", with its confirmation, generate, record preparer and org-record lookup check.
+  - `RecipeCockpitTreecipeDataOrgs.ts`: the org list, a selection and its check, the remembered org, "+ New scratch org", "Authorize org", Open org, create readiness, the org asked for when none is chosen, and the insert notification.
+  - One file would have been about 2,800 lines, and would have loaded the Data Sets host while that host loaded it.
+- **Other tabs call the Target Org Manager directly.** The Data Sets, Treecipe Adapter, Troubleshooting and record link hosts call `RecipeCockpitTreecipeDataOrgs` instead of the hub, and their hub types include `IRecipeCockpitHubForTreecipeDataOrgs`.
+- **Some code stays in the hub, because the hub or other tabs use it:**
+  - `postInsertState`, the insert lock both inserts hold.
+  - The selection checks other tabs' routers read, `changeOrgAndRestart`, `buildConfirmOrg` and `toSingleLine`.
+  - The Troubleshooting focus that opening the cockpit reads.
+- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to #669 part b.
+- **The words the moved code says moved with it.** `RECIPE_COCKPIT_DATA_ORG_STATE_KEY`, the scratch org prompts, the insert confirmation's labels and `RECIPE_COCKPIT_RUN_FAKER_COMMAND` are among them, so a host never loads the hub.
+- **`RecipeCockpitTabHosts.test.ts` has a Treecipe org row.**
+  - `RecipeCockpitRecordCreation`, which the Adapter's Add to data set also imports, is listed exactly as shared.
+  - Four tabs' rows list their new loads of `RecipeCockpitTreecipeDataOrgs`.
+- **Tests changed only to reach code where it now lives.**
+  - They import the moved names from the new files.
+  - Spies such as `selectDataOrg`, `promptAndSelectDataOrg` and `showTreeInsertNotification` sit on the new classes, and their argument indexes move up by one for the hub passed first.
+  - The confirmation count reads the two new files too.
+- **`RecipeCockpitService.ts` went from 14,298 lines to 11,764.**
+
 ## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
 ### Customize and create new recipe
