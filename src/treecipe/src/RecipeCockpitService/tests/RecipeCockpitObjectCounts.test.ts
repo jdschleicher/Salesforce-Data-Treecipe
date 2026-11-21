@@ -25,10 +25,10 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_RUN_FAKER_COMMAND } from '../RecipeCockpitTreecipeInsert';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult, RecipeWriterRefusalReason } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';

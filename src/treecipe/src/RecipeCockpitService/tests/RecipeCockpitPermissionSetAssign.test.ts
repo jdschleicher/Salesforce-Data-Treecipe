@@ -47,11 +47,14 @@ import { execFile } from 'child_process';
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
-    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RecipeCockpitTreecipeDataOrgs
+} from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER,
@@ -561,8 +564,8 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             SalesforceOrgService.clearDescribeCache();
             (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
             (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
-            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
@@ -1263,7 +1266,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
         it('lets the assignment run once a selection whose objects could not be described has posted that as its readiness', async () => {
 
-            jest.spyOn(RecipeCockpitService as any, 'collectCreateTargets').mockRejectedValueOnce(new Error('REQUEST_LIMIT_EXCEEDED'));
+            jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'collectCreateTargets').mockRejectedValueOnce(new Error('REQUEST_LIMIT_EXCEEDED'));
             await openCockpitWithQaSelected();
 
             const readiness = postedNamed('dataOrgReadiness').at(-1);

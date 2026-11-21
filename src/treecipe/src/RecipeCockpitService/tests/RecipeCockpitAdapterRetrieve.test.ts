@@ -60,6 +60,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
     RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL,
@@ -533,7 +534,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
             const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (listing: any) => (await listing).orgDetails[0]);
             jest.spyOn(require('../../SalesforceOrgService/SalesforceOrgService').SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgReasonCounts: {} });
-            jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+            jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'selectDataOrg').mockImplementation(async (_hub: any, _cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
             });
 
