@@ -16,13 +16,14 @@ What a user gets now:
   - every `AutoNumber` field (`READ ONLY -- auto number`);
   - the standard fields in the new `ObjectInfoWrapper/ReadOnlyFields.ts` list (`READ ONLY -- set by Salesforce`), when the project has their field file, even one with no `<type>`:
     - Opportunity: ExpectedRevenue, ForecastCategory, IsClosed, IsWon, FiscalQuarter, FiscalYear, Fiscal, HasOpportunityLineItem
-    - Campaign: NumberOfContacts, NumberOfLeads, NumberOfOpportunities, NumberOfResponses, NumberOfConvertedLeads, NumberOfWonOpportunities, AmountAllOpportunities, AmountWonOpportunities
-    - Case: IsClosed
+    - Campaign: NumberOfContacts, NumberOfLeads, NumberOfOpportunities, NumberOfResponses, NumberOfConvertedLeads, NumberOfWonOpportunities, AmountAllOpportunities, AmountWonOpportunities, and the twelve Hierarchy totals (HierarchyActualCost, HierarchyBudgetedCost, HierarchyExpectedRevenue, HierarchyNumberSent, HierarchyNumberOfLeads, HierarchyNumberOfContacts, HierarchyNumberOfConvertedLeads, HierarchyNumberOfOpportunities, HierarchyNumberOfWonOpportunities, HierarchyNumberOfResponses, HierarchyAmountAllOpportunities, HierarchyAmountWonOpportunities)
+    - Case: CaseNumber, IsClosed
+    - Contract: ContractNumber, EndDate
     - Asset: RootAssetId
     - CampaignMember: LeadOrContactId
 - **The built-in standard-field mappings no longer add those fields.** faker-js loses `Opportunity.ExpectedRevenue`, `ForecastCategory` and `Campaign.NumberOfContacts`, `NumberOfLeads`, `NumberOfOpportunities`, `NumberOfResponses`; snowfakery's mappings never had them. One the project pulled down is now read from its own file and written read only.
 - **Run Faker drops every read-only value** in both processors, so a data set never carries one.
-- **The insert leaves out anything the target org can't take.** The shared insert (Recipe Cockpit and **Insert Data Set by Directory**) removes any field the org's describe reports as not createable, and shows one warning naming each `Object.Field`. That covers data sets generated before this change.
+- **The insert leaves out fields Salesforce fills itself.** The shared insert (Recipe Cockpit and **Insert Data Set by Directory**) describes the data set's objects under a "Checking which fields the target org fills itself..." progress notification. It removes a field the describe reports as not createable *and* calculated, auto number, or on the `ReadOnlyFields` list, and shows one warning naming up to 20 `Object.Field`s. That covers data sets generated before this change. A field the user's permissions alone block is still sent, so its insert fails with the org's own error and the existing permissions triage. The normalized describe gains `isAutoNumber`.
 - **The Recipe Cockpit's Treecipe tab** marks each such row **read only** with its reason (a formula field shows `formula: <formula>`), and locks its pencil as `read only: <reason>` in both the panel and the host.
 - **A validation rule naming a read-only field isn't applied,** and its reason says the field is read only, not that it wasn't read.
 - **The dead `'formula'` entries are gone from both faker maps.** A formula field's `<type>` is its result type, so they never matched.

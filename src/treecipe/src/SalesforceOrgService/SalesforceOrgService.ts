@@ -91,6 +91,8 @@ export interface INormalizedOrgField {
     // THE DESCRIBE'S updateable: WHETHER THE USER CAN CHANGE THE FIELD ON AN EXISTING RECORD (#418)
     isUpdateable: boolean;
     isCalculated: boolean;
+    // THE DESCRIBE'S autoNumber: SALESFORCE NUMBERS THE RECORD ITSELF, SO AN INSERT CANNOT SET IT (#685)
+    isAutoNumber: boolean;
     isDefaultedOnCreate: boolean;
     // THE DESCRIBE'S nameField: THE ONE FIELD A RECORD IS NAMED BY (Name, CaseNumber, ...)
     isNameField: boolean;
@@ -1803,6 +1805,7 @@ export class SalesforceOrgService {
                 isCreateable: fieldRecord.createable === true,
                 isUpdateable: fieldRecord.updateable === true,
                 isCalculated: fieldRecord.calculated === true,
+                isAutoNumber: fieldRecord.autoNumber === true,
                 isDefaultedOnCreate: fieldRecord.defaultedOnCreate === true,
                 isNameField: fieldRecord.nameField === true
             });

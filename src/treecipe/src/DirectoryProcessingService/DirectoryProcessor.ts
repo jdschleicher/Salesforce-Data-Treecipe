@@ -749,11 +749,6 @@ export class DirectoryProcessor {
 
   }
 
-  /*
-    Every rule that was not applied is one TODO line at the end of the object's first block, in rule
-    file order, so the recipe says what generation did not do. A rule naming no field the walk read
-    -- or matching no shape -- is recorded on the object; the rest are on their field's FieldInfo.
-  */
   // A RULE ON A FIELD SALESFORCE CALCULATES (#685) IS NOT APPLIED BECAUSE THE FIELD IS READ ONLY, NOT BECAUSE IT IS MISSING
   buildReadOnlyFieldRuleNotAppliedReason(fieldReference: string, fieldsInfo: FieldInfo[]): string | undefined {
 
@@ -766,6 +761,11 @@ export class DirectoryProcessor {
 
   }
 
+  /*
+    Every rule that was not applied is one TODO line at the end of the object's first block, in rule
+    file order, so the recipe says what generation did not do. A rule naming no field the walk read
+    -- or matching no shape -- is recorded on the object; the rest are on their field's FieldInfo.
+  */
   recordValidationRulesNotApplied(objectInfoWrapper: ObjectInfoWrapper,
                                     objectName: string,
                                     validationRuleAnalyses: IValidationRuleAnalysis[],

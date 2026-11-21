@@ -10,7 +10,8 @@
     Salesforce Object Reference and pinned in ReadOnlyFields.test.ts. Imports nothing, so the panel
     bundle reads it too.
 */
-export type ReadOnlyFieldReason = 'formula' | 'roll-up summary' | 'auto number' | 'set by Salesforce';
+export const READ_ONLY_FIELD_REASONS = ['formula', 'roll-up summary', 'auto number', 'set by Salesforce'] as const;
+export type ReadOnlyFieldReason = typeof READ_ONLY_FIELD_REASONS[number];
 
 export class ReadOnlyFields {
 
@@ -31,8 +32,23 @@ export class ReadOnlyFields {
         'Campaign.NumberOfOpportunities': true,
         'Campaign.NumberOfResponses': true,
         'Campaign.NumberOfWonOpportunities': true,
+        'Campaign.HierarchyActualCost': true,
+        'Campaign.HierarchyAmountAllOpportunities': true,
+        'Campaign.HierarchyAmountWonOpportunities': true,
+        'Campaign.HierarchyBudgetedCost': true,
+        'Campaign.HierarchyExpectedRevenue': true,
+        'Campaign.HierarchyNumberOfContacts': true,
+        'Campaign.HierarchyNumberOfConvertedLeads': true,
+        'Campaign.HierarchyNumberOfLeads': true,
+        'Campaign.HierarchyNumberOfOpportunities': true,
+        'Campaign.HierarchyNumberOfResponses': true,
+        'Campaign.HierarchyNumberOfWonOpportunities': true,
+        'Campaign.HierarchyNumberSent': true,
         'CampaignMember.LeadOrContactId': true,
+        'Case.CaseNumber': true,
         'Case.IsClosed': true,
+        'Contract.ContractNumber': true,
+        'Contract.EndDate': true,
         'Opportunity.ExpectedRevenue': true,
         'Opportunity.Fiscal': true,
         'Opportunity.FiscalQuarter': true,
@@ -83,9 +99,8 @@ export class ReadOnlyFields {
         }
 
         const reason = recipeValue.slice(this.recipeValuePrefix.length).trim();
-        const knownReasons: ReadOnlyFieldReason[] = ['formula', 'roll-up summary', 'auto number', 'set by Salesforce'];
 
-        return knownReasons.find(knownReason => knownReason === reason);
+        return READ_ONLY_FIELD_REASONS.find(knownReason => knownReason === reason);
 
     }
 

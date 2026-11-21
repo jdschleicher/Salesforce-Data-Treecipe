@@ -8,6 +8,7 @@ import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../SalesforceCli/SalesforceCli";
 import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../InsertFailureTriage/RecipeCockpitInsertFailureTriage";
 import { DatasetInsertAttemptService } from "../DatasetInsertAttemptService/DatasetInsertAttemptService";
+import { ReadOnlyFields } from "../ObjectInfoWrapper/ReadOnlyFields";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -184,13 +185,16 @@ export class CollectionsApiService {
         const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
         const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
-        // A FIELD THE ORG CANNOT TAKE ON INSERT (A FORMULA, A ROLL-UP, ExpectedRevenue) WOULD FAIL THE RECORD, SO IT IS LEFT OUT (#685)
-        const nonCreateableFieldApiNamesByObject = await this.readNonCreateableFieldApiNamesByObject(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom, insertOptions.orgUsername);
+        // A FIELD SALESFORCE FILLS ITSELF (A FORMULA, A ROLL-UP, ExpectedRevenue) WOULD FAIL THE RECORD, SO IT IS LEFT OUT (#685)
+        const salesforceFilledFieldApiNamesByObject = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Checking which fields the target org fills itself...' },
+            () => this.readSalesforceFilledFieldApiNamesByObject(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom, insertOptions.orgUsername)
+        ) ?? new Map<string, Set<string>>();
         const removedObjectFields = new Set<string>();
         const callerPrepareRecords = insertOptions.prepareRecords;
         const prepareRecords: DataSetRecordPreparer = (objectApiName, records, createdRecordIdsByReferenceId) => {
-            const createableRecords = this.removeNonCreateableFields(objectApiName, records, nonCreateableFieldApiNamesByObject, removedObjectFields);
-            return callerPrepareRecords ? callerPrepareRecords(objectApiName, createableRecords, createdRecordIdsByReferenceId) : createableRecords;
+            const insertableRecords = this.removeSalesforceFilledFields(objectApiName, records, salesforceFilledFieldApiNamesByObject, removedObjectFields);
+            return callerPrepareRecords ? callerPrepareRecords(objectApiName, insertableRecords, createdRecordIdsByReferenceId) : insertableRecords;
         };
 
         const insertResult = await this.upsertDataSetToSelectedOrg(datasetFolderPath,
@@ -199,7 +203,7 @@ export class CollectionsApiService {
                                                 aliasAuthenticationConnection,
                                                 allOrNoneSelection,
                                                 { ...insertOptions, prepareRecords });
-        this.warnOfRemovedNonCreateableFields(removedObjectFields);
+        this.warnOfRemovedSalesforceFilledFields(removedObjectFields);
         return insertResult;
 
     }
@@ -864,18 +868,22 @@ export class CollectionsApiService {
     }
 
     /*
-        Each data set object's fields the target org reports as not createable, keyed by lowercase
-        object and field api name, from the cached describe. An object that could not be described
-        has no entry, so nothing is removed from it and the org's own error says why a record failed.
+        Each data set object's fields Salesforce fills itself, so an insert cannot set them: not
+        createable AND calculated (formula, roll-up), auto number, or on ReadOnlyFields' standard list.
+        A field that is only not createable because the user lacks permission is NOT here: its insert
+        fails with the org's own error, which triage sends to the permissions sub-tab. Keyed by
+        lowercase object and field api name, from the cached describe of the connection's own org.
+        An object that could not be described has no entry, so nothing is removed from it.
     */
-    static async readNonCreateableFieldApiNamesByObject(connection: Connection,
-                                                        objectApiNames: string[],
-                                                        orgUsername: string | undefined): Promise<Map<string, Set<string>>> {
+    static async readSalesforceFilledFieldApiNamesByObject(connection: Connection,
+                                                           objectApiNames: string[],
+                                                           orgUsername: string | undefined): Promise<Map<string, Set<string>>> {
 
-        const nonCreateableFieldApiNamesByObject = new Map<string, Set<string>>();
-        const describeUsername = orgUsername ?? ( typeof connection?.getUsername === 'function' ? connection.getUsername() : undefined );
+        const salesforceFilledFieldApiNamesByObject = new Map<string, Set<string>>();
+        // THE CONNECTION'S OWN USERNAME FIRST, SO NO OTHER ORG'S CACHED DESCRIBE CAN DECIDE WHAT IS LEFT OUT
+        const describeUsername = ( typeof connection?.getUsername === 'function' ? connection.getUsername() : undefined ) ?? orgUsername;
         if ( !describeUsername || objectApiNames.length === 0 ) {
-            return nonCreateableFieldApiNamesByObject;
+            return salesforceFilledFieldApiNamesByObject;
         }
 
         try {
@@ -883,27 +891,30 @@ export class CollectionsApiService {
             describeResult.outcomes
                 .filter(describeOutcome => describeOutcome.describe !== undefined)
                 .forEach(describeOutcome => {
-                    const nonCreateableFieldApiNames = describeOutcome.describe.fields
-                        .filter(describeField => !describeField.isCreateable)
+                    const salesforceFilledFieldApiNames = describeOutcome.describe.fields
+                        .filter(describeField => !describeField.isCreateable
+                                                    && ( describeField.isCalculated
+                                                        || describeField.isAutoNumber
+                                                        || ReadOnlyFields.isStandardReadOnlyField(describeOutcome.describe.objectApiName, describeField.fieldApiName) ))
                         .map(describeField => describeField.fieldApiName.toLowerCase());
-                    nonCreateableFieldApiNamesByObject.set(describeOutcome.objectApiName.toLowerCase(), new Set(nonCreateableFieldApiNames));
+                    salesforceFilledFieldApiNamesByObject.set(describeOutcome.objectApiName.toLowerCase(), new Set(salesforceFilledFieldApiNames));
                 });
         } catch {
             // NO DESCRIBE, NO REMOVAL: THE INSERT RUNS AS BEFORE AND THE ORG'S OWN ERROR NAMES THE FIELD
         }
 
-        return nonCreateableFieldApiNamesByObject;
+        return salesforceFilledFieldApiNamesByObject;
 
     }
 
-    // EACH RECORD WITHOUT THE FIELDS THE ORG CANNOT TAKE ON INSERT; EVERY Object.Field REMOVED IS ADDED TO removedObjectFields
-    static removeNonCreateableFields(objectApiName: string,
-                                     records: unknown[],
-                                     nonCreateableFieldApiNamesByObject: ReadonlyMap<string, ReadonlySet<string>>,
-                                     removedObjectFields: Set<string>): unknown[] {
+    // EACH RECORD WITHOUT THE FIELDS SALESFORCE FILLS ITSELF, COPIED ONLY WHEN ONE IS REMOVED; EACH Object.Field REMOVED IS ADDED TO removedObjectFields
+    static removeSalesforceFilledFields(objectApiName: string,
+                                        records: unknown[],
+                                        salesforceFilledFieldApiNamesByObject: ReadonlyMap<string, ReadonlySet<string>>,
+                                        removedObjectFields: Set<string>): unknown[] {
 
-        const nonCreateableFieldApiNames = nonCreateableFieldApiNamesByObject.get(String(objectApiName).toLowerCase());
-        if ( !nonCreateableFieldApiNames || nonCreateableFieldApiNames.size === 0 || !Array.isArray(records) ) {
+        const salesforceFilledFieldApiNames = salesforceFilledFieldApiNamesByObject.get(String(objectApiName).toLowerCase());
+        if ( !salesforceFilledFieldApiNames || salesforceFilledFieldApiNames.size === 0 || !Array.isArray(records) ) {
             return records;
         }
 
@@ -911,29 +922,35 @@ export class CollectionsApiService {
             if ( !record || typeof record !== 'object' ) {
                 return record;
             }
-            const createableRecord: Record<string, unknown> = { ...( record as Record<string, unknown> ) };
-            Object.keys(createableRecord)
-                .filter(fieldApiName => fieldApiName !== 'attributes' && nonCreateableFieldApiNames.has(fieldApiName.toLowerCase()))
-                .forEach(fieldApiName => {
-                    delete createableRecord[fieldApiName];
-                    removedObjectFields.add(`${objectApiName}.${fieldApiName}`);
-                });
-            return createableRecord;
+            const filledFieldApiNames = Object.keys(record)
+                .filter(fieldApiName => fieldApiName !== 'attributes' && salesforceFilledFieldApiNames.has(fieldApiName.toLowerCase()));
+            if ( filledFieldApiNames.length === 0 ) {
+                return record;
+            }
+            const insertableRecord: Record<string, unknown> = { ...( record as Record<string, unknown> ) };
+            filledFieldApiNames.forEach(fieldApiName => {
+                delete insertableRecord[fieldApiName];
+                removedObjectFields.add(`${objectApiName}.${fieldApiName}`);
+            });
+            return insertableRecord;
         });
 
     }
 
-    static warnOfRemovedNonCreateableFields(removedObjectFields: ReadonlySet<string>): void {
+    static warnOfRemovedSalesforceFilledFields(removedObjectFields: ReadonlySet<string>): void {
 
         if ( removedObjectFields.size === 0 ) {
             return;
         }
 
-        const removedFieldList = [...removedObjectFields]
-            .sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ))
+        const maximumNames = this.maximumUnmatchedRecordTypeNamesInWarning;
+        const sortedObjectFields = [...removedObjectFields].sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ));
+        const removedFieldList = sortedObjectFields
+            .slice(0, maximumNames)
             .map(objectField => DirectoryProcessor.escapeForNotification(objectField))
             .join(', ');
-        vscode.window.showWarningMessage(`Treecipe left out fields the target org does not let an insert set, such as formula and roll-up fields: ${removedFieldList}. Salesforce fills these itself. Regenerate the Treecipe to mark them READ ONLY in the recipe.`);
+        const unlistedNamesNote = sortedObjectFields.length > maximumNames ? ` and ${sortedObjectFields.length - maximumNames} more` : '';
+        vscode.window.showWarningMessage(`Treecipe left out fields Salesforce fills itself, such as formula, roll-up summary and auto number fields, because the target org does not let an insert set them: ${removedFieldList}${unlistedNamesNote}. Regenerate the Treecipe to mark them READ ONLY in the recipe.`);
 
     }
 

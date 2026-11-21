@@ -1492,15 +1492,20 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
 
         });
 
-        describe('leaves out the fields the target org does not let an insert set (#685)', () => {
+        describe('leaves out the fields Salesforce fills itself, and only those (#685)', () => {
 
             const ORG_USERNAME = 'qa@example.com.sandbox';
-            const describeAnswerFor = (objectApiName: string, fieldCreateability: Record<string, boolean>) => ({
+            type DescribeFieldAnswer = { createable: boolean; calculated?: boolean; autoNumber?: boolean };
+            const describeAnswerFor = (objectApiName: string, fieldAnswers: Record<string, DescribeFieldAnswer>) => ({
                 name: objectApiName,
                 label: objectApiName,
                 createable: true,
                 updateable: true,
-                fields: Object.entries(fieldCreateability).map(([fieldName, isCreateable]) => ({ name: fieldName, label: fieldName, type: 'string', createable: isCreateable }))
+                fields: Object.entries(fieldAnswers).map(([fieldName, fieldAnswer]) => ({ name: fieldName, label: fieldName, type: 'string', ...fieldAnswer }))
+            });
+            const describingConnection = (fieldAnswers: Record<string, DescribeFieldAnswer>, username?: string) => ({
+                ...( username ? { getUsername: () => username } : {} ),
+                describe: jest.fn(async (objectApiName: string) => describeAnswerFor(objectApiName, fieldAnswers))
             });
 
             beforeEach(() => SalesforceOrgService.clearDescribeCache());
@@ -1508,7 +1513,7 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             test('removes them from every record, after which the caller\'s preparer sees the records, and warns once naming each', async () => {
 
                 writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
-                const connection = { ...buildConnection(), describe: jest.fn(async (objectApiName: string) => describeAnswerFor(objectApiName, { Name: true, Formula__c: false, AccountNumber: true })) };
+                const connection = { ...buildConnection(), ...describingConnection({ Name: { createable: true }, Formula__c: { createable: false, calculated: true } }) };
                 jest.spyOn(RecordTypeService, 'getRecordTypeIdsByConnection').mockResolvedValue({ records: [] });
                 const upsertSpy = jest.spyOn(CollectionsApiService, 'upsertDataSetToSelectedOrg').mockImplementation(async (_folder, _files, _types, _connection, _allOrNone, insertOptions) => {
                     insertOptions.prepareRecords('Account', [{ attributes: { type: 'Account', referenceId: 'Account_Reference_1' }, Name: 'Acme', formula__c: '12.00' }], {});
@@ -1520,72 +1525,97 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
                 await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection as any, false, { prepareRecords, orgUsername: ORG_USERNAME });
 
                 expect(upsertSpy).toHaveBeenCalledTimes(1);
+                expect(vscode.window.withProgress).toHaveBeenCalledWith(expect.objectContaining({ title: 'Checking which fields the target org fills itself...' }), expect.any(Function));
                 expect(prepareRecords).toHaveBeenCalledWith('Account', [{ attributes: { type: 'Account', referenceId: 'Account_Reference_1' }, Name: 'Acme' }], {});
                 expect(warningSpy).toHaveBeenCalledTimes(1);
                 expect(warningSpy.mock.calls[0][0]).toContain('Account.formula__c');
 
             });
 
-            test('removes nothing and warns about nothing when every field is createable', () => {
+            test.each([
+                ['a calculated (formula or roll-up) field', { createable: false, calculated: true }, true],
+                ['an auto number field', { createable: false, autoNumber: true }, true],
+                ['a field only the user\'s permissions block, which keeps the org\'s own error and its triage', { createable: false }, false],
+                ['a createable field', { createable: true }, false]
+            ])('%s: removed=%s', async (unusedCase, fieldAnswer, isRemoved) => {
 
-                const removedObjectFields = new Set<string>();
-                const records = [{ attributes: { type: 'Account' }, Name: 'Acme' }];
+                const salesforceFilled = await CollectionsApiService.readSalesforceFilledFieldApiNamesByObject(describingConnection({ Some_Field__c: fieldAnswer }) as any, ['Gizmo__c'], ORG_USERNAME);
 
-                expect(CollectionsApiService.removeNonCreateableFields('Account', records, new Map([['account', new Set<string>()]]), removedObjectFields)).toBe(records);
-                expect(removedObjectFields.size).toBe(0);
+                expect(salesforceFilled.get('gizmo__c').has('some_field__c')).toBe(isRemoved);
 
             });
 
-            test('never removes attributes, and leaves an object it could not describe as it was', () => {
+            test('a standard field ReadOnlyFields lists is removed even when the describe does not call it calculated', async () => {
+
+                const salesforceFilled = await CollectionsApiService.readSalesforceFilledFieldApiNamesByObject(describingConnection({ ExpectedRevenue: { createable: false }, Amount: { createable: true } }) as any, ['Opportunity'], ORG_USERNAME);
+
+                expect([...salesforceFilled.get('opportunity')]).toEqual(['expectedrevenue']);
+
+            });
+
+            test('describes with the connection\'s own username, before any username the caller passed', async () => {
+
+                const describeSpy = jest.spyOn(SalesforceOrgService, 'describeObjects');
+                const connection = describingConnection({ Formula__c: { createable: false, calculated: true } }, 'connection-user@example.com');
+
+                await CollectionsApiService.readSalesforceFilledFieldApiNamesByObject(connection as any, ['Account'], 'other-org-user@example.com');
+                await CollectionsApiService.readSalesforceFilledFieldApiNamesByObject(describingConnection({ Formula__c: { createable: false, calculated: true } }) as any, ['Account'], ORG_USERNAME);
+
+                expect(describeSpy.mock.calls.map(describeCall => describeCall[0])).toEqual(['connection-user@example.com', ORG_USERNAME]);
+
+            });
+
+            test('returns a record with nothing to remove as the same object, and passes a non-object record through', () => {
 
                 const removedObjectFields = new Set<string>();
-                const nonCreateable = new Map([['account', new Set(['attributes', 'formula__c'])]]);
-                const accountRecords = [{ attributes: { type: 'Account' }, Formula__c: '1' }];
-                const contactRecords = [{ attributes: { type: 'Contact' }, Formula__c: '1' }];
+                const untouchedRecord = { attributes: { type: 'Account' }, Name: 'Acme' };
+                const records: unknown[] = [null, 'not a record', untouchedRecord, { attributes: { type: 'Account' }, Formula__c: '1' }];
 
-                expect(CollectionsApiService.removeNonCreateableFields('Account', accountRecords, nonCreateable, removedObjectFields)).toEqual([{ attributes: { type: 'Account' } }]);
-                expect(CollectionsApiService.removeNonCreateableFields('Contact', contactRecords, nonCreateable, removedObjectFields)).toBe(contactRecords);
+                const insertableRecords = CollectionsApiService.removeSalesforceFilledFields('Account', records, new Map([['account', new Set(['formula__c'])]]), removedObjectFields);
+
+                expect(insertableRecords).toEqual([null, 'not a record', untouchedRecord, { attributes: { type: 'Account' } }]);
+                expect(insertableRecords[2]).toBe(untouchedRecord);
                 expect([...removedObjectFields]).toEqual(['Account.Formula__c']);
 
             });
 
-            test('without an org username in the options, describes with the connection\'s own username', async () => {
+            test('never removes attributes, and leaves an object it could not describe, or with nothing to remove, as it was', () => {
 
-                const connection = { getUsername: () => ORG_USERNAME, describe: jest.fn(async (objectApiName: string) => describeAnswerFor(objectApiName, { Name: true, Formula__c: false })) };
+                const removedObjectFields = new Set<string>();
+                const salesforceFilled = new Map([['account', new Set(['attributes', 'formula__c'])], ['lead', new Set<string>()]]);
+                const contactRecords = [{ attributes: { type: 'Contact' }, Formula__c: '1' }];
+                const leadRecords = [{ attributes: { type: 'Lead' }, Formula__c: '1' }];
 
-                const nonCreateable = await CollectionsApiService.readNonCreateableFieldApiNamesByObject(connection as any, ['Account'], undefined);
-
-                expect([...nonCreateable.get('account')]).toEqual(['formula__c']);
-                expect(connection.describe).toHaveBeenCalledWith('Account');
-
-            });
-
-            test('passes a record that is not an object through untouched', () => {
-
-                const records: unknown[] = [null, 'not a record', { attributes: { type: 'Account' }, Formula__c: '1' }];
-
-                expect(CollectionsApiService.removeNonCreateableFields('Account', records, new Map([['account', new Set(['formula__c'])]]), new Set())).toEqual([null, 'not a record', { attributes: { type: 'Account' } }]);
+                expect(CollectionsApiService.removeSalesforceFilledFields('Account', [{ attributes: { type: 'Account' }, Formula__c: '1' }], salesforceFilled, removedObjectFields)).toEqual([{ attributes: { type: 'Account' } }]);
+                expect(CollectionsApiService.removeSalesforceFilledFields('Contact', contactRecords, salesforceFilled, removedObjectFields)).toBe(contactRecords);
+                expect(CollectionsApiService.removeSalesforceFilledFields('Lead', leadRecords, salesforceFilled, removedObjectFields)).toBe(leadRecords);
 
             });
 
-            test('the warning names every removed field once, sorted, as text', () => {
+            test('the warning names each removed field once, sorted and escaped, and lists at most 20 before "and N more"', () => {
 
                 const warningSpy = jest.spyOn(vscode.window, 'showWarningMessage');
+                const manyFields = new Set(Array.from({ length: 22 }, (unusedValue, fieldIndex) => `Gizmo__c.Field_${String(fieldIndex).padStart(2, '0')}__c`));
 
-                CollectionsApiService.warnOfRemovedNonCreateableFields(new Set(['Opportunity.IsWon', 'Account.Formula__c', 'Opportunity.ExpectedRevenue']));
-                CollectionsApiService.warnOfRemovedNonCreateableFields(new Set());
+                CollectionsApiService.warnOfRemovedSalesforceFilledFields(new Set(['Opportunity.IsWon', 'Account.[x](command:evil)', 'Opportunity.ExpectedRevenue']));
+                CollectionsApiService.warnOfRemovedSalesforceFilledFields(manyFields);
+                CollectionsApiService.warnOfRemovedSalesforceFilledFields(new Set());
 
-                expect(warningSpy).toHaveBeenCalledTimes(1);
-                expect(warningSpy.mock.calls[0][0]).toContain('Account.Formula__c, Opportunity.ExpectedRevenue, Opportunity.IsWon.');
+                expect(warningSpy).toHaveBeenCalledTimes(2);
+                const [firstWarning] = warningSpy.mock.calls[0];
+                expect(firstWarning).not.toContain('[x](command:evil)');
+                expect(firstWarning.indexOf('Opportunity.ExpectedRevenue')).toBeLessThan(firstWarning.indexOf('Opportunity.IsWon'));
+                expect(warningSpy.mock.calls[1][0]).toContain('Gizmo__c.Field_19__c and 2 more.');
+                expect(warningSpy.mock.calls[1][0]).not.toContain('Gizmo__c.Field_20__c');
 
             });
 
-            test('with no org username, or a describe that fails, removes nothing and lets the insert run', async () => {
+            test('with no username at all, or a describe that fails, removes nothing and lets the insert run', async () => {
 
                 const failingConnection = { describe: jest.fn().mockRejectedValue(new Error('describe down')) };
 
-                expect((await CollectionsApiService.readNonCreateableFieldApiNamesByObject(failingConnection as any, ['Account'], undefined)).size).toBe(0);
-                expect((await CollectionsApiService.readNonCreateableFieldApiNamesByObject(failingConnection as any, ['Account'], ORG_USERNAME)).size).toBe(0);
+                expect((await CollectionsApiService.readSalesforceFilledFieldApiNamesByObject(failingConnection as any, ['Account'], undefined)).size).toBe(0);
+                expect((await CollectionsApiService.readSalesforceFilledFieldApiNamesByObject(failingConnection as any, ['Account'], ORG_USERNAME)).size).toBe(0);
 
             });
 
