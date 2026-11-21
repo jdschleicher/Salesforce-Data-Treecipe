@@ -374,7 +374,7 @@ export class RecipeCockpitTreecipeOrgHost {
 
     }
 
-    static refuseDataOrgListingWhileHeld(hub: IRecipeCockpitHubForTreecipeOrgTab, panelState: IRecipeCockpitPanelState): Extract<RecipeCockpitTreecipeOrgPanelAction, { kind: 'refuseDataOrgListing' }> | undefined {
+    private static refuseDataOrgListingWhileHeld(hub: IRecipeCockpitHubForTreecipeOrgTab, panelState: IRecipeCockpitPanelState): Extract<RecipeCockpitTreecipeOrgPanelAction, { kind: 'refuseDataOrgListing' }> | undefined {
 
         const holdingRun = hub.describeSelectionHoldingRun(panelState);
 
@@ -393,7 +393,6 @@ export class RecipeCockpitTreecipeOrgHost {
 
     }
 
-    // WHERE THE READER ACTED FROM, KEPT ONLY IF IT NAMES A CARD OF THE MODEL ON SCREEN AND ITS DATA SETS TAB
     /*
         A posted record type selection (#195): a plain object of object api name -> developer names,
         every pair one the confirmed-drawn model offered, each object's list non-empty and without
