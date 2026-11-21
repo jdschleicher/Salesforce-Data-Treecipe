@@ -47,7 +47,8 @@ import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from './RecipeCockpitNavigation
     RecipeCockpitTreecipeSelection (objects, fields, counts, fixed values, picklist choices, rule
     toggles, reset), RecipeCockpitTreecipeObjectRefresh ("Get latest object detail") and
     RecipeCockpitTreecipeRecipeEdits (friends, lookups, parents, TODOs, and the recipe and sidecar
-    writes the others share). They load one way: this file, Selection, ObjectRefresh, RecipeEdits.
+    writes the others share). They load one way: this file loads the other three, and Selection and
+    ObjectRefresh each load RecipeEdits, which loads no other host.
     The hub owns the panel, its state, the model and every allow-list, and promotes the lists on the
     panel's acks.
 */

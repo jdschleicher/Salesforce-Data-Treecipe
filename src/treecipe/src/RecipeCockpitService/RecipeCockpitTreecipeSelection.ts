@@ -62,7 +62,7 @@ export class RecipeCockpitTreecipeSelection {
         changing one occurrence leaves every other exactly as it was, and no later write can fall back
         to it.
     */
-    static splitObjectWideEntry<T>(storedByKey: Map<string, T>, objectApiName: string, occurrenceNicknames: readonly string[], copyEntry: (entry: T) => T): void {
+    private static splitObjectWideEntry<T>(storedByKey: Map<string, T>, objectApiName: string, occurrenceNicknames: readonly string[], copyEntry: (entry: T) => T): void {
         if ( !storedByKey.has(objectApiName) ) {
             return;
         }
@@ -646,7 +646,7 @@ export class RecipeCockpitTreecipeSelection {
         once, else "<Object>\n<Nickname>", after splitting off an entry its object holds from before
         #467 so every other occurrence keeps what it had.
     */
-    static prepareOccurrenceSelectionKey<T>(hub: IRecipeCockpitHubForTreecipeTab, storedByKey: Map<string, T>,
+    private static prepareOccurrenceSelectionKey<T>(hub: IRecipeCockpitHubForTreecipeTab, storedByKey: Map<string, T>,
                                             panelState: IRecipeCockpitPanelState,
                                             tree: IRecipeCockpitTreeViewModel,
                                             objectApiName: string,
@@ -669,7 +669,7 @@ export class RecipeCockpitTreecipeSelection {
     }
 
     // objectApiName IS THE KEY THE SETTING IS STORED UNDER: AN OBJECT, OR AN OCCURRENCE'S KEY (#467)
-    static setStoredValidationRuleOff(treeSelections: IRecipeCockpitTreeSelections, folderName: string, objectApiName: string, fieldApiName: string, isOff: boolean) {
+    private static setStoredValidationRuleOff(treeSelections: IRecipeCockpitTreeSelections, folderName: string, objectApiName: string, fieldApiName: string, isOff: boolean) {
 
         const rulesOffByObject = treeSelections.validationRulesOffByFolderName.get(folderName) ?? new Map<string, Set<string>>();
         const rulesOffFieldApiNames = rulesOffByObject.get(objectApiName) ?? new Set<string>();

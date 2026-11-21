@@ -308,7 +308,7 @@ export class RecipeCockpitTreecipeRecipeEdits {
         rule that drew the button. A lookup wired or filled by hand since the load is refused rather
         than overwritten.
     */
-    static findEmptyLookupRefusal(hub: IRecipeCockpitHubForTreecipeTab, recipeFilePath: string,
+    private static findEmptyLookupRefusal(hub: IRecipeCockpitHubForTreecipeTab, recipeFilePath: string,
                                     tree: IRecipeCockpitTreeViewModel,
                                     objectLevelsByApiName: Map<string, number> | undefined,
                                     emptyLookup: IRecipeCockpitEmptyLookupViewModel): string | undefined {
@@ -907,7 +907,7 @@ export class RecipeCockpitTreecipeRecipeEdits {
         which the move changes, so Clear and Restore would no longer find what they wrote. A file
         beside the recipe that cannot be read is refused too, since what it holds cannot be told.
     */
-    static planNestedParentObjectAddition(hub: IRecipeCockpitHubForTreecipeTab, recipeFilePath: string,
+    private static planNestedParentObjectAddition(hub: IRecipeCockpitHubForTreecipeTab, recipeFilePath: string,
                                             workspaceRoot: string,
                                             recipeText: string,
                                             additionRequest: IParentObjectAdditionRequest,

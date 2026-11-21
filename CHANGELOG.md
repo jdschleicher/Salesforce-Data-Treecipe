@@ -4,7 +4,7 @@
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
 
-- **The rest of the Treecipe tab's host code left the hub.** It is four files, which load one way: Host, then Selection, then ObjectRefresh, then RecipeEdits.
+- **The rest of the Treecipe tab's host code left the hub.** It is four files, which load one way: Host loads the other three, Selection and ObjectRefresh each load RecipeEdits, and RecipeEdits loads no other host.
   - `RecipeCockpitTreecipeHost.ts`: the 22 commands and 24 action kinds, the pure router, the executor, and a card's rename and favourite.
   - `RecipeCockpitTreecipeSelection.ts`: objects, fields, counts, fixed values, picklist choices, validation rule toggles and reset.
   - `RecipeCockpitTreecipeObjectRefresh.ts`: Get latest object detail.
