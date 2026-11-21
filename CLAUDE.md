@@ -167,6 +167,7 @@ src/
     │   ├── RelationshipTypes.ts             # RelationshipDetail, RelationshipTree, RecipeFileOutput: what RelationshipService fills in (#574)
     │   ├── RecordTypesWrapper.ts            # RecordTypeWrapper, the record type ObjectInfo.RecordTypesMap holds; RecordTypeService fills it in (#575)
     │   ├── PersonNameObjects.ts             # Contact, Lead, Individual: the objects whose Name is a read-only compound (#114); imports nothing
+    │   ├── StandardDerivedFields.ts         # Fields Salesforce sets from another lookup (Quote.AccountId from OpportunityId, #680): written as Opportunity_NickName.AccountId, read only in the cockpit, never inserted; imports nothing
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
     │   └── tests/

@@ -11,6 +11,8 @@ export const dataOrgPicker = {
     isDataOrgPickerInUse: false,
     dataOrgViews: [] as IDataOrgView[],
     dataOrgLabels: null as string[] | null,
+    // WHAT THE DROPDOWN LISTS (#678): THE SAME ORGS, "alias -- instance url"; dataOrgLabels STAYS WHAT EVERY OTHER TEXT QUOTES
+    dataOrgPickerLabels: null as string[] | null,
     isDataOrgLoadShown: true,
     isDataOrgSelectShown: false,
     isDataOrgRefreshShown: false,
@@ -49,6 +51,7 @@ export function resetDataOrgPickerState(): void {
 
     dataOrgPicker.dataOrgViews = [];
     dataOrgPicker.dataOrgLabels = null;
+    dataOrgPicker.dataOrgPickerLabels = null;
     dataOrgPicker.isDataOrgLoadShown = true;
     dataOrgPicker.isDataOrgSelectShown = false;
     dataOrgPicker.isDataOrgRefreshShown = false;

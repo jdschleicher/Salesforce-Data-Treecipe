@@ -70,6 +70,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { isOrgPickerDisabled } from './RecipeCockpitOrgPickerProbe';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const PROJECT_WORKSPACE_ROOT = path.join(__dirname, '..', '..', 'ScratchOrgService', 'tests', 'mocks', 'projectWorkspace');
@@ -1303,7 +1304,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'createScratchOrg')).toEqual([{ command: 'createScratchOrg' }]);
             expect(newScratchElement.disabled).toBe(true);
-            expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
+            expect(isOrgPickerDisabled(firstOf(panel, 'dataOrgSelect'))).toBe(true);
 
             newScratchElement.dispatch('click');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'createScratchOrg')).toHaveLength(1);
@@ -1332,18 +1333,18 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             // #375: A RUN DISABLES THE INSERT, WHICH NEVER FALLS BACK TO GENERATING ONLY
             expect([leadInsertButton(panel).disabled, leadInsertButton(panel).textContent]).toEqual([true, 'Generate fake data and insert']);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
-            expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
+            expect(isOrgPickerDisabled(firstOf(panel, 'dataOrgSelect'))).toBe(true);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
 
             // A LISTING THE RUN POSTS ON ITS WAY OUT DOES NOT RE-ENABLE WHAT THE RUN HOLDS
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'new'], selectedOrgIndex: 1, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
-            expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
+            expect(isOrgPickerDisabled(firstOf(panel, 'dataOrgSelect'))).toBe(true);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
 
             panel.postToPanel({ command: 'scratchOrgState', isRunning: false });
 
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(false);
-            expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(false);
+            expect(isOrgPickerDisabled(firstOf(panel, 'dataOrgSelect'))).toBe(false);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(false);
 
         });

@@ -1,11 +1,18 @@
 import { createButton, createElement, setShown } from '../../../../CockpitKit/panel/CockpitPanelElements';
+import { buildSearchableSelect } from '../../../../CockpitKit/panel/CockpitSearchableSelect';
 import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL,
     RECIPE_COCKPIT_AUTHORIZE_ORG_TOOLTIP,
     RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
     RECIPE_COCKPIT_OPEN_ORG_LABEL,
+    RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX,
+    RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
+    RECIPE_COCKPIT_ORG_PICKER_NAME,
+    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 } from '../../../RecipeCockpitDataOrgConstants';
 import { requestDataOrgs, showDataOrgConnectionCheck } from './DataOrgListing';
@@ -24,8 +31,8 @@ import { dataOrgPicker } from './DataOrgPickerState';
 
 /*
     One view of the panel-wide org picker, at the top of a card's Treecipe tab (#255). The
-    dropdown is a native select of the LABELS the host posted, and the panel posts back only the
-    chosen option's index -- the host holds the usernames.
+    dropdown is the kit's searchable select (#678) of the "alias -- instance url" LABELS the host
+    posted, and the panel posts back only the chosen option's index -- the host holds the usernames.
 */
 // hasOrgAddingButtons: false LEAVES + New scratch org AND Authorize org OUT OF THE VIEW (#617); THEY ARE STILL BUILT, SO ONE DRAW SERVES EVERY VIEW
 export function buildDataOrgView(hasOrgAddingButtons?: boolean): IDataOrgView {
@@ -36,7 +43,19 @@ export function buildDataOrgView(hasOrgAddingButtons?: boolean): IDataOrgView {
     const dataOrgView: IDataOrgView = {
         element: viewElement,
         loadElement: createButton('primary', 'dataOrgLoad', 'Choose org…'),
-        selectElement: createElement('select', 'dataOrgSelect hidden'),
+        orgSelect: buildSearchableSelect({
+            className: 'dataOrgSelect hidden',
+            accessibleName: RECIPE_COCKPIT_ORG_PICKER_NAME,
+            searchPlaceholder: RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+            chooseLabel: RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
+            unselectedLabel: RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
+            buildNoMatchText: function (searchText: string) { return RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX + searchText + RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX; },
+            // ONLY AN INDEX THE HOST LISTED: WHILE THE CHECK RUNS THE PICKER HOLDS NO LABEL TO CHOOSE
+            onSelect: function (orgIndex: number) {
+                if (dataOrgPicker.isDataOrgChecking) { return; }
+                vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: orgIndex });
+            }
+        }),
         spinnerElement: createElement('span', 'dataOrgSpinner hidden'),
         typeElement: createElement('span', 'dataOrgType hidden'),
         openOrgElement: createButton('secondary', 'dataOrgOpen hidden', RECIPE_COCKPIT_OPEN_ORG_LABEL),
@@ -45,19 +64,12 @@ export function buildDataOrgView(hasOrgAddingButtons?: boolean): IDataOrgView {
         authorizeElement: createButton('primary', 'dataOrgAuthorize', RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL),
         hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
         statusElement: createElement('div', 'dataOrgStatus muted hidden'),
-        drawnLabels: null
+        drawnLabels: null,
+        drawnSelectedIndex: null
     };
 
     dataOrgView.loadElement.setAttribute('title', 'List the connected sandbox and scratch orgs the generated data can go to');
     dataOrgView.loadElement.addEventListener('click', function () { requestDataOrgs(); });
-
-    dataOrgView.selectElement.setAttribute('aria-label', 'Salesforce org the generated data goes to');
-    dataOrgView.selectElement.addEventListener('change', function () {
-        const selectedValue = String(dataOrgView.selectElement.value || '');
-        // ONLY AN INDEX THE HOST LISTED: THE CHECK'S OWN OPTION, AND EVERY PLACEHOLDER, CARRY NONE
-        if (dataOrgPicker.isDataOrgChecking || !/^[0-9]+$/.test(selectedValue)) { return; }
-        vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: Number(selectedValue) });
-    });
 
     dataOrgView.spinnerElement.setAttribute('aria-hidden', 'true');
 
@@ -108,7 +120,7 @@ export function buildDataOrgView(hasOrgAddingButtons?: boolean): IDataOrgView {
     });
 
     pickerElement.appendChild(dataOrgView.loadElement);
-    pickerElement.appendChild(dataOrgView.selectElement);
+    pickerElement.appendChild(dataOrgView.orgSelect.element);
     pickerElement.appendChild(dataOrgView.spinnerElement);
     pickerElement.appendChild(dataOrgView.typeElement);
     pickerElement.appendChild(dataOrgView.openOrgElement);
@@ -136,30 +148,23 @@ export function buildDataOrgView(hasOrgAddingButtons?: boolean): IDataOrgView {
 */
 function drawDataOrgView(dataOrgView: IDataOrgView): void {
 
-    const optionLabels = dataOrgPicker.isDataOrgChecking ? dataOrgPicker.dataOrgCheckingOptionLabels : dataOrgPicker.dataOrgLabels;
+    const optionLabels = dataOrgPicker.isDataOrgChecking ? dataOrgPicker.dataOrgCheckingOptionLabels : dataOrgPicker.dataOrgPickerLabels;
+    const selectedIndex = dataOrgPicker.isDataOrgChecking ? null : dataOrgPicker.dataOrgSelectedIndex;
 
-    if (dataOrgView.drawnLabels !== optionLabels) {
-        dataOrgView.selectElement.textContent = '';
-        if (dataOrgPicker.isDataOrgChecking || (dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgLabels.length === 0)) {
-            const onlyOptionElement = createElement('option', '', dataOrgPicker.isDataOrgChecking ? dataOrgPicker.dataOrgCheckingOptionLabels[0] : RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER);
-            onlyOptionElement.value = '';
-            dataOrgView.selectElement.appendChild(onlyOptionElement);
-        } else if (dataOrgPicker.dataOrgLabels && dataOrgPicker.dataOrgLabels.length > 0) {
-            const placeholderElement = createElement('option', '', 'Choose org…');
-            placeholderElement.value = '';
-            dataOrgView.selectElement.appendChild(placeholderElement);
-            dataOrgPicker.dataOrgLabels.forEach(function (orgLabel, orgIndex) {
-                const optionElement = createElement('option', '', orgLabel);
-                optionElement.value = String(orgIndex);
-                dataOrgView.selectElement.appendChild(optionElement);
-            });
+    if (dataOrgView.drawnLabels !== optionLabels || dataOrgView.drawnSelectedIndex !== selectedIndex) {
+        if (dataOrgPicker.isDataOrgChecking) {
+            dataOrgView.orgSelect.drawPlaceholder(dataOrgPicker.dataOrgCheckingOptionLabels[0]);
+        } else if (dataOrgPicker.dataOrgPickerLabels && dataOrgPicker.dataOrgPickerLabels.length > 0) {
+            dataOrgView.orgSelect.drawOptions(dataOrgPicker.dataOrgPickerLabels, selectedIndex);
+        } else {
+            dataOrgView.orgSelect.drawPlaceholder(RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER);
         }
         dataOrgView.drawnLabels = optionLabels;
+        dataOrgView.drawnSelectedIndex = selectedIndex;
     }
 
-    dataOrgView.selectElement.value = dataOrgPicker.isDataOrgChecking || dataOrgPicker.dataOrgSelectedIndex === null ? '' : String(dataOrgPicker.dataOrgSelectedIndex);
     setShown(dataOrgView.loadElement, dataOrgPicker.isDataOrgLoadShown);
-    setShown(dataOrgView.selectElement, dataOrgPicker.isDataOrgSelectShown || dataOrgPicker.isDataOrgChecking);
+    setShown(dataOrgView.orgSelect.element, dataOrgPicker.isDataOrgSelectShown || dataOrgPicker.isDataOrgChecking);
     setShown(dataOrgView.spinnerElement, dataOrgPicker.isDataOrgChecking);
     setShown(dataOrgView.refreshElement, dataOrgPicker.isDataOrgRefreshShown);
     dataOrgView.typeElement.textContent = dataOrgPicker.dataOrgTypeLabel || '';
@@ -180,7 +185,7 @@ function drawDataOrgView(dataOrgView: IDataOrgView): void {
     dataOrgView.authorizeElement.textContent = runLocks.isOrgAuthorizeRunning ? RECIPE_COCKPIT_AUTHORIZE_ORG_RUNNING_LABEL : RECIPE_COCKPIT_AUTHORIZE_ORG_LABEL;
     // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
     // AND A METADATA DEPLOY (#346): IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
-    dataOrgView.selectElement.disabled = runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
+    dataOrgView.orgSelect.setDisabled(runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning);
     dataOrgView.loadElement.disabled = runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
     dataOrgView.refreshElement.disabled = runLocks.isScratchOrgRunning || runLocks.isPermissionSetAssignRunning || runLocks.isMetadataDeployRunning;
 

@@ -374,7 +374,7 @@ export const TROUBLESHOOTING_JOURNEYS: ITroubleshootingJourney[] = [
             fs.writeFileSync(path.join(journey.homePath, '.sf', 'config.json'), JSON.stringify({ 'target-org': 'prod' }));
             await journey.click('button', 'Choose org…');
             await journey.step('prod, the CLI\'s default, is chosen', () => {
-                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'prod (default)', 'The org chosen');
+                expectEqual(journey.screen().get('combobox', ORG_PICKER_NAME).value, 'prod -- https://example.my.salesforce.com (default)', 'The org chosen');
             });
             await openTroubleshootingSubTab(journey, 'Fields');
             await journey.click('button', 'Deploy fields & dependencies…');

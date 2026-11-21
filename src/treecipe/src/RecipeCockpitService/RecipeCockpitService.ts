@@ -145,6 +145,9 @@ import {
 import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTreecipeFieldEditorConstants';
 import {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
+    RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
+    RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -206,6 +209,13 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR,
+    RECIPE_COCKPIT_ORG_PICKER_NAME,
+    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
+    RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
+    RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX,
+    RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
@@ -482,6 +492,13 @@ export {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR,
+    RECIPE_COCKPIT_ORG_PICKER_NAME,
+    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
+    RECIPE_COCKPIT_ORG_UNSELECTED_LABEL,
+    RECIPE_COCKPIT_ORG_NO_MATCH_PREFIX,
+    RECIPE_COCKPIT_ORG_NO_MATCH_SUFFIX,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
@@ -558,6 +575,9 @@ export type { IRecipeCockpitHelpSection, RecipeCockpitTreeTab };
 // THE FIELD ROWS' WORDS LIVE IN A FILE THEIR PANEL MODULES IMPORT (#655); THE HOST'S NAMES STAY
 export {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
+    RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
+    RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -709,6 +729,7 @@ import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } fr
 import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { RecipeCockpitInsertFailureTriage } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
+import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedFields';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
@@ -1874,6 +1895,8 @@ export interface IRecipeCockpitFocusTreeMessage {
 export interface IRecipeCockpitDataOrgListMessage {
     command: 'dataOrgList';
     orgLabels: string[];
+    // THE SAME ORGS AS THE PICKER LISTS THEM, "alias -- instance url" (#678); orgLabels STAYS WHAT EVERY OTHER TEXT QUOTES
+    orgPickerLabels: string[];
     selectedOrgIndex: number | null;
     noOrgsMessage: string;
     hiddenOrgNote: string;
@@ -3604,8 +3627,8 @@ export class RecipeCockpitService {
     /*
         Why a field cannot be given a fixed value (#262), or undefined when it can. A field the tree or
         the insert decides -- RecordTypeId, a dependent picklist whose value a controlling value
-        chooses -- keeps its expression, and so does any field a #220 lock holds or the reader
-        unticked: a fixed value on a field generation leaves out would never be written. A lookup is
+        chooses, a field Salesforce sets from another lookup (#680) -- keeps its expression, and so
+        does any field a #220 lock holds or the reader unticked: a fixed value on a field generation leaves out would never be written. A lookup is
         open (#627): it takes a record's Id (findLookupValueRefusal). The panel draws the same rule
         from the same model.
     */
@@ -3628,6 +3651,11 @@ export class RecipeCockpitService {
         }
         if ( fieldViewModel.fieldApiName === 'RecordTypeId' ) {
             return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON;
+        }
+
+        const derivedField = StandardDerivedFields.resolveDerivedField(objectViewModel.objectApiName, fieldViewModel.fieldApiName);
+        if ( derivedField ) {
+            return `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}${derivedField.throughFieldApiName}`;
         }
 
         if ( fieldViewModel.controllingField ) {
@@ -8378,6 +8406,14 @@ export class RecipeCockpitService {
 
     }
 
+    // THE PICKER'S LABEL (#678): "alias -- instance url", THEN " (default)"; AN ORG WITH NO INSTANCE URL IS ITS ALIAS ALONE
+    static buildDataOrgPickerLabel(orgDetail: IDataOrgDetail): string {
+
+        const instanceUrlPart = orgDetail.instanceUrl ? RECIPE_COCKPIT_ORG_INSTANCE_URL_SEPARATOR + orgDetail.instanceUrl : '';
+        return this.buildDataOrgLabel(orgDetail) + instanceUrlPart + ( orgDetail.isDefault === true ? RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX : '' );
+
+    }
+
     /*
         What the dropdown shows while the connections are checked: the org chosen last, else the
         CLI's default. Read locally; a read that fails shows nothing rather than holding the check.
@@ -8523,6 +8559,7 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgList',
             orgLabels: orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+            orgPickerLabels: orgDetails.map(orgDetail => this.buildDataOrgPickerLabel(orgDetail)),
             selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
             noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
             hiddenOrgNote: hiddenOrgNote,
@@ -10807,6 +10844,7 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgList',
             orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+            orgPickerLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgPickerLabel(orgDetail)),
             selectedOrgIndex: orgIndex,
             noOrgsMessage: '',
             hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),

@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.202.16] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
+## [3.205.0] - Recipe Cockpit: "Customize and create new recipe" saves a trimmed tree as its own custom-<tree> recipe, and an unticked lookup cuts off what it linked (#677)
 
 ### Customize and create new recipe
 
@@ -44,6 +44,73 @@
 
 - New: `RecipeCockpitCustomTreecipe.test.ts` (names, file names, `customTreecipe.json` read back), `RecipeCockpitCustomTreecipeHost.test.ts` (preview, router refusals, save, a copy of a copy, counts carried, rollback, loading and switching entries), `CustomTreecipeJourneys.test.ts` (the modal end to end on a faker-js tree, then generate and insert from the custom tree), and the modal's row types in `RecipeCockpitRowPresentation.test.ts`.
 - Changed: the rendered baselines gain the card's new button; the primary-button inventory gains the modal's two Save buttons, which a dialog owns.
+## [3.204.0] - Standard master-detail and lookup fields on Quote, Order, Asset and other standard objects are wired to their parents (#680)
+
+Closes [#680](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/680).
+
+Source format writes no `<referenceTo>` for a standard relationship field, so `Quote.OpportunityId` arrives as a bare `<type>MasterDetail</type>`. Before this change it got no parent: Opportunity was missing from Quote's tree, and `OpportunityId`, `ContactId` and `ContractId` were written as `### TODO -- REFERENCE ID REQUIRED`. Custom master-detail fields were never affected; they are wired exactly as lookups are.
+
+- **`StandardFieldParentReferenceMap` names 39 more fields** (#400's map held 8). A Quote now sits in its Opportunity's tree, inserted after Account, Contact, Contract and Opportunity:
+  - **faker-js** writes `OpportunityId: Opportunity_NickName`, and the same for each other parent.
+  - **snowfakery** writes the REFERENCE ID TODO that the Recipe Cockpit's Wire lookup fills, as for every snowfakery lookup.
+  - The new fields:
+    - Quote: AccountId, ContactId, ContractId, OpportunityId
+    - QuoteLineItem: QuoteId, OpportunityLineItemId, PricebookEntryId, Product2Id
+    - OpportunityLineItem: OpportunityId, PricebookEntryId, Product2Id
+    - OpportunityContactRole: OpportunityId, ContactId
+    - Contract: AccountId, CustomerSignedId
+    - Order: AccountId, BillToContactId, ShipToContactId, CustomerAuthorizedById, ContractId, OpportunityId, QuoteId
+    - OrderItem: OrderId, PricebookEntryId, Product2Id, QuoteLineItemId
+    - Asset: AccountId, AssetProvidedById, AssetServicedById, ContactId, ParentId, Product2Id
+    - PricebookEntry: Product2Id
+    - CampaignMember: CampaignId, ContactId, LeadId
+    - Case: AssetId
+    - Opportunity: CampaignId, ContractId
+- **`Quote.AccountId` is read only, and shows where it comes from.** Salesforce copies it from the quote's Opportunity and rejects an insert that sets it. A new list, `ObjectInfoWrapper/StandardDerivedFields.ts`, names it.
+  - Both backends' recipes write `AccountId: Opportunity_NickName.AccountId`, naming the Opportunity record in the tree (before, faker-js wrote `Account_NickName` and the insert would fail on it).
+  - Run Faker drops the field in both processors, so a data set never holds it.
+  - On the Recipe Cockpit's Treecipe tab, its row is marked **read only** with `set by Salesforce from OpportunityId → Account_NickName`, its pencil is disabled, and its `↖ Opportunity_NickName` link scrolls to the Opportunity row. The ? help and the guide say so.
+- **A line item still needs its price book.** OpportunityLineItem, OrderItem and QuoteLineItem are wired to a generated PricebookEntry, and that entry's `Product2Id` and the line item's are the same `Product2_NickName` in a faker-js tree. The PricebookEntry's `Pricebook2Id` stays a TODO, since `Pricebook2Id` is unmapped; set it to the org's standard price book before inserting.
+- **CampaignMember maps both `ContactId` and `LeadId`.** A member is usually one or the other, so a recipe that inserts CampaignMember may need one of the two lines removed.
+- **Left unmapped on purpose,** so a tree never inserts a record nobody wants faked. A `customRelationshipMappings` entry still maps any of them.
+  - Polymorphic fields (`OwnerId`, `WhoId`, `WhatId`).
+  - Fields whose parent is User (`Contract.CompanySignedId`, `Order.CompanyAuthorizedById`).
+  - `Pricebook2Id` fields, since an org uses its standard price book.
+  - `Order.OriginalOrderId` and `OrderItem.OriginalOrderItemId`, set only on reduction orders.
+- **What a user now gets differently for a field that was already in a project,** seen in the golden files: `Opportunity.CampaignId` and `Opportunity.ContractId` name their parents.
+  - Their TODO reads `### TODO -- REFERENCE ID REQUIRED -- Campaign` (and `-- Contract`).
+  - The Opportunity comment lists `Parents: Account, Campaign, Contract`.
+  - The ER diagram and SOQL templates gain Campaign and Contract.
+  - Fake data sets are unchanged.
+- **An explicit `<referenceTo>` and a `customRelationshipMappings` entry still win** over the map, and a parent that is not in the project leaves the field a TODO, as before.
+- **Tests.**
+  - `StandardFieldParentReferenceMap.test.ts` pins the new set and the excluded fields; `StandardDerivedFields.test.ts` pins `Quote.AccountId` and its recipe value.
+  - `RelationshipService.derivedFields.test.ts` covers where the source nickname comes from; both processor suites check the field is dropped; `RecipeCockpitDerivedFields.test.ts` draws the read-only row, its link, its note and the locked pencil in the real panel.
+  - New `DirectoryProcessor.standardFieldParentQuote.test.ts` runs Generate Treecipe over two new fixtures with both backends: Quote with its four parents, and Quote alone. It also runs faker-js Run Faker over the generated recipe: the Quote record references the Opportunity and holds no AccountId.
+  - The golden files, the nested writer fixture and `MockRelationshipService`'s expected trees are regenerated for the Opportunity change above.
+
+## [3.203.1] - Initiate Configuration File shows only its directory picker, and never offers a folder inside a hidden one (#676)
+
+- **No more progress notification beside the picker.** Initiate Configuration File used to open a "Treecipe: Initiate Configuration File" notification that listed every directory the scan found. Now only the picker shows.
+  - While the scan runs, the picker is busy and its placeholder reads `Scanning directories… press Esc to cancel`. When the scan ends, the placeholder goes back to asking for the objects directory.
+  - Esc on the picker stops the scan and writes no configuration file, as before. Accepting a directory mid-scan still returns at once.
+- **A `packageDirectories` entry inside a hidden folder is skipped.** An `sfdx-project.json` path with any `.`-prefixed part, such as `.sfdx/pkg`, is no longer scanned or offered. The other entries still seed the picker; when none is left, the whole workspace is scanned.
+- **Hidden folders and `node_modules` are held by a test on a real folder tree.** The scan already skipped them; the test now checks nothing inside `.git`, `.sfdx`, `.sf`, `.vscode` or `node_modules` is read or offered.
+
+## [3.203.0] - Target Org Manager's dropdown opens with a "Search for org" box and lists each org as "alias -- instance url" (#678)
+
+- **The org dropdown can be searched or chosen from.** Clicking it opens a **Search for org** box, then the line **or choose org**, then every org.
+  - Typing narrows the list, ignoring case, to orgs whose alias (or username) or instance URL holds what was typed. Nothing is sent to the extension while you type.
+  - When nothing matches, the list says `No org matches "<what you typed>"`.
+  - Up and Down move through the orgs, Enter chooses, and Escape or a click outside closes the list without changing the org. The search is empty each time it opens.
+  - While the orgs load, when none is listed, and while a scratch org, an authorization, a deploy or a permission set assignment holds the org, the dropdown does not open.
+- **Each org shows as its alias, two dashes and its instance URL,** such as `qa -- https://acme--qa.sandbox.my.salesforce.com`, in the list and on the closed dropdown. An org with no alias shows its username instead, an org whose authorization has no usable https:// URL shows the alias alone, and the CLI's default org still ends in ` (default)`.
+  - Everything else that names the org keeps the alias alone: the Query tab's **Run in …**, a data set's **Insert…** and every notification.
+  - The panel still sends only the chosen org's position in the list; the extension holds the usernames.
+  - The closed dropdown names the org the extension holds: a choice shows once the extension takes it, so a choice it turns down while an insert or a prompt holds the org never shows as chosen.
+- **The dropdown is a kit piece any cockpit can use,** `CockpitKit/panel/CockpitSearchableSelect.ts` with its stylesheet, so the Picklist Cockpit (#525) can take it.
+- **Tests:** `RecipeCockpitOrgSearch.test.ts` covers the search, the keyboard, the closed states, markup in a label and the host's labels; `SalesforceOrgService.test.ts` covers which instance URLs are carried; the panel suites read the dropdown through `RecipeCockpitOrgPickerProbe.ts`; and the acceptance journeys pick an org by typing its alias into **Search for org**.
+- The **?** help and the guide say how to search or choose an org.
 
 ## [3.202.15] - The Treecipe Adapter tab's host code is four modules of its own, and a preview's record links are shared by two hosts (#668, slice 4 of #566)
 

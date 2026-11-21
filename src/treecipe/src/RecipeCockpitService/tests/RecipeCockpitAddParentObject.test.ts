@@ -250,15 +250,17 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
             expect(blockEdit.operation).toBe('add-parent-object');
             expect(blockEdit.removedLines).toEqual([]);
             expect(wireEdit.operation).toBe('wire-lookup');
-            expect(wireEdit.removedLines).toEqual([expect.stringMatching(/^ +CampaignId: ### TODO -- REFERENCE ID REQUIRED$/)]);
-            expect(wireEdit.insertedLines).toEqual([wireEdit.removedLines[0].replace(TODO, 'Campaign_NickName')]);
+            expect(wireEdit.removedLines).toEqual([expect.stringMatching(/^ +CampaignId: ### TODO -- REFERENCE ID REQUIRED( -- Campaign)?$/)]);
+            // A GENERATED TODO NAMES ITS PARENT (" -- Campaign", #680), AND WIRING REPLACES THE WHOLE VALUE
+            const removedTodo = wireEdit.removedLines[0].match(/### TODO -- REFERENCE ID REQUIRED( -- Campaign)?/)[0];
+            expect(wireEdit.insertedLines).toEqual([wireEdit.removedLines[0].replace(removedTodo, 'Campaign_NickName')]);
 
             // TAKING THE BLOCK OUT AND PUTTING THE TODO BACK GIVES THE ORIGINAL BYTES, LINE ENDINGS INCLUDED
             const patchedLines = result.recipeText.split(/(?<=\n)/);
             const blockStartIndex = blockEdit.startLineNumber - 1;
             const restoredLines = [...patchedLines.slice(0, blockStartIndex), ...patchedLines.slice(blockStartIndex + blockEdit.insertedLines.length)];
             const wiredIndex = wireEdit.startLineNumber - 1 - blockEdit.insertedLines.length;
-            restoredLines[wiredIndex] = restoredLines[wiredIndex].replace('Campaign_NickName', TODO);
+            restoredLines[wiredIndex] = restoredLines[wiredIndex].replace('Campaign_NickName', removedTodo);
             expect(restoredLines.join('')).toBe(recipeText);
             patchedLines.slice(blockStartIndex, blockStartIndex + blockEdit.insertedLines.length).forEach(patchedLine => expect(patchedLine.endsWith(lineEnding)).toBeTrue());
 
@@ -723,7 +725,7 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
                         return restoredLine;
                     }
                     const unindented = /^\s*$/.test(restoredLine) ? restoredLine : restoredLine.slice(4);
-                    return unindented.replace(/^( +CampaignId: )Campaign_NickName/, `$1${TODO}`);
+                    return unindented.replace(/^( +CampaignId: )Campaign_NickName/, `$1${TODO} -- Campaign`);
                 });
                 expect(restoredLines.join('')).toBe(generatedRecipe);
 

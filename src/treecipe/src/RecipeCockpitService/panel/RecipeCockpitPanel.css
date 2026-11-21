@@ -561,6 +561,7 @@
     .treeDatasetJourneyPath { font-family: var(--vscode-editor-font-family, monospace); font-size: 0.85em; word-break: break-all; }
     .treeDatasetJourneyNote { margin: 0.2rem 0; }
     /* include: ../../CockpitKit/panel/CockpitOrgPicker.css */
+    /* include: ../../CockpitKit/panel/CockpitSearchableSelect.css */
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     /* include: ../../CockpitKit/panel/CockpitOrgPicker.pinnedSection.css */
     .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }

@@ -595,26 +595,10 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         };
 
-        const mockWithProgress = (isCancellationRequested: boolean = false) => {
-
-            const reportedMessages: string[] = [];
-
-            (vscode.window.withProgress as jest.Mock).mockImplementation(
-                async (_progressOptions: any, runTask: any) => await runTask(
-                    { report: ({ message }: { message: string }) => reportedMessages.push(message) },
-                    { isCancellationRequested }
-                )
-            );
-
-            return reportedMessages;
-
-        };
-
         test('given no sfdx-project.json, scans the workspace root and returns undefined when the picker is dismissed', async () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
             const collectSpy = jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
@@ -637,13 +621,11 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             let wasShownBeforeScan = false;
             let wasBusyDuringScan = false;
-            (vscode.window.withProgress as jest.Mock).mockImplementation(async (_progressOptions: any, runTask: any) => {
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(async () => {
                 wasShownBeforeScan = (fakeQuickPick.show as jest.Mock).mock.calls.length > 0;
                 wasBusyDuringScan = fakeQuickPick.busy;
-                return await runTask({ report: jest.fn() }, { isCancellationRequested: false });
+                return [];
             });
-
-            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
 
             fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
 
@@ -660,7 +642,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
 
@@ -684,7 +665,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
             jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
@@ -703,20 +683,54 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
-        test('given a cancelled scan, hides the picker and returns undefined', async () => {
+        test('given Esc part way through, stops the walk and returns undefined', async () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress(true);
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
-            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            let cancellationAfterEscape: boolean | undefined;
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered, directoryScanProgress) => {
+                    onItemDiscovered?.({ label: './force-app/' });
+                    fakeQuickPick.hide();
+                    cancellationAfterEscape = directoryScanProgress?.isCancellationRequested();
+                    return [];
+                }
+            );
 
             const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
 
             expect(result).toBeUndefined();
-            expect(fakeQuickPick.hide).toHaveBeenCalled();
+            expect(cancellationAfterEscape).toBe(true);
             expect(fakeQuickPick.dispose).toHaveBeenCalled();
+
+        });
+
+        test('says the scan is running and that Esc cancels it while busy, then asks for a selection', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            let placeholderDuringScan: string | undefined;
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(async () => {
+                placeholderDuringScan = fakeQuickPick.placeholder;
+                return [];
+            });
+
+            let placeholderAtScanComplete: string | undefined;
+            fakeQuickPick.onScanComplete = () => {
+                placeholderAtScanComplete = fakeQuickPick.placeholder;
+                fakeQuickPick.hide();
+            };
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(placeholderDuringScan).toBe('Scanning directories… press Esc to cancel');
+            expect(placeholderAtScanComplete).toBe('Select directory that contains the Salesforce objects');
 
         });
 
@@ -724,7 +738,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
                 packageDirectoryPaths: ['/fake/workspace/force-app', '/fake/workspace/utilities']
@@ -749,7 +762,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
                 packageDirectoryPaths: ['/fake/workspace/force-app']
@@ -782,7 +794,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
             jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
@@ -796,11 +807,12 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
-        test('reports each discovered directory through the progress port', async () => {
+        test('lists each discovered directory in the picker and opens no progress notification', async () => {
 
+            // A vscode MOCK FACTORY jest.fn() IS NOT A SPY, SO restoreMocks WOULD LEAVE ANOTHER TEST'S CALLS IN PLACE
+            (vscode.window.withProgress as jest.Mock).mockClear();
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            const reportedMessages = mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
 
@@ -814,8 +826,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
 
-            expect(reportedMessages[0]).toBe('Scanning workspace directories...');
-            expect(reportedMessages).toContain('Found 1 directories - ./objects/');
+            expect(vscode.window.withProgress).not.toHaveBeenCalled();
             expect(fakeQuickPick.items.map((item: any) => item.label)).toEqual(['./objects/']);
 
         });
@@ -829,7 +840,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
 
@@ -856,7 +866,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
 
@@ -877,37 +886,10 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
-        /*
-            A cancel arriving after the user already chose must not throw their choice away -- the
-            earlier shape returned undefined here and wrote no configuration file at all.
-        */
-        test('given a scan cancellation after an accept, still returns the accepted label', async () => {
-
-            const fakeWorkspaceRoot = '/fake/workspace';
-            const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress(true);
-
-            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
-            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
-                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
-                    const earlyItem = { label: './objects/' };
-                    onItemDiscovered?.(earlyItem);
-                    fakeQuickPick.acceptItem(earlyItem);
-                    return [];
-                }
-            );
-
-            const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
-
-            expect(result).toBe('./objects/');
-
-        });
-
         test('batches item assignments rather than one round trip per discovered directory', async () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
 
@@ -935,7 +917,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
 
@@ -963,36 +944,12 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
             const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
             jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockRejectedValue(new Error('EACCES'));
 
             await expect(VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot)).rejects.toThrow('EACCES');
             expect(fakeQuickPick.dispose).toHaveBeenCalled();
-
-        });
-
-        test('runs the scan under a cancellable notification progress', async () => {
-
-            const fakeWorkspaceRoot = '/fake/workspace';
-            const fakeQuickPick = buildFakeQuickPick();
-            mockWithProgress();
-
-            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
-            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
-
-            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
-
-            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
-
-            expect(vscode.window.withProgress).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    location: vscode.ProgressLocation.Notification,
-                    cancellable: true
-                }),
-                expect.any(Function)
-            );
 
         });
 
@@ -1017,6 +974,37 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
+        test('given a packageDirectories entry inside a hidden folder, drops it and seeds from the rest', () => {
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
+                packageDirectoryPaths: [
+                    path.join('/fake/workspace', '.sfdx', 'pkg'),
+                    path.join('/fake/workspace', 'force-app', '.hidden'),
+                    path.join('/fake/workspace', 'force-app')
+                ]
+            });
+
+            const scanRoots = VSCodeWorkspaceService.resolveObjectsDirectoryScanRoots('/fake/workspace');
+
+            expect(scanRoots).toEqual({
+                scanRootPaths: [path.join('/fake/workspace', 'force-app')],
+                isSeededFromSfdxProject: true
+            });
+
+        });
+
+        test('given every packageDirectories entry inside a hidden folder, falls back to the workspace root', () => {
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
+                packageDirectoryPaths: [path.join('/fake/workspace', '.sfdx', 'pkg')]
+            });
+
+            const scanRoots = VSCodeWorkspaceService.resolveObjectsDirectoryScanRoots('/fake/workspace');
+
+            expect(scanRoots).toEqual({ scanRootPaths: ['/fake/workspace'], isSeededFromSfdxProject: false });
+
+        });
+
         test('given usable packageDirectories, seeds from every one of them', () => {
 
             jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
@@ -1034,6 +1022,56 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    /*
+        Built in a temp folder rather than tests/mocks/ because git cannot commit a folder named .git.
+    */
+    describe('hidden folders in a real workspace (#676)', () => {
+
+        let workspaceRoot: string;
+
+        beforeEach(() => {
+
+            workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-hidden-folders-'));
+            const directoryPaths = [
+                ['.git', 'objects'],
+                ['.sfdx', 'objects'],
+                ['.sf', 'objects'],
+                ['.vscode', 'objects'],
+                ['node_modules', 'objects'],
+                ['force-app', 'main', 'default', 'objects'],
+                ['force-app', '.hidden', 'objects']
+            ];
+            directoryPaths.forEach(directoryPath => fs.mkdirSync(path.join(workspaceRoot, ...directoryPath), { recursive: true }));
+
+        });
+
+        afterEach(() => {
+            fs.rmSync(workspaceRoot, { recursive: true, force: true });
+        });
+
+        test('offers only directories outside hidden folders and node_modules, and never reads inside one', async () => {
+
+            const readdirSpy = jest.spyOn(fs.promises, 'readdir');
+
+            const collectedItems = await VSCodeWorkspaceService.collectObjectDirectoryQuickPickItems([workspaceRoot], workspaceRoot);
+
+            expect(collectedItems.map(item => item.label)).toEqual([
+                './force-app/',
+                './force-app/main/',
+                './force-app/main/default/',
+                './force-app/main/default/objects/'
+            ]);
+
+            const readDirectoryPaths = readdirSpy.mock.calls.map(readdirCall => String(readdirCall[0]));
+            const readInsideExcludedFolder = readDirectoryPaths.filter(readDirectoryPath =>
+                path.relative(workspaceRoot, readDirectoryPath).split(path.sep).some(pathSegment => pathSegment.startsWith('.') || pathSegment === 'node_modules')
+            );
+            expect(readInsideExcludedFolder).toEqual([]);
+
+        });
+
+    });
+
     describe('getDirectoryQuickPickItemsByStartingDirectoryPath cancellation', () => {
 
         test('given cancellation already requested, does not read the directory at all', async () => {
@@ -1044,7 +1082,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
                 '/mockWorkspace/force-app',
                 [],
                 undefined,
-                { report: jest.fn(), isCancellationRequested: () => true },
+                { isCancellationRequested: () => true },
                 '/mockWorkspace'
             );
 
@@ -1061,18 +1099,14 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue([firstDirent, secondDirent] as unknown as fs.Dirent[]);
             jest.spyOn(vscode, "ThemeIcon").mockReturnValue(new vscode.ThemeIcon('folder'));
 
-            // CANCELLED THE MOMENT THE FIRST ENTRY HAS BEEN REPORTED
+            // CANCELLED THE MOMENT THE FIRST ENTRY HAS BEEN DISCOVERED
             let cancellationRequested = false;
-            const cancelAfterFirstReport = {
-                report: () => { cancellationRequested = true; },
-                isCancellationRequested: () => cancellationRequested
-            };
 
             const collectedItems = await VSCodeWorkspaceService.getDirectoryQuickPickItemsByStartingDirectoryPath(
                 '/mockWorkspace/force-app',
                 [],
-                undefined,
-                cancelAfterFirstReport,
+                () => { cancellationRequested = true; },
+                { isCancellationRequested: () => cancellationRequested },
                 '/mockWorkspace'
             );
 
@@ -1126,7 +1160,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             const readdirSpy = jest.spyOn(fs.promises, 'readdir').mockResolvedValue([] as unknown as fs.Dirent[]);
 
             const cancelledScanProgress = {
-                report: jest.fn(),
                 isCancellationRequested: () => true
             };
 

@@ -1,3 +1,4 @@
+import type { ISearchableSelect } from '../../../../CockpitKit/panel/CockpitSearchableSelect';
 import type { RecipeCockpitTroubleshootingSubTab } from '../../../RecipeCockpitTroubleshootingConstants';
 
 /*
@@ -6,11 +7,11 @@ import type { RecipeCockpitTroubleshootingSubTab } from '../../../RecipeCockpitT
     IDataOrgTreeState names only what these modules read and write on it.
 */
 
-// ONE VIEW OF THE PANEL-WIDE ORG PICKER; drawnLabels IS THE LIST LAST DRAWN INTO ITS DROPDOWN, SO AN UNCHANGED LIST IS NOT REDRAWN
+// ONE VIEW OF THE PANEL-WIDE ORG PICKER; drawnLabels AND drawnSelectedIndex ARE WHAT ITS DROPDOWN LAST DREW, SO AN UNCHANGED ONE IS NOT REDRAWN
 export interface IDataOrgView {
     element: HTMLElement;
     loadElement: HTMLButtonElement;
-    selectElement: HTMLSelectElement;
+    orgSelect: ISearchableSelect;
     spinnerElement: HTMLElement;
     typeElement: HTMLElement;
     openOrgElement: HTMLButtonElement;
@@ -20,6 +21,7 @@ export interface IDataOrgView {
     hiddenNoteElement: HTMLElement;
     statusElement: HTMLElement;
     drawnLabels: string[] | null;
+    drawnSelectedIndex: number | null;
 }
 
 // WHAT THE HOST DECIDED ABOUT ONE OBJECT, OR ONE TREE'S OBJECT, IN THE ORG SELECTED: disabledReason IS SHOWN, disabledReasonCode IS WHAT LINKS
@@ -34,6 +36,7 @@ export interface IDataOrgReadiness {
 // THE PICKER AS IT WAS WHEN A CHECK STARTED, PUT BACK WHEN THE HOST REFUSES THE LISTING (#537)
 export interface IDataOrgPickerBeforeCheck {
     labels: string[] | null;
+    pickerLabels: string[] | null;
     isLoadShown: boolean;
     isSelectShown: boolean;
     isRefreshShown: boolean;
@@ -52,6 +55,7 @@ export interface IDataOrgPickerBeforeCheck {
 export interface IDataOrgListMessage {
     renderSequence: unknown;
     orgLabels?: unknown;
+    orgPickerLabels?: unknown;
     selectedOrgIndex: number | null;
     noOrgsMessage: string;
     hiddenOrgNote?: string;
