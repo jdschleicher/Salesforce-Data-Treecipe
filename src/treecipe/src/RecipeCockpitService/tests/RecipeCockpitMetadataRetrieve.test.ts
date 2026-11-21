@@ -57,6 +57,7 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
@@ -683,9 +684,9 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             beforeEach(() => {
                 jest.spyOn(RecipeCockpitService as any, 'resolveSelectedReadOrg').mockRestore();
-                selectPromptSpy = jest.spyOn(RecipeCockpitService as any, 'promptAndSelectDataOrg').mockImplementation(async (...promptArguments: any[]) => {
-                    expect((promptArguments[1] as IRecipeCockpitPanelState).isOrgPromptOpen).toBeTrue();
-                    (promptArguments[1] as IRecipeCockpitPanelState).dataOrgSelection = { orgIndex: 1, orgDetail: PROD_ORG } as any;
+                selectPromptSpy = jest.spyOn(RecipeCockpitTreecipeDataOrgs as any, 'promptAndSelectDataOrg').mockImplementation(async (...promptArguments: any[]) => {
+                    expect((promptArguments[2] as IRecipeCockpitPanelState).isOrgPromptOpen).toBeTrue();
+                    (promptArguments[2] as IRecipeCockpitPanelState).dataOrgSelection = { orgIndex: 1, orgDetail: PROD_ORG } as any;
                     return true;
                 });
             });
@@ -719,7 +720,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
                 expect(selectPromptSpy).toHaveBeenCalledTimes(1);
                 const promptArguments = selectPromptSpy.mock.calls[0];
-                expect(promptArguments.slice(4)).toEqual([RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes, 'Nothing was retrieved']);
+                expect(promptArguments.slice(5)).toEqual([RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes, 'Nothing was retrieved']);
                 expect(panelState().isOrgPromptOpen).toBeFalse();
                 expect(listedQueries.map(listedQuery => listedQuery.username)).toEqual([PROD_USERNAME, PROD_USERNAME]);
 

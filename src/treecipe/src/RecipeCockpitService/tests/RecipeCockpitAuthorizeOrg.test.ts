@@ -51,12 +51,15 @@ import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
-    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
-    RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
-    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_VERB_BUTTON_VERBS
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
+    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
+    RecipeCockpitTreecipeDataOrgs
+} from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_AUTHORIZE_ORG_ALIAS_PROMPT,
     RECIPE_COCKPIT_AUTHORIZE_ORG_CONFIRM_LABEL,
@@ -161,11 +164,11 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             const aliasHolders = new Map([['qa', 'qa@example.com.qa']]);
 
-            expect(RecipeCockpitService.validateOrgAuthorizeAliasInput('', aliasHolders)).toBeUndefined();
-            expect(RecipeCockpitService.validateOrgAuthorizeAliasInput('  ', aliasHolders)).toBeUndefined();
-            expect(RecipeCockpitService.validateOrgAuthorizeAliasInput('new-sandbox', aliasHolders)).toBeUndefined();
-            expect(RecipeCockpitService.validateOrgAuthorizeAliasInput('a@b', aliasHolders)).toContain('"@"');
-            expect(RecipeCockpitService.validateOrgAuthorizeAliasInput('qa', aliasHolders)).toEqual({
+            expect(RecipeCockpitTreecipeDataOrgs.validateOrgAuthorizeAliasInput('', aliasHolders)).toBeUndefined();
+            expect(RecipeCockpitTreecipeDataOrgs.validateOrgAuthorizeAliasInput('  ', aliasHolders)).toBeUndefined();
+            expect(RecipeCockpitTreecipeDataOrgs.validateOrgAuthorizeAliasInput('new-sandbox', aliasHolders)).toBeUndefined();
+            expect(RecipeCockpitTreecipeDataOrgs.validateOrgAuthorizeAliasInput('a@b', aliasHolders)).toContain('"@"');
+            expect(RecipeCockpitTreecipeDataOrgs.validateOrgAuthorizeAliasInput('qa', aliasHolders)).toEqual({
                 message: '"qa" is currently qa@example.com.qa. Authorizing will move it to the org you log in to.',
                 severity: vscode.InputBoxValidationSeverity.Warning
             });
@@ -174,7 +177,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
         it('escapes a holder\'s username, which an input box would render as a link', () => {
 
-            const validation = RecipeCockpitService.validateOrgAuthorizeAliasInput('qa', new Map([['qa', '[x](command:evil)']])) as vscode.InputBoxValidationMessage;
+            const validation = RecipeCockpitTreecipeDataOrgs.validateOrgAuthorizeAliasInput('qa', new Map([['qa', '[x](command:evil)']])) as vscode.InputBoxValidationMessage;
 
             expect(validation.message).not.toContain('[x](command:evil)');
 
@@ -337,8 +340,8 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
             SalesforceOrgService.clearDescribeCache();
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
-            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             authorizedAuthorizations = [];
@@ -629,7 +632,7 @@ describe('RecipeCockpitService, "Authorize org" beside "+ New scratch org" (#630
             await Promise.resolve(receivedMessageHandler({ command: 'authorizeOrg' })).catch(() => undefined);
 
             expect(postedNamed('scratchOrgState').at(-1)).toEqual({ command: 'scratchOrgState', isRunning: false });
-            expect((RecipeCockpitService as any).isScratchOrgSetupInFlight).toBe(false);
+            expect((RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight).toBe(false);
 
         });
 

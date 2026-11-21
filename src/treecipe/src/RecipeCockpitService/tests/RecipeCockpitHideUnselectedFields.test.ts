@@ -17,10 +17,13 @@ import {
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL,
-    RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE,
     RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE,
+    RecipeCockpitTreecipeInsert
+} from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -290,7 +293,7 @@ describe('RecipeCockpitService, an object\'s own "Hide unselected" (#483)', () =
 
     describe('the insert confirmation\'s "Left out, per object" section', () => {
 
-        const buildContent = (recipe: IRecipeCockpitRecipeViewModel) => RecipeCockpitService.buildInsertConfirmationContent('qa', { isSandbox: true, organizationType: 'Enterprise Edition' } as any,
+        const buildContent = (recipe: IRecipeCockpitRecipeViewModel) => RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 'qa', { isSandbox: true, organizationType: 'Enterprise Edition' } as any,
             treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1], ['Contact', 2]]), [], 'faker-js', 'recipe.yml');
         const leftOutOf = (recipe: IRecipeCockpitRecipeViewModel) => buildContent(recipe).sections.find(section => section.title === RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE);
 

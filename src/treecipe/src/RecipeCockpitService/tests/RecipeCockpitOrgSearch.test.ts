@@ -20,6 +20,7 @@ import {
     RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_UNSELECTED_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
     chooseOrgOption,
@@ -338,13 +339,13 @@ describe('RecipeCockpitService, Target Org Manager\'s searchable org dropdown (#
             ['the default org with no instance URL', { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa', isDefault: true }, 'qa (default)']
         ])('labels an org with %s', (_caseName, orgDetail, expectedLabel) => {
 
-            expect(RecipeCockpitService.buildDataOrgPickerLabel(orgDetail)).toBe(expectedLabel);
+            expect(RecipeCockpitTreecipeDataOrgs.buildDataOrgPickerLabel(orgDetail)).toBe(expectedLabel);
 
         });
 
         it('keeps every other label the alias alone', () => {
 
-            expect(RecipeCockpitService.buildDataOrgListLabel({ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa', instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com', isDefault: true })).toBe('qa (default)');
+            expect(RecipeCockpitTreecipeDataOrgs.buildDataOrgListLabel({ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa', instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com', isDefault: true })).toBe('qa (default)');
 
         });
 

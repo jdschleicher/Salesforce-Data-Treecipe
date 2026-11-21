@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
@@ -446,7 +447,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             const recipe = loadRecipe();
 
-            expect(RecipeCockpitService.listRecordTypeTickObjects(recipe, ['Account', 'Account', 'Lead', 'Missing__c']))
+            expect(RecipeCockpitTreecipeInsert.listRecordTypeTickObjects(RecipeCockpitService, recipe, ['Account', 'Account', 'Lead', 'Missing__c']))
                 .toEqual([{ objectApiName: 'Account', defaultDeveloperName: 'Business', generatedDeveloperNames: ['Business'] }]);
 
         });
@@ -458,7 +459,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             accountOf(recipe).isRecordTypeSelectionApplied = true;
             accountOf(recipe).recordTypes[0].isActive = false;
 
-            expect(RecipeCockpitService.listRecordTypeTickObjects(recipe, ['Account']))
+            expect(RecipeCockpitTreecipeInsert.listRecordTypeTickObjects(RecipeCockpitService, recipe, ['Account']))
                 .toEqual([{ objectApiName: 'Account', defaultDeveloperName: 'Partner', generatedDeveloperNames: ['Partner'] }]);
 
         });
@@ -473,7 +474,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             delete accountOf(recipe).generatedRecordTypeDeveloperNames;
             accountOf(recipe).recordTypes.forEach(recordType => { recordType.isActive = false; });
 
-            expect(RecipeCockpitService.listRecordTypeTickObjects(recipe, ['Account']))
+            expect(RecipeCockpitTreecipeInsert.listRecordTypeTickObjects(RecipeCockpitService, recipe, ['Account']))
                 .toEqual([{ objectApiName: 'Account', defaultDeveloperName: 'Business', generatedDeveloperNames: [] }]);
 
         });
@@ -490,7 +491,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             accountOf(recipe).iterations = [{ nickname: 'Account_child_NickName' }] as any;
             tree.objects.push({ objectApiName: 'Missing__c', parentLookups: [] });
 
-            expect([...RecipeCockpitService.listRunFirstNicknamesByObject(recipe, tree)]).toEqual([['Account', 'Account_NickName']]);
+            expect([...RecipeCockpitTreecipeInsert.listRunFirstNicknamesByObject(RecipeCockpitService, recipe, tree)]).toEqual([['Account', 'Account_NickName']]);
 
         });
 
@@ -502,7 +503,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('adds the warnings after the insert\'s own, and the record types right after the records section', () => {
 
-            const confirmationContent = RecipeCockpitService.addRecordTypesToInsertConfirmation(
+            const confirmationContent = RecipeCockpitTreecipeInsert.addRecordTypesToInsertConfirmation(
                 { summary: ['Generate 2 records.'], warnings: ['Cancel deletes.'], sections: [{ title: 'Records', lines: ['  Account: 2'] }, { title: 'Lookups', lines: ['x'] }] },
                 RECIPE_WITH_TWO_BLOCKS,
                 ['Built again.']
@@ -519,7 +520,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('given a confirmation with no warnings or sections, still names the record types', () => {
 
-            const confirmationContent = RecipeCockpitService.addRecordTypesToInsertConfirmation({ summary: ['Generate 2 records.'] }, RECIPE_WITH_TWO_BLOCKS, []);
+            const confirmationContent = RecipeCockpitTreecipeInsert.addRecordTypesToInsertConfirmation({ summary: ['Generate 2 records.'] }, RECIPE_WITH_TWO_BLOCKS, []);
 
             expect(confirmationContent.warnings).toEqual([]);
             expect(confirmationContent.sections).toEqual([{ title: 'Record types, one block each', count: 1, lines: ['  Account: Business, Partner'] }]);

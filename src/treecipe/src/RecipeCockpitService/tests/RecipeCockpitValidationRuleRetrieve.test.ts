@@ -53,6 +53,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
@@ -562,8 +563,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
             (RecipeCockpitTroubleshootingRuns as any).isPermissionSetAssignInFlight = false;
             (RecipeCockpitTroubleshootingRuns as any).permissionSetAssignRunStateMessage = undefined;
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
-            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
@@ -947,13 +948,13 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             ];
 
             for ( const start of startMeanwhile ) {
-                (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
+                (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
                 panelState().insertStateMessage = undefined;
                 panelState().permissionSetAssignStateMessage = undefined;
                 promptSpy.mockImplementationOnce(async () => { start(); return PROD_ORG; });
                 await performTreeRetrieve(workspaceRoot, 'Tree', ACCOUNT_TREE_OBJECTS);
             }
-            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitTreecipeDataOrgs as any).isScratchOrgSetupInFlight = false;
 
             expect(retrieveCalls()).toEqual([]);
             expect(notifications().map(notification => notification.text)).toEqual(Array(2).fill(RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL));
