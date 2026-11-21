@@ -238,7 +238,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     dialogElement.appendChild(actionsElement);
     overlayElement.appendChild(dialogElement);
-    const focusableElements = [bodyElement].concat(sectionToggleElements, modeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
+    const enabledModeRadioElements = modeRadioElements.filter(function(radioElement) {
+      return !radioElement.disabled;
+    });
+    const focusableElements = [bodyElement].concat(sectionToggleElements, enabledModeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
     dialogElement.addEventListener("keydown", function(event) {
       if (event.key === "Escape") {
         if (typeof event.preventDefault === "function") {

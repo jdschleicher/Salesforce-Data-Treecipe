@@ -385,7 +385,8 @@ export class RecipeCockpitTreecipeInsert {
             // THE SETS OF "A data set for each record type" (#624), AND THE FIRST SET'S RECIPE: EVERY SET HAS ITS TOTALS
             recordTypeSetsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets(recordTypePlan.recordTypeSelection, derivedFilteredRecipe.droppedTicks, tree.objects.map(treeObject => treeObject.objectApiName));
             if ( recordTypeSetsPlan.sets.length > 0 ) {
-                const firstSetRecipe = await this.buildRecordTypeFilteredRecipe(hub, panelState, recipeDataMessage, tree, treeLabel, recordTypeSetsPlan.sets[0].recordTypeSelection);
+                const firstSetRecipe = await this.buildRecordTypeFilteredRecipe(hub, panelState, recipeDataMessage, tree, treeLabel, recordTypeSetsPlan.sets[0].recordTypeSelection,
+                    RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle(0, recordTypeSetsPlan.sets.length, RecipeYamlScalar.escapeForNotification(recordTypeSetsPlan.sets[0].setName)));
                 if ( firstSetRecipe === 'cancelled' ) {
                     VSCodeWorkspaceService.showInformationMessage(buildCancelledText);
                     return false;
@@ -603,11 +604,12 @@ export class RecipeCockpitTreecipeInsert {
                                                         recipeDataMessage: NonNullable<IRecipeCockpitPanelState['recipeDataMessage']>,
                                                         tree: IRecipeCockpitTreeViewModel,
                                                         treeLabel: string,
-                                                        recordTypeSelection: Readonly<Record<string, string[]>>
+                                                        recordTypeSelection: Readonly<Record<string, string[]>>,
+                                                        progressTitle?: string
                                                     ): Promise<{ filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; warnings: string[]; droppedTicks: IDroppedRecordTypeTick[] } | { refusalMessage: string } | 'cancelled'> {
 
         const derivedRecipe = tree.folderName
-            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection)
+            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection, progressTitle)
             : 'treeNotBuilt';
         if ( derivedRecipe === 'cancelled' ) {
             return 'cancelled';
@@ -648,33 +650,49 @@ export class RecipeCockpitTreecipeInsert {
         first was built for the confirmation), generated as its own data set and inserted, one after
         another, under the insert lock the caller holds. A set that does not land -- its insert
         stopped, was cancelled or lost a record, or its recipe or data set could not be made -- ends
-        the run, and every set after it is not started. A set already inserted stays. Before each later
-        set the org selection must still be the one confirmed.
+        the run, and every set after it is not started. A set already inserted stays. The org
+        selection must still be the one confirmed before a later set's build and before every insert,
+        since a build and a generate are long waits the reader can change the org during.
     */
     private static async insertRecordTypeSets(hub: IRecipeCockpitHubForTreecipeOrgTab, setRun: IRecipeCockpitRecordTypeSetRun): Promise<RecipeCockpitRecordTypeSetResult[]> {
 
         const setOutcomes: RecipeCockpitRecordTypeSetResult[] = [];
+        const setCount = setRun.recordTypeSets.length;
         let isRunStopped = false;
+        // A REFUSAL NAMES THE TREE ALREADY, AND THE NOTIFICATION NAMES IT ONCE
+        const refusalPrefix = `Nothing was generated or inserted for ${setRun.treeLabel}: `;
 
         for ( const [setIndex, recordTypeSet] of setRun.recordTypeSets.entries() ) {
 
             const setName = RecipeYamlScalar.escapeForNotification(recordTypeSet.setName);
 
-            if ( isRunStopped || ( setIndex > 0 && !setRun.isSameSelection() ) ) {
-                isRunStopped = true;
+            if ( isRunStopped ) {
                 setOutcomes.push({ setName, unrunReason: 'notStarted', isDatasetWritten: false });
                 continue;
             }
 
-            let setFilteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined = setRun.firstSetFilteredRecipe;
+            if ( setIndex > 0 && !setRun.isSameSelection() ) {
+                isRunStopped = true;
+                setOutcomes.push({ setName, unrunReason: 'selectionChanged', isDatasetWritten: false });
+                continue;
+            }
+
+            let setFilteredRecipe: IRecipeCockpitRunFakerFilteredRecipe = setRun.firstSetFilteredRecipe;
             if ( setIndex > 0 ) {
-                const builtSetRecipe = await this.buildRecordTypeFilteredRecipe(hub, setRun.panelState, setRun.recipeDataMessage, setRun.tree, setRun.treeLabel, recordTypeSet.recordTypeSelection);
-                setFilteredRecipe = builtSetRecipe !== 'cancelled' && !( 'refusalMessage' in builtSetRecipe ) ? builtSetRecipe.filteredRecipe : undefined;
-                if ( builtSetRecipe === 'cancelled' || !setFilteredRecipe ) {
+                const builtSetRecipe = await this.buildRecordTypeFilteredRecipe(hub, setRun.panelState, setRun.recipeDataMessage, setRun.tree, setRun.treeLabel, recordTypeSet.recordTypeSelection,
+                    RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle(setIndex, setCount, setName));
+                if ( builtSetRecipe === 'cancelled' ) {
                     isRunStopped = true;
-                    setOutcomes.push({ setName, unrunReason: builtSetRecipe === 'cancelled' ? 'buildCancelled' : 'notGenerated', isDatasetWritten: false });
+                    setOutcomes.push({ setName, unrunReason: 'buildCancelled', isDatasetWritten: false });
                     continue;
                 }
+                if ( 'refusalMessage' in builtSetRecipe ) {
+                    isRunStopped = true;
+                    const unrunDetail = builtSetRecipe.refusalMessage.startsWith(refusalPrefix) ? builtSetRecipe.refusalMessage.slice(refusalPrefix.length) : builtSetRecipe.refusalMessage;
+                    setOutcomes.push({ setName, unrunReason: 'notGenerated', unrunDetail, isDatasetWritten: false });
+                    continue;
+                }
+                setFilteredRecipe = builtSetRecipe.filteredRecipe;
             }
 
             const datasetFolderPath = await this.generateConfirmedDataset(setRun.recipeFilePath, setFilteredRecipe);
@@ -684,6 +702,12 @@ export class RecipeCockpitTreecipeInsert {
                 continue;
             }
             setRun.onDatasetFolderMade(datasetFolderPath);
+
+            if ( !setRun.isSameSelection() ) {
+                isRunStopped = true;
+                setOutcomes.push({ setName, unrunReason: 'selectionChanged', isDatasetWritten: true });
+                continue;
+            }
 
             const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, setRun.connection, setRun.allOrNoneSelection, {
                 prepareRecords: setRun.buildRecordPreparer(),

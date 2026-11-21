@@ -3,6 +3,7 @@ expect.extend(matchers);
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { RECIPE_COCKPIT_INSERT_ACTION_LABEL } from '../RecipeCockpitDataOrgConstants';
 
 import {
     COLLECTIONS_API_RECORDS_PER_REQUEST,
@@ -568,6 +569,22 @@ describe('RecipeCockpitRecordCreation record type sets (#624)', () => {
             .toBe('warning');
         expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', insertResult: landed }, { setName: 'B', unrunReason: 'notGenerated' }]))
             .toEqual({ severity: 'error', text: '1 of 2 data sets of Tree were inserted into qa, one per record type. Set 1 (A) inserted 3 records. Set 2 (B) was not generated, so nothing of it was inserted.' });
+    });
+
+    it('names why a set was not generated, and a set held back because the org selection changed', () => {
+        const summary = RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [
+            { setName: 'A', insertResult: landed },
+            { setName: 'B', unrunReason: 'notGenerated', unrunDetail: 'the object metadata no longer builds this tree. Run "Generate Treecipe" again.' },
+            { setName: 'C', unrunReason: 'selectionChanged' }
+        ]);
+        expect(summary.severity).toBe('error');
+        expect(summary.text).toBe('1 of 3 data sets of Tree were inserted into qa, one per record type. Set 1 (A) inserted 3 records. Set 2 (B) was not generated, so nothing of it was inserted (the object metadata no longer builds this tree. Run "Generate Treecipe" again). Set 3 (C) was not inserted, because the org selection changed after the confirmation; choose "Generate fake data and insert" again for the sets left.');
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', insertResult: landed }, { setName: 'B', unrunReason: 'selectionChanged' }]).severity).toBe('warning');
+    });
+
+    it('names the insert button the cockpit draws when it says to start again', () => {
+        expect(RecipeCockpitRecordCreation.summarizeRecordTypeSetOutcomes('Tree', 'qa', [{ setName: 'A', unrunReason: 'selectionChanged' }]).text)
+            .toContain(`"${RECIPE_COCKPIT_INSERT_ACTION_LABEL}"`);
     });
 
     it('says what was kept of a set stopped without all-or-none', () => {

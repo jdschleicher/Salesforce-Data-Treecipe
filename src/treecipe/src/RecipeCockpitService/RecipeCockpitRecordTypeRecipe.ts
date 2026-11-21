@@ -156,7 +156,8 @@ export class RecipeCockpitRecordTypeRecipe {
     */
     static async buildDerivedTreeRecipe(workspaceRoot: string,
                                         treeFolderName: string,
-                                        recordTypeSelection: Readonly<Record<string, string[]>>): Promise<IDerivedTreeRecipe | DerivedTreeRecipeRefusal> {
+                                        recordTypeSelection: Readonly<Record<string, string[]>>,
+                                        progressTitle: string = RECORD_TYPE_RECIPE_PROGRESS_TITLE): Promise<IDerivedTreeRecipe | DerivedTreeRecipeRefusal> {
 
         const objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
         const isMissingGlobalValueSetsDirectoryWarningShown = false;
@@ -168,7 +169,7 @@ export class RecipeCockpitRecordTypeRecipe {
 
             return await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: RECORD_TYPE_RECIPE_PROGRESS_TITLE,
+                title: progressTitle,
                 cancellable: true
             }, async (progress, cancellationToken) => {
 
@@ -282,9 +283,18 @@ export class RecipeCockpitRecordTypeRecipe {
             isSeparateOffered: true,
             sets: combinationPlan.combinations.map(combination => ({
                 setName: RecipeCockpitRecordTypeRecipe.buildRecordTypeSetName(combination),
-                recordTypeSelection: Object.fromEntries(combination.map(({ objectApiName, developerName }) => [objectApiName, [developerName]]))
+                // NO PROTOTYPE: THE KEYS ARE OBJECT NAMES FROM THE WORKSPACE
+                recordTypeSelection: Object.assign(Object.create(null) as Record<string, string[]>,
+                    Object.fromEntries(combination.map(({ objectApiName, developerName }) => [objectApiName, [developerName]])))
             }))
         };
+
+    }
+
+    // EACH SET'S BUILD SAYS WHICH SET IT IS, SO A RUN OF SEVERAL SHOWS HOW FAR IT HAS GOT; setName ARRIVES ESCAPED
+    static buildRecordTypeSetProgressTitle(setIndex: number, setCount: number, setName: string): string {
+
+        return `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set ${setIndex + 1} of ${setCount} (${setName})`;
 
     }
 

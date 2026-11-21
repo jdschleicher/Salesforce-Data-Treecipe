@@ -8,6 +8,7 @@ import { RecipeCockpitJourney } from './acceptance/RecipeCockpitJourney';
 import { GENERATE_AND_INSERT_BUTTON_NAME, INSERT_ORG_LABEL, TREECIPE_TAB_FIXTURE, TREE_NAME, openTreecipeTabJourney } from './acceptance/TreecipeTabWorkspace';
 import { IDerivedTreeRecipe, RECORD_TYPE_RECIPE_PROGRESS_TITLE, RECORD_TYPE_SET_MODE_LABELS, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import { DirectoryProcessor, RecipeGenerationCancelledError } from '../../DirectoryProcessingService/DirectoryProcessor';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
@@ -192,6 +193,80 @@ describe('A data set for each record type, when the reader cancels part way (#62
         expect(setsNotification()).toEqual([{
             kind: 'warning',
             text: `1 of 2 data sets of ${TREE_NAME} were inserted into qa (qa@example.com.qa), one per record type. Set 1 (Account · Business) inserted 3 records. Set 2 (Account · Partner) was cancelled while its recipe was built, so nothing of it was inserted.`
+        }]);
+
+    });
+
+    // A NEW OBJECT FOR THE SAME ORG IS A NEW SELECTION, AS ANOTHER PICK OR ⟳ MAKES ONE
+    const changeOrgSelection = () => {
+        const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+        panelState.dataOrgSelection = { ...panelState.dataOrgSelection };
+    };
+
+    it('numbers each set\'s recipe build in its progress title', async () => {
+
+        await generateSeparateSets();
+
+        expect(journey.hostCalls.filter(hostCall => hostCall.call === 'window.withProgress').map(hostCall => hostCall.args[0])
+            .filter(progressTitle => String(progressTitle).startsWith(RECORD_TYPE_RECIPE_PROGRESS_TITLE))).toEqual([
+            RECORD_TYPE_RECIPE_PROGRESS_TITLE,
+            `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set 1 of 2 (Account · Business)`,
+            `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set 2 of 2 (Account · Partner)`
+        ]);
+
+    });
+
+    it('does not build set 2 when the org selection changed during set 1, and says so', async () => {
+
+        const insertDataSetFolderIntoOrg = CollectionsApiService.insertDataSetFolderIntoOrg.bind(CollectionsApiService);
+        const buildDerivedTreeRecipe = jest.spyOn(RecipeCockpitRecordTypeRecipe, 'buildDerivedTreeRecipe');
+        jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg').mockImplementation(async (...insertArguments) => {
+            const insertResult = await insertDataSetFolderIntoOrg(...insertArguments);
+            changeOrgSelection();
+            return insertResult;
+        });
+
+        await generateSeparateSets();
+
+        expect(buildDerivedTreeRecipe).toHaveBeenCalledTimes(2);
+        expect(setsNotification()).toEqual([{
+            kind: 'warning',
+            text: `1 of 2 data sets of ${TREE_NAME} were inserted into qa (qa@example.com.qa), one per record type. Set 1 (Account · Business) inserted 3 records. Set 2 (Account · Partner) was not inserted, because the org selection changed after the confirmation; choose "Generate fake data and insert" again for the sets left.`
+        }]);
+
+    });
+
+    it('generates set 2 but does not insert it when the org selection changed during its build', async () => {
+
+        const buildDerivedTreeRecipe = RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe.bind(RecipeCockpitRecordTypeRecipe);
+        let buildCount = 0;
+        jest.spyOn(RecipeCockpitRecordTypeRecipe, 'buildDerivedTreeRecipe').mockImplementation(async (...buildArguments) => {
+            const derivedRecipe = await buildDerivedTreeRecipe(...buildArguments);
+            if ( ++buildCount === 3 ) { changeOrgSelection(); }
+            return derivedRecipe;
+        });
+        const fileChangeCountBefore = journey.fileChanges.length;
+
+        await generateSeparateSets();
+
+        expect(writtenDatasetFolderCount(fileChangeCountBefore)).toBe(2);
+        expect(journey.org.calls.filter(orgCall => /\.insert$/.test(orgCall.call))).toHaveLength(3);
+        expect(setsNotification()[0].text).toContain('Set 2 (Account · Partner) was not inserted, because the org selection changed after the confirmation');
+
+    });
+
+    it('names why set 2 was not generated when the metadata no longer builds the tree', async () => {
+
+        const buildDerivedTreeRecipe = RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe.bind(RecipeCockpitRecordTypeRecipe);
+        let buildCount = 0;
+        jest.spyOn(RecipeCockpitRecordTypeRecipe, 'buildDerivedTreeRecipe').mockImplementation(async (...buildArguments) =>
+            ++buildCount === 3 ? 'treeNotBuilt' : buildDerivedTreeRecipe(...buildArguments));
+
+        await generateSeparateSets();
+
+        expect(setsNotification()).toEqual([{
+            kind: 'error',
+            text: `1 of 2 data sets of ${TREE_NAME} were inserted into qa (qa@example.com.qa), one per record type. Set 1 (Account · Business) inserted 3 records. Set 2 (Account · Partner) was not generated, so nothing of it was inserted (the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types).`
         }]);
 
     });

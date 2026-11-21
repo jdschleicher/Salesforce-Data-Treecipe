@@ -2233,7 +2233,12 @@ export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpit
 export interface IRecipeCockpitConfirmWithRecordTypeSetModesOptions extends IRecipeCockpitConfirmOptions {
     recordTypeSetModes: RecordTypeSetMode[];
     // DRAWN AFTER THE OFFERED MODES, DISABLED WITH THE REASON UNDER THEM (#624); NEVER AN ANSWER
-    disabledRecordTypeSetModes?: Array<{ recordTypeSetMode: RecordTypeSetMode; disabledReason: string }>;
+    disabledRecordTypeSetModes?: IRecipeCockpitDisabledRecordTypeSetMode[];
+}
+
+export interface IRecipeCockpitDisabledRecordTypeSetMode {
+    recordTypeSetMode: RecordTypeSetMode;
+    disabledReason: string;
 }
 
 // THE LABEL CHOSEN, OR undefined FOR CANCEL; isChecked IS true ONLY FOR A BOX TICKED UNDER A CHOSEN BUTTON
@@ -6436,7 +6441,7 @@ export class RecipeCockpitService {
 
     private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[],
                                 recordTypeSetModes: RecordTypeSetMode[] = [],
-                                disabledRecordTypeSetModes: Array<{ recordTypeSetMode: RecordTypeSetMode; disabledReason: string }> = []): Promise<IRecipeCockpitConfirmAnswer> {
+                                disabledRecordTypeSetModes: IRecipeCockpitDisabledRecordTypeSetMode[] = []): Promise<IRecipeCockpitConfirmAnswer> {
 
         const cancelled: IRecipeCockpitConfirmAnswer = { chosenLabel: undefined, isChecked: false };
 

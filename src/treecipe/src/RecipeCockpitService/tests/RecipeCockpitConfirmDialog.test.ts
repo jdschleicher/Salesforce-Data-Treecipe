@@ -1255,6 +1255,26 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('leaves a disabled mode out of the Tab cycle, so Tab goes on from the enabled radio to the buttons (#624)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ recordTypeSetModes: [MODES[1], { ...MODES[0], disabledReason: 'Too many sets.' }], isDestructive: false }));
+            const dialogElement = dialogOf(panel);
+            const radioElements = panel.findAll(dialogElement, 'confirmModeRadio');
+            const [firstChoiceElement] = panel.findAll(dialogElement, 'confirmChoice');
+
+            // THE BODY, ITS TWO SECTION TOGGLES (#457), THE ENABLED RADIO, THEN THE FIRST BUTTON; NEVER THE DISABLED RADIO
+            panel.findAll(dialogElement, 'confirmBody')[0].focus();
+            [1, 2, 3].forEach(() => dialogElement.dispatch('keydown', { key: 'Tab' }));
+            expect(panel.activeElement()).toBe(radioElements[0]);
+            dialogElement.dispatch('keydown', { key: 'Tab' });
+            expect(panel.activeElement()).toBe(firstChoiceElement);
+            dialogElement.dispatch('keydown', { key: 'Tab', shiftKey: true });
+            expect(panel.activeElement()).toBe(radioElements[0]);
+            expect(radioElements[1].disabled).toBeTrue();
+
+        });
+
         it('names no mode under Cancel, keeps the radios in the Tab cycle, and draws none for modes it cannot read (#623)', () => {
 
             const panel = drawnPanel();

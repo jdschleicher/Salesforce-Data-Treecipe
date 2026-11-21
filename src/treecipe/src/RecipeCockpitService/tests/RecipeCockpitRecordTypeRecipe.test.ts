@@ -163,12 +163,22 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
             expect(setsPlan.sets).toHaveLength(RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS);
         });
 
-        it('records an object named __proto__ as an own key of a set\'s selection', () => {
+        it('records an object named __proto__ as an own key of a set\'s selection, which has no prototype', () => {
             const selection: Record<string, string[]> = Object.create(null);
             selection['__proto__'] = ['A', 'B'];
             const setsPlan = RecipeCockpitRecordTypeRecipe.planRecordTypeSets(selection, [], ['__proto__']);
             expect(setsPlan.sets.map(recordTypeSet => Object.keys(recordTypeSet.recordTypeSelection))).toEqual([['__proto__'], ['__proto__']]);
-            expect(Object.getPrototypeOf(setsPlan.sets[0].recordTypeSelection)).toBe(Object.prototype);
+            expect(Object.getPrototypeOf(setsPlan.sets[0].recordTypeSelection)).toBeNull();
+            expect(setsPlan.sets[0].recordTypeSelection['__proto__']).toEqual(['A']);
+        });
+
+    });
+
+    describe('buildRecordTypeSetProgressTitle (#624)', () => {
+
+        it('numbers each set\'s build from 1 and names it', () => {
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle(1, 4, 'Account · Partner'))
+                .toBe('Building the recipe for the ticked record types: set 2 of 4 (Account · Partner)');
         });
 
     });

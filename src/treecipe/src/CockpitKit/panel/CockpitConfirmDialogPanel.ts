@@ -230,7 +230,9 @@ export function renderConfirmRequest(hostMessage: ICockpitConfirmRequestMessage)
     dialogElement.appendChild(actionsElement);
     overlayElement.appendChild(dialogElement);
 
-    const focusableElements: Element[] = ([bodyElement] as Element[]).concat(sectionToggleElements, modeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
+    // A DISABLED RADIO (#624) REFUSES FOCUS, SO IN THE CYCLE IT WOULD HOLD TAB ON THE RADIO BEFORE IT
+    const enabledModeRadioElements = modeRadioElements.filter(function (radioElement) { return !radioElement.disabled; });
+    const focusableElements: Element[] = ([bodyElement] as Element[]).concat(sectionToggleElements, enabledModeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
 
     dialogElement.addEventListener('keydown', function (event: KeyboardEvent) {
         if (event.key === 'Escape') {

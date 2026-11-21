@@ -136,7 +136,8 @@ const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
     How one set of "A data set for each record type" ended (#624). insertResult is how its insert
     ended, the same shape CollectionsApiService answers; a set with none was never inserted:
     notGenerated (its recipe or data set could not be made), buildCancelled (the reader cancelled its
-    recipe build) or notStarted (an earlier set did not land, or the org selection changed).
+    recipe build), selectionChanged (the org selection changed after the confirmation) or notStarted
+    (an earlier set did not end as it should). unrunDetail is why a set was not generated, escaped.
 */
 export interface IRecordTypeSetInsertResult {
     outcome: 'completed' | 'cancelled' | 'stopped';
@@ -148,7 +149,8 @@ export interface IRecordTypeSetInsertResult {
 export interface IRecordTypeSetOutcome {
     setName: string;
     insertResult?: IRecordTypeSetInsertResult;
-    unrunReason?: 'notGenerated' | 'buildCancelled' | 'notStarted';
+    unrunReason?: 'notGenerated' | 'buildCancelled' | 'selectionChanged' | 'notStarted';
+    unrunDetail?: string;
 }
 
 export class RecipeCockpitRecordCreation {
@@ -414,8 +416,10 @@ export class RecipeCockpitRecordCreation {
         const describeOutcome = (setOutcome: IRecordTypeSetOutcome): { kind: 'landed' | 'failed' | 'cancelled' | 'notStarted'; text: string } => {
             const insertResult = setOutcome.insertResult;
             if ( !insertResult ) {
-                return setOutcome.unrunReason === 'notGenerated' ? { kind: 'failed', text: 'was not generated, so nothing of it was inserted' }
+                return setOutcome.unrunReason === 'notGenerated'
+                        ? { kind: 'failed', text: `was not generated, so nothing of it was inserted${setOutcome.unrunDetail ? ` (${setOutcome.unrunDetail.replace(/\.$/, '')})` : ''}` }
                     : setOutcome.unrunReason === 'buildCancelled' ? { kind: 'cancelled', text: 'was cancelled while its recipe was built, so nothing of it was inserted' }
+                    : setOutcome.unrunReason === 'selectionChanged' ? { kind: 'notStarted', text: `was not inserted, because the org selection changed after the confirmation; choose "Generate fake data and insert" again for the sets left` }
                     : { kind: 'notStarted', text: 'was not started' };
             }
             if ( insertResult.outcome === 'cancelled' ) {
