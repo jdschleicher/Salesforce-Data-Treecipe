@@ -31,6 +31,8 @@ Click it to list the fields that point to it, under *Click to go to a child refe
 A field Salesforce sets itself from another lookup, such as a Quote's `AccountId`, which always comes from its Opportunity, is marked **read only** and its pencil is disabled.
 Its value names the record it comes from (**Opportunity_NickName.AccountId**), says which account that record holds (**set by Salesforce from OpportunityId → Account_NickName**), and links to that row like a nickname.
 It is never sent to Salesforce on insert.
+A field Salesforce calculates or fills in itself, such as a formula, a roll-up summary, an auto number or an Opportunity's `ExpectedRevenue`, is written as **READ ONLY -- formula** (or its reason) and also marked **read only**, its pencil disabled; a formula field shows its formula (**formula: Price__c * Quantity__c**).
+Treecipe never sends it to Salesforce, and an insert also leaves out any field the target org says it cannot set, with a warning naming each one.
 A friend, an object nested under another's `friends:` in a faker-js recipe, shows a 👥 chip for each parent it belongs to: the one it is nested under first, then any other its lookups name.
 Each chip reads the parent's nickname and the friend's place among that parent's friends (**Account_NickName-2**); click it to jump to that parent.
 A parent with friends shows **👥 N** right after its nickname; click it to list its friends under *Click to go to a friend*, each named as its chip reads (**Account_NickName-2: Case**), and jump to one.

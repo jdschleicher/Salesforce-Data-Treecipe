@@ -76,7 +76,7 @@ FROM Account
 -- Children: Opportunity (via AccountId)
 -- Note: Verify 'Opportunitys' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, IqScore, IsPrivate, MainCompetitors__c
+    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, ExpectedRevenue, IqScore, IsPrivate
      FROM Opportunitys)
 FROM Account
 ```
@@ -114,7 +114,7 @@ FROM Campaign
 -- Children: Opportunity (via CampaignId)
 -- Note: Verify 'Opportunitys' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, IqScore, IsPrivate, MainCompetitors__c
+    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, ExpectedRevenue, IqScore, IsPrivate
      FROM Opportunitys)
 FROM Campaign
 ```
@@ -224,7 +224,7 @@ FROM Contract
 -- Children: Opportunity (via ContractId)
 -- Note: Verify 'Opportunitys' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, IqScore, IsPrivate, MainCompetitors__c
+    (SELECT Id, CurrentGenerators__c, DeliveryInstallationStatus__c, ExpectedRevenue, IqScore, IsPrivate
      FROM Opportunitys)
 FROM Contract
 ```
@@ -493,6 +493,7 @@ SELECT Id,
        ContractId,
        CurrentGenerators__c,
        DeliveryInstallationStatus__c,
+       ExpectedRevenue,
        IqScore,
        IsPrivate,
        MainCompetitors__c,

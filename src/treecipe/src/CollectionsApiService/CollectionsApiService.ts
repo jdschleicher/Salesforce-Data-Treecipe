@@ -184,12 +184,23 @@ export class CollectionsApiService {
         const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
         const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
-        return this.upsertDataSetToSelectedOrg(datasetFolderPath,
+        // A FIELD THE ORG CANNOT TAKE ON INSERT (A FORMULA, A ROLL-UP, ExpectedRevenue) WOULD FAIL THE RECORD, SO IT IS LEFT OUT (#685)
+        const nonCreateableFieldApiNamesByObject = await this.readNonCreateableFieldApiNamesByObject(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom, insertOptions.orgUsername);
+        const removedObjectFields = new Set<string>();
+        const callerPrepareRecords = insertOptions.prepareRecords;
+        const prepareRecords: DataSetRecordPreparer = (objectApiName, records, createdRecordIdsByReferenceId) => {
+            const createableRecords = this.removeNonCreateableFields(objectApiName, records, nonCreateableFieldApiNamesByObject, removedObjectFields);
+            return callerPrepareRecords ? callerPrepareRecords(objectApiName, createableRecords, createdRecordIdsByReferenceId) : createableRecords;
+        };
+
+        const insertResult = await this.upsertDataSetToSelectedOrg(datasetFolderPath,
                                                 datasetChildFoldersToFilesMap,
                                                 recordTypeDetailFromOrg,
                                                 aliasAuthenticationConnection,
                                                 allOrNoneSelection,
-                                                insertOptions);
+                                                { ...insertOptions, prepareRecords });
+        this.warnOfRemovedNonCreateableFields(removedObjectFields);
+        return insertResult;
 
     }
 
@@ -849,6 +860,80 @@ export class CollectionsApiService {
         }
 
         return orgRecordTypeIdByObjectQualifiedName;
+
+    }
+
+    /*
+        Each data set object's fields the target org reports as not createable, keyed by lowercase
+        object and field api name, from the cached describe. An object that could not be described
+        has no entry, so nothing is removed from it and the org's own error says why a record failed.
+    */
+    static async readNonCreateableFieldApiNamesByObject(connection: Connection,
+                                                        objectApiNames: string[],
+                                                        orgUsername: string | undefined): Promise<Map<string, Set<string>>> {
+
+        const nonCreateableFieldApiNamesByObject = new Map<string, Set<string>>();
+        const describeUsername = orgUsername ?? ( typeof connection?.getUsername === 'function' ? connection.getUsername() : undefined );
+        if ( !describeUsername || objectApiNames.length === 0 ) {
+            return nonCreateableFieldApiNamesByObject;
+        }
+
+        try {
+            const describeResult = await SalesforceOrgService.describeObjects(describeUsername, objectApiNames, async () => connection);
+            describeResult.outcomes
+                .filter(describeOutcome => describeOutcome.describe !== undefined)
+                .forEach(describeOutcome => {
+                    const nonCreateableFieldApiNames = describeOutcome.describe.fields
+                        .filter(describeField => !describeField.isCreateable)
+                        .map(describeField => describeField.fieldApiName.toLowerCase());
+                    nonCreateableFieldApiNamesByObject.set(describeOutcome.objectApiName.toLowerCase(), new Set(nonCreateableFieldApiNames));
+                });
+        } catch {
+            // NO DESCRIBE, NO REMOVAL: THE INSERT RUNS AS BEFORE AND THE ORG'S OWN ERROR NAMES THE FIELD
+        }
+
+        return nonCreateableFieldApiNamesByObject;
+
+    }
+
+    // EACH RECORD WITHOUT THE FIELDS THE ORG CANNOT TAKE ON INSERT; EVERY Object.Field REMOVED IS ADDED TO removedObjectFields
+    static removeNonCreateableFields(objectApiName: string,
+                                     records: unknown[],
+                                     nonCreateableFieldApiNamesByObject: ReadonlyMap<string, ReadonlySet<string>>,
+                                     removedObjectFields: Set<string>): unknown[] {
+
+        const nonCreateableFieldApiNames = nonCreateableFieldApiNamesByObject.get(String(objectApiName).toLowerCase());
+        if ( !nonCreateableFieldApiNames || nonCreateableFieldApiNames.size === 0 || !Array.isArray(records) ) {
+            return records;
+        }
+
+        return records.map(record => {
+            if ( !record || typeof record !== 'object' ) {
+                return record;
+            }
+            const createableRecord: Record<string, unknown> = { ...( record as Record<string, unknown> ) };
+            Object.keys(createableRecord)
+                .filter(fieldApiName => fieldApiName !== 'attributes' && nonCreateableFieldApiNames.has(fieldApiName.toLowerCase()))
+                .forEach(fieldApiName => {
+                    delete createableRecord[fieldApiName];
+                    removedObjectFields.add(`${objectApiName}.${fieldApiName}`);
+                });
+            return createableRecord;
+        });
+
+    }
+
+    static warnOfRemovedNonCreateableFields(removedObjectFields: ReadonlySet<string>): void {
+
+        if ( removedObjectFields.size === 0 ) {
+            return;
+        }
+
+        const removedFieldList = [...removedObjectFields]
+            .sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ))
+            .map(objectField => DirectoryProcessor.escapeForNotification(objectField))
+            .join(', ');
+        vscode.window.showWarningMessage(`Treecipe left out fields the target org does not let an insert set, such as formula and roll-up fields: ${removedFieldList}. Salesforce fills these itself. Regenerate the Treecipe to mark them READ ONLY in the recipe.`);
 
     }
 

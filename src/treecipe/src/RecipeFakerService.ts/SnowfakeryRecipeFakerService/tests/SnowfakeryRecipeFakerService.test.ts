@@ -116,8 +116,9 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToSnowfakeryMappings['masterdetail']).toBe(referenceValuePlaceholder);
         });
 
-        test('Formula field returns correct message', () => {
-            expect(fieldTypeToSnowfakeryMappings['formula']).toBe('### TODO - REMOVE ME - Formula fields are calculated, not generated');
+        // A FORMULA FIELD'S <type> IS ITS RESULT TYPE, SO THIS ENTRY NEVER MATCHED; RecipeService WRITES "READ ONLY -- formula" FOR EVERY BACKEND (#685)
+        test('Formula is absent from the map, because RecipeService writes a read-only field before any backend is asked', () => {
+            expect(fieldTypeToSnowfakeryMappings).not.toHaveProperty('formula');
         });
 
         /*
@@ -135,7 +136,7 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
                 'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
-                'lookup', 'masterdetail', 'formula'
+                'lookup', 'masterdetail'
             ];
 
             expectedFields.forEach(field => {

@@ -4,6 +4,7 @@ import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
 
 
 export class XmlFileProcessor {
@@ -43,6 +44,17 @@ export class XmlFileProcessor {
       const fieldLabel = fieldXML?.CustomField?.label?.[0] ?? "AUTO_GENERATED";
       xmlFieldDetail.fieldType = typeValue;
       xmlFieldDetail.fieldLabel = fieldLabel;
+
+      // AN EMPTY OR MALFORMED <formula> STILL MAKES THE FIELD READ ONLY: SALESFORCE CALCULATES IT EITHER WAY
+      const formulaElement = fieldXML.CustomField.formula;
+      const hasFormula = Array.isArray(formulaElement);
+      const readOnlyReason = ReadOnlyFields.resolveCustomFieldReason(typeValue, hasFormula);
+      if ( readOnlyReason ) {
+        xmlFieldDetail.readOnlyReason = readOnlyReason;
+      }
+      if ( hasFormula ) {
+        xmlFieldDetail.formula = typeof formulaElement[0] === 'string' ? formulaElement[0] : '';
+      }
 
       // Parse precision, scale, and length properties (only if they exist in XML)
       const precision = fieldXML?.CustomField?.precision?.[0];

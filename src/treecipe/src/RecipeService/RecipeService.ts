@@ -11,6 +11,7 @@ import { SalesforceApiName } from "../SalesforceApiName/SalesforceApiName";
 import { IRecipeFieldConstraintTarget, IStoredRecipeFieldConstraint, RecipeFieldConstraint, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
 import { IValidationRuleConstraintRecord, IValidationRuleFieldConstraint, IValidationRuleRegexAtom } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 import { RecipeCockpitRecipeWriter } from "../RecipeWriter/RecipeCockpitRecipeWriter";
+import { ReadOnlyFields } from "../ObjectInfoWrapper/ReadOnlyFields";
 
 export interface IValidationRuleFieldRecipe {
     recipeValue: string;
@@ -182,7 +183,12 @@ export class RecipeService {
                                         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                         selectedRecordTypeApiName?: string,
                                         excludedPicklistValues?: ReadonlySet<string>): string {
-        
+
+        // SALESFORCE CALCULATES OR SETS IT (#685): SHOWN IN BOTH BACKENDS' RECIPES, DROPPED BEFORE INSERT
+        if ( xmlFieldDetail.readOnlyReason ) {
+            return ReadOnlyFields.formatRecipeValue(xmlFieldDetail.readOnlyReason);
+        }
+
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
 

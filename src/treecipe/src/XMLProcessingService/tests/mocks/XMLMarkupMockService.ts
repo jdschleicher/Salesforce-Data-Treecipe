@@ -326,7 +326,11 @@ export class XMLMarkupMockService {
             fieldType: "Number",
             apiName: "Formula__c",
             fieldLabel: "Formula",
-            xmlMarkup: this.getFormulaFieldTypeXMLMarkup()        };
+            xmlMarkup: this.getFormulaFieldTypeXMLMarkup(),
+            // A FORMULA FIELD IS CALCULATED, WHATEVER ITS RESULT <type> (#685)
+            readOnlyReason: "formula",
+            formula: "$Organization.Longitude"
+        };
 
         return formulaXMLField;      
 
