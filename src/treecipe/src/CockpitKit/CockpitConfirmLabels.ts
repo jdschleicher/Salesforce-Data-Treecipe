@@ -11,8 +11,9 @@ export interface ICockpitConfirmAnswer {
     isChecked: boolean;
 }
 
-// ONE RADIO OF A CONFIRMATION (#623): THE NAME THE PANEL ANSWERS WITH, AND THE WORDS BESIDE IT
+// ONE RADIO OF A CONFIRMATION (#623): THE NAME THE PANEL ANSWERS WITH, AND THE WORDS BESIDE IT; A DISABLED ONE (#624) IS DRAWN WITH ITS REASON AND CANNOT BE CHOSEN
 export interface ICockpitConfirmRecordTypeSetMode {
     name: string;
     label: string;
+    disabledReason?: string;
 }

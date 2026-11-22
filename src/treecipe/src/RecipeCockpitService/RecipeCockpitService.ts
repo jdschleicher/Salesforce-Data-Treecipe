@@ -713,6 +713,7 @@ import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCoc
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup, IObjectSelectionRemovedLookup } from './RecipeCockpitObjectSelection';
 import {
+    IRecordTypeSetModeOffer,
     OccurrenceSettingPlacer,
     RECORD_TYPE_SET_MODE_LABELS,
     RECORD_TYPE_SET_MODE_LEGEND,
@@ -2229,9 +2230,9 @@ export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpit
     checkboxLabel: string;
 }
 
-// THE RECORD TYPE SET MODES A CONFIRMATION OFFERS (#623), IN THE ORDER DRAWN; THE FIRST IS THE ONE CHOSEN WHEN IT OPENS
+// THE RECORD TYPE SET MODES A CONFIRMATION OFFERS (#623), IN THE ORDER DRAWN; THE FIRST ENABLED ONE IS CHOSEN WHEN IT OPENS, AND A DISABLED ONE (#624) IS NEVER AN ANSWER
 export interface IRecipeCockpitConfirmWithRecordTypeSetModesOptions extends IRecipeCockpitConfirmOptions {
-    recordTypeSetModes: RecordTypeSetMode[];
+    recordTypeSetModes: IRecordTypeSetModeOffer[];
 }
 
 // THE LABEL CHOSEN, OR undefined FOR CANCEL; isChecked IS true ONLY FOR A BOX TICKED UNDER A CHOSEN BUTTON
@@ -2246,6 +2247,8 @@ interface IRecipeCockpitPendingConfirmation {
     confirmationId: string;
     buttonLabels: string[];
     hasCheckbox: boolean;
+    // A CONFIRMATION THAT DREW MODES IS ANSWERED ONLY WITH ONE OF ITS ENABLED ONES
+    isAskingRecordTypeSetMode: boolean;
     recordTypeSetModes: RecordTypeSetMode[];
     resolve: (answer: IRecipeCockpitConfirmAnswer) => void;
     // SET ONLY WHEN "Change org…" WAS DRAWN: WHAT IT STARTS AGAIN, AND THE ACTION THAT ASKED
@@ -6432,7 +6435,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[], recordTypeSetModes: RecordTypeSetMode[] = []): Promise<IRecipeCockpitConfirmAnswer> {
+    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[], recordTypeSetModes: IRecordTypeSetModeOffer[] = []): Promise<IRecipeCockpitConfirmAnswer> {
 
         const cancelled: IRecipeCockpitConfirmAnswer = { chosenLabel: undefined, isChecked: false };
 
@@ -6464,7 +6467,8 @@ export class RecipeCockpitService {
                 confirmationId: confirmationId,
                 buttonLabels: [...buttonLabels],
                 hasCheckbox: checkboxLabel !== undefined,
-                recordTypeSetModes: [...recordTypeSetModes],
+                isAskingRecordTypeSetMode: recordTypeSetModes.length > 0,
+                recordTypeSetModes: recordTypeSetModes.filter(modeOffer => modeOffer.disabledReason === undefined).map(modeOffer => modeOffer.mode),
                 resolve: resolve,
                 ...( changeOrg ? { changeOrg: changeOrg, actionContext: actionContext } : {} )
             };
@@ -6481,7 +6485,11 @@ export class RecipeCockpitService {
                 ...( recordTypeSetModes.length > 0
                     ? {
                         recordTypeSetModeLegend: RECORD_TYPE_SET_MODE_LEGEND,
-                        recordTypeSetModes: recordTypeSetModes.map(recordTypeSetMode => ({ name: recordTypeSetMode, label: RECORD_TYPE_SET_MODE_LABELS[recordTypeSetMode] }))
+                        recordTypeSetModes: recordTypeSetModes.map(modeOffer => ({
+                            name: modeOffer.mode,
+                            label: RECORD_TYPE_SET_MODE_LABELS[modeOffer.mode],
+                            ...( modeOffer.disabledReason !== undefined ? { disabledReason: modeOffer.disabledReason } : {} )
+                        }))
                     }
                     : {} ),
                 ...( changeOrg ? { canChangeOrg: true } : {} )
@@ -6534,7 +6542,7 @@ export class RecipeCockpitService {
 
         const answer = CockpitConfirmDialog.readAnswer(pendingConfirmation.buttonLabels, pendingConfirmation.hasCheckbox, choice, isChecked);
 
-        if ( pendingConfirmation.recordTypeSetModes.length === 0 || answer.chosenLabel === undefined ) {
+        if ( !pendingConfirmation.isAskingRecordTypeSetMode || answer.chosenLabel === undefined ) {
             pendingConfirmation.resolve(answer);
             return;
         }

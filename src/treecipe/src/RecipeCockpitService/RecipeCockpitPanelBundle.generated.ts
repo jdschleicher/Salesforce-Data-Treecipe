@@ -173,7 +173,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       checkElement = drawnCheckElement;
     }
     const offeredModes = readConfirmRecordTypeSetModes(hostMessage);
-    const modeState = { chosenName: offeredModes.length > 0 ? offeredModes[0].name : null };
+    const firstEnabledMode = offeredModes.find(function(offeredMode) {
+      return offeredMode.disabledReason === void 0;
+    });
+    const modeState = { chosenName: firstEnabledMode ? firstEnabledMode.name : null };
     let modeGroupElement = null;
     const modeRadioElements = [];
     if (offeredModes.length > 0) {
@@ -195,16 +198,23 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         const modeRowElement = createElement("div", "confirmModeRow");
         const radioElement = createButton("check", "confirmModeRadio");
         const modeLabelElement = createElement("span", "confirmModeLabel", offeredMode.label);
-        const chooseMode = function() {
-          modeState.chosenName = offeredMode.name;
-          drawModes();
-        };
         radioElement.setAttribute("role", "radio");
         radioElement.setAttribute("aria-label", offeredMode.label);
-        radioElement.addEventListener("click", chooseMode);
-        modeLabelElement.addEventListener("click", chooseMode);
         modeRowElement.appendChild(radioElement);
         modeRowElement.appendChild(modeLabelElement);
+        if (offeredMode.disabledReason !== void 0) {
+          radioElement.disabled = true;
+          radioElement.setAttribute("aria-disabled", "true");
+          radioElement.setAttribute("aria-description", offeredMode.disabledReason);
+          modeRowElement.appendChild(createElement("div", "confirmModeReason", offeredMode.disabledReason));
+        } else {
+          const chooseMode = function() {
+            modeState.chosenName = offeredMode.name;
+            drawModes();
+          };
+          radioElement.addEventListener("click", chooseMode);
+          modeLabelElement.addEventListener("click", chooseMode);
+        }
         drawnModeGroupElement.appendChild(modeRowElement);
         modeRadioElements.push(radioElement);
       });
@@ -225,7 +235,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     dialogElement.appendChild(actionsElement);
     overlayElement.appendChild(dialogElement);
-    const focusableElements = [bodyElement].concat(sectionToggleElements, modeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
+    const focusableElements = [bodyElement].concat(sectionToggleElements, modeRadioElements.filter(function(radioElement) {
+      return !radioElement.disabled;
+    }), checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
     dialogElement.addEventListener("keydown", function(event) {
       if (event.key === "Escape") {
         if (typeof event.preventDefault === "function") {
@@ -264,10 +276,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   function readConfirmRecordTypeSetModes(hostMessage) {
     const postedModes = hostMessage.recordTypeSetModes;
     const isReadableMode = function(mode) {
-      return isRecord(mode) && typeof mode.name === "string" && !!mode.name && typeof mode.label === "string" && !!mode.label;
+      return isRecord(mode) && typeof mode.name === "string" && !!mode.name && typeof mode.label === "string" && !!mode.label && (mode.disabledReason === void 0 || typeof mode.disabledReason === "string" && !!mode.disabledReason);
     };
     return Array.isArray(postedModes) && postedModes.every(isReadableMode) ? postedModes.map(function(mode) {
-      return { name: mode.name, label: mode.label };
+      return mode.disabledReason !== void 0 ? { name: mode.name, label: mode.label, disabledReason: mode.disabledReason } : { name: mode.name, label: mode.label };
     }) : [];
   }
   function readConfirmContent(hostMessage) {
@@ -4936,7 +4948,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "No fields selected: an object with every field unticked generates no records. Its row shows NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED in red in place of its nickname, friends and count, and its chain link turns red and cannot be clicked. Its children are left out with it, as for an excluded object. Tick any field to bring it back.",
         "Removed lookup: an unticked lookup field is no link to its parent. An object whose only lookup into the tree is unticked is cut off with its children, and its row says cut off — ‹Object›.‹Field› removed. Its boxes stay clickable: tick the lookup again to bring it back. An object that keeps another lookup to an included parent stays.",
         "Record counts: each object's row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend's count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.",
-        "Record types: tick them under Manage record types, and the next Generate fake data and insert uses them. Its confirmation offers One data set with the record types folded together: each ticked record type gets its own records, with its own children and picklist values. The recipe is built again from your object metadata for that data set, so what was written into the recipe file is not in it (lines edited by hand, lookups wired on the card, parents or friends added on it), and no new run is written.",
+        "Record types: tick them under Manage record types, and the next Generate fake data and insert uses them. Its confirmation offers A data set for each record type, one data set per combination of one record type per object, inserted one after another, each with its own row; or One data set with the record types folded together, where each ticked record type gets its own records, with its own children and picklist values. When one of several data sets fails or is cancelled, the ones before it stay and the ones after it are not started, and above 10 data sets only the folded choice can be picked. The recipe is built again from your object metadata for that data set, so what was written into the recipe file is not in it (lines edited by hand, lookups wired on the card, parents or friends added on it), and no new run is written.",
         "The rules box: a field generated without the limits its validation rules set. Beside it, ↗ and a rule's name open that rule's .validationRule-meta.xml file at its formula, for each rule the field names, applied or not.",
         "Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one."
       ]

@@ -2,7 +2,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { IRecordTypeTickObject, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 /*
@@ -59,27 +59,81 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
 
         it('given no ticks posted, generates from the run\'s recipe and offers no mode', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], undefined)).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], undefined)).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
         it('given each object ticked at its default, generates from the run\'s recipe and offers no mode', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Business'] })).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Business'] })).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
-        it('given more than one record type ticked, builds the recipe and offers folded', () => {
+        it('given more than one record type ticked, builds the recipe and offers a data set for each record type first, then folded (#624)', () => {
 
             expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Business', 'Partner'] }))
-                .toEqual({ isRecipeDerived: true, offeredModes: ['folded'], recordTypeSelection: { Account: ['Business', 'Partner'] } });
+                .toEqual({
+                    isRecipeDerived: true,
+                    offeredModes: [{ mode: 'separate' }, { mode: 'folded' }],
+                    recordTypeSelection: { Account: ['Business', 'Partner'] },
+                    recordTypeSets: [{ Account: ['Business'] }, { Account: ['Partner'] }]
+                });
 
         });
 
-        it('given one record type ticked that is not the default, builds the recipe and offers folded', () => {
+        it('given one record type ticked that is not the default, builds the recipe and offers folded only: one set is the folded data set (#624)', () => {
 
             expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Account: ['Partner'] }))
-                .toEqual({ isRecipeDerived: true, offeredModes: ['folded'], recordTypeSelection: { Account: ['Partner'] } });
+                .toEqual({ isRecipeDerived: true, offeredModes: [{ mode: 'folded' }], recordTypeSelection: { Account: ['Partner'] }, recordTypeSets: [] });
+
+        });
+
+        it('makes one set per combination across objects, in tree order, the first object varying slowest (#624)', () => {
+
+            const OPPORTUNITY: IRecordTypeTickObject = { objectApiName: 'Opportunity', defaultDeveloperName: 'New', generatedDeveloperNames: ['New'] };
+
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Opportunity: ['Renewal'], Account: ['Business', 'Partner'] }).recordTypeSets)
+                .toEqual([{ Account: ['Business'], Opportunity: ['Renewal'] }, { Account: ['Partner'], Opportunity: ['Renewal'] }]);
+
+        });
+
+        it('draws a data set for each record type disabled above the cap, naming each object\'s count, and keeps folded (#624)', () => {
+
+            const OPPORTUNITY: IRecordTypeTickObject = { objectApiName: 'Opportunity', defaultDeveloperName: 'A', generatedDeveloperNames: ['A'] };
+            const atCap = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Account: ['Business', 'Partner'], Opportunity: ['A', 'B', 'C', 'D', 'E'] });
+            const overCap = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Account: ['Business', 'Partner', 'Other'], Opportunity: ['A', 'B', 'C', 'D'] });
+
+            expect(RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS).toBe(10);
+            expect(atCap.offeredModes).toEqual([{ mode: 'separate' }, { mode: 'folded' }]);
+            expect(atCap.recordTypeSets).toHaveLength(10);
+            expect(overCap.offeredModes).toEqual([{
+                mode: 'separate',
+                disabledReason: 'Not available: one data set per record type would make 12 data sets, more than 10 (Account has 3 ticked, Opportunity has 4 ticked). Untick record types to make 10 or fewer.'
+            }, { mode: 'folded' }]);
+            expect(overCap.recordTypeSets).toEqual([]);
+
+        });
+
+        it('plans the sets again without an object whose ticks the build dropped, so no set is named for a record type the metadata lost (#624)', () => {
+
+            const OPPORTUNITY: IRecordTypeTickObject = { objectApiName: 'Opportunity', defaultDeveloperName: 'New', generatedDeveloperNames: ['New'] };
+            const plan = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT, OPPORTUNITY], { Account: ['Business', 'Partner'], Opportunity: ['New', 'Renewal'] });
+
+            expect(RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(plan, [])).toBe(plan);
+            expect(RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(plan, [{ objectApiName: 'Opportunity', missingDeveloperNames: ['Renewal'] }])).toEqual({
+                isRecipeDerived: true,
+                offeredModes: [{ mode: 'separate' }, { mode: 'folded' }],
+                recordTypeSelection: { Account: ['Business', 'Partner'] },
+                recordTypeSets: [{ Account: ['Business'] }, { Account: ['Partner'] }]
+            });
+            expect(RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(plan, [{ objectApiName: 'Opportunity', missingDeveloperNames: ['Renewal'] }, { objectApiName: 'Account', missingDeveloperNames: ['Partner'] }]))
+                .toEqual({ isRecipeDerived: true, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
+
+        });
+
+        it('names each set by its record types, in order (#624)', () => {
+
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLabel({ Account: ['Partner'], Opportunity: ['New'] }, 1)).toBe('Set 2 · Account · Partner, Opportunity · New');
 
         });
 
@@ -92,13 +146,13 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
         it('given a run that already writes both blocks and the same ticks, still builds the recipe, so each block gets its children', () => {
 
             expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_WITH_BLOCKS], { Account: ['Business', 'Partner'] }))
-                .toEqual({ isRecipeDerived: true, offeredModes: ['folded'], recordTypeSelection: { Account: ['Business', 'Partner'] } });
+                .toMatchObject({ isRecipeDerived: true, recordTypeSelection: { Account: ['Business', 'Partner'] } });
 
         });
 
         it('given a run that writes both blocks and only the default ticked, builds the default recipe and offers no mode', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_WITH_BLOCKS], { Account: ['Business'] })).toEqual({ isRecipeDerived: true, offeredModes: [], recordTypeSelection: {} });
+            expect(RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_WITH_BLOCKS], { Account: ['Business'] })).toEqual({ isRecipeDerived: true, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
@@ -107,8 +161,8 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
             const plan = RecipeCockpitRecordTypeRecipe.planGeneration([ACCOUNT_AT_DEFAULT], { Opportunity: ['New', 'Renewal'] });
             const inheritedPlan = RecipeCockpitRecordTypeRecipe.planGeneration([{ ...ACCOUNT_AT_DEFAULT, objectApiName: 'constructor' }], {});
 
-            expect(plan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
-            expect(inheritedPlan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {} });
+            expect(plan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
+            expect(inheritedPlan).toEqual({ isRecipeDerived: false, offeredModes: [], recordTypeSelection: {}, recordTypeSets: [] });
 
         });
 
