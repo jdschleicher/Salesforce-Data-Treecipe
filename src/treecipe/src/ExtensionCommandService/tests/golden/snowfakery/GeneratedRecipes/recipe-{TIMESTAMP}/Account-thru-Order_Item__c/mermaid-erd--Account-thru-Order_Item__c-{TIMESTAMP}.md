@@ -24,7 +24,6 @@ erDiagram
         date SLAExpirationDate__c
         string SLASerialNumber__c
         string SLA__c
-        string ShippingAddress
         string Sic
         string SicDesc
         string Site
@@ -36,7 +35,6 @@ erDiagram
     }
     Contact {
         id Id
-        string OtherAddress
     }
     Contract {
         id Id

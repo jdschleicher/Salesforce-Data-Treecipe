@@ -15,7 +15,6 @@ Objects: Lead
 erDiagram
     Lead {
         id Id
-        string Address
         string CleanStatus
         string CompanyDunsNumber
         string CurrentGenerators__c

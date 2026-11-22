@@ -12,7 +12,6 @@ Objects: Lead
 ```sql
 SELECT Id,
        Name,
-       Address,
        CampaignId,
        CleanStatus,
        CompanyDunsNumber,
@@ -34,7 +33,8 @@ SELECT Id,
        Pronouns,
        SICCode__c,
        Website,
-       Salutation
+       Salutation,
+       Address
 FROM Lead
 ```
 

@@ -58,7 +58,7 @@ describe('RecipeCockpitQuery.listTreeQueries (#367)', () => {
         const treeQueries = RecipeCockpitQuery.listTreeQueries(hostileWrapper, ['Account', 'Contact', 'Evil\nDELETE', '__proto__']);
 
         expect(treeQueries.map(treeQuery => treeQuery.queryKey)).toEqual(['Account:base:0', 'Account:parentToChild:0', 'Contact:base:0']);
-        expect(treeQueries[0].text).toBe('SELECT Id,\n       Name\nFROM Account');
+        expect(treeQueries[0].text).toBe('SELECT Id,\n       Name,\n       BillingAddress,\n       ShippingAddress\nFROM Account');
         expect(RecipeCockpitQuery.listTreeQueries('not a wrapper', ['Account'])).toEqual([]);
 
     });
