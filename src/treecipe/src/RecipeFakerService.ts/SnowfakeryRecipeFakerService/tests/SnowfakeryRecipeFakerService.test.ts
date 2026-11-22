@@ -1088,3 +1088,21 @@ describe('SnowfakeryRecipeFakerService.buildPicklistChoiceExpression (#465)', ()
     });
 
 });
+
+// A BUILT-IN STANDARD-FIELD VALUE IS EVALUATED ONLY AS ${{ … }}: A BARE {{ OR A STRAY LEADING QUOTE IS SENT TO SALESFORCE AS TEXT (#685)
+describe('SnowfakeryRecipeFakerService built-in standard-field values are all expressions the backend evaluates', () => {
+
+    const standardFieldValues = Object.entries(new SnowfakeryRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap())
+        .flatMap(([objectApiName, valueByFieldApiName]) => Object.entries(valueByFieldApiName).map(([fieldApiName, recipeValue]) => [`${objectApiName}.${fieldApiName}`, recipeValue] as const));
+
+    test.each(standardFieldValues)('%s opens every expression with ${{ and starts with no stray quote', (unusedObjectField, recipeValue) => {
+
+        const expressionOpenerCount = (recipeValue.match(/\{\{/g) ?? []).length;
+        const dollarOpenerCount = (recipeValue.match(/\$\{\{/g) ?? []).length;
+
+        expect(dollarOpenerCount).toBe(expressionOpenerCount);
+        expect(recipeValue.trimStart().startsWith('"')).toBe(false);
+
+    });
+
+});

@@ -560,10 +560,10 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 "EndDate": `|
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 91)), to: (new Date().setDate(new Date().getDate() + 180)) })}}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
-                "BudgetedCost": `"\{{ (faker.string.numeric(5)) }}.00`,
-                "ActualCost": `"\{{ (faker.string.numeric(5)) }}.00`,
-                "ExpectedRevenue": `"\{{ (faker.string.numeric(6)) }}.00`,
-                "ExpectedResponse": `"\{{ (faker.string.numeric(2)) }}.0`
+                "BudgetedCost": `\${{ (faker.string.numeric(5)) }}.00`,
+                "ActualCost": `\${{ (faker.string.numeric(5)) }}.00`,
+                "ExpectedRevenue": `\${{ (faker.string.numeric(6)) }}.00`,
+                "ExpectedResponse": `\${{ (faker.string.numeric(2)) }}.0`
             },
                 
             "Task": {
@@ -584,7 +584,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7)), to: (new Date().setDate(new Date().getDate() + 30)) })}}`,
                 "EndDateTime": `|
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 31)), to: (new Date().setDate(new Date().getDate() + 38)) })}}`,
-                "Location": `\${{faker.location.streetAddress()}}, {{faker.location.city()}}, {{faker.location.state()}} {{faker.location.zipCode()}}`,
+                "Location": `\${{faker.location.streetAddress()}}, \${{faker.location.city()}}, \${{faker.location.state()}} \${{faker.location.zipCode()}}`,
                 "ShowAs": `\${{faker.helpers.arrayElement(['Busy', 'Free', 'OutOfOffice', 'Working'])}}`,
                 "Type": `\${{faker.helpers.arrayElement(['Meeting', 'Call', 'Other'])}}`,
                 "IsAllDayEvent": `\${{faker.helpers.arrayElement(['true', 'false'])}}`
@@ -614,7 +614,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 365)), to: (new Date()) })}}`,
                 "PurchaseDate": `|
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 730)), to: (new Date().setDate(new Date().getDate() - 366)) })}}`,
-                "SerialNumber": `\${{faker.string.alphanumeric(10)}}-{{faker.string.numeric(6)}}`,
+                "SerialNumber": `\${{faker.string.alphanumeric(10)}}-\${{faker.string.numeric(6)}}`,
                 "Status": `\${{faker.helpers.arrayElement(['Purchased', 'Shipped', 'Installed', 'Registered'])}}`,
                 "Price": `\${{ (faker.string.numeric(5)) }}.00`,
                 "Quantity": `\${{faker.string.numeric(2)}}`
