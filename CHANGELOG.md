@@ -13,6 +13,10 @@
 - **What does not change.** An object with no standard address, such as `Widget__c`, still needs `customCompoundAddressFields` for a typeless address field and is otherwise a TODO line. A configured custom compound address still expands to its `__s` parts. State and Country stay plain, never `StateCode`/`CountryCode`.
 - **Snowfakery Contract recipes gain their Billing and Shipping parts.** Snowfakery's standard field map has no Contract entry, so before this change its Contract recipes had no address.
 
+### Validation rules on an address or geolocation part (#697)
+
+- **A rule on a part a compound expansion wrote now says where the part comes from**, rather than that Treecipe did not read the field. For example, `### TODO -- VALIDATION RULE NOT APPLIED -- "Rule" -- QuoteToCity is written as a part of Quote's compound QuoteToAddress, which validation rules do not change`. This covers standard and configured custom addresses (`Site__City__s` → `Site__c`) and Geolocation parts (`Site_Location__Latitude__s` → `Site_Location__c`). A part the standard field map writes keeps its standard-field reason, and a Name part keeps its #114 reason. The rule is still not applied to the part's value.
+
 ### SOQL templates and the Query tab
 
 - **Each standard compound address is still selected**, after the object's fields, since it can be read. Account now selects `BillingAddress` and `ShippingAddress`, Contact `MailingAddress` and `OtherAddress`, Lead `Address`. A person account address is selected only when its parts are recipe fields.
@@ -20,6 +24,7 @@
 ### Under the hood
 
 - `ObjectInfoWrapper/StandardCompoundAddressFields.ts` (imports nothing) names each standard object's compound address fields. `DirectoryProcessor.isCompoundAddressField` looks a typeless field up in it, and `buildUnretrievedStandardAddressFieldInfos` adds the addresses with no file; both expand through `buildCompoundComponentFieldInfos`. `SOQLTemplateService.getCompoundAddressFieldNames` selects them. No faker service or interface changes.
+- `ObjectInfoWrapper/CompoundComponentApiName.ts` (imports nothing) holds the part naming rule `RecipeService.buildCompoundComponentApiName` used to hold, and that method delegates to it, so `SOQLTemplateService` reads the rule without loading `RecipeService`. `StandardCompoundAddressFields` builds its entries in private static methods, and freezes every list and entry (#697).
 - **Tests.** `DirectoryProcessor.standardCompoundAddress.test.ts` runs every case in both backends, over a new `mocks/StandardCompoundAddressSalesforceMetadataDirectory/` (Quote, Order, WorkOrder, a person Account, `Widget__c`). `DirectoryProcessor.generatedRecipeYaml.test.ts` loads that fixture's recipes, `StandardCompoundAddressFields.test.ts` pins the list, and `SOQLTemplateService.test.ts` covers the columns. The golden files, the Recipe Cockpit writer fixtures, the Query tab baseline and two journeys' query texts were updated for the removed TODO lines and the added columns.
 
 ## [3.207.1] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)

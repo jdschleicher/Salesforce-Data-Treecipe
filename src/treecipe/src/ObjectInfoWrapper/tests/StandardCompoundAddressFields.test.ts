@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { StandardCompoundAddressFields } from '../StandardCompoundAddressFields';
+import { IStandardCompoundAddressField, StandardCompoundAddressFields } from '../StandardCompoundAddressFields';
 import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
 
 describe('StandardCompoundAddressFields (#694)', () => {
@@ -52,6 +52,27 @@ describe('StandardCompoundAddressFields (#694)', () => {
         expect(StandardCompoundAddressFields.findAddressField('Order', 'ShippingAddress')).toEqual({ fieldApiName: 'ShippingAddress', fieldLabel: 'Shipping Address', isWrittenOnlyWithItsFieldFile: false });
         expect(StandardCompoundAddressFields.findAddressField('Order', 'QuoteToAddress')).toBeUndefined();
         expect(StandardCompoundAddressFields.findAddressField('Order', undefined as unknown as string)).toBeUndefined();
+
+    });
+
+    test('no caller can change a list or an entry: every one is frozen (#697)', () => {
+
+        const quoteAddressFields = StandardCompoundAddressFields.getAddressFields('Quote') as IStandardCompoundAddressField[];
+
+        expect(Object.isFrozen(StandardCompoundAddressFields.addressFieldsByObjectApiName)).toBe(true);
+        expect(() => quoteAddressFields.push({ fieldApiName: 'Evil', fieldLabel: 'Evil', isWrittenOnlyWithItsFieldFile: false })).toThrow(TypeError);
+        expect(() => { quoteAddressFields[0].fieldApiName = 'Evil'; }).toThrow(TypeError);
+        everyAddressField.forEach(addressField => expect(addressField.fieldApiName).not.toBe('Evil'));
+        Object.values(StandardCompoundAddressFields.addressFieldsByObjectApiName).forEach(addressFields => {
+            expect(Object.isFrozen(addressFields)).toBe(true);
+            addressFields.forEach(addressField => expect(Object.isFrozen(addressField)).toBe(true));
+        });
+
+    });
+
+    test('the map has no prototype, so a prototype member name is never an object', () => {
+
+        expect(Object.getPrototypeOf(StandardCompoundAddressFields.addressFieldsByObjectApiName)).toBeNull();
 
     });
 

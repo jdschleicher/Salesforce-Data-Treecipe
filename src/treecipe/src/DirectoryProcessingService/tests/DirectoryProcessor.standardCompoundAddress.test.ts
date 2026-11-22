@@ -6,6 +6,7 @@ import { ConfigurationService } from '../../ConfigurationService/ConfigurationSe
 import { RecipeFakerServiceFactory } from '../../FakerRecipeProcessor/RecipeFakerServiceFactory';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
+import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -247,6 +248,109 @@ describe.each([
             const fieldInfos = await walkFields('Widget__c', readFixtureFieldFiles('Widget__c'));
 
             expect(fieldNamesOf(fieldInfos)).toEqual(['Widget_Note__c', ...ADDRESS_PARTS.map(addressPart => `Site__${addressPart}__s`)]);
+
+        });
+
+    });
+
+    describe('a validation rule that names a part a compound expansion wrote (#697)', () => {
+
+        const LOCATION_FIELD_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Site_Location__c</fullName>
+    <label>Site Location</label>
+    <displayLocationInDecimal>true</displayLocationInDecimal>
+    <scale>6</scale>
+    <type>Location</type>
+</CustomField>`;
+
+        const recordNotAppliedRule = async (objectApiName: string, ruleFieldReference: string, xmlByFieldFileName: Record<string, string>) => {
+
+            const ruleConstraint: any = { fieldReference: ruleFieldReference };
+            const ruleConstraintsByField = new Map([[ruleFieldReference.toLowerCase(), [ruleConstraint]]]);
+            const fieldsInfo = await walkFields(objectApiName, xmlByFieldFileName);
+            const objectInfoWrapper = new ObjectInfoWrapper();
+            objectInfoWrapper.addKeyToObjectInfoMap(objectApiName);
+            objectInfoWrapper.ObjectToObjectInfoMap[objectApiName].FullRecipe = '';
+
+            directoryProcessor.recordValidationRulesNotApplied(
+                objectInfoWrapper,
+                objectApiName,
+                [{ ruleName: 'Address_Rule', constraint: ruleConstraint } as any],
+                ruleConstraintsByField,
+                fieldsInfo,
+                standardFieldMappings
+            );
+
+            return objectInfoWrapper.ObjectToObjectInfoMap[objectApiName];
+
+        };
+
+        test('a rule on a part of an address with no field file names the compound it belongs to', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Quote', 'QuoteToCity', {});
+
+            const expectedReason = "QuoteToCity is written as a part of Quote's compound QuoteToAddress, which validation rules do not change";
+            expect(objectInfo.ValidationRulesNotApplied).toEqual([{ ruleName: 'Address_Rule', reason: expectedReason }]);
+            expect(objectInfo.FullRecipe).toContain(`### TODO -- VALIDATION RULE NOT APPLIED -- "Address_Rule" -- ${expectedReason}`);
+
+        });
+
+        test('the part is matched case-insensitively, as a formula is, and named as the recipe writes it', async () => {
+
+            const objectInfo = await recordNotAppliedRule('WorkOrder', 'postalcode', {});
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("PostalCode is written as a part of WorkOrder's compound Address, which validation rules do not change");
+
+        });
+
+        test('a rule on a part of a configured custom address names that address', async () => {
+
+            jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue(['Widget__c.Site__c']);
+            directoryProcessor = new DirectoryProcessor();
+
+            const objectInfo = await recordNotAppliedRule('Widget__c', 'Site__City__s', readFixtureFieldFiles('Widget__c'));
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("Site__City__s is written as a part of Widget__c's compound Site__c, which validation rules do not change");
+
+        });
+
+        test('a rule on a Geolocation part names its Location field', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Widget__c', 'Site_Location__Latitude__s', { 'Site_Location__c.field-meta.xml': LOCATION_FIELD_XML });
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("Site_Location__Latitude__s is written as a part of Widget__c's compound Site_Location__c, which validation rules do not change");
+
+        });
+
+        test('a part the standard field map writes (Account.BillingCity) keeps the standard-field reason', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Account', 'BillingCity', {});
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("BillingCity is written from Treecipe's standard-field mapping, which validation rules do not change");
+
+        });
+
+        test('a field that really is missing keeps the not-read reason', async () => {
+
+            const objectInfo = await recordNotAppliedRule('Quote', 'Discount__c', {});
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("Discount__c is not a field Treecipe read from this object's fields folder");
+
+        });
+
+        test('a part named on another object is not that object\'s part', async () => {
+
+            await walkFields('Quote', {});
+            const objectInfo = await recordNotAppliedRule('Widget__c', 'QuoteToCity', {});
+
+            expect(objectInfo.ValidationRulesNotApplied[0].reason)
+                .toBe("QuoteToCity is not a field Treecipe read from this object's fields folder");
 
         });
 

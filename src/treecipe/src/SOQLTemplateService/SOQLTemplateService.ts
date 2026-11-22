@@ -4,6 +4,7 @@ import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
 import { StandardCompoundAddressFields } from '../ObjectInfoWrapper/StandardCompoundAddressFields';
+import { CompoundComponentApiName } from '../ObjectInfoWrapper/CompoundComponentApiName';
 const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 const TEXT_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Html', 'Email', 'Phone', 'Url'];
@@ -197,9 +198,10 @@ export class SOQLTemplateService {
     }
 
     /*
-        A standard compound address is never a recipe field either (#694), only its parts, yet it is
-        the one column that reads the whole address, selected after the fields. A person account's is selected only when its
-        parts are in Fields: in an org without person accounts the column does not exist.
+        A standard compound address is never a recipe field either (#694), only its parts, yet it
+        is the one column that reads the whole address, selected after the fields. A person
+        account's is selected only when its parts are in Fields: in an org without person accounts
+        the column does not exist.
     */
     static getCompoundAddressFieldNames(objectName: string, objectInfo: ObjectInfo | undefined): string[] {
 
@@ -207,7 +209,7 @@ export class SOQLTemplateService {
         return StandardCompoundAddressFields.getAddressFields(objectName)
             .filter(addressField => !fieldApiNames.has(addressField.fieldApiName))
             .filter(addressField => !addressField.isWrittenOnlyWithItsFieldFile
-                || fieldApiNames.has(addressField.fieldApiName.replace(/Address$/, 'Street')))
+                || fieldApiNames.has(CompoundComponentApiName.build(addressField.fieldApiName, 'Street')))
             .map(addressField => addressField.fieldApiName);
 
     }
