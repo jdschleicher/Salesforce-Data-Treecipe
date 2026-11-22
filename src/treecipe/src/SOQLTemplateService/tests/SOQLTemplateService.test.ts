@@ -462,9 +462,9 @@ describe('SOQLTemplateService selects a person\'s compound Name, which is never 
         const contactInfo = buildPersonWrapper().ObjectToObjectInfoMap['Contact'];
 
         expect(SOQLTemplateService.buildSelectAllQuery('Contact', contactInfo))
-            .toBe('SELECT Id,\n       Name,\n       AccountId,\n       OtherAddress,\n       ReportsToId\nFROM Contact');
+            .toBe('SELECT Id,\n       Name,\n       AccountId,\n       OtherAddress,\n       ReportsToId,\n       MailingAddress\nFROM Contact');
         expect(SOQLTemplateService.buildRecordTypeFilteredQueries('Contact', contactInfo)[0])
-            .toContain('SELECT Id,\n       Name,\n       OtherAddress\nFROM Contact');
+            .toContain('SELECT Id,\n       Name,\n       OtherAddress,\n       MailingAddress\nFROM Contact');
 
     });
 
@@ -616,6 +616,44 @@ describe('SOQLTemplateService.listTreeQueries (#367)', () => {
     it('never lists an object named after a prototype member', () => {
         const wrapper = buildTreeWrapper();
         expect(SOQLTemplateService.listTreeQueries(wrapper, ['constructor', 'toString'])).toEqual([]);
+    });
+
+});
+
+describe('SOQLTemplateService selects a standard compound address, which is never a recipe field (#694)', () => {
+
+    it('selects each of the object\'s standard addresses after its fields', () => {
+
+        const wrapper = buildMockWrapper({ Quote: { fields: [{ name: 'BillingCity', label: 'Bill To City', type: 'Text' }] } });
+
+        expect(SOQLTemplateService.buildSelectAllQuery('Quote', wrapper.ObjectToObjectInfoMap['Quote']))
+            .toBe('SELECT Id,\n       BillingCity,\n       BillingAddress,\n       ShippingAddress,\n       QuoteToAddress,\n       AdditionalAddress\nFROM Quote');
+
+    });
+
+    it('selects an address once when the object already has it as a field', () => {
+
+        const wrapper = buildMockWrapper({ Order: { fields: [{ name: 'BillingAddress', label: 'Billing Address', type: 'Address' }] } });
+
+        expect(SOQLTemplateService.getCompoundAddressFieldNames('Order', wrapper.ObjectToObjectInfoMap['Order'])).toEqual(['ShippingAddress']);
+
+    });
+
+    it('selects a person account address only when its parts are recipe fields', () => {
+
+        const businessAccount = buildMockWrapper({ Account: { fields: [] } });
+        const personAccount = buildMockWrapper({ Account: { fields: [{ name: 'PersonMailingStreet', label: 'Mailing Address Street', type: 'Text' }] } });
+
+        expect(SOQLTemplateService.getCompoundAddressFieldNames('Account', businessAccount.ObjectToObjectInfoMap['Account'])).toEqual(['BillingAddress', 'ShippingAddress']);
+        expect(SOQLTemplateService.getCompoundAddressFieldNames('Account', personAccount.ObjectToObjectInfoMap['Account'])).toEqual(['BillingAddress', 'ShippingAddress', 'PersonMailingAddress']);
+
+    });
+
+    it('an object with no standard address gets nothing added', () => {
+
+        expect(SOQLTemplateService.getCompoundAddressFieldNames('Widget__c', undefined)).toEqual([]);
+        expect(SOQLTemplateService.getCompoundAddressFieldNames('constructor', undefined)).toEqual([]);
+
     });
 
 });

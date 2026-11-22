@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.207.2] - Recipe Cockpit: the "Customize and create new recipe" modal lays out only the fields near the view, so ↺ on a big tree answers at once (#693)
+## [3.208.1] - Recipe Cockpit: the "Customize and create new recipe" modal lays out only the fields near the view, so ↺ on a big tree answers at once (#693)
 
 ### Customize and create new recipe
 
@@ -8,6 +8,27 @@
   - With 40 objects × 300 fields all open, ↺ on the root takes about 17 ms, against 0.4–0.6 s. ↺ on an object with 13 below it takes about 19 ms, against about 190 ms. Opening every object one by one takes about 0.45 s, against about 1.1 s, and the modal opens in about 30 ms, against about 110 ms.
   - A ✕ on a field you can see still leaves the list exactly where it was, and focus still reaches a field far down a list that has not been drawn.
 - **A list not yet drawn is given a height from its field count**, rounded up to a power of 2 (8 to 1024 fields, 1.85rem a field), as a CSS class rather than an inline style. So until every list has been drawn, the scroll bar can show the modal up to about twice as long as it is.
+## [3.208.0] - Every standard compound Address field is written as its parts, on every standard object that has one, retrieved or not (#694)
+
+### Recipe generation
+
+- **Standard objects with an address now get fake address values.** Quote (`Billing`, `Shipping`, `QuoteTo`, `Additional`), Order and ServiceContract (`Billing`, `Shipping`), and WorkOrder, ServiceAppointment, Asset and User (`Address`) get `Street`, `City`, `State`, `PostalCode` and `Country` lines, such as `BillingStreet: ${{faker.location.streetAddress()}}` (faker-js) or `BillingStreet: ${{fake.street_address}}` (snowfakery).
+  - **This happens whether or not the address field file was retrieved.** An object whose `fields/` folder is in the project gets every part of every listed address.
+  - A part with its own field file (`Quote/fields/BillingCity.field-meta.xml`) is written once, from that file.
+  - Quote addresses are fresh fake values. An API insert does not copy them from the Account.
+- **A typeless standard address field file is no longer a TODO line.** A retrieve writes `ShippingAddress.field-meta.xml` with no `<type>`. Account, Contact and Lead recipes lose `ShippingAddress: ### TODO -- REVIEW THIS LINE…`, `OtherAddress: …` and `Address: …`, and their faker-js data sets lose `"ShippingAddress": null`, a compound field the Collections API does not accept. Their address parts still come from the standard field map, so nothing else changes on those objects.
+- **Person account addresses need their file.** `PersonMailingAddress` and `PersonOtherAddress` parts are written only when the Account folder has that field's file, because a business account insert, or an org without person accounts, refuses them. A project without person accounts gets the same Account recipe as before.
+- **What does not change.** An object with no standard address, such as `Widget__c`, still needs `customCompoundAddressFields` for a typeless address field and is otherwise a TODO line. A configured custom compound address still expands to its `__s` parts. State and Country stay plain, never `StateCode`/`CountryCode`.
+- **Snowfakery Contract recipes gain their Billing and Shipping parts.** Snowfakery's standard field map has no Contract entry, so before this change its Contract recipes had no address.
+
+### SOQL templates and the Query tab
+
+- **Each standard compound address is still selected**, after the object's fields, since it can be read. Account now selects `BillingAddress` and `ShippingAddress`, Contact `MailingAddress` and `OtherAddress`, Lead `Address`. A person account address is selected only when its parts are recipe fields.
+
+### Under the hood
+
+- `ObjectInfoWrapper/StandardCompoundAddressFields.ts` (imports nothing) names each standard object's compound address fields. `DirectoryProcessor.isCompoundAddressField` looks a typeless field up in it, and `buildUnretrievedStandardAddressFieldInfos` adds the addresses with no file; both expand through `buildCompoundComponentFieldInfos`. `SOQLTemplateService.getCompoundAddressFieldNames` selects them. No faker service or interface changes.
+- **Tests.** `DirectoryProcessor.standardCompoundAddress.test.ts` runs every case in both backends, over a new `mocks/StandardCompoundAddressSalesforceMetadataDirectory/` (Quote, Order, WorkOrder, a person Account, `Widget__c`). `DirectoryProcessor.generatedRecipeYaml.test.ts` loads that fixture's recipes, `StandardCompoundAddressFields.test.ts` pins the list, and `SOQLTemplateService.test.ts` covers the columns. The golden files, the Recipe Cockpit writer fixtures, the Query tab baseline and two journeys' query texts were updated for the removed TODO lines and the added columns.
 
 ## [3.207.1] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
 
