@@ -3,6 +3,7 @@
 Design notes moved out of CLAUDE.md (#563). Read this before changing the service; CLAUDE.md keeps only the rules every change must follow. History is in CHANGELOG.md.
 
 - **`isChildTreeCopiedPerRecordTypeBlock` is a property of the selection, not a generation setting** (#622) — it only means anything when an object has several blocks, so it travels with the names that make them. Off by default; the constructor's second argument, and `fromUnknown`'s, which turns it on only for exactly `true` because a selection can arrive through a command argument. A saved selection (#196) never sets it. What it does to a recipe is `RelationshipService/DESIGN.md`'s.
+- **`listRecordTypeCombinations` takes the cap, and builds nothing above it** (#624) — the Recipe Cockpit's "A data set for each record type" is one data set per combination of one record type per object, and the count is a product of the tick counts, so a large selection would allocate every combination only to refuse it. `countRecordTypeCombinations` gives the count the refusal names. Each combination is a selection with no prototype (its keys are object api names), in the order a reader expects: objects as given, names in tick order, the first object varying slowest.
 
 ## Files
 

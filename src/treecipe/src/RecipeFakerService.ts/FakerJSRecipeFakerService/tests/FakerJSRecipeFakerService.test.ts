@@ -129,8 +129,9 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToNPMFakerMappings['masterdetail']).toBe(referenceValuePlaceholder);
         });
 
-        test('Formula field returns correct message', () => {
-            expect(fieldTypeToNPMFakerMappings['formula']).toBe('### TODO - Formula fields are calculated, not generated - remove this line');
+        // A FORMULA FIELD'S <type> IS ITS RESULT TYPE, SO THIS ENTRY NEVER MATCHED; RecipeService WRITES "READ ONLY -- formula" FOR EVERY BACKEND (#685)
+        test('Formula is absent from the map, because RecipeService writes a read-only field before any backend is asked', () => {
+            expect(fieldTypeToNPMFakerMappings).not.toHaveProperty('formula');
         });
 
         /*
@@ -148,7 +149,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
                 'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
-                'lookup', 'masterdetail', 'formula'
+                'lookup', 'masterdetail'
             ];
 
             expectedFields.forEach(field => {
@@ -642,16 +643,17 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
     /*
         Event.Location is a plain Text field in the OOTB static map, NOT a Geolocation compound field,
-        so the geolocation work must leave its composed street/city/state/zip value exactly as it was.
+        so the geolocation work must leave its composed street/city/state/zip value alone. Every part
+        is its own ${{ … }} (#685): a bare {{ was sent to Salesforce as text.
     */
     describe('Event.Location OOTB mapping', () => {
 
-        test('keeps its composed address value byte-identical', () => {
+        test('keeps its composed address value, every part an expression faker-js evaluates', () => {
 
             const ootbObjectToFieldMappings = fakerJSRecipeFakerService.getOOTBObjectApiNameToFieldApiNameMap();
 
             expect(ootbObjectToFieldMappings['Event']['Location']).toBe(
-                '${{faker.location.streetAddress()}}, {{faker.location.city()}}, {{faker.location.state()}} {{faker.location.zipCode()}}'
+                '${{faker.location.streetAddress()}}, ${{faker.location.city()}}, ${{faker.location.state()}} ${{faker.location.zipCode()}}'
             );
 
         });
@@ -1001,6 +1003,24 @@ describe('FakerJSRecipeFakerService.buildPicklistChoiceExpression (#465)', () =>
         const breakoutAttempt = 'a`,globalThis.injected=true,`b';
         expect(fakerJSRecipeFakerService.buildPicklistChoiceExpression([breakoutAttempt], false))
             .toBe(`\${{ faker.helpers.arrayElement([\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(breakoutAttempt, '`')}\`]) }}`);
+
+    });
+
+});
+
+// A BUILT-IN STANDARD-FIELD VALUE IS EVALUATED ONLY AS ${{ … }}: A BARE {{ OR A STRAY LEADING QUOTE IS SENT TO SALESFORCE AS TEXT (#685)
+describe('FakerJSRecipeFakerService built-in standard-field values are all expressions the backend evaluates', () => {
+
+    const standardFieldValues = Object.entries(new FakerJSRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap())
+        .flatMap(([objectApiName, valueByFieldApiName]) => Object.entries(valueByFieldApiName).map(([fieldApiName, recipeValue]) => [`${objectApiName}.${fieldApiName}`, recipeValue] as const));
+
+    test.each(standardFieldValues)('%s opens every expression with ${{ and starts with no stray quote', (unusedObjectField, recipeValue) => {
+
+        const expressionOpenerCount = (recipeValue.match(/\{\{/g) ?? []).length;
+        const dollarOpenerCount = (recipeValue.match(/\$\{\{/g) ?? []).length;
+
+        expect(dollarOpenerCount).toBe(expressionOpenerCount);
+        expect(recipeValue.trimStart().startsWith('"')).toBe(false);
 
     });
 

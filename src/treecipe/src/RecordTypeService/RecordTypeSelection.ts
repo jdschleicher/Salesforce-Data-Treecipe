@@ -160,6 +160,42 @@ export class RecordTypeSelection {
 
     }
 
+    // HOW MANY DATA SETS "A data set for each record type" (#624) WOULD MAKE: ONE PER COMBINATION OF ONE RECORD TYPE PER OBJECT
+    static countRecordTypeCombinations(developerNamesByObject: Readonly<Record<string, readonly string[]>>): number {
+
+        return Object.keys(developerNamesByObject)
+            .reduce((combinationCount, objectApiName) => combinationCount * developerNamesByObject[objectApiName].length, 1);
+
+    }
+
+    /*
+        Every combination of ONE record type per object (#624), as selections a generate reads: the
+        objects in the order given, each object's names in the order ticked, the first object varying
+        slowest (Account {Business, Partner} x Opportunity {New} is Business+New, then Partner+New).
+        Above maximumCombinationCount none is built, so a large selection costs nothing; the caller
+        reads countRecordTypeCombinations to say why. Each selection has no prototype: its keys are
+        object api names.
+    */
+    static listRecordTypeCombinations(developerNamesByObject: Readonly<Record<string, readonly string[]>>,
+                                        maximumCombinationCount: number): Record<string, string[]>[] | undefined {
+
+        if ( RecordTypeSelection.countRecordTypeCombinations(developerNamesByObject) > maximumCombinationCount ) {
+            return undefined;
+        }
+
+        let combinations: Record<string, string[]>[] = [Object.create(null)];
+        Object.keys(developerNamesByObject).forEach(objectApiName => {
+            combinations = combinations.flatMap(combination => developerNamesByObject[objectApiName].map(developerName => {
+                const extendedCombination: Record<string, string[]> = Object.assign(Object.create(null), combination);
+                extendedCombination[objectApiName] = [developerName];
+                return extendedCombination;
+            }));
+        });
+
+        return combinations;
+
+    }
+
     /*
         A record type's picklist section for a field, or undefined when the record type does not
         list the field -- which leaves the field unrestricted by it. Own-key only: a field named

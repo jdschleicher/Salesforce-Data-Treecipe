@@ -167,6 +167,7 @@ src/
     │   ├── RelationshipTypes.ts             # RelationshipDetail, RelationshipTree, RecipeFileOutput: what RelationshipService fills in (#574)
     │   ├── RecordTypesWrapper.ts            # RecordTypeWrapper, the record type ObjectInfo.RecordTypesMap holds; RecordTypeService fills it in (#575)
     │   ├── PersonNameObjects.ts             # Contact, Lead, Individual: the objects whose Name is a read-only compound (#114); imports nothing
+    │   ├── ReadOnlyFields.ts                # Fields Salesforce calculates or sets itself (#685): formula, roll-up, auto number and a pinned standard list, written READ ONLY -- <reason>, locked in the cockpit, never inserted; imports nothing
     │   ├── StandardDerivedFields.ts         # Fields Salesforce sets from another lookup (Quote.AccountId from OpportunityId, #680): written as Opportunity_NickName.AccountId, read only in the cockpit, never inserted; imports nothing
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
@@ -226,6 +227,7 @@ src/
     │   ├── RecipeCockpitMetadataRetrieve.ts  # Troubleshooting retrieves (#326, #382): org listing, package.xml, CLI answer; no vscode
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode
     │   ├── RecipeCockpitRecordTypeRecipe.ts  # The record types ticked at Generate fake data and insert (#623): the in-memory recipe built for them and where a card's settings land in it
+    │   ├── RecipeCockpitRecordTypeSets.ts    # "A data set for each record type" (#624): the sets inserted in turn, the confirmation's list of them and the one notification; the cockpit hands in its steps
     │   ├── RecipeCockpitObjectSelection.ts   # Pure cascade of the Treecipe tab's tree icons (#219): what a card's direct exclusions auto-exclude, which lookups they disable; imports nothing
     │   ├── RecipeCockpitFixedValueStore.ts   # The <recipe>.fixedValues.json file (#342); imports only SalesforceApiName and the writer
     │   ├── RecipeCockpitRemovedTodoStore.ts  # The <recipe>.removedTodos.json file (#391); imports only SalesforceApiName and the writer

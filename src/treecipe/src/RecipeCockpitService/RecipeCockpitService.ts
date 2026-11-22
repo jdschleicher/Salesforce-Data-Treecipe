@@ -148,6 +148,9 @@ import {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -581,6 +584,9 @@ export {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -709,6 +715,7 @@ import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCoc
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup, IObjectSelectionRemovedLookup } from './RecipeCockpitObjectSelection';
 import {
+    IRecordTypeSetModeOffer,
     OccurrenceSettingPlacer,
     RECORD_TYPE_SET_MODE_LABELS,
     RECORD_TYPE_SET_MODE_LEGEND,
@@ -718,6 +725,7 @@ import { IRecipeCockpitCreateReadinessViewModel } from './RecipeCockpitRecordCre
 import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedFields';
+import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
@@ -1020,6 +1028,8 @@ export interface IRecipeCockpitFieldViewModel {
     validationRules?: IRecipeCockpitFieldValidationRulesViewModel;
     // SET ONLY ON A FIELD WHOSE RECIPE LINES CARRY A TODO COMMENT (#354), SO A RECIPE WITHOUT ONE POSTS AS IT ALWAYS DID
     todos?: IRecipeCockpitTodoViewModel[];
+    // SET ONLY ON A FORMULA FIELD (#685): ITS FORMULA, WHICH ITS READ-ONLY ROW SHOWS
+    formula?: string;
 }
 
 /*
@@ -2200,9 +2210,9 @@ export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpit
     checkboxLabel: string;
 }
 
-// THE RECORD TYPE SET MODES A CONFIRMATION OFFERS (#623), IN THE ORDER DRAWN; THE FIRST IS THE ONE CHOSEN WHEN IT OPENS
+// THE RECORD TYPE SET MODES A CONFIRMATION OFFERS (#623), IN THE ORDER DRAWN; THE FIRST ENABLED ONE IS CHOSEN WHEN IT OPENS, AND A DISABLED ONE (#624) IS NEVER AN ANSWER
 export interface IRecipeCockpitConfirmWithRecordTypeSetModesOptions extends IRecipeCockpitConfirmOptions {
-    recordTypeSetModes: RecordTypeSetMode[];
+    recordTypeSetModes: IRecordTypeSetModeOffer[];
 }
 
 // THE LABEL CHOSEN, OR undefined FOR CANCEL; isChecked IS true ONLY FOR A BOX TICKED UNDER A CHOSEN BUTTON
@@ -2217,6 +2227,8 @@ interface IRecipeCockpitPendingConfirmation {
     confirmationId: string;
     buttonLabels: string[];
     hasCheckbox: boolean;
+    // A CONFIRMATION THAT DREW MODES IS ANSWERED ONLY WITH ONE OF ITS ENABLED ONES
+    isAskingRecordTypeSetMode: boolean;
     recordTypeSetModes: RecordTypeSetMode[];
     resolve: (answer: IRecipeCockpitConfirmAnswer) => void;
     // SET ONLY WHEN "Change org…" WAS DRAWN: WHAT IT STARTS AGAIN, AND THE ACTION THAT ASKED
@@ -3446,6 +3458,11 @@ export class RecipeCockpitService {
         const derivedField = StandardDerivedFields.resolveDerivedField(objectViewModel.objectApiName, fieldViewModel.fieldApiName);
         if ( derivedField ) {
             return `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}${derivedField.throughFieldApiName}`;
+        }
+
+        const readOnlyReason = ReadOnlyFields.readReason(fieldViewModel.recipeValue);
+        if ( readOnlyReason ) {
+            return `${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}${readOnlyReason}`;
         }
 
         if ( fieldViewModel.controllingField ) {
@@ -5058,7 +5075,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[], recordTypeSetModes: RecordTypeSetMode[] = []): Promise<IRecipeCockpitConfirmAnswer> {
+    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[], recordTypeSetModes: IRecordTypeSetModeOffer[] = []): Promise<IRecipeCockpitConfirmAnswer> {
 
         const cancelled: IRecipeCockpitConfirmAnswer = { chosenLabel: undefined, isChecked: false };
 
@@ -5090,7 +5107,8 @@ export class RecipeCockpitService {
                 confirmationId: confirmationId,
                 buttonLabels: [...buttonLabels],
                 hasCheckbox: checkboxLabel !== undefined,
-                recordTypeSetModes: [...recordTypeSetModes],
+                isAskingRecordTypeSetMode: recordTypeSetModes.length > 0,
+                recordTypeSetModes: recordTypeSetModes.filter(modeOffer => modeOffer.disabledReason === undefined).map(modeOffer => modeOffer.mode),
                 resolve: resolve,
                 ...( changeOrg ? { changeOrg: changeOrg, actionContext: actionContext } : {} )
             };
@@ -5107,7 +5125,11 @@ export class RecipeCockpitService {
                 ...( recordTypeSetModes.length > 0
                     ? {
                         recordTypeSetModeLegend: RECORD_TYPE_SET_MODE_LEGEND,
-                        recordTypeSetModes: recordTypeSetModes.map(recordTypeSetMode => ({ name: recordTypeSetMode, label: RECORD_TYPE_SET_MODE_LABELS[recordTypeSetMode] }))
+                        recordTypeSetModes: recordTypeSetModes.map(modeOffer => ({
+                            name: modeOffer.mode,
+                            label: RECORD_TYPE_SET_MODE_LABELS[modeOffer.mode],
+                            ...( modeOffer.disabledReason !== undefined ? { disabledReason: modeOffer.disabledReason } : {} )
+                        }))
                     }
                     : {} ),
                 ...( changeOrg ? { canChangeOrg: true } : {} )
@@ -5160,7 +5182,7 @@ export class RecipeCockpitService {
 
         const answer = CockpitConfirmDialog.readAnswer(pendingConfirmation.buttonLabels, pendingConfirmation.hasCheckbox, choice, isChecked);
 
-        if ( pendingConfirmation.recordTypeSetModes.length === 0 || answer.chosenLabel === undefined ) {
+        if ( !pendingConfirmation.isAskingRecordTypeSetMode || answer.chosenLabel === undefined ) {
             pendingConfirmation.resolve(answer);
             return;
         }
@@ -7829,6 +7851,11 @@ export class RecipeCockpitService {
                 const validationRules = this.readFieldValidationRules(wrapperFieldRecord);
                 if ( validationRules ) {
                     fieldViewModel.validationRules = validationRules;
+                }
+
+                // WORKSPACE TEXT: A STRING, AND NO LONGER THAN SALESFORCE ALLOWS A FORMULA
+                if ( typeof wrapperFieldRecord.formula === 'string' && wrapperFieldRecord.formula.length <= RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH ) {
+                    fieldViewModel.formula = wrapperFieldRecord.formula;
                 }
 
                 if ( RECIPE_COCKPIT_PICKLIST_FIELD_TYPES.includes(fieldType) ) {

@@ -173,7 +173,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       checkElement = drawnCheckElement;
     }
     const offeredModes = readConfirmRecordTypeSetModes(hostMessage);
-    const modeState = { chosenName: offeredModes.length > 0 ? offeredModes[0].name : null };
+    const firstEnabledMode = offeredModes.find(function(offeredMode) {
+      return offeredMode.disabledReason === void 0;
+    });
+    const modeState = { chosenName: firstEnabledMode ? firstEnabledMode.name : null };
     let modeGroupElement = null;
     const modeRadioElements = [];
     if (offeredModes.length > 0) {
@@ -195,16 +198,23 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         const modeRowElement = createElement("div", "confirmModeRow");
         const radioElement = createButton("check", "confirmModeRadio");
         const modeLabelElement = createElement("span", "confirmModeLabel", offeredMode.label);
-        const chooseMode = function() {
-          modeState.chosenName = offeredMode.name;
-          drawModes();
-        };
         radioElement.setAttribute("role", "radio");
         radioElement.setAttribute("aria-label", offeredMode.label);
-        radioElement.addEventListener("click", chooseMode);
-        modeLabelElement.addEventListener("click", chooseMode);
         modeRowElement.appendChild(radioElement);
         modeRowElement.appendChild(modeLabelElement);
+        if (offeredMode.disabledReason !== void 0) {
+          radioElement.disabled = true;
+          radioElement.setAttribute("aria-disabled", "true");
+          radioElement.setAttribute("aria-description", offeredMode.disabledReason);
+          modeRowElement.appendChild(createElement("div", "confirmModeReason", offeredMode.disabledReason));
+        } else {
+          const chooseMode = function() {
+            modeState.chosenName = offeredMode.name;
+            drawModes();
+          };
+          radioElement.addEventListener("click", chooseMode);
+          modeLabelElement.addEventListener("click", chooseMode);
+        }
         drawnModeGroupElement.appendChild(modeRowElement);
         modeRadioElements.push(radioElement);
       });
@@ -225,7 +235,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     dialogElement.appendChild(actionsElement);
     overlayElement.appendChild(dialogElement);
-    const focusableElements = [bodyElement].concat(sectionToggleElements, modeRadioElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
+    const focusableElements = [bodyElement].concat(sectionToggleElements, modeRadioElements.filter(function(radioElement) {
+      return !radioElement.disabled;
+    }), checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
     dialogElement.addEventListener("keydown", function(event) {
       if (event.key === "Escape") {
         if (typeof event.preventDefault === "function") {
@@ -264,10 +276,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   function readConfirmRecordTypeSetModes(hostMessage) {
     const postedModes = hostMessage.recordTypeSetModes;
     const isReadableMode = function(mode) {
-      return isRecord(mode) && typeof mode.name === "string" && !!mode.name && typeof mode.label === "string" && !!mode.label;
+      return isRecord(mode) && typeof mode.name === "string" && !!mode.name && typeof mode.label === "string" && !!mode.label && (mode.disabledReason === void 0 || typeof mode.disabledReason === "string" && !!mode.disabledReason);
     };
     return Array.isArray(postedModes) && postedModes.every(isReadableMode) ? postedModes.map(function(mode) {
-      return { name: mode.name, label: mode.label };
+      return mode.disabledReason !== void 0 ? { name: mode.name, label: mode.label, disabledReason: mode.disabledReason } : { name: mode.name, label: mode.label };
     }) : [];
   }
   function readConfirmContent(hostMessage) {
@@ -1072,6 +1084,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX = "set by Salesforce from ";
   var RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL = "read only";
   var RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX = ", so it is never inserted";
+  var RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX = "read only: ";
+  var RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX = "formula: ";
   var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
   var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
   var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
@@ -1113,6 +1127,80 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   };
   StandardDerivedFields.derivedFieldByObjectField = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
     "Quote.AccountId": Object.freeze({ throughFieldApiName: "OpportunityId", sourceObjectApiName: "Opportunity", sourceFieldApiName: "AccountId" })
+  }));
+
+  // src/treecipe/src/ObjectInfoWrapper/ReadOnlyFields.ts
+  var READ_ONLY_FIELD_REASONS = ["formula", "roll-up summary", "auto number", "set by Salesforce"];
+  var ReadOnlyFields = class {
+    // A <formula> MAKES ANY FIELD READ ONLY, WHATEVER ITS RESULT <type>; OTHERWISE THE <type> DECIDES
+    static resolveCustomFieldReason(fieldType, hasFormula) {
+      if (hasFormula) {
+        return "formula";
+      }
+      const fieldTypeKey = typeof fieldType === "string" ? fieldType.toLowerCase() : "";
+      return Object.prototype.hasOwnProperty.call(this.reasonByCustomFieldType, fieldTypeKey) ? this.reasonByCustomFieldType[fieldTypeKey] : void 0;
+    }
+    static isStandardReadOnlyField(objectApiName, fieldApiName) {
+      return Object.prototype.hasOwnProperty.call(this.standardReadOnlyObjectFields, \`\${objectApiName}.\${fieldApiName}\`);
+    }
+    static listStandardReadOnlyObjectFields() {
+      return Object.keys(this.standardReadOnlyObjectFields);
+    }
+    static formatRecipeValue(reason) {
+      return \`\${this.recipeValuePrefix}\${reason}\`;
+    }
+    // THE REASON A RECIPE VALUE formatRecipeValue WROTE NAMES, OR undefined FOR ANY OTHER VALUE
+    static readReason(recipeValue) {
+      if (typeof recipeValue !== "string" || !recipeValue.startsWith(this.recipeValuePrefix)) {
+        return void 0;
+      }
+      const reason = recipeValue.slice(this.recipeValuePrefix.length).trim();
+      return READ_ONLY_FIELD_REASONS.find((knownReason) => knownReason === reason);
+    }
+    static isReadOnlyRecipeValue(recipeValue) {
+      return this.readReason(recipeValue) !== void 0;
+    }
+  };
+  ReadOnlyFields.recipeValuePrefix = "READ ONLY -- ";
+  ReadOnlyFields.reasonByCustomFieldType = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+    "summary": "roll-up summary",
+    "autonumber": "auto number"
+  }));
+  ReadOnlyFields.standardReadOnlyObjectFields = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+    "Asset.RootAssetId": true,
+    "Campaign.AmountAllOpportunities": true,
+    "Campaign.AmountWonOpportunities": true,
+    "Campaign.NumberOfContacts": true,
+    "Campaign.NumberOfConvertedLeads": true,
+    "Campaign.NumberOfLeads": true,
+    "Campaign.NumberOfOpportunities": true,
+    "Campaign.NumberOfResponses": true,
+    "Campaign.NumberOfWonOpportunities": true,
+    "Campaign.HierarchyActualCost": true,
+    "Campaign.HierarchyAmountAllOpportunities": true,
+    "Campaign.HierarchyAmountWonOpportunities": true,
+    "Campaign.HierarchyBudgetedCost": true,
+    "Campaign.HierarchyExpectedRevenue": true,
+    "Campaign.HierarchyNumberOfContacts": true,
+    "Campaign.HierarchyNumberOfConvertedLeads": true,
+    "Campaign.HierarchyNumberOfLeads": true,
+    "Campaign.HierarchyNumberOfOpportunities": true,
+    "Campaign.HierarchyNumberOfResponses": true,
+    "Campaign.HierarchyNumberOfWonOpportunities": true,
+    "Campaign.HierarchyNumberSent": true,
+    "CampaignMember.LeadOrContactId": true,
+    "Case.CaseNumber": true,
+    "Case.IsClosed": true,
+    "Contract.ContractNumber": true,
+    "Contract.EndDate": true,
+    "Opportunity.ExpectedRevenue": true,
+    "Opportunity.Fiscal": true,
+    "Opportunity.FiscalQuarter": true,
+    "Opportunity.FiscalYear": true,
+    "Opportunity.ForecastCategory": true,
+    "Opportunity.HasOpportunityLineItem": true,
+    "Opportunity.IsClosed": true,
+    "Opportunity.IsWon": true
   }));
 
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelConnection.ts
@@ -4918,6 +5006,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "Each card's Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field's row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card's Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.",
         "Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.",
         "A field Salesforce sets itself from another lookup, such as a Quote's AccountId, which always comes from its Opportunity, is marked read only and its pencil is disabled. Its value names the record it comes from, such as Opportunity_NickName.AccountId, says which account that record holds, and links to that row like a nickname. It is never sent to Salesforce on insert.",
+        "A field Salesforce calculates or fills in itself, such as a formula, a roll-up summary, an auto number or an Opportunity's ExpectedRevenue, is written as READ ONLY with the reason and also marked read only, its pencil disabled; a formula field shows its formula. Treecipe never sends it to Salesforce, and an insert also leaves out any field the target org says Salesforce fills itself, with a warning naming them.",
         "A friend (an object nested under another's friends: in a faker-js recipe) shows a 👥 chip per parent: the parent's nickname and its place among that parent's friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.",
         "Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card's Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO's list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.",
         "The Troubleshooting tab shows one area at a time: TODO's, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.",
@@ -4936,7 +5025,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "No fields selected: an object with every field unticked generates no records. Its row shows NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED in red in place of its nickname, friends and count, and its chain link turns red and cannot be clicked. Its children are left out with it, as for an excluded object. Tick any field to bring it back.",
         "Removed lookup: an unticked lookup field is no link to its parent. An object whose only lookup into the tree is unticked is cut off with its children, and its row says cut off — ‹Object›.‹Field› removed. Its boxes stay clickable: tick the lookup again to bring it back. An object that keeps another lookup to an included parent stays.",
         "Record counts: each object's row says what is created, such as Create 5 Contact record(s) per Account, the 5 drawn with a pencil (a friend's count is record(s) per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.",
-        "Record types: tick them under Manage record types, and the next Generate fake data and insert uses them. Its confirmation offers One data set with the record types folded together: each ticked record type gets its own records, with its own children and picklist values. The recipe is built again from your object metadata for that data set, so what was written into the recipe file is not in it (lines edited by hand, lookups wired on the card, parents or friends added on it), and no new run is written.",
+        "Record types: tick them under Manage record types, and the next Generate fake data and insert uses them. Its confirmation offers A data set for each record type, one data set per combination of one record type per object, inserted one after another, each with its own row; or One data set with the record types folded together, where each ticked record type gets its own records, with its own children and picklist values. When one of several data sets fails or is cancelled, the ones before it stay and the ones after it are not started, and above 10 data sets only the folded choice can be picked. The recipe is built again from your object metadata for that data set, so what was written into the recipe file is not in it (lines edited by hand, lookups wired on the card, parents or friends added on it), and no new run is written.",
         "The rules box: a field generated without the limits its validation rules set. Beside it, ↗ and a rule's name open that rule's .validationRule-meta.xml file at its formula, for each rule the field names, applied or not.",
         "Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one."
       ]
@@ -7829,6 +7918,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       const copiedNickname = referencedOwnerState ? readSourceFieldNickname(referencedOwnerState, derivedField.sourceFieldApiName) : null;
       fieldHeaderElement.appendChild(createElement("span", "treeFieldNote derivedFieldNote muted", copiedNickname ? derivedReason + " → " + copiedNickname : derivedReason));
     }
+    const readOnlyReason = derivedField ? void 0 : ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) {
+      const readOnlyBadgeElement = createElement("span", "fixedValueBadge derivedFieldBadge", RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL);
+      readOnlyBadgeElement.setAttribute("title", "Salesforce sets " + field.fieldApiName + " itself (" + readOnlyReason + ")" + RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX);
+      fieldHeaderElement.appendChild(readOnlyBadgeElement);
+      const readOnlyNote = readOnlyReason === "formula" && field.formula ? RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX + field.formula : readOnlyReason;
+      fieldHeaderElement.appendChild(createElement("span", "treeFieldNote readOnlyFieldNote muted", readOnlyNote));
+    }
     if (fieldState.recordTypeDeveloperNames) {
       const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(", ");
       const recordTypeChipElement = createElement("span", "recordTypeChip", recordTypeNamesText);
@@ -8303,6 +8400,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
     if (derivedField) {
       return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
+    }
+    const readOnlyReason = ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) {
+      return RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX + readOnlyReason;
     }
     if (field.controllingField) {
       return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;

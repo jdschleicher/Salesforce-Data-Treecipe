@@ -180,6 +180,22 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
     describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
 
+        test('drops every field whose value is a READ ONLY marker, and keeps every other field, a look-alike value included (#685)', () => {
+
+            const recordsByObjectApiName = snowfakeryRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(JSON.stringify([
+                { id: 1, _table: 'Gizmo__c', nickname: 'Gizmo__c_NickName', Total__c: 'READ ONLY -- formula', Line_Count__c: 'READ ONLY -- roll-up summary', Gizmo_Number__c: 'READ ONLY -- auto number', Notes__c: 'READ ONLY -- because', Quantity__c: '7' },
+                { id: 1, _table: 'Opportunity', nickname: 'Opportunity_NickName', ExpectedRevenue: 'READ ONLY -- set by Salesforce', Name: 'Deal' }
+            ]));
+
+            expect(recordsByObjectApiName.get('Gizmo__c').records).toEqual([
+                { attributes: { type: 'Gizmo__c', referenceId: 'Gizmo__c_Reference_1__Gizmo__c_NickName' }, Notes__c: 'READ ONLY -- because', Quantity__c: '7' }
+            ]);
+            expect(recordsByObjectApiName.get('Opportunity').records).toEqual([
+                { attributes: { type: 'Opportunity', referenceId: 'Opportunity_Reference_1__Opportunity_NickName' }, Name: 'Deal' }
+            ]);
+
+        });
+
         test('drops Quote.AccountId, which Salesforce sets from the quote\'s Opportunity, and keeps every other field (#680)', () => {
 
             const snowfakeryJson = JSON.stringify([
