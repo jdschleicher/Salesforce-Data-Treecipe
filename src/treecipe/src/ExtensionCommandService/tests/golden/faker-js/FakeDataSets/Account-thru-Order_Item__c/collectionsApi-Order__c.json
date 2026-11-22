@@ -7,8 +7,8 @@
         "referenceId": "Order__c_Reference_1__Order__c_Account_NickName"
       },
       "Account__c": "Account_NickName",
-      "Status__c": "Draft",
-      "Type__c": "Family & Kids' Activities"
+      "Status__c": "In Production",
+      "Type__c": "Water Sports"
     }
   ]
 }

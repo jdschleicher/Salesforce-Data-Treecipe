@@ -1,4 +1,5 @@
 import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
+import type { ReadOnlyFieldReason } from "../ObjectInfoWrapper/ReadOnlyFields";
 
 export class XMLFieldDetail {
     public fieldType: string;
@@ -13,4 +14,7 @@ export class XMLFieldDetail {
     public precision?: number;
     public scale?: number;
     public length?: number;
+    // SET ONLY FOR A FIELD SALESFORCE CALCULATES OR SETS ITSELF (#685), SO EVERY OTHER FIELD IS WRITTEN AS BEFORE
+    public readOnlyReason?: ReadOnlyFieldReason;
+    public formula?: string;
 }

@@ -23,6 +23,7 @@ import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceServic
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { MermaidService } from '../MermaidService/MermaidService';
 import { StandardFieldParentReferenceMap } from '../RelationshipService/StandardFieldParentReferenceMap';
+import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, IValidationRuleNotApplied, ValidationRuleAnalyzerService, VALIDATION_RULES_DIRECTORY_NAME } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 
@@ -646,11 +647,13 @@ export class DirectoryProcessor {
       throw fieldXmlError;
     }
     this.applyStandardFieldParentReference(fieldXMLDetail, associatedObjectName);
+    this.applyStandardReadOnlyField(fieldXMLDetail, associatedObjectName);
     const unconstrainedRecipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);
     const fieldRuleConstraints = typeof fieldXMLDetail.apiName === 'string'
       ? ruleConstraintsByField?.get(fieldXMLDetail.apiName.toLowerCase())
       : undefined;
-    const validationRuleFieldRecipe = fieldRuleConstraints?.length > 0
+    // A RULE CANNOT SHAPE A VALUE SALESFORCE CALCULATES, SO A READ-ONLY FIELD KEEPS ITS MARKER (#685)
+    const validationRuleFieldRecipe = fieldRuleConstraints?.length > 0 && !fieldXMLDetail.readOnlyReason
       ? this.recipeService.applyValidationRules(fieldXMLDetail, unconstrainedRecipeValue, fieldRuleConstraints, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName)
       : undefined;
     const recipeValue = validationRuleFieldRecipe?.recipeValue ?? unconstrainedRecipeValue;
@@ -668,12 +671,28 @@ export class DirectoryProcessor {
 
     FieldInfo.applyFieldSize(fieldInfo, fieldXMLDetail);
 
+    if ( fieldXMLDetail.readOnlyReason ) {
+      fieldInfo.readOnlyReason = fieldXMLDetail.readOnlyReason;
+    }
+    if ( fieldXMLDetail.formula !== undefined ) {
+      fieldInfo.formula = fieldXMLDetail.formula;
+    }
+
     if ( validationRuleFieldRecipe ) {
       fieldInfo.validationRuleConstraints = validationRuleFieldRecipe.validationRuleConstraints;
       fieldInfo.unconstrainedRecipeValue = unconstrainedRecipeValue;
     }
   
     return fieldInfo;
+
+  }
+
+  // A STANDARD FIELD SALESFORCE SETS ITSELF (Opportunity.ExpectedRevenue, #685) SAYS NOTHING IN ITS XML, SO ReadOnlyFields NAMES IT
+  applyStandardReadOnlyField(fieldXMLDetail: XMLFieldDetail, associatedObjectName: string): void {
+
+    if ( !fieldXMLDetail.readOnlyReason && ReadOnlyFields.isStandardReadOnlyField(associatedObjectName, fieldXMLDetail.apiName) ) {
+      fieldXMLDetail.readOnlyReason = 'set by Salesforce';
+    }
 
   }
 
@@ -755,6 +774,18 @@ export class DirectoryProcessor {
 
   }
 
+  // A RULE ON A FIELD SALESFORCE CALCULATES (#685) IS NOT APPLIED BECAUSE THE FIELD IS READ ONLY, NOT BECAUSE IT IS MISSING
+  buildReadOnlyFieldRuleNotAppliedReason(fieldReference: string, fieldsInfo: FieldInfo[]): string | undefined {
+
+    const fieldKey = fieldReference.toLowerCase();
+    const readOnlyFieldInfo = fieldsInfo.find(candidate => candidate.readOnlyReason !== undefined && candidate.fieldName?.toLowerCase() === fieldKey);
+
+    return readOnlyFieldInfo
+      ? `${readOnlyFieldInfo.fieldName} is read only (${readOnlyFieldInfo.readOnlyReason}): Salesforce sets its value, so a rule cannot shape it and the insert never sends it`
+      : undefined;
+
+  }
+
   /*
     Every rule that was not applied is one TODO line at the end of the object's first block, in rule
     file order, so the recipe says what generation did not do. A rule naming no field the walk read
@@ -784,7 +815,8 @@ export class DirectoryProcessor {
       const fieldKey = analysis.constraint.fieldReference.toLowerCase();
       const fieldInfo = fieldsInfo.find(candidate => candidate.validationRuleConstraints !== undefined && candidate.fieldName?.toLowerCase() === fieldKey);
       if ( fieldInfo === undefined ) {
-        const reason = this.buildCompoundNameRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
+        const reason = this.buildReadOnlyFieldRuleNotAppliedReason(analysis.constraint.fieldReference, fieldsInfo)
+          ?? this.buildCompoundNameRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
           ?? RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
         objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
         notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));
@@ -813,7 +845,8 @@ export class DirectoryProcessor {
 
   getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>, selectedRecordTypeApiName?: string): string {
     let recipeValue = null;
-    if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
+    // A STANDARD FIELD FILE OFTEN HAS NO <type>; ONE ReadOnlyFields NAMES IS STILL WRITTEN READ ONLY (#685)
+    if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' && !fieldXMLDetail.readOnlyReason ) {
 
       recipeValue = this.recipeService.getRecipeValueWithMissingXMLDetailByFieldApiName();
 

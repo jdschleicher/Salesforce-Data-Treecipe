@@ -86,6 +86,7 @@ export interface IFieldRowField extends ITreecipeField {
     recipeValue?: string;
     isOnlyInRecipeFile?: boolean;
     validationRules?: IFieldValidationRules;
+    formula?: string;
 }
 
 export interface IFieldRowObject extends ITreecipeObject, IRecordTypeObject {

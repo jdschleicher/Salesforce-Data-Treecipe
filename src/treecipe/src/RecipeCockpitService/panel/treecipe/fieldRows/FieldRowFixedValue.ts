@@ -1,6 +1,7 @@
 import { createButton } from '../../../../CockpitKit/panel/CockpitPanelElements';
 import {
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
@@ -12,6 +13,7 @@ import {
     RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX
 } from '../../../RecipeCockpitFieldRowsConstants';
 import { StandardDerivedFields } from '../../../../ObjectInfoWrapper/StandardDerivedFields';
+import { ReadOnlyFields } from '../../../../ObjectInfoWrapper/ReadOnlyFields';
 import { buildPencilGlyph } from '../../RecipeCockpitPanelBuilders';
 import { hasOwnKey } from '../../RecipeCockpitOwnKey';
 import { closeFieldEditor, toggleFieldEditor } from '../fieldEditor/FieldEditor';
@@ -76,6 +78,9 @@ export function findFixedValueLockReason(treeObjectState: ITreeObjectState, fiel
 
     const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
     if (derivedField) { return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName; }
+
+    const readOnlyReason = ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) { return RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX + readOnlyReason; }
 
     if (field.controllingField) { return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
 

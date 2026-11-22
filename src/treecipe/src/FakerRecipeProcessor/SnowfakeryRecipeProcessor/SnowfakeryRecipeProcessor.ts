@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { StandardDerivedFields } from '../../ObjectInfoWrapper/StandardDerivedFields';
+import { ReadOnlyFields } from '../../ObjectInfoWrapper/ReadOnlyFields';
 
 export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
@@ -132,6 +133,10 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
             delete sobjectGeneratedDetail._table;
             // SALESFORCE SETS A DERIVED FIELD ITSELF (Quote.AccountId FROM ITS OPPORTUNITY, #680) AND REJECTS AN INSERT THAT SENDS ONE
             StandardDerivedFields.listDerivedFieldApiNames(objectApiName).forEach(derivedFieldApiName => delete sobjectGeneratedDetail[derivedFieldApiName]);
+            // A "READ ONLY -- <reason>" VALUE IS A FIELD SALESFORCE CALCULATES OR SETS (#685): SHOWN IN THE RECIPE, NEVER SENT
+            Object.keys(sobjectGeneratedDetail)
+                .filter(fieldApiName => ReadOnlyFields.isReadOnlyRecipeValue(sobjectGeneratedDetail[fieldApiName]))
+                .forEach(readOnlyFieldApiName => delete sobjectGeneratedDetail[readOnlyFieldApiName]);
 
             if (objectApiToGeneratedRecords.has(objectApiName)) {
 

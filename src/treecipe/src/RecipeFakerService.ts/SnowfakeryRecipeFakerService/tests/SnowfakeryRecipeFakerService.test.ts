@@ -116,8 +116,9 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToSnowfakeryMappings['masterdetail']).toBe(referenceValuePlaceholder);
         });
 
-        test('Formula field returns correct message', () => {
-            expect(fieldTypeToSnowfakeryMappings['formula']).toBe('### TODO - REMOVE ME - Formula fields are calculated, not generated');
+        // A FORMULA FIELD'S <type> IS ITS RESULT TYPE, SO THIS ENTRY NEVER MATCHED; RecipeService WRITES "READ ONLY -- formula" FOR EVERY BACKEND (#685)
+        test('Formula is absent from the map, because RecipeService writes a read-only field before any backend is asked', () => {
+            expect(fieldTypeToSnowfakeryMappings).not.toHaveProperty('formula');
         });
 
         /*
@@ -135,7 +136,7 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
                 'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
-                'lookup', 'masterdetail', 'formula'
+                'lookup', 'masterdetail'
             ];
 
             expectedFields.forEach(field => {
@@ -1083,6 +1084,24 @@ describe('SnowfakeryRecipeFakerService.buildPicklistChoiceExpression (#465)', ()
         expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(['Hot'], true)).toBe("${{ (';').join((fake.random_sample(elements=('Hot',)))) }}");
         expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(["x' or True or '"], false))
             .toBe(`\${{ random_choice('${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral("x' or True or '")}') }}`);
+
+    });
+
+});
+
+// A BUILT-IN STANDARD-FIELD VALUE IS EVALUATED ONLY AS ${{ … }}: A BARE {{ OR A STRAY LEADING QUOTE IS SENT TO SALESFORCE AS TEXT (#685)
+describe('SnowfakeryRecipeFakerService built-in standard-field values are all expressions the backend evaluates', () => {
+
+    const standardFieldValues = Object.entries(new SnowfakeryRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap())
+        .flatMap(([objectApiName, valueByFieldApiName]) => Object.entries(valueByFieldApiName).map(([fieldApiName, recipeValue]) => [`${objectApiName}.${fieldApiName}`, recipeValue] as const));
+
+    test.each(standardFieldValues)('%s opens every expression with ${{ and starts with no stray quote', (unusedObjectField, recipeValue) => {
+
+        const expressionOpenerCount = (recipeValue.match(/\{\{/g) ?? []).length;
+        const dollarOpenerCount = (recipeValue.match(/\$\{\{/g) ?? []).length;
+
+        expect(dollarOpenerCount).toBe(expressionOpenerCount);
+        expect(recipeValue.trimStart().startsWith('"')).toBe(false);
 
     });
 

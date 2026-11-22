@@ -26,6 +26,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_STANDARD_FIELDS_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreecipeSelection } from '../RecipeCockpitTreecipeSelection';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -105,7 +106,7 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
             ['Person__pc', true]
         ])('reads %s as standard: %s', (fieldApiName, isStandard) => {
 
-            expect(RecipeCockpitService.isStandardFieldApiName(fieldApiName)).toBe(isStandard);
+            expect(RecipeCockpitTreecipeSelection.isStandardFieldApiName(fieldApiName)).toBe(isStandard);
 
         });
 
@@ -408,7 +409,7 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
                     account.fields = names.map((fieldApiName, fieldIndex) => ({ ...template, fieldApiName, controllingField: '', lineNumber: 100 + fieldIndex }));
                 });
                 const standardElement = standardOf(panel, expanded(panel, 'Account'));
-                const standardNames = names.filter(fieldApiName => RecipeCockpitService.isStandardFieldApiName(fieldApiName));
+                const standardNames = names.filter(fieldApiName => RecipeCockpitTreecipeSelection.isStandardFieldApiName(fieldApiName));
 
                 expect(standardNames).toEqual(['Name', 'Person__pc', 'Spot__Latitude__s']);
                 expect(standardElement.attributes.title).toBe('Every standard field ticked — click to leave every standard field out that can be unticked');

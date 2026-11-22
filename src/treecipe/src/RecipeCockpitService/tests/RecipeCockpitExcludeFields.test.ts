@@ -25,9 +25,12 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
+    RecipeCockpitTreecipeSelection
+} from '../RecipeCockpitTreecipeSelection';
 import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RecipeCockpitTreecipeInsert
@@ -811,8 +814,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
             workspaceState.update.mockClear();
 
-            await ( RecipeCockpitService as any ).setFieldIncluded(undefined, panelState, { kind: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', isIncluded: false });
-            await ( RecipeCockpitService as any ).setAllFieldsIncluded(undefined, panelState, { kind: 'setAllFieldsIncluded', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', isIncluded: false });
+            await (RecipeCockpitTreecipeSelection as any).setFieldIncluded(RecipeCockpitService, undefined, panelState, { kind: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', isIncluded: false });
+            await (RecipeCockpitTreecipeSelection as any).setAllFieldsIncluded(RecipeCockpitService, undefined, panelState, { kind: 'setAllFieldsIncluded', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', isIncluded: false });
 
             expect(workspaceState.update).not.toHaveBeenCalled();
 

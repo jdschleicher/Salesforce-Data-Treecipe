@@ -21,14 +21,9 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
-    RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL,
-    RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL,
     RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
@@ -40,11 +35,20 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES,
+    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
+} from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
+    RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL,
+    RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH,
     RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
-} from '../RecipeCockpitService';
+    RecipeCockpitTreecipeSelection
+} from '../RecipeCockpitTreecipeSelection';
+import { RecipeCockpitTreecipeRecipeEdits } from '../RecipeCockpitTreecipeRecipeEdits';
 import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RecipeCockpitTreecipeInsert
@@ -558,14 +562,14 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         // THE IN-PANEL DIALOG WRITES THE LINES WITH textContent (#349), SO THEY ARE SHOWN AS THE RECIPE HOLDS THEM
         it('shows the lines left-aligned and as written, and cuts a long one short', () => {
 
-            expect(RecipeCockpitService.buildRestorePreview('        Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n                    ### TODO: -- RecordType Options -- One'))
+            expect(RecipeCockpitTreecipeSelection.buildRestorePreview('        Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n                    ### TODO: -- RecordType Options -- One'))
                 .toBe('Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n            ### TODO: -- RecordType Options -- One');
 
             const manyLines = ['    Field__c: |', ...Array.from({ length: 20 }, (_unused, lineIndex) => `        line ${lineIndex}`)].join('\n');
-            const preview = RecipeCockpitService.buildRestorePreview(manyLines);
+            const preview = RecipeCockpitTreecipeSelection.buildRestorePreview(manyLines);
             expect(preview.split('\n')).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES + 1);
             expect(preview).toEndWith('\n…');
-            expect(RecipeCockpitService.buildRestorePreview(`    Field__c: ${'x'.repeat(2000)}`)).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH + 2);
+            expect(RecipeCockpitTreecipeSelection.buildRestorePreview(`    Field__c: ${'x'.repeat(2000)}`)).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH + 2);
 
         });
 
@@ -599,20 +603,20 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         it('re-derives a field from the objects wrapper\'s value, and a standard field the wrapper does not list from the recipe backend\'s mapping (#342)', () => {
 
             const legacyCode = fieldOf(recipe, 'Account', 'Legacy_Code__c');
-            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', legacyCode)).toBe('${{fake.Word}}');
-            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', { ...legacyCode, recipeValue: '' })).toBeUndefined();
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', legacyCode)).toBe('${{fake.Word}}');
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', { ...legacyCode, recipeValue: '' })).toBeUndefined();
 
             const standardName: IRecipeCockpitFieldViewModel = { ...legacyCode, fieldApiName: 'Name', isOnlyInRecipeFile: true, recipeValue: '"Pinned"' };
             const snowfakeryName = new SnowfakeryRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap().Account.Name;
-            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBe(snowfakeryName);
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBe(snowfakeryName);
 
             const fakerJsRecipeFilePath = path.join(HISTORY_GENERATED_RECIPES_PATH, 'recipe-fakerjs-2026-09-20T10-00-00', 'tree', 'recipe-fakerjs--tree.yml');
-            expect(RecipeCockpitService.resolveFixedValueFallback(fakerJsRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBe(new FakerJSRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap().Account.Name);
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(fakerJsRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBe(new FakerJSRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap().Account.Name);
             // A FILE NAME AND A RUN FOLDER THAT DISAGREE ON THE BACKEND NAME NONE, SO NOTHING IS RE-DERIVED
             const mismatchedRecipeFilePath = path.join(path.dirname(ACCOUNT_RECIPE_FILE_PATH), 'recipe-fakerjs--tree.yml');
-            expect(RecipeCockpitService.resolveFixedValueFallback(mismatchedRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBeUndefined();
-            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', { ...standardName, fieldApiName: 'Nope__c' })).toBeUndefined();
-            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, '__proto__', { ...standardName, fieldApiName: 'constructor' })).toBeUndefined();
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(mismatchedRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBeUndefined();
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', { ...standardName, fieldApiName: 'Nope__c' })).toBeUndefined();
+            expect(RecipeCockpitTreecipeSelection.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, '__proto__', { ...standardName, fieldApiName: 'constructor' })).toBeUndefined();
 
         });
 
@@ -1311,20 +1315,21 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         it('plans nothing for a recipe that is gone or cannot be read, and refuses a re-derived Clear with no value to re-derive', () => {
 
-            const service = RecipeCockpitService as any;
+            const recipeEdits = RecipeCockpitTreecipeRecipeEdits as any;
+            const selection = RecipeCockpitTreecipeSelection as any;
             const missingRecipeFilePath = path.join(path.dirname(ACCOUNT_RECIPE_FILE_PATH), 'gone.yml');
             const fixedValue = { value: 'X-1', kind: 'text' };
 
-            expect(service.planFixedValueWrite(missingRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', fixedValue).refusal).toContain('"gone.yml" no longer exists in this workspace');
-            expect(service.planFixedValueClear(missingRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', undefined).refusal).toContain('"gone.yml" no longer exists in this workspace');
+            expect(recipeEdits.planFixedValueWrite(RecipeCockpitService, missingRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', fixedValue).refusal).toContain('"gone.yml" no longer exists in this workspace');
+            expect(selection.planFixedValueClear(RecipeCockpitService, missingRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', undefined).refusal).toContain('"gone.yml" no longer exists in this workspace');
             // A FOLDER IS IN THE WORKSPACE BUT IS NO FILE TO READ
-            expect(service.planFixedValueWrite(path.dirname(ACCOUNT_RECIPE_FILE_PATH), HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', fixedValue).refusal).toContain('could not be read');
+            expect(recipeEdits.planFixedValueWrite(RecipeCockpitService, path.dirname(ACCOUNT_RECIPE_FILE_PATH), HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', fixedValue).refusal).toContain('could not be read');
 
             const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
             try {
                 const entries = fixedValueEntries().map(entry => ({ ...entry, occurrences: entry.occurrences.map(({ originalText: _unused, ...occurrence }) => occurrence) }));
                 fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, RecipeCockpitFixedValueStore.serialize(entries));
-                expect(service.planFixedValueClear(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', undefined).refusal)
+                expect(selection.planFixedValueClear(RecipeCockpitService, ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', undefined).refusal)
                     .toContain('has no recorded lines for Account.Legacy_Code__c, and there is no value Generate Treecipe wrote for it to put back instead');
             } finally {
                 restoreRecipe();
@@ -1349,7 +1354,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const routedAction = RecipeCockpitService.routePanelMessage({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' } as any, panelState);
             disposeHandler?.();
             disposeHandler = undefined;
-            await (RecipeCockpitService as any).setFieldFixedValue(undefined, panelState, routedAction);
+            await (RecipeCockpitTreecipeSelection as any).setFieldFixedValue(RecipeCockpitService, undefined, panelState, routedAction);
 
             expect(showInputBox).not.toHaveBeenCalled();
             expect(showWarningMessage).not.toHaveBeenCalled();

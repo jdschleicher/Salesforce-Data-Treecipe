@@ -1,4 +1,5 @@
 import { IValidationRuleConstraintRecord } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
+import type { ReadOnlyFieldReason } from "./ReadOnlyFields";
 
 export class FieldInfo {
 
@@ -17,6 +18,10 @@ export class FieldInfo {
   */
   public validationRuleConstraints?: IValidationRuleConstraintRecord[];
   public unconstrainedRecipeValue?: string;
+
+  // SET ONLY ON A FIELD SALESFORCE CALCULATES OR SETS ITSELF (#685), WHICH THE RECIPE COCKPIT DRAWS READ ONLY
+  public readOnlyReason?: ReadOnlyFieldReason;
+  public formula?: string;
 
   constructor(
     public objectName: string,

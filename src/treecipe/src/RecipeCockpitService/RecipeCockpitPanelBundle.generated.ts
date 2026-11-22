@@ -1084,6 +1084,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX = "set by Salesforce from ";
   var RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL = "read only";
   var RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX = ", so it is never inserted";
+  var RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX = "read only: ";
+  var RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX = "formula: ";
   var RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ["Lookup", "MasterDetail", "Hierarchy"];
   var RECIPE_COCKPIT_EXPRESSION_OPENER = "\${{";
   var RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = "fixed";
@@ -1125,6 +1127,80 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   };
   StandardDerivedFields.derivedFieldByObjectField = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
     "Quote.AccountId": Object.freeze({ throughFieldApiName: "OpportunityId", sourceObjectApiName: "Opportunity", sourceFieldApiName: "AccountId" })
+  }));
+
+  // src/treecipe/src/ObjectInfoWrapper/ReadOnlyFields.ts
+  var READ_ONLY_FIELD_REASONS = ["formula", "roll-up summary", "auto number", "set by Salesforce"];
+  var ReadOnlyFields = class {
+    // A <formula> MAKES ANY FIELD READ ONLY, WHATEVER ITS RESULT <type>; OTHERWISE THE <type> DECIDES
+    static resolveCustomFieldReason(fieldType, hasFormula) {
+      if (hasFormula) {
+        return "formula";
+      }
+      const fieldTypeKey = typeof fieldType === "string" ? fieldType.toLowerCase() : "";
+      return Object.prototype.hasOwnProperty.call(this.reasonByCustomFieldType, fieldTypeKey) ? this.reasonByCustomFieldType[fieldTypeKey] : void 0;
+    }
+    static isStandardReadOnlyField(objectApiName, fieldApiName) {
+      return Object.prototype.hasOwnProperty.call(this.standardReadOnlyObjectFields, \`\${objectApiName}.\${fieldApiName}\`);
+    }
+    static listStandardReadOnlyObjectFields() {
+      return Object.keys(this.standardReadOnlyObjectFields);
+    }
+    static formatRecipeValue(reason) {
+      return \`\${this.recipeValuePrefix}\${reason}\`;
+    }
+    // THE REASON A RECIPE VALUE formatRecipeValue WROTE NAMES, OR undefined FOR ANY OTHER VALUE
+    static readReason(recipeValue) {
+      if (typeof recipeValue !== "string" || !recipeValue.startsWith(this.recipeValuePrefix)) {
+        return void 0;
+      }
+      const reason = recipeValue.slice(this.recipeValuePrefix.length).trim();
+      return READ_ONLY_FIELD_REASONS.find((knownReason) => knownReason === reason);
+    }
+    static isReadOnlyRecipeValue(recipeValue) {
+      return this.readReason(recipeValue) !== void 0;
+    }
+  };
+  ReadOnlyFields.recipeValuePrefix = "READ ONLY -- ";
+  ReadOnlyFields.reasonByCustomFieldType = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+    "summary": "roll-up summary",
+    "autonumber": "auto number"
+  }));
+  ReadOnlyFields.standardReadOnlyObjectFields = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+    "Asset.RootAssetId": true,
+    "Campaign.AmountAllOpportunities": true,
+    "Campaign.AmountWonOpportunities": true,
+    "Campaign.NumberOfContacts": true,
+    "Campaign.NumberOfConvertedLeads": true,
+    "Campaign.NumberOfLeads": true,
+    "Campaign.NumberOfOpportunities": true,
+    "Campaign.NumberOfResponses": true,
+    "Campaign.NumberOfWonOpportunities": true,
+    "Campaign.HierarchyActualCost": true,
+    "Campaign.HierarchyAmountAllOpportunities": true,
+    "Campaign.HierarchyAmountWonOpportunities": true,
+    "Campaign.HierarchyBudgetedCost": true,
+    "Campaign.HierarchyExpectedRevenue": true,
+    "Campaign.HierarchyNumberOfContacts": true,
+    "Campaign.HierarchyNumberOfConvertedLeads": true,
+    "Campaign.HierarchyNumberOfLeads": true,
+    "Campaign.HierarchyNumberOfOpportunities": true,
+    "Campaign.HierarchyNumberOfResponses": true,
+    "Campaign.HierarchyNumberOfWonOpportunities": true,
+    "Campaign.HierarchyNumberSent": true,
+    "CampaignMember.LeadOrContactId": true,
+    "Case.CaseNumber": true,
+    "Case.IsClosed": true,
+    "Contract.ContractNumber": true,
+    "Contract.EndDate": true,
+    "Opportunity.ExpectedRevenue": true,
+    "Opportunity.Fiscal": true,
+    "Opportunity.FiscalQuarter": true,
+    "Opportunity.FiscalYear": true,
+    "Opportunity.ForecastCategory": true,
+    "Opportunity.HasOpportunityLineItem": true,
+    "Opportunity.IsClosed": true,
+    "Opportunity.IsWon": true
   }));
 
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelConnection.ts
@@ -4930,6 +5006,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "Each card's Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field's row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card's Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.",
         "Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.",
         "A field Salesforce sets itself from another lookup, such as a Quote's AccountId, which always comes from its Opportunity, is marked read only and its pencil is disabled. Its value names the record it comes from, such as Opportunity_NickName.AccountId, says which account that record holds, and links to that row like a nickname. It is never sent to Salesforce on insert.",
+        "A field Salesforce calculates or fills in itself, such as a formula, a roll-up summary, an auto number or an Opportunity's ExpectedRevenue, is written as READ ONLY with the reason and also marked read only, its pencil disabled; a formula field shows its formula. Treecipe never sends it to Salesforce, and an insert also leaves out any field the target org says Salesforce fills itself, with a warning naming them.",
         "A friend (an object nested under another's friends: in a faker-js recipe) shows a 👥 chip per parent: the parent's nickname and its place among that parent's friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.",
         "Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card's Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO's list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.",
         "The Troubleshooting tab shows one area at a time: TODO's, Fields, Permissions, Validation Rules, Record Types, Global Value Sets and History, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.",
@@ -7841,6 +7918,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       const copiedNickname = referencedOwnerState ? readSourceFieldNickname(referencedOwnerState, derivedField.sourceFieldApiName) : null;
       fieldHeaderElement.appendChild(createElement("span", "treeFieldNote derivedFieldNote muted", copiedNickname ? derivedReason + " → " + copiedNickname : derivedReason));
     }
+    const readOnlyReason = derivedField ? void 0 : ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) {
+      const readOnlyBadgeElement = createElement("span", "fixedValueBadge derivedFieldBadge", RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL);
+      readOnlyBadgeElement.setAttribute("title", "Salesforce sets " + field.fieldApiName + " itself (" + readOnlyReason + ")" + RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX);
+      fieldHeaderElement.appendChild(readOnlyBadgeElement);
+      const readOnlyNote = readOnlyReason === "formula" && field.formula ? RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX + field.formula : readOnlyReason;
+      fieldHeaderElement.appendChild(createElement("span", "treeFieldNote readOnlyFieldNote muted", readOnlyNote));
+    }
     if (fieldState.recordTypeDeveloperNames) {
       const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(", ");
       const recordTypeChipElement = createElement("span", "recordTypeChip", recordTypeNamesText);
@@ -8315,6 +8400,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
     if (derivedField) {
       return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
+    }
+    const readOnlyReason = ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) {
+      return RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX + readOnlyReason;
     }
     if (field.controllingField) {
       return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;
