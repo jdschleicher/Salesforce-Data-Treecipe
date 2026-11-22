@@ -49,6 +49,7 @@ import {
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
     RECIPE_COCKPIT_TREE_TABS
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY,
@@ -101,8 +102,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
                 trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'query', searchQueries: searchQueries, expandedObjectKeys: [], openPicklistKeys: [] }]
             });
 
-            expect(RecipeCockpitService.normalizePanelPlace(treePlace({ treecipe: '', datasets: '', query: 'contact' }))?.trees[0]).toMatchObject({ selectedTab: 'query', searchQueries: { query: 'contact' } });
-            expect(RecipeCockpitService.normalizePanelPlace(treePlace({ treecipe: '', datasets: '' }))?.trees[0].searchQueries).not.toHaveProperty('query');
+            expect(RecipeCockpitPanelPlace.normalize(treePlace({ treecipe: '', datasets: '', query: 'contact' }))?.trees[0]).toMatchObject({ selectedTab: 'query', searchQueries: { query: 'contact' } });
+            expect(RecipeCockpitPanelPlace.normalize(treePlace({ treecipe: '', datasets: '' }))?.trees[0].searchQueries).not.toHaveProperty('query');
 
         });
 

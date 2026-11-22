@@ -20,6 +20,7 @@ import {
     RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE,
     RecipeCockpitTreecipeInsert
@@ -282,7 +283,7 @@ describe('RecipeCockpitService, an object\'s own "Hide unselected" (#483)', () =
                 scrollY: 0,
                 trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [], ...treePlace }]
             });
-            const normalizedTree = (hideUnselectedObjectKeys: unknown) => RecipeCockpitService.normalizePanelPlace(savedPlaceWith({ hideUnselectedObjectKeys }))?.trees[0];
+            const normalizedTree = (hideUnselectedObjectKeys: unknown) => RecipeCockpitPanelPlace.normalize(savedPlaceWith({ hideUnselectedObjectKeys }))?.trees[0];
 
             expect(normalizedTree(['Account\n'])?.hideUnselectedObjectKeys).toEqual(['Account\n']);
             [[], 'Account', 1, null, undefined].forEach(candidateValue => expect(normalizedTree(candidateValue)).not.toHaveProperty('hideUnselectedObjectKeys'));

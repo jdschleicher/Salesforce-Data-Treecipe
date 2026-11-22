@@ -26,6 +26,7 @@ import {
     RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL,
     RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -401,13 +402,13 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             const basePlace = { version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, isOrgPickerInUse: false, isFavoritesOnly: false, scrollY: 0, trees: [] };
 
-            expect(RecipeCockpitService.normalizePanelPlace({ ...basePlace, selectedTreeKey: LEAD_TREE_KEY, treecipesSearchText: ' Rating ' }))
+            expect(RecipeCockpitPanelPlace.normalize({ ...basePlace, selectedTreeKey: LEAD_TREE_KEY, treecipesSearchText: ' Rating ' }))
                 .toEqual({ ...basePlace, selectedTreeKey: LEAD_TREE_KEY, treecipesSearchText: ' Rating ' });
-            expect(RecipeCockpitService.normalizePanelPlace({ ...basePlace, selectedTreeKey: '', treecipesSearchText: '' })).toEqual(basePlace);
-            expect(RecipeCockpitService.normalizePanelPlace({ ...basePlace, selectedTreeKey: 7, treecipesSearchText: ['x'] })).toEqual(basePlace);
-            expect(RecipeCockpitService.normalizePanelPlace({ ...basePlace, selectedTreeKey: 'x'.repeat(100000) })).toEqual(basePlace);
+            expect(RecipeCockpitPanelPlace.normalize({ ...basePlace, selectedTreeKey: '', treecipesSearchText: '' })).toEqual(basePlace);
+            expect(RecipeCockpitPanelPlace.normalize({ ...basePlace, selectedTreeKey: 7, treecipesSearchText: ['x'] })).toEqual(basePlace);
+            expect(RecipeCockpitPanelPlace.normalize({ ...basePlace, selectedTreeKey: 'x'.repeat(100000) })).toEqual(basePlace);
             // A PLACE SAVED BEFORE #374 HAS NEITHER
-            expect(RecipeCockpitService.normalizePanelPlace(basePlace)).toEqual(basePlace);
+            expect(RecipeCockpitPanelPlace.normalize(basePlace)).toEqual(basePlace);
 
         });
 

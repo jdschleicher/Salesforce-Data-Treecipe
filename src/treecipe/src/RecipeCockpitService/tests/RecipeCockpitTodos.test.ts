@@ -11,6 +11,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODOS_ONLY_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -603,7 +604,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
 
         it('keeps the field through normalizePanelPlace only when it is true', () => {
 
-            const normalizedTree = (isTodosOnly: unknown) => RecipeCockpitService.normalizePanelPlace(savedPlaceWith({ isTodosOnly }))?.trees[0];
+            const normalizedTree = (isTodosOnly: unknown) => RecipeCockpitPanelPlace.normalize(savedPlaceWith({ isTodosOnly }))?.trees[0];
 
             expect(normalizedTree(true)?.isTodosOnly).toBe(true);
             [false, 'true', 1, null, undefined].forEach(candidateValue => expect(normalizedTree(candidateValue)).not.toHaveProperty('isTodosOnly'));

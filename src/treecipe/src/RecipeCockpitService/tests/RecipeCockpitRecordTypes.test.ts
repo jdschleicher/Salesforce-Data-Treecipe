@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -315,7 +316,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
-        const normalizeTreePlace = (treePlace: Record<string, unknown>) => RecipeCockpitService.normalizePanelPlace({
+        const normalizeTreePlace = (treePlace: Record<string, unknown>) => RecipeCockpitPanelPlace.normalize({
             version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
             runFolderName: CURRENT_RUN_FOLDER_NAME,
             isOrgPickerInUse: false,

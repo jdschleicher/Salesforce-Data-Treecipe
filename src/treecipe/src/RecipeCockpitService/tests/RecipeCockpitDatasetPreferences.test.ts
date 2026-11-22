@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     IRecipeCockpitDatasetPreferences,
     RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY,
@@ -728,7 +729,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
 
         it('keeps a card\'s data sets filter only when it is exactly true', () => {
 
-            const place = (isDatasetFavoritesOnly: unknown) => RecipeCockpitService.normalizePanelPlace({
+            const place = (isDatasetFavoritesOnly: unknown) => RecipeCockpitPanelPlace.normalize({
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, scrollY: 0,
                 trees: [{ treeKey: LEAD_TREE_KEY, isDatasetFavoritesOnly: isDatasetFavoritesOnly }]
             })!.trees[0];

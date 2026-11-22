@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.208.3] - Recipe Cockpit: the host half of the reader's place is a pure module of its own, its optional fields a named list (#670, slice 6 of #566)
+
+### Under the hood (behaviour unchanged)
+
+- **`RecipeCockpitService/RecipeCockpitPanelPlace.ts`** holds what the hub did for the reader's place: the place's shape, its workspaceState key, its entry, text and size bounds, and the check every saved or posted place goes through (`normalize`, and `normalizeTreePlace` for one card). It loads no vscode and nothing from the hub.
+- **A card's optional fields are one named list**, `OPTIONAL_TREE_PLACE_FIELDS`: 17 `{ field, check, reason }` entries run in order, in place of about 20 conditional spreads in one object literal. The list's order is the order the place is saved in, so a saved place is byte-identical. The old Record types tab's upgrade to `isRecordTypesExpanded` is that field's check.
+- **Keeping the place in workspaceState stays in the hub** (read, forget, and the write at most once per 500 ms), as lifecycle work. The hub is about 200 lines shorter.
+- **Tests.** The place persistence and restore suites, and 15 other cockpit suites, are unchanged except their imports and `RecipeCockpitService.normalizePanelPlace(` becoming `RecipeCockpitPanelPlace.normalize(`. The new `RecipeCockpitPanelPlace.test.ts` holds the list to the place's optional fields in their written order, round-trips a card with every field with its key order, and checks the module loads without vscode.
+
 ## [3.208.2] - A validation rule on a compound address or geolocation part names its compound field; #694 review follow-ups (#697)
 
 ### Validation rules on an address or geolocation part

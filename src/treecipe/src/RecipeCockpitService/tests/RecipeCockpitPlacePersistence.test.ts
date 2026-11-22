@@ -14,17 +14,20 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelPlace,
     IRecipeCockpitWorkspaceState,
-    RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
     RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH,
     RECIPE_COCKPIT_REMOVED_TREE_TABS
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelPlace,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH,
+    RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
+    RecipeCockpitPanelPlace
+} from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -82,7 +85,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         it('keeps a well-formed place as it was', () => {
 
-            expect(RecipeCockpitService.normalizePanelPlace(buildPlace())).toEqual(buildPlace());
+            expect(RecipeCockpitPanelPlace.normalize(buildPlace())).toEqual(buildPlace());
 
         });
 
@@ -104,20 +107,20 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             ['a run past the length bound', { ...buildPlace(), runFolderName: 'r'.repeat(RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH + 1) }]
         ])('given %s, reads no place', (_caseName, candidatePlace) => {
 
-            expect(RecipeCockpitService.normalizePanelPlace(candidatePlace)).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.normalize(candidatePlace)).toBeUndefined();
 
         });
 
         // #185: ".." INSIDE A NAME IS A NAME; ONLY A WHOLE ".." SEGMENT CLIMBS
         it('given a run whose name only contains "..", keeps it as a name', () => {
 
-            expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ runFolderName: 'recipe-2026..v2' }))?.runFolderName).toBe('recipe-2026..v2');
+            expect(RecipeCockpitPanelPlace.normalize(buildPlace({ runFolderName: 'recipe-2026..v2' }))?.runFolderName).toBe('recipe-2026..v2');
 
         });
 
         it('drops each malformed entry on its own and keeps the rest', () => {
 
-            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
+            const normalizedPlace = RecipeCockpitPanelPlace.normalize({
                 ...buildPlace(),
                 isOrgPickerInUse: 'yes',
                 scrollY: -40,
@@ -161,7 +164,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
         // ONLY WHAT THE SHAPE NAMES IS KEPT, SO A HAND-EDITED OR FORGED PLACE CANNOT CARRY A PATH OR AN ORG INTO workspaceState
         it('keeps no field the place\'s shape does not name', () => {
 
-            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
+            const normalizedPlace = RecipeCockpitPanelPlace.normalize({
                 ...buildPlace(),
                 orgUsername: 'jd@example.com',
                 recipeFilePath: path.join(HISTORY_WORKSPACE_ROOT, 'recipe.yml'),
@@ -183,8 +186,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 trees: Array.from({ length: treeCount }, (_unused, treeIndex) => ({ ...buildPlace().trees[0], treeKey: `Tree-${treeIndex}`, expandedObjectKeys: fullList }))
             });
 
-            expect(RecipeCockpitService.normalizePanelPlace(oversizedPlace)).toBeUndefined();
-            expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], expandedObjectKeys: fullList.slice(0, 100) }] }))).toBeDefined();
+            expect(RecipeCockpitPanelPlace.normalize(oversizedPlace)).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.normalize(buildPlace({ trees: [{ ...buildPlace().trees[0], expandedObjectKeys: fullList.slice(0, 100) }] }))).toBeDefined();
 
         });
 
@@ -194,15 +197,15 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 searchQueries: { treecipe: 'Rating', datasets: 'set' } }] });
 
             expect(RECIPE_COCKPIT_PANEL_PLACE_VERSION).toBe(2);
-            expect(RecipeCockpitService.normalizePanelPlace(versionTwoPlace)).toEqual(versionTwoPlace);
-            expect(RecipeCockpitService.normalizePanelPlace(JSON.parse(JSON.stringify(RecipeCockpitService.normalizePanelPlace(versionTwoPlace))))).toEqual(versionTwoPlace);
+            expect(RecipeCockpitPanelPlace.normalize(versionTwoPlace)).toEqual(versionTwoPlace);
+            expect(RecipeCockpitPanelPlace.normalize(JSON.parse(JSON.stringify(RecipeCockpitPanelPlace.normalize(versionTwoPlace))))).toEqual(versionTwoPlace);
 
         });
 
         // A VERSION 2 PLACE NAMING A VERSION 1 TAB IS NOT RENAMED: ONLY AN OLDER PLACE IS READ THROUGH THE RENAMES
         it('given a version 2 place naming the old tab names, does not rename them', () => {
 
-            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({ ...buildPlace(), trees: [{ ...buildPlace().trees[0],
+            const normalizedPlace = RecipeCockpitPanelPlace.normalize({ ...buildPlace(), trees: [{ ...buildPlace().trees[0],
                 selectedTab: 'dataByOrg', searchQueries: { structure: 'Rating', dataByOrg: 'Brand' } }] });
 
             expect(normalizedPlace!.trees[0].selectedTab).toBe('treecipe');
@@ -216,7 +219,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             ['1', RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB]
         ])('given a version %s place saved on the removed Previous Versions tab, opens Treecipe and keeps nothing of that tab', (_versionLabel, placeVersion) => {
 
-            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
+            const normalizedPlace = RecipeCockpitPanelPlace.normalize({
                 ...buildPlace(),
                 version: placeVersion,
                 trees: [{
@@ -240,7 +243,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             ['1', RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB, 'dataByOrg', { dataByOrg: 'Brand', datasets: 'set' }]
         ])('given a version %s place saved on the removed Compare tab, opens Treecipe and keeps nothing of that tab', (_versionLabel, placeVersion, savedTabName, savedSearchQueries) => {
 
-            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
+            const normalizedPlace = RecipeCockpitPanelPlace.normalize({
                 ...buildPlace(),
                 version: placeVersion,
                 trees: [{
@@ -274,7 +277,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 ['datasets', 'datasets']
             ])('reads its %s tab as the %s tab, and returns a version 2 place', (savedTabName, expectedTabName) => {
 
-                const normalizedPlace = RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({ selectedTab: savedTabName }));
+                const normalizedPlace = RecipeCockpitPanelPlace.normalize(buildVersionOnePlace({ selectedTab: savedTabName }));
 
                 expect(normalizedPlace!.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
                 expect(normalizedPlace!.trees[0].selectedTab).toBe(expectedTabName);
@@ -283,7 +286,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
             it('reads its search keys as the tabs they became', () => {
 
-                const normalizedPlace = RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({
+                const normalizedPlace = RecipeCockpitPanelPlace.normalize(buildVersionOnePlace({
                     selectedTab: 'datasets',
                     searchQueries: { structure: 'Rating', dataByOrg: 'Brand', versions: 'FakerJS', datasets: 'set' }
                 }));
@@ -299,7 +302,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
             it('given a tab name it does not know, opens the Treecipe tab', () => {
 
-                expect(RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({ selectedTab: 'constructor' }))!.trees[0].selectedTab).toBe('treecipe');
+                expect(RecipeCockpitPanelPlace.normalize(buildVersionOnePlace({ selectedTab: 'constructor' }))!.trees[0].selectedTab).toBe('treecipe');
 
             });
 
@@ -308,7 +311,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
         it('accepts each tab', () => {
 
             (['treecipe', 'datasets'] as const).forEach(selectedTab => {
-                expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab }] }))!.trees[0].selectedTab).toBe(selectedTab);
+                expect(RecipeCockpitPanelPlace.normalize(buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab }] }))!.trees[0].selectedTab).toBe(selectedTab);
             });
 
         });
