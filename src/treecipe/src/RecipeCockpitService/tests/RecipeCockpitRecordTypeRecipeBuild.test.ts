@@ -127,7 +127,7 @@ describe('Generate fake data and insert, when the reader cancels the recipe buil
 });
 
 /*
-    Every recipe of "A data set for each record type" is built before the confirmation (#690): N+1
+    Every recipe of "A data set for each record type" is built before the confirmation (#624): N+1
     cancellable notifications in a row. Each says which build it is (#695); a lone build keeps its title.
 */
 describe('Generate fake data and insert, the progress titles of the record type recipe builds (#695)', () => {
