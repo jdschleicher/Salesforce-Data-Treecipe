@@ -547,7 +547,8 @@ function countKeptFields(dialog: ICustomTreecipeDialog, dialogObject: IDialogObj
 
 /*
     How tall a field list not yet drawn is (#693): its field count rounded up to one of these, each a
-    rule in CustomTreecipeDialog.css at 1.85rem a row, as a one-line field row measured in Chromium. A class,
+    rule in CustomTreecipeDialog.css at 2.35rem a row: a one-line field row's 1.7rem ✕, its 0.25rem
+    padding above and below, and the 0.15rem gap to the next. A class,
     since the panel sets no inline style; one height for every list would move the scroll bar under
     the reader, and one at most twice too tall does not.
 */

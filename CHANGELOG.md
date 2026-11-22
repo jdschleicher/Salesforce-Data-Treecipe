@@ -5,9 +5,9 @@
 ### Customize and create new recipe
 
 - **The browser now lays out only the field lists near the view.** Each list is `content-visibility: auto`, so a list scrolled out of sight costs nothing until it comes back.
-  - With 40 objects × 300 fields all open, ↺ on the root takes about 17 ms, against 0.4–0.6 s. ↺ on an object with 13 below it takes about 19 ms, against about 190 ms. Opening every object one by one takes about 0.45 s, against about 1.1 s, and the modal opens in about 30 ms, against about 110 ms.
+  - With 40 objects × 300 fields all open, ↺ on the root takes about 27 ms, against about 0.5 s. ↺ on an object with 13 below it takes about 22 ms, against about 175 ms. Opening every object one by one takes about 0.46 s, against about 1 s, and the modal opens in about 28 ms, against about 43 ms. A ✕, a chain link, closing an object and the save step take as long as before.
   - A ✕ on a field you can see still leaves the list exactly where it was, and focus still reaches a field far down a list that has not been drawn.
-- **A list not yet drawn is given a height from its field count**, rounded up to a power of 2 (8 to 1024 fields, 1.85rem a field), as a CSS class rather than an inline style. So until every list has been drawn, the scroll bar can show the modal up to about twice as long as it is.
+- **A list not yet drawn is given a height from its field count**, rounded up to a power of 2 (8 to 1024 fields, 2.35rem a field), as a CSS class rather than an inline style. So until every list has been drawn, the scroll bar can show the modal up to about twice as long as it is.
 ## [3.208.0] - Every standard compound Address field is written as its parts, on every standard object that has one, retrieved or not (#694)
 
 ### Recipe generation

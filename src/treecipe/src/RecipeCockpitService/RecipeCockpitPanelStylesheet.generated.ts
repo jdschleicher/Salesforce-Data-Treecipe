@@ -1136,15 +1136,15 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     .customTreecipeChevron.isExpanded .customTreecipeChevronGlyph { transform: rotate(90deg); }
     /* THE BROWSER LAYS OUT ONLY THE FIELD LISTS NEAR THE VIEW, SO ↺ ON A BIG TREE PUTS THOUSANDS OF ROWS BACK AT ONCE (#693). A LIST NOT YET DRAWN
        IS AS TALL AS ITS SIZE CLASS (customTreecipeFieldListSizeClassName), THEN AS IT LAST WAS; flex-shrink: 0 STOPS THE BODY'S COLUMN SQUEEZING IT TO NOTHING */
-    .treeFieldsBox.customTreecipeFields { list-style: none; margin: 0 0 0.2rem 3.4rem; display: flex; flex-direction: column; gap: 0.15rem; content-visibility: auto; contain-intrinsic-size: auto 14.8rem; flex-shrink: 0; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo8 { contain-intrinsic-size: auto 14.8rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo16 { contain-intrinsic-size: auto 29.6rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo32 { contain-intrinsic-size: auto 59.2rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo64 { contain-intrinsic-size: auto 118.4rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo128 { contain-intrinsic-size: auto 236.8rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo256 { contain-intrinsic-size: auto 473.6rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo512 { contain-intrinsic-size: auto 947.2rem; }
-    .treeFieldsBox.customTreecipeFields.fieldCountUpTo1024 { contain-intrinsic-size: auto 1894.4rem; }
+    .treeFieldsBox.customTreecipeFields { list-style: none; margin: 0 0 0.2rem 3.4rem; display: flex; flex-direction: column; gap: 0.15rem; content-visibility: auto; contain-intrinsic-size: auto 18.8rem; flex-shrink: 0; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo8 { contain-intrinsic-size: auto 18.8rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo16 { contain-intrinsic-size: auto 37.6rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo32 { contain-intrinsic-size: auto 75.2rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo64 { contain-intrinsic-size: auto 150.4rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo128 { contain-intrinsic-size: auto 300.8rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo256 { contain-intrinsic-size: auto 601.6rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo512 { contain-intrinsic-size: auto 1203.2rem; }
+    .treeFieldsBox.customTreecipeFields.fieldCountUpTo1024 { contain-intrinsic-size: auto 2406.4rem; }
     .treeField.customTreecipeField { display: grid; grid-template-columns: 1.9rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
     .customTreecipeFieldName { display: flex; flex-wrap: wrap; gap: 0 0.4rem; min-width: 0; overflow-wrap: anywhere; }
     .customTreecipeFieldApiName { font-family: var(--vscode-editor-font-family); color: var(--sdt-text); }

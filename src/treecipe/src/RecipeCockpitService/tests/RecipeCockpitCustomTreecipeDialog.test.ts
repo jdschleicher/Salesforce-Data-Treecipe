@@ -315,9 +315,9 @@ describe('the "Customize and create new recipe" modal (#677)', () => {
 
         });
 
-        it('has a size rule for each power of 2 from 8 to 1024 fields, each 1.85rem a field', () => {
+        it('has a size rule for each power of 2 from 8 to 1024 fields, each 2.35rem a field', () => {
 
-            expect(sizeRulesInStylesheet()).toEqual([8, 16, 32, 64, 128, 256, 512, 1024].map(fieldCount => ({ fieldCount: fieldCount, heightRem: Number((fieldCount * 1.85).toFixed(2)) })));
+            expect(sizeRulesInStylesheet()).toEqual([8, 16, 32, 64, 128, 256, 512, 1024].map(fieldCount => ({ fieldCount: fieldCount, heightRem: Number((fieldCount * 2.35).toFixed(2)) })));
 
         });
 
