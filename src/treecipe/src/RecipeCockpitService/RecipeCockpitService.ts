@@ -728,6 +728,13 @@ import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedField
 import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
+import {
+    IRecipeCockpitPanelPlace,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH,
+    RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
+    RecipeCockpitPanelPlace
+} from './RecipeCockpitPanelPlace';
 import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
@@ -851,18 +858,8 @@ export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificati
 
 export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Generate Treecipe writes one from the object metadata in this workspace, and the cockpit opens it when it finishes.';
 
-/*
-    The same place, kept in workspaceState as well (#230) so it outlives the panel: a close or a
-    window reload throws the webview's own state away. Written as it changes, at most once per
-    RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY, because a reload or a crash may never run onDidDispose.
-*/
-export const RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY = 'treecipe.recipeCockpit.panelPlace';
+// ONE workspaceState WRITE OF THE PLACE (#230) PER THIS MANY ms: A RELOAD OR A CRASH MAY NEVER RUN onDidDispose, SO IT IS WRITTEN AS IT CHANGES
 export const RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY = 500;
-// WHAT A PLACE READ BACK FROM workspaceState MAY HOLD -- AN ENTRY PAST EITHER BOUND IS DROPPED, NEVER CUT TO FIT
-export const RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES = 10000;
-export const RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH = 1000;
-// THE WHOLE PLACE, SERIALIZED: THE BOUNDS ABOVE ARE PER LIST AND MULTIPLY. A REAL ONE IS A FEW KB, 1,000 OBJECTS OPENED IN 10 CARDS ABOUT 1.5 MB
-export const RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH = 4000000;
 
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
@@ -1702,66 +1699,6 @@ export interface IRecipeCockpitRecipeDataMessage {
     restorePlace?: IRecipeCockpitPanelPlace;
 }
 
-/*
-    The reader's place as the panel saves it (#222) and as workspaceState keeps it (#230): names,
-    each tab's search as typed, whether the org picker was in use and a scroll offset.
-    No path, picklist value, org label or username -- normalizePanelPlace keeps nothing else.
-*/
-export interface IRecipeCockpitPanelTreePlace {
-    treeKey: string;
-    // WHETHER THE CARD WAS THE ONE ON SCREEN; A CARD NO LONGER FOLDS (#374), SO IT IS WRITTEN FOR AN OLDER READER AND IGNORED ON RESTORE
-    isExpanded: boolean;
-    selectedTab: RecipeCockpitTreeTab;
-    searchQueries: Partial<Record<RecipeCockpitTreeTab, string>>;
-    expandedObjectKeys: string[];
-    openPicklistKeys: string[];
-    // THE DATA SETS TAB'S FAVORITES ONLY; A PLACE SAVED BEFORE IT HAS NONE AND READS AS THE FILTER OFF
-    isDatasetFavoritesOnly?: true;
-    // THE DATA SET ROWS WHOSE INSERT JOURNEY IS OPEN (#471), BY DATA SET FOLDER NAME; A PLACE SAVED BEFORE IT HAS NONE
-    expandedJourneyDatasetFolderNames?: string[];
-    // THE TREECIPE TAB'S RECORD TYPES SECTION (#321); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
-    isRecordTypesExpanded?: true;
-    // THE TREECIPE TAB'S "Record type fields only" CHECK (#320); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
-    isRecordTypeFieldsOnly?: true;
-    // THE TREECIPE TAB'S "TODOs only" CHECK (#354); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
-    isTodosOnly?: true;
-    // EACH OBJECT'S OWN "TODOs only" (#477), BY OBJECT PLACE KEY, ONLY WHEN ONE IS ON
-    todosOnlyObjectKeys?: string[];
-    // EACH OBJECT'S OWN "Hide unselected" (#483), BY OBJECT PLACE KEY, ONLY WHEN ONE IS ON
-    hideUnselectedObjectKeys?: string[];
-    // THE TROUBLESHOOTING SUB-TAB (#365), ONLY WHEN IT IS NOT THE FIRST, AND EACH SUB-TAB'S SEARCH, ONLY WHEN THERE IS ONE
-    troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
-    troubleshootingSearchQueries?: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>>;
-    // THE TODO'S SUB-TAB'S REMOVED LIST (#391), ONLY WHEN IT IS THE ONE OPEN, AND ITS SEARCH, ONLY WHEN THERE IS ONE
-    todosView?: 'removed';
-    removedTodosSearchText?: string;
-    // THE HISTORY SUB-TAB'S SORT (#485), ONLY WHEN IT IS NOT TIME, NEWEST FIRST
-    troubleshootingHistorySort?: { column: RecipeCockpitHistorySortColumn; isDescending: boolean };
-    // THE TREECIPE UPDATER TAB'S CHOSEN FIELDS ("<object>\n<field>") AND OPENED OBJECTS (#415), EACH ONLY WHEN THERE IS ONE
-    updaterChosenFieldKeys?: string[];
-    updaterExpandedObjectKeys?: string[];
-    // THE TREECIPE ADAPTER'S STEP 2 (#443), ITS PARENT OBJECT AND THE PARENT'S WHERE, EACH ONLY WHEN THERE IS ONE; A PLACE WITH NONE OPENS ON STEP 1
-    updaterStep?: 'structure';
-    updaterParentObjectApiName?: string;
-    updaterParentWhereText?: string;
-}
-
-export interface IRecipeCockpitPanelPlace {
-    version: number;
-    runFolderName: string;
-    isOrgPickerInUse: boolean;
-    // A PLACE SAVED BEFORE #235 HAS NONE, AND READS AS THE FILTER OFF -- WHICH IS WHAT IT WAS
-    isFavoritesOnly: boolean;
-    // THE HELP SECTION (#332); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
-    isHelpExpanded?: true;
-    // THE TREECIPE THE SECTION'S DROPDOWN SHOWS AND THE SECTION SEARCH AS TYPED (#374); A PLACE SAVED BEFORE IT HAS NEITHER AND OPENS ON THE FIRST
-    selectedTreeKey?: string;
-    treecipesSearchText?: string;
-    // NEITHER SECTION FOLDS (#355, #364), SO A 3.98.0+ PLACE'S isOrgSectionCollapsed AND isTreecipesSectionCollapsed ARE IGNORED AND DROPPED
-    scrollY: number;
-    trees: IRecipeCockpitPanelTreePlace[];
-}
-
 export interface IRecipeCockpitTreeFocus {
     treeKey: string;
     tab: RecipeCockpitTreeTab;
@@ -2559,139 +2496,6 @@ export class RecipeCockpitService {
     private static pendingPersistedPanelPlace: IRecipeCockpitPanelPlace | undefined;
     private static panelPlacePersistTimer: ReturnType<typeof setTimeout> | undefined;
 
-    /*
-        A place read back from workspaceState, or posted by the panel, checked field by field: both
-        are text this extension does not control. A place in another shape, or naming no usable run,
-        is no place at all; inside one, an entry of the wrong type or past a bound is dropped on its
-        own. The run is a folder NAME the caller looks up among the runs on disk, never a path.
-    */
-    static normalizePanelPlace(candidatePlace: unknown): IRecipeCockpitPanelPlace | undefined {
-
-        if ( !this.isPlainRecord(candidatePlace)
-                || ( candidatePlace.version !== RECIPE_COCKPIT_PANEL_PLACE_VERSION && candidatePlace.version !== RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB ) ) {
-            return undefined;
-        }
-
-        // AN OLDER PLACE'S TAB NAMES ARE READ AS THE TABS THEY BECAME, AND A TAB SINCE REMOVED AS NONE AT ALL
-        const isOlderPlace = candidatePlace.version === RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB;
-        const readTabName = (candidateTabName: unknown): unknown => {
-            const renamedTabName = isOlderPlace && typeof candidateTabName === 'string' && Object.prototype.hasOwnProperty.call(RECIPE_COCKPIT_TREE_TAB_RENAMES, candidateTabName)
-                ? RECIPE_COCKPIT_TREE_TAB_RENAMES[candidateTabName]
-                : candidateTabName;
-            return typeof renamedTabName === 'string' && RECIPE_COCKPIT_REMOVED_TREE_TABS.includes(renamedTabName) ? undefined : renamedTabName;
-        };
-
-        const { runFolderName } = candidatePlace;
-
-        if ( !this.isBoundedText(runFolderName) || runFolderName === '' || !DatasetSourceService.isSafeFolderOrFileName(runFolderName) ) {
-            return undefined;
-        }
-
-        const scrollY = candidatePlace.scrollY;
-        const candidateTrees = Array.isArray(candidatePlace.trees) ? candidatePlace.trees.slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES) : [];
-        const trees = candidateTrees.flatMap((candidateTree: unknown): IRecipeCockpitPanelTreePlace[] => {
-
-            if ( !this.isPlainRecord(candidateTree) || !this.isBoundedText(candidateTree.treeKey) || candidateTree.treeKey === '' ) {
-                return [];
-            }
-
-            const storedQueries = this.isPlainRecord(candidateTree.searchQueries) ? candidateTree.searchQueries : {};
-            const candidateQueries: Record<string, unknown> = Object.create(null);
-            Object.keys(storedQueries).forEach(storedTabName => {
-                const tabName = readTabName(storedTabName);
-                if ( typeof tabName === 'string' ) {
-                    candidateQueries[tabName] = storedQueries[storedTabName];
-                }
-            });
-            const searchQueries: Partial<Record<RecipeCockpitTreeTab, string>> = {};
-
-            RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
-                const candidateQuery = Object.prototype.hasOwnProperty.call(candidateQueries, tabName) ? candidateQueries[tabName] : undefined;
-                // A TAB ADDED SINCE THE PLACE VERSION (#346) HAS NO SEARCH OF ITS OWN SINCE #365, SO A PLACE READS AS IT DID BEFORE THE TAB
-                if ( RECIPE_COCKPIT_TABS_WITHOUT_SEARCH.includes(tabName) ) {
-                    return;
-                }
-                if ( RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS.includes(tabName) && !( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) ) {
-                    return;
-                }
-                searchQueries[tabName] = this.isBoundedText(candidateQuery) ? candidateQuery : '';
-            });
-
-            const candidateSelectedTab = readTabName(candidateTree.selectedTab);
-            const selectedTab = RECIPE_COCKPIT_TREE_TABS.find(tabName => tabName === candidateSelectedTab) ?? 'treecipe';
-
-            // THE FIRST SUB-TAB IS THE DEFAULT, SO IT IS NEVER WRITTEN; AN UNKNOWN ONE READS AS IT
-            const troubleshootingSubTab = RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.slice(1).find(subTab => subTab === candidateTree.troubleshootingSubTab);
-            const storedSubTabQueries = this.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
-            const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
-            const todosOnlyObjectKeys = this.normalizePlaceNames(candidateTree.todosOnlyObjectKeys);
-            const hideUnselectedObjectKeys = this.normalizePlaceNames(candidateTree.hideUnselectedObjectKeys);
-            const updaterChosenFieldKeys = this.normalizePlaceNames(candidateTree.updaterChosenFieldKeys);
-            const updaterExpandedObjectKeys = this.normalizePlaceNames(candidateTree.updaterExpandedObjectKeys);
-            const expandedJourneyDatasetFolderNames = this.normalizePlaceNames(candidateTree.expandedJourneyDatasetFolderNames)
-                .filter(datasetFolderName => DatasetSourceService.isSafeFolderOrFileName(datasetFolderName));
-            const updaterParentObjectApiName = SalesforceApiName.isApiName(candidateTree.updaterParentObjectApiName) ? candidateTree.updaterParentObjectApiName as string : undefined;
-            const updaterParentWhereText = typeof candidateTree.updaterParentWhereText === 'string'
-                && candidateTree.updaterParentWhereText !== ''
-                && candidateTree.updaterParentWhereText.length <= RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH ? candidateTree.updaterParentWhereText : undefined;
-            RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.forEach(subTab => {
-                const candidateQuery = Object.prototype.hasOwnProperty.call(storedSubTabQueries, subTab) ? storedSubTabQueries[subTab] : undefined;
-                if ( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) {
-                    troubleshootingSearchQueries[subTab] = candidateQuery;
-                }
-            });
-
-            return [{
-                treeKey: candidateTree.treeKey,
-                isExpanded: candidateTree.isExpanded === true,
-                selectedTab: selectedTab,
-                searchQueries: searchQueries,
-                expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
-                openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
-                ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} ),
-                ...( expandedJourneyDatasetFolderNames.length > 0 ? { expandedJourneyDatasetFolderNames: expandedJourneyDatasetFolderNames } : {} ),
-                // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
-                ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
-                ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
-                ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} ),
-                ...( todosOnlyObjectKeys.length > 0 ? { todosOnlyObjectKeys: todosOnlyObjectKeys } : {} ),
-                ...( hideUnselectedObjectKeys.length > 0 ? { hideUnselectedObjectKeys: hideUnselectedObjectKeys } : {} ),
-                ...( troubleshootingSubTab !== undefined ? { troubleshootingSubTab: troubleshootingSubTab } : {} ),
-                ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} ),
-                ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
-                ...( this.isBoundedText(candidateTree.removedTodosSearchText) && candidateTree.removedTodosSearchText !== '' ? { removedTodosSearchText: candidateTree.removedTodosSearchText } : {} ),
-                ...( this.isPlainRecord(candidateTree.troubleshootingHistorySort)
-                        && ( RECIPE_COCKPIT_HISTORY_SORT_COLUMNS as readonly unknown[] ).includes(candidateTree.troubleshootingHistorySort.column)
-                        && typeof candidateTree.troubleshootingHistorySort.isDescending === 'boolean'
-                        && !( candidateTree.troubleshootingHistorySort.column === 'time' && candidateTree.troubleshootingHistorySort.isDescending )
-                    ? { troubleshootingHistorySort: { column: candidateTree.troubleshootingHistorySort.column as RecipeCockpitHistorySortColumn, isDescending: candidateTree.troubleshootingHistorySort.isDescending } }
-                    : {} ),
-                ...( updaterChosenFieldKeys.length > 0 ? { updaterChosenFieldKeys: updaterChosenFieldKeys } : {} ),
-                ...( updaterExpandedObjectKeys.length > 0 ? { updaterExpandedObjectKeys: updaterExpandedObjectKeys } : {} ),
-                ...( candidateTree.updaterStep === 'structure' && updaterParentObjectApiName !== undefined ? { updaterStep: 'structure' as const } : {} ),
-                ...( updaterParentObjectApiName !== undefined ? { updaterParentObjectApiName: updaterParentObjectApiName } : {} ),
-                ...( updaterParentWhereText !== undefined ? { updaterParentWhereText: updaterParentWhereText } : {} )
-            }];
-
-        });
-
-        const normalizedPlace: IRecipeCockpitPanelPlace = {
-            version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-            runFolderName: runFolderName,
-            isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
-            isFavoritesOnly: candidatePlace.isFavoritesOnly === true,
-            ...( candidatePlace.isHelpExpanded === true ? { isHelpExpanded: true as const } : {} ),
-            ...( this.isBoundedText(candidatePlace.selectedTreeKey) && candidatePlace.selectedTreeKey !== '' ? { selectedTreeKey: candidatePlace.selectedTreeKey } : {} ),
-            ...( this.isBoundedText(candidatePlace.treecipesSearchText) && candidatePlace.treecipesSearchText !== '' ? { treecipesSearchText: candidatePlace.treecipesSearchText } : {} ),
-            scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
-            trees: trees
-        };
-
-        // TOO LARGE TO BE A PLACE A READER MADE BY HAND, SO NOT ONE TO KEEP OR RESTORE
-        return JSON.stringify(normalizedPlace).length <= RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH ? normalizedPlace : undefined;
-
-    }
-
     static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
 
         return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
@@ -2735,7 +2539,7 @@ export class RecipeCockpitService {
             return undefined;
         }
 
-        const persistedPlace = this.normalizePanelPlace(storedPlace);
+        const persistedPlace = RecipeCockpitPanelPlace.normalize(storedPlace);
 
         if ( !persistedPlace ) {
             this.forgetPersistedPanelPlace(workspaceState);
@@ -6696,7 +6500,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                const savedPlace = this.normalizePanelPlace(panelMessage.place);
+                const savedPlace = RecipeCockpitPanelPlace.normalize(panelMessage.place);
 
                 if ( !savedPlace ) {
                     return undefined;

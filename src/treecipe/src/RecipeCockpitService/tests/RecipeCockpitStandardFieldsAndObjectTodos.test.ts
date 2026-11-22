@@ -26,6 +26,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_STANDARD_FIELDS_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeSelection } from '../RecipeCockpitTreecipeSelection';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -589,7 +590,7 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
                     scrollY: 0,
                     trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [], ...treePlace }]
                 });
-                const normalizedTree = (todosOnlyObjectKeys: unknown) => RecipeCockpitService.normalizePanelPlace(savedPlaceWith({ todosOnlyObjectKeys }))?.trees[0];
+                const normalizedTree = (todosOnlyObjectKeys: unknown) => RecipeCockpitPanelPlace.normalize(savedPlaceWith({ todosOnlyObjectKeys }))?.trees[0];
 
                 expect(normalizedTree(['Account\n'])?.todosOnlyObjectKeys).toEqual(['Account\n']);
                 [[], 'Account', 1, null, undefined].forEach(candidateValue => expect(normalizedTree(candidateValue)).not.toHaveProperty('todosOnlyObjectKeys'));

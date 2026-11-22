@@ -33,6 +33,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -428,9 +429,9 @@ describe('RecipeCockpitService help section (#332)', () => {
 
         it('keeps isHelpExpanded on the host only when it is exactly true, and the place version did not change', () => {
 
-            expect(RecipeCockpitService.normalizePanelPlace(savedPlace({ isHelpExpanded: true }))?.isHelpExpanded).toBeTrue();
-            expect(RecipeCockpitService.normalizePanelPlace(savedPlace({ isHelpExpanded: 'yes' }))).not.toHaveProperty('isHelpExpanded');
-            expect(RecipeCockpitService.normalizePanelPlace(savedPlace({}))).not.toHaveProperty('isHelpExpanded');
+            expect(RecipeCockpitPanelPlace.normalize(savedPlace({ isHelpExpanded: true }))?.isHelpExpanded).toBeTrue();
+            expect(RecipeCockpitPanelPlace.normalize(savedPlace({ isHelpExpanded: 'yes' }))).not.toHaveProperty('isHelpExpanded');
+            expect(RecipeCockpitPanelPlace.normalize(savedPlace({}))).not.toHaveProperty('isHelpExpanded');
             expect(RECIPE_COCKPIT_PANEL_PLACE_VERSION).toBe(2);
 
         });

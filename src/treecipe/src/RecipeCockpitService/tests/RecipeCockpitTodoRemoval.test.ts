@@ -25,6 +25,7 @@ import {
     RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON,
     RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL
@@ -654,9 +655,9 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
             expect(panel.findAll(viewPanelOf(restoredPanel, 'removed'), 'tabSearchInput')[0].value).toBe('phone');
 
             // THE HOST KEEPS BOTH, AND NOTHING ELSE NAMED SO
-            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({ ...panel.savedState(), version: RECIPE_COCKPIT_PANEL_PLACE_VERSION });
+            const normalizedPlace = RecipeCockpitPanelPlace.normalize({ ...panel.savedState(), version: RECIPE_COCKPIT_PANEL_PLACE_VERSION });
             expect(normalizedPlace.trees[0]).toEqual(expect.objectContaining({ todosView: 'removed', removedTodosSearchText: 'phone' }));
-            expect(RecipeCockpitService.normalizePanelPlace({ ...panel.savedState(), trees: [{ ...savedTree, todosView: 'open', removedTodosSearchText: 7 }] }).trees[0]).not.toContainAnyKeys(['todosView', 'removedTodosSearchText']);
+            expect(RecipeCockpitPanelPlace.normalize({ ...panel.savedState(), trees: [{ ...savedTree, todosView: 'open', removedTodosSearchText: 7 }] }).trees[0]).not.toContainAnyKeys(['todosView', 'removedTodosSearchText']);
 
         });
 

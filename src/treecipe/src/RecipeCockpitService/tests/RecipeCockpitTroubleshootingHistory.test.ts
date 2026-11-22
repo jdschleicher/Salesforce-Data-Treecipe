@@ -14,6 +14,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     IRecipeCockpitTroubleshootingHistoryMessage,
     IRecipeCockpitTroubleshootingHistoryRowViewModel,
@@ -288,7 +289,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
 
     describe('normalizePanelPlace', () => {
 
-        const normalizedTreeOf = (treePlace: Record<string, unknown>) => RecipeCockpitService.normalizePanelPlace(savedPlaceWith(treePlace))?.trees[0];
+        const normalizedTreeOf = (treePlace: Record<string, unknown>) => RecipeCockpitPanelPlace.normalize(savedPlaceWith(treePlace))?.trees[0];
 
         it('keeps a sort of its own shape that is not the default, and drops anything else', () => {
 
