@@ -61,6 +61,7 @@ import {
     RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -526,7 +527,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
                 trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'updater', searchQueries: { treecipe: '', datasets: '', updater: 'score' }, expandedObjectKeys: [], openPicklistKeys: [], ...extraFields }]
             });
 
-            const normalizedTree = RecipeCockpitService.normalizePanelPlace(treePlace({
+            const normalizedTree = RecipeCockpitPanelPlace.normalize(treePlace({
                 updaterChosenFieldKeys: ['Account\nLegacy_Code__c', 7, ''],
                 updaterExpandedObjectKeys: ['Account']
             }))?.trees[0];
@@ -537,14 +538,14 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
                 updaterExpandedObjectKeys: ['Account']
             });
 
-            const olderTree = RecipeCockpitService.normalizePanelPlace(treePlace({ updaterChosenFieldKeys: 'Account\nLegacy_Code__c', updaterExpandedObjectKeys: [] }))?.trees[0];
+            const olderTree = RecipeCockpitPanelPlace.normalize(treePlace({ updaterChosenFieldKeys: 'Account\nLegacy_Code__c', updaterExpandedObjectKeys: [] }))?.trees[0];
             expect(olderTree).not.toHaveProperty('updaterChosenFieldKeys');
             expect(olderTree).not.toHaveProperty('updaterExpandedObjectKeys');
 
-            const withoutSearch = RecipeCockpitService.normalizePanelPlace(treePlace({}));
+            const withoutSearch = RecipeCockpitPanelPlace.normalize(treePlace({}));
             expect(withoutSearch?.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
             const noUpdaterSearch = { ...treePlace({}), trees: [{ ...treePlace({}).trees[0], searchQueries: { treecipe: '', datasets: '' } }] };
-            expect(RecipeCockpitService.normalizePanelPlace(noUpdaterSearch)?.trees[0].searchQueries).not.toHaveProperty('updater');
+            expect(RecipeCockpitPanelPlace.normalize(noUpdaterSearch)?.trees[0].searchQueries).not.toHaveProperty('updater');
 
         });
 
@@ -785,7 +786,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
         it('keeps a place\'s parent only when it is an api name, its WHERE only within the WHERE limit, and the step only with a parent', () => {
 
-            const normalizedTree = (treePlace: any) => RecipeCockpitService.normalizePanelPlace({
+            const normalizedTree = (treePlace: any) => RecipeCockpitPanelPlace.normalize({
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: TREE_RUN_FOLDER_NAME, scrollY: 0,
                 trees: [{ treeKey: ACCOUNT_TREE_KEY, selectedTab: 'updater', ...treePlace }]
             })!.trees[0];

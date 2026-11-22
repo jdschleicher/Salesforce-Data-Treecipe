@@ -12,6 +12,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -487,7 +488,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
 
         it('keeps the field through normalizePanelPlace only when it is true, so workspaceState holds no other value', () => {
 
-            const normalizedTree = (isRecordTypeFieldsOnly: unknown) => RecipeCockpitService.normalizePanelPlace(savedPlaceWith({ isRecordTypeFieldsOnly }))?.trees[0];
+            const normalizedTree = (isRecordTypeFieldsOnly: unknown) => RecipeCockpitPanelPlace.normalize(savedPlaceWith({ isRecordTypeFieldsOnly }))?.trees[0];
 
             expect(normalizedTree(true)?.isRecordTypeFieldsOnly).toBe(true);
             [false, 'true', 1, null, undefined].forEach(candidateValue => expect(normalizedTree(candidateValue)).not.toHaveProperty('isRecordTypeFieldsOnly'));

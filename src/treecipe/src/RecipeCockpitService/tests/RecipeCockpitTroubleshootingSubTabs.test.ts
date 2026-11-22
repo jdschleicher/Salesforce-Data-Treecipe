@@ -12,6 +12,7 @@ import {
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -395,7 +396,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
         it('keeps, through normalizePanelPlace, a sub-tab other than the first and searches that are text, and nothing else', () => {
 
-            const normalizedTree = (treePlace: Record<string, unknown>) => RecipeCockpitService.normalizePanelPlace(savedPlaceWith(treePlace))?.trees[0];
+            const normalizedTree = (treePlace: Record<string, unknown>) => RecipeCockpitPanelPlace.normalize(savedPlaceWith(treePlace))?.trees[0];
 
             expect(normalizedTree({ troubleshootingSubTab: 'fields', troubleshootingSearchQueries: { todos: 'lookup', fields: '', permissions: 3, __proto__: 'x', recordTypes: 'Business' } })).toMatchObject({
                 troubleshootingSubTab: 'fields',
