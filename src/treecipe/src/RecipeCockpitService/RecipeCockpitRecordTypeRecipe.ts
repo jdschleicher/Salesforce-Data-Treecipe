@@ -6,6 +6,7 @@ import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWr
 import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RecordTypeWrapper } from '../ObjectInfoWrapper/RecordTypesWrapper';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
+import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 
 /*
     How the record types ticked under "Manage record types" become a generate (#623, slice C of #620).
@@ -26,6 +27,8 @@ export const RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS = 10;
 
 export const RECORD_TYPE_SET_MODE_LEGEND = 'Record types ticked under Manage record types';
 export const RECORD_TYPE_RECIPE_PROGRESS_TITLE = 'Building the recipe for the ticked record types';
+// WITH "A data set for each record type" OFFERED, THE FOLDED BUILD IS THE FIRST OF SEVERAL, SO IT SAYS WHICH ONE IT IS (#695)
+export const RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE = `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: one data set, folded`;
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 
 // WHAT THE PLAN READS OF AN OBJECT WITH RECORD TYPES: ITS DEFAULT, AND WHAT THE RUN'S RECIPE ALREADY WRITES
@@ -199,7 +202,26 @@ export class RecipeCockpitRecordTypeRecipe {
     // HOW A SET IS NAMED IN THE CONFIRMATION AND THE NOTIFICATION (#624): "Set 2 · Account · Partner, Opportunity · New"
     static buildRecordTypeSetLabel(recordTypeSet: Readonly<Record<string, string[]>>, setIndex: number): string {
 
-        return `Set ${setIndex + 1} · ${Object.keys(recordTypeSet).map(objectApiName => `${objectApiName} · ${recordTypeSet[objectApiName].join(', ')}`).join(', ')}`;
+        return `Set ${setIndex + 1} · ${RecipeCockpitRecordTypeRecipe.describeRecordTypeSet(recordTypeSet)}`;
+
+    }
+
+    /*
+        One set's recipe build, numbered among all of them (#695): the builds before the confirmation
+        are N+1 cancellable notifications in a row, and an unnumbered title says neither how far along
+        they are nor what Cancel stops. A VS Code notification renders [label](command:...) as a link
+        that runs it, so the metadata names are escaped.
+    */
+    static buildRecordTypeSetProgressTitle(recordTypeSet: Readonly<Record<string, string[]>>, setIndex: number, setCount: number): string {
+
+        return `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set ${setIndex + 1} of ${setCount} · ${RecipeYamlScalar.escapeForNotification(RecipeCockpitRecordTypeRecipe.describeRecordTypeSet(recordTypeSet))}`;
+
+    }
+
+    // "Account · Partner, Opportunity · New": THE SAME WORDS IN THE CONFIRMATION, THE NOTIFICATION AND THE PROGRESS TITLE
+    private static describeRecordTypeSet(recordTypeSet: Readonly<Record<string, string[]>>): string {
+
+        return Object.keys(recordTypeSet).map(objectApiName => `${objectApiName} · ${recordTypeSet[objectApiName].join(', ')}`).join(', ');
 
     }
 
@@ -213,7 +235,8 @@ export class RecipeCockpitRecordTypeRecipe {
     */
     static async buildDerivedTreeRecipe(workspaceRoot: string,
                                         treeFolderName: string,
-                                        recordTypeSelection: Readonly<Record<string, string[]>>): Promise<IDerivedTreeRecipe | DerivedTreeRecipeRefusal> {
+                                        recordTypeSelection: Readonly<Record<string, string[]>>,
+                                        progressTitle: string = RECORD_TYPE_RECIPE_PROGRESS_TITLE): Promise<IDerivedTreeRecipe | DerivedTreeRecipeRefusal> {
 
         const objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
         const isMissingGlobalValueSetsDirectoryWarningShown = false;
@@ -225,7 +248,7 @@ export class RecipeCockpitRecordTypeRecipe {
 
             return await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: RECORD_TYPE_RECIPE_PROGRESS_TITLE,
+                title: progressTitle,
                 cancellable: true
             }, async (progress, cancellationToken) => {
 
