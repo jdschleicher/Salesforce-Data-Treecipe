@@ -19,12 +19,16 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
+    RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
-    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
+} from '../RecipeCockpitTreecipeSelection';
+import {
     RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL,
     RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTreecipeRecipeEdits';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';

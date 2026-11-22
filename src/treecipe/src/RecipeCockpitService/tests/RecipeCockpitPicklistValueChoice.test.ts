@@ -20,15 +20,18 @@ import {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON,
-    RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL,
     RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
-    RECIPE_COCKPIT_PICKLIST_RESET_LABEL,
-    RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL
+    RECIPE_COCKPIT_PICKLIST_RESET_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL,
+    RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL,
+    RecipeCockpitTreecipeSelection
+} from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
@@ -555,8 +558,8 @@ describe('openRecipeCockpitPanel: saving a choice of values (#465)', () => {
         const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
         postedPanelMessages = [];
 
-        await (RecipeCockpitService as any).setPicklistValueChoice(buildWebviewPanel(), RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT), action);
-        await (RecipeCockpitService as any).setPicklistValueChoice(buildWebviewPanel(), panelState, { ...action, fieldApiName: 'Gone__c' });
+        await (RecipeCockpitTreecipeSelection as any).setPicklistValueChoice(RecipeCockpitService, buildWebviewPanel(), RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT), action);
+        await (RecipeCockpitTreecipeSelection as any).setPicklistValueChoice(RecipeCockpitService, buildWebviewPanel(), panelState, { ...action, fieldApiName: 'Gone__c' });
 
         expect(showWarningMessage).not.toHaveBeenCalled();
         expect(postedPanelMessages).toEqual([]);
@@ -619,7 +622,7 @@ describe('openRecipeCockpitPanel: saving a choice of values (#465)', () => {
 
         postedPanelMessages = [];
         const action = { kind: 'resetPicklistValueChoice', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' };
-        await (RecipeCockpitService as any).resetPicklistValueChoice(buildWebviewPanel(), RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT), action);
+        await (RecipeCockpitTreecipeSelection as any).resetPicklistValueChoice(RecipeCockpitService, buildWebviewPanel(), RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT), action);
         expect(postedPanelMessages).toEqual([]);
 
     });

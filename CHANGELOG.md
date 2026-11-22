@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.207.1] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **The rest of the Treecipe tab's host code left the hub.** It is four files, which load one way: Host loads the other three, Selection and ObjectRefresh each load RecipeEdits, and RecipeEdits loads no other host.
+  - `RecipeCockpitTreecipeHost.ts`: the 22 commands and 24 action kinds, the pure router, the executor, and a card's rename and favourite.
+  - `RecipeCockpitTreecipeSelection.ts`: objects, fields, counts, fixed values, picklist choices, validation rule toggles and reset.
+  - `RecipeCockpitTreecipeObjectRefresh.ts`: Get latest object detail.
+  - `RecipeCockpitTreecipeRecipeEdits.ts`: friends, lookup wiring, parents, "Use existing … from org", TODO remove and restore, and the recipe and sidecar writes the other files share.
+  - One file would have been about 3,300 lines.
+- **What the model build also reads stays in the hub:** the lock reasons, the TODO, friend and wiring keys, the selection and fixed-value readers, and the object selection cascade. So do name preferences and the staged-field reads the Treecipe Adapter shares.
+- **`RecipeCockpitTabHosts.test.ts` has a Treecipe row.**
+  - Every owed entry that named #688 is cleared or now gives the shared hub service that keeps it.
+  - Seven cross-tab module uses are listed exactly as shared.
+- **Tests changed only to reach code where it now lives.** They import moved names from the new files, and the confirmation scan reads the four new files too.
+- **The #669 owed entries now name #688.** This came from #687's follow-up commit, which landed after that PR merged.
+- **`RecipeCockpitService.ts` went from 11,807 lines to 8,846.**
+
 ## [3.207.0] - Read-only fields stay in the recipe as READ ONLY, are locked in the Recipe Cockpit, and are never inserted (#685)
 
 Closes [#685](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/685).
@@ -87,7 +105,7 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
   - `postInsertState`, the insert lock both inserts hold.
   - The selection checks other tabs' routers read, `changeOrgAndRestart`, `buildConfirmOrg` and `toSingleLine`.
   - The Troubleshooting focus that opening the cockpit reads.
-- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to #669 part b.
+- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to [#688](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/688), #669's part b.
 - **The words the moved code says moved with it.** `RECIPE_COCKPIT_DATA_ORG_STATE_KEY`, the scratch org prompts, the insert confirmation's labels and `RECIPE_COCKPIT_RUN_FAKER_COMMAND` are among them, so a host never loads the hub.
 - **`RecipeCockpitTabHosts.test.ts` has a Treecipe org row.**
   - `RecipeCockpitRecordCreation`, which the Adapter's Add to data set also imports, is listed exactly as shared.

@@ -23,10 +23,12 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON,
     RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON,
-    RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS,
-    RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL
+    RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL
+} from '../RecipeCockpitTreecipeRecipeEdits';
 import { RecipeCockpitRemovedTodoStore } from '../RecipeCockpitRemovedTodoStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
