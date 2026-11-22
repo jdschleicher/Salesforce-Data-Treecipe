@@ -6,6 +6,7 @@ import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecip
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
+import { StandardCompoundAddressFields } from '../ObjectInfoWrapper/StandardCompoundAddressFields';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
@@ -114,6 +115,11 @@ export class DirectoryProcessor {
       return true;
     }
 
+    // A STANDARD ADDRESS IS RETRIEVED WITH NO <type>, SO ITS OBJECT AND NAME ARE THE SIGNAL (#694)
+    if ( fieldInfo?.fieldName && StandardCompoundAddressFields.findAddressField(associatedObjectName, fieldInfo.fieldName) ) {
+      return true;
+    }
+
     /*
       A compound address field file can carry no <type> tag at all, in which case it has already
       parsed as AUTO_GENERATED and no metadata signal is left to key on -- the configured list is
@@ -215,7 +221,10 @@ export class DirectoryProcessor {
       compoundComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
     }
     // A TYPELESS Name HAS NO <label> EITHER, SO ITS PARTS ARE LABELLED BY THEIR OWN NAMES
-    const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldInfo.fieldLabel} `;
+    // A TYPELESS STANDARD ADDRESS HAS NO <label>, SO ITS PARTS TAKE THE LIST'S (#694)
+    const compoundFieldLabel = StandardCompoundAddressFields.findAddressField(associatedObjectName, compoundFieldInfo.fieldName)?.fieldLabel
+      ?? compoundFieldInfo.fieldLabel;
+    const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldLabel} `;
 
     return compoundComponentRecipes
       .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
@@ -230,6 +239,20 @@ export class DirectoryProcessor {
         null,
         componentRecipe.recipeValue
       ));
+
+  }
+
+  /*
+    A standard address whose field file was not retrieved is still on every record the object has,
+    so its parts are written anyway (#694). A person account's are not: they need their own file.
+  */
+  buildUnretrievedStandardAddressFieldInfos(associatedObjectName: string, retrievedCompoundFieldInfos: FieldInfo[]): FieldInfo[] {
+
+    const retrievedCompoundFieldApiNames = new Set(retrievedCompoundFieldInfos.map(fieldInfo => fieldInfo.fieldName));
+    return StandardCompoundAddressFields.getAddressFields(associatedObjectName)
+      .filter(addressField => !addressField.isWrittenOnlyWithItsFieldFile)
+      .filter(addressField => !retrievedCompoundFieldApiNames.has(addressField.fieldApiName))
+      .map(addressField => FieldInfo.create(associatedObjectName, addressField.fieldApiName, addressField.fieldLabel, 'Address', null, null, null, null));
 
   }
 
@@ -526,6 +549,8 @@ export class DirectoryProcessor {
       }
 
     }
+
+    compoundFieldInfos.push(...this.buildUnretrievedStandardAddressFieldInfos(associatedObjectName, compoundFieldInfos));
 
     /*
       Expansion runs AFTER the walk so a component can be checked against every field file the object

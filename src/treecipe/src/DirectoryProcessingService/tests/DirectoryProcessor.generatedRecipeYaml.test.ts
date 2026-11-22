@@ -809,6 +809,59 @@ describe.each([
 
 });
 
+// #694: EVERY STANDARD ADDRESS IS WRITTEN AS ITS PARTS, RETRIEVED OR NOT, AND NO TYPELESS ONE IS A TODO LINE
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('Generate Treecipe with the %s backend, over standard compound addresses (#694)', (unusedBackend, createFakerService) => {
+
+    const STANDARD_ADDRESS_OBJECTS_PATH = path.join(__dirname, 'mocks', 'StandardCompoundAddressSalesforceMetadataDirectory', 'objects');
+    let loadedObjectRecipes: LoadedObjectRecipe[];
+    let recipeTexts: string[];
+
+    beforeAll(async () => {
+        const recipeFiles = (await processMockMetadata(createFakerService, undefined, STANDARD_ADDRESS_OBJECTS_PATH)).RecipeFiles;
+        recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
+        loadedObjectRecipes = flattenObjectRecipes(recipeTexts.flatMap(recipeText => yaml.load(recipeText) as LoadedObjectRecipe[]));
+    });
+
+    const fieldNamesOfObject = (objectApiName: string): string[] =>
+        Object.keys(loadedObjectRecipes.find(objectRecipe => objectRecipe.object === objectApiName)?.fields ?? {});
+
+    test.each([
+        ['Quote', ['BillingStreet', 'BillingCity', 'ShippingCountry', 'QuoteToPostalCode', 'AdditionalState']],
+        ['Order', ['BillingStreet', 'ShippingCountry']],
+        ['WorkOrder', ['Street', 'City', 'State', 'PostalCode', 'Country']],
+        ['Account', ['ShippingStreet', 'PersonMailingStreet', 'PersonMailingCountry']]
+    ])('%s carries its address parts', (objectApiName, expectedFieldApiNames) => {
+
+        expect(fieldNamesOfObject(objectApiName)).toEqual(expect.arrayContaining(expectedFieldApiNames));
+
+    });
+
+    test('no recipe carries a compound address line or a person account address it has no file for', () => {
+
+        const recipeText = recipeTexts.join('\n');
+
+        expect(recipeText).not.toMatch(/^ +(BillingAddress|ShippingAddress|PersonMailingAddress):/m);
+        expect(recipeText).not.toMatch(/PersonOther/);
+
+    });
+
+    test('the typeless field on an object with no standard address is still a TODO line', () => {
+
+        expect(recipeTexts.join('\n')).toMatch(/^ +Site__c: ### TODO -- REVIEW THIS LINE/m);
+
+    });
+
+    testRequiringPyYaml('PyYAML loads every recipe file it writes exactly as js-yaml loads it', () => {
+
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+});
+
 /*
     #462. Both backends evaluate a record's fields top to bottom, so a dependent picklist written
     above its controlling field failed every faker-js record of its object and gave snowfakery

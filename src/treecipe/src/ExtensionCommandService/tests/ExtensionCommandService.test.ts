@@ -2538,8 +2538,8 @@ describe('ExtensionCommandService', () => {
             const recipeWriterMocksFolderPath = path.join(__dirname, '..', '..', 'RecipeCockpitService', 'tests', 'mocks', 'recipeWriter');
 
             const preV3291Cases = [
-                { ...backendCases[0], fixtureFileName: 'preV3291-recipe-fakerjs--RelationshipTree_1.yml', bareLineNumbers: [249, 251, 260, 262] },
-                { ...backendCases[1], fixtureFileName: 'preV3291-recipe-snowfakery--RelationshipTree_1.yml', bareLineNumbers: [236, 238, 244, 246] }
+                { ...backendCases[0], fixtureFileName: 'preV3291-recipe-fakerjs--RelationshipTree_1.yml', bareLineNumbers: [247, 249, 258, 260] },
+                { ...backendCases[1], fixtureFileName: 'preV3291-recipe-snowfakery--RelationshipTree_1.yml', bareLineNumbers: [234, 236, 242, 244] }
             ];
 
             let openFileInEditorAtSelectionSpy: jest.SpyInstance;

@@ -21,11 +21,12 @@ SELECT Id,
        SLAExpirationDate__c,
        SLASerialNumber__c,
        SLA__c,
-       ShippingAddress,
        SicDesc,
        Site,
        TickerSymbol,
-       UpsellOpportunity__c
+       UpsellOpportunity__c,
+       BillingAddress,
+       ShippingAddress
 FROM Account
 ```
 
@@ -58,7 +59,7 @@ FROM Account
 -- Children: Contact (via AccountId)
 -- Note: Verify 'Contacts' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, Name, OtherAddress
+    (SELECT Id, Name, MailingAddress, OtherAddress
      FROM Contacts)
 FROM Account
 ```
@@ -136,10 +137,11 @@ RETURNING Campaign(Id)
 SELECT Id,
        Name,
        AccountId,
-       OtherAddress,
        ReportsToId,
        UserOfAContact_1__c,
-       Userlookup_2__c
+       Userlookup_2__c,
+       MailingAddress,
+       OtherAddress
 FROM Contact
 ```
 
@@ -162,6 +164,7 @@ FROM Contact
 SELECT Id,
        ReportsToId,
        ReportsTo.Name,
+       ReportsTo.MailingAddress,
        ReportsTo.OtherAddress
 FROM Contact
 ```
@@ -186,7 +189,7 @@ FROM Contact
 -- Children: Contact (via ReportsToId)
 -- Note: Verify 'Contacts' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, Name, OtherAddress
+    (SELECT Id, Name, MailingAddress, OtherAddress
      FROM Contacts)
 FROM Contact
 ```
@@ -214,7 +217,9 @@ RETURNING Contact(Id)
 ### Base Query
 
 ```sql
-SELECT Id
+SELECT Id,
+       BillingAddress,
+       ShippingAddress
 FROM Contract
 ```
 
@@ -413,6 +418,7 @@ FROM MasterDetailMadness__c
 SELECT Id,
        LU_Contact__c,
        LU_Contact__r.Name,
+       LU_Contact__r.MailingAddress,
        LU_Contact__r.OtherAddress
 FROM MasterDetailMadness__c
 ```
@@ -727,7 +733,8 @@ RETURNING Product__c(Id, Battery__c, Charger__c, Description__c, Fork__c, Front_
 ### Base Query
 
 ```sql
-SELECT Id
+SELECT Id,
+       Address
 FROM User
 ```
 
@@ -737,7 +744,7 @@ FROM User
 -- Children: Contact (via UserOfAContact_1__c, Userlookup_2__c)
 -- Note: Verify 'Contacts' is the correct Child Relationship Name
 SELECT Id,
-    (SELECT Id, Name, OtherAddress
+    (SELECT Id, Name, MailingAddress, OtherAddress
      FROM Contacts)
 FROM User
 ```

@@ -15,7 +15,7 @@ export interface IQueryJourney {
 
 const BASE_QUERY_GROUP = { role: 'group', name: 'Account · Base Query' };
 const BASE_QUERY_BOX = 'SOQL for Account · Base Query';
-const GENERATED_BASE_QUERY = 'SELECT Id,\n       Rating__c,\n       Region__c\nFROM Account';
+const GENERATED_BASE_QUERY = 'SELECT Id,\n       Rating__c,\n       Region__c,\n       BillingAddress,\n       ShippingAddress\nFROM Account';
 const QUERY_RESULTS_FOLDER = `treecipe/GeneratedRecipes/recipe-fakerjs-2026-10-15T09-00-00/${TREE_NAME}/RunArtifacts/QueryResults`;
 const ACCOUNT_ROWS = [
     { attributes: { type: 'Account', url: '/services/data/v62.0/sobjects/Account/001000000000001AAA' }, Id: '001000000000001AAA', Rating__c: 'Hot', Region__c: 'EMEA' },
