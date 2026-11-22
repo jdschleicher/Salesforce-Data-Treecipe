@@ -12,49 +12,62 @@ export interface IStandardCompoundAddressField {
     isWrittenOnlyWithItsFieldFile: boolean;
 }
 
-const writtenWithoutItsFieldFile = (fieldApiName: string, fieldLabel: string): IStandardCompoundAddressField =>
-    ({ fieldApiName, fieldLabel, isWrittenOnlyWithItsFieldFile: false });
-
-const writtenOnlyWithItsFieldFile = (fieldApiName: string, fieldLabel: string): IStandardCompoundAddressField =>
-    ({ fieldApiName, fieldLabel, isWrittenOnlyWithItsFieldFile: true });
-
 export class StandardCompoundAddressFields {
 
-    static readonly addressFieldsByObjectApiName: Readonly<Record<string, readonly IStandardCompoundAddressField[]>> = Object.freeze(Object.assign(Object.create(null), {
+    private static writtenWithoutItsFieldFile(fieldApiName: string, fieldLabel: string): IStandardCompoundAddressField {
+        return Object.freeze({ fieldApiName, fieldLabel, isWrittenOnlyWithItsFieldFile: false });
+    }
+
+    private static writtenOnlyWithItsFieldFile(fieldApiName: string, fieldLabel: string): IStandardCompoundAddressField {
+        return Object.freeze({ fieldApiName, fieldLabel, isWrittenOnlyWithItsFieldFile: true });
+    }
+
+    // A PROTOTYPE-LESS MAP WITH EVERY LIST AND ENTRY FROZEN, SO NO CALLER CAN CHANGE WHAT GENERATION READS
+    private static freezeEveryList(addressFieldsByObjectApiName: Record<string, IStandardCompoundAddressField[]>): Readonly<Record<string, readonly IStandardCompoundAddressField[]>> {
+
+        const frozenAddressFieldsByObjectApiName: Record<string, readonly IStandardCompoundAddressField[]> = Object.create(null);
+        Object.entries(addressFieldsByObjectApiName).forEach(([objectApiName, addressFields]) => {
+            frozenAddressFieldsByObjectApiName[objectApiName] = Object.freeze([...addressFields]);
+        });
+        return Object.freeze(frozenAddressFieldsByObjectApiName);
+
+    }
+
+    static readonly addressFieldsByObjectApiName: Readonly<Record<string, readonly IStandardCompoundAddressField[]>> = StandardCompoundAddressFields.freezeEveryList({
         Account: [
-            writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
-            writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address'),
-            writtenOnlyWithItsFieldFile('PersonMailingAddress', 'Mailing Address'),
-            writtenOnlyWithItsFieldFile('PersonOtherAddress', 'Other Address')
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address'),
+            StandardCompoundAddressFields.writtenOnlyWithItsFieldFile('PersonMailingAddress', 'Mailing Address'),
+            StandardCompoundAddressFields.writtenOnlyWithItsFieldFile('PersonOtherAddress', 'Other Address')
         ],
-        Asset: [ writtenWithoutItsFieldFile('Address', 'Address') ],
+        Asset: [ StandardCompoundAddressFields.writtenWithoutItsFieldFile('Address', 'Address') ],
         Contact: [
-            writtenWithoutItsFieldFile('MailingAddress', 'Mailing Address'),
-            writtenWithoutItsFieldFile('OtherAddress', 'Other Address')
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('MailingAddress', 'Mailing Address'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('OtherAddress', 'Other Address')
         ],
         Contract: [
-            writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
-            writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address')
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address')
         ],
-        Lead: [ writtenWithoutItsFieldFile('Address', 'Address') ],
+        Lead: [ StandardCompoundAddressFields.writtenWithoutItsFieldFile('Address', 'Address') ],
         Order: [
-            writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
-            writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address')
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address')
         ],
         Quote: [
-            writtenWithoutItsFieldFile('BillingAddress', 'Bill To'),
-            writtenWithoutItsFieldFile('ShippingAddress', 'Ship To'),
-            writtenWithoutItsFieldFile('QuoteToAddress', 'Quote To'),
-            writtenWithoutItsFieldFile('AdditionalAddress', 'Additional To')
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('BillingAddress', 'Bill To'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('ShippingAddress', 'Ship To'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('QuoteToAddress', 'Quote To'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('AdditionalAddress', 'Additional To')
         ],
-        ServiceAppointment: [ writtenWithoutItsFieldFile('Address', 'Address') ],
+        ServiceAppointment: [ StandardCompoundAddressFields.writtenWithoutItsFieldFile('Address', 'Address') ],
         ServiceContract: [
-            writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
-            writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address')
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('BillingAddress', 'Billing Address'),
+            StandardCompoundAddressFields.writtenWithoutItsFieldFile('ShippingAddress', 'Shipping Address')
         ],
-        User: [ writtenWithoutItsFieldFile('Address', 'Address') ],
-        WorkOrder: [ writtenWithoutItsFieldFile('Address', 'Address') ]
-    }));
+        User: [ StandardCompoundAddressFields.writtenWithoutItsFieldFile('Address', 'Address') ],
+        WorkOrder: [ StandardCompoundAddressFields.writtenWithoutItsFieldFile('Address', 'Address') ]
+    });
 
     static getAddressFields(objectApiName: string): readonly IStandardCompoundAddressField[] {
 

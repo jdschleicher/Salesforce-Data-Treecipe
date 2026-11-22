@@ -66,6 +66,8 @@ export class DirectoryProcessor {
   private relationshipService: RelationshipService;
   private customRelationshipMappings: Record<string, string> | undefined;
   private customCompoundAddressFields: string[] | undefined;
+  // THE COMPOUND FIELD EACH EXPANDED PART CAME FROM, SO A RULE ON A PART CAN NAME IT (#697); A WeakMap SO NOTHING IS SERIALIZED
+  private compoundFieldApiNameByPart = new WeakMap<FieldInfo, string>();
   // THE SERVICE THAT WRITES EVERY OBJECT'S RECIPE DECIDES WHETHER THE TREE NESTS ITS CHILDREN UNDER friends: (#46)
   private isFakerJSServiceSelected: boolean;
   // THE RECORD TYPES THE USER CHOSE FOR THIS RUN (#193); UNDEFINED WRITES EVERY OBJECT'S DEFAULT, AS BEFORE
@@ -227,7 +229,7 @@ export class DirectoryProcessor {
       ?? compoundFieldInfo.fieldLabel;
     const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldLabel} `;
 
-    return compoundComponentRecipes
+    const compoundPartFieldInfos = compoundComponentRecipes
       .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
       .filter((componentRecipe) => !alreadyProcessedFieldApiNames.has(componentRecipe.componentApiName))
       .map((componentRecipe) => FieldInfo.create(
@@ -240,6 +242,8 @@ export class DirectoryProcessor {
         null,
         componentRecipe.recipeValue
       ));
+    compoundPartFieldInfos.forEach(partFieldInfo => this.compoundFieldApiNameByPart.set(partFieldInfo, compoundFieldInfo.fieldName));
+    return compoundPartFieldInfos;
 
   }
 
@@ -787,6 +791,20 @@ export class DirectoryProcessor {
   }
 
   /*
+    A part an Address or Geolocation expansion wrote has no FieldInfo carrying rule constraints, so
+    "not read from the fields folder" would be false for it, as for a Name part (#697).
+  */
+  buildCompoundPartRuleNotAppliedReason(objectName: string, fieldReference: string, fieldsInfo: FieldInfo[]): string | undefined {
+
+    const fieldKey = fieldReference.toLowerCase();
+    const expandedPart = fieldsInfo.find(fieldInfo => fieldInfo.fieldName?.toLowerCase() === fieldKey && this.compoundFieldApiNameByPart.has(fieldInfo));
+    return expandedPart === undefined
+      ? undefined
+      : `${expandedPart.fieldName} is written as a part of ${objectName}'s compound ${this.compoundFieldApiNameByPart.get(expandedPart)}, which validation rules do not change`;
+
+  }
+
+  /*
     Every rule that was not applied is one TODO line at the end of the object's first block, in rule
     file order, so the recipe says what generation did not do. A rule naming no field the walk read
     -- or matching no shape -- is recorded on the object; the rest are on their field's FieldInfo.
@@ -817,6 +835,7 @@ export class DirectoryProcessor {
       if ( fieldInfo === undefined ) {
         const reason = this.buildReadOnlyFieldRuleNotAppliedReason(analysis.constraint.fieldReference, fieldsInfo)
           ?? this.buildCompoundNameRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
+          ?? this.buildCompoundPartRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
           ?? RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
         objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
         notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));

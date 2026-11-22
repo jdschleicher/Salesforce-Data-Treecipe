@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.208.2] - A validation rule on a compound address or geolocation part names its compound field; #694 review follow-ups (#697)
+
+### Validation rules on an address or geolocation part
+
+- **A rule on a part a compound expansion wrote now says where the part comes from**, rather than that Treecipe did not read the field. For example, `### TODO -- VALIDATION RULE NOT APPLIED -- "Rule" -- QuoteToCity is written as a part of Quote's compound QuoteToAddress, which validation rules do not change`. This covers standard and configured custom addresses (`Site__City__s` → `Site__c`) and Geolocation parts (`Site_Location__Latitude__s` → `Site_Location__c`). A part the standard field map writes keeps its standard-field reason, and a Name part keeps its #114 reason. The rule is still not applied to the part's value.
+
+### Under the hood
+
+- `ObjectInfoWrapper/CompoundComponentApiName.ts` (imports nothing) holds the part naming rule `RecipeService.buildCompoundComponentApiName` used to hold, and that method delegates to it, so `SOQLTemplateService` reads the rule without loading `RecipeService`. `StandardCompoundAddressFields` builds its entries in private static methods, and freezes every list and entry.
+- **Tests.** `DirectoryProcessor.standardCompoundAddress.test.ts` covers the rule reasons in both backends: standard, case-insensitive, configured custom, Geolocation, a standard map part, a missing field, and another object's part. `StandardCompoundAddressFields.test.ts` tests the freezing, and `CompoundComponentApiName.test.ts` covers every branch and checks the file imports nothing. Generated output for a workspace with no such rule is unchanged (the golden files are untouched).
+
 ## [3.208.1] - Recipe Cockpit: the "Customize and create new recipe" modal lays out only the fields near the view, so ↺ on a big tree answers at once (#693)
 
 ### Customize and create new recipe

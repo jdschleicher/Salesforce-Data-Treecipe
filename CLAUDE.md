@@ -168,6 +168,8 @@ src/
     │   ├── RecordTypesWrapper.ts            # RecordTypeWrapper, the record type ObjectInfo.RecordTypesMap holds; RecordTypeService fills it in (#575)
     │   ├── PersonNameObjects.ts             # Contact, Lead, Individual: the objects whose Name is a read-only compound (#114); imports nothing
     │   ├── ReadOnlyFields.ts                # Fields Salesforce calculates or sets itself (#685): formula, roll-up, auto number and a pinned standard list, written READ ONLY -- <reason>, locked in the cockpit, never inserted; imports nothing
+    │   ├── StandardCompoundAddressFields.ts # Each standard object's compound Address fields (#694): a typeless file is recognized, an unretrieved one still written as its parts; imports nothing
+    │   ├── CompoundComponentApiName.ts      # The api name of a compound field's part (BillingAddress → BillingStreet, Site__c → Site__Street__s); RecipeService delegates to it (#697); imports nothing
     │   ├── StandardDerivedFields.ts         # Fields Salesforce sets from another lookup (Quote.AccountId from OpportunityId, #680): written as Opportunity_NickName.AccountId, read only in the cockpit, never inserted; imports nothing
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
