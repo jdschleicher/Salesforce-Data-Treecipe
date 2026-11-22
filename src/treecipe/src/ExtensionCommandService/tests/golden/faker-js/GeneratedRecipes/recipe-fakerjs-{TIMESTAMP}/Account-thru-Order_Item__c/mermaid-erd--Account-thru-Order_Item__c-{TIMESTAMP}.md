@@ -81,6 +81,7 @@ erDiagram
         id Id
         string CurrentGenerators__c
         string DeliveryInstallationStatus__c
+        string ExpectedRevenue
         string IqScore
         string IsPrivate
         string MainCompetitors__c

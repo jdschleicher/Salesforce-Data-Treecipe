@@ -1,6 +1,7 @@
 import { createButton, createElement, setShownWithMotion } from '../../../../CockpitKit/panel/CockpitPanelElements';
-import { RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL, RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX, RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL, RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL, RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX } from '../../../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL, RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX, RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL, RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL, RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX } from '../../../RecipeCockpitFieldRowsConstants';
 import { StandardDerivedFields } from '../../../../ObjectInfoWrapper/StandardDerivedFields';
+import { ReadOnlyFields } from '../../../../ObjectInfoWrapper/ReadOnlyFields';
 import { RECIPE_COCKPIT_PICKLIST_RESET_LABEL } from '../../../RecipeCockpitTreecipeFieldEditorConstants';
 import { drawTreePermissionSet } from '../../troubleshooting/TroubleshootingActions';
 import { requestTroubleshootingSummary } from '../../troubleshooting/TroubleshootingTab';
@@ -188,6 +189,16 @@ export function buildTreeFieldRow(treeObjectState: IFieldRowObjectState, fieldSt
         fieldHeaderElement.appendChild(derivedBadgeElement);
         const copiedNickname = referencedOwnerState ? readSourceFieldNickname(referencedOwnerState, derivedField.sourceFieldApiName) : null;
         fieldHeaderElement.appendChild(createElement('span', 'treeFieldNote derivedFieldNote muted', copiedNickname ? derivedReason + ' → ' + copiedNickname : derivedReason));
+    }
+
+    // A FIELD SALESFORCE CALCULATES OR SETS ITSELF (#685): READ ONLY, SAYING WHY, AND A FORMULA FIELD SHOWING ITS FORMULA
+    const readOnlyReason = derivedField ? undefined : ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) {
+        const readOnlyBadgeElement = createElement('span', 'fixedValueBadge derivedFieldBadge', RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL);
+        readOnlyBadgeElement.setAttribute('title', 'Salesforce sets ' + field.fieldApiName + ' itself (' + readOnlyReason + ')' + RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX);
+        fieldHeaderElement.appendChild(readOnlyBadgeElement);
+        const readOnlyNote = readOnlyReason === 'formula' && field.formula ? RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX + field.formula : readOnlyReason;
+        fieldHeaderElement.appendChild(createElement('span', 'treeFieldNote readOnlyFieldNote muted', readOnlyNote));
     }
 
     // THE RECORD TYPES THAT RESTRICT THIS FIELD (#320), AS TEXT, WHETHER OR NOT THE CHECK IS ON

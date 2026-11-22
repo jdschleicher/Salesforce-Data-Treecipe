@@ -344,7 +344,6 @@
     Probability: ${{ (faker.string.numeric(2))}}.0 
     StageName: ${{faker.helpers.arrayElement(['Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'])}}
     Type: ${{faker.helpers.arrayElement(['New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade'])}}
-    ForecastCategory: ${{faker.helpers.arrayElement(['Pipeline', 'Best Case', 'Commit', 'Closed'])}}
     AccountId: ### TODO -- REFERENCE ID REQUIRED
     CampaignId: ### TODO -- REFERENCE ID REQUIRED
     ContractId: ### TODO -- REFERENCE ID REQUIRED

@@ -1,5 +1,49 @@
 # Change Log
 
+## [3.207.0] - Read-only fields stay in the recipe as READ ONLY, are locked in the Recipe Cockpit, and are never inserted (#685)
+
+Closes [#685](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/685).
+
+Before this change, a field Salesforce calculates was generated like any other field and sent on insert, so the insert failed:
+- A custom formula field got a random value of its result type. `Example_Everything__c.Formula__c` in the test metadata landed in the data set as `"Formula__c": "2305181637847579.95"`.
+- Roll-up summary and auto number fields were written as a quoted "FieldType Not Handled" TODO, which was inserted as text.
+- faker-js added `Opportunity.ExpectedRevenue`, `ForecastCategory` and four Campaign counts to every such object.
+
+What a user gets now:
+- **Read-only fields are written as `READ ONLY -- <reason>`, in both backends.** That covers:
+  - every field with a `<formula>`, whatever its `<type>` (`READ ONLY -- formula`);
+  - every `Summary` field (`READ ONLY -- roll-up summary`);
+  - every `AutoNumber` field (`READ ONLY -- auto number`);
+  - the standard fields in the new `ObjectInfoWrapper/ReadOnlyFields.ts` list (`READ ONLY -- set by Salesforce`), when the project has their field file, even one with no `<type>`:
+    - Opportunity: ExpectedRevenue, ForecastCategory, IsClosed, IsWon, FiscalQuarter, FiscalYear, Fiscal, HasOpportunityLineItem
+    - Campaign: NumberOfContacts, NumberOfLeads, NumberOfOpportunities, NumberOfResponses, NumberOfConvertedLeads, NumberOfWonOpportunities, AmountAllOpportunities, AmountWonOpportunities, and the twelve Hierarchy totals (HierarchyActualCost, HierarchyBudgetedCost, HierarchyExpectedRevenue, HierarchyNumberSent, HierarchyNumberOfLeads, HierarchyNumberOfContacts, HierarchyNumberOfConvertedLeads, HierarchyNumberOfOpportunities, HierarchyNumberOfWonOpportunities, HierarchyNumberOfResponses, HierarchyAmountAllOpportunities, HierarchyAmountWonOpportunities)
+    - Case: CaseNumber, IsClosed
+    - Contract: ContractNumber, EndDate
+    - Asset: RootAssetId
+    - CampaignMember: LeadOrContactId
+- **The built-in standard-field mappings no longer add those fields.** faker-js loses `Opportunity.ExpectedRevenue`, `ForecastCategory` and `Campaign.NumberOfContacts`, `NumberOfLeads`, `NumberOfOpportunities`, `NumberOfResponses`; snowfakery's mappings never had them. One the project pulled down is now read from its own file and written read only.
+- **Run Faker drops every read-only value** in both processors, so a data set never carries one.
+- **The insert leaves out fields Salesforce fills itself.** The shared insert (Recipe Cockpit and **Insert Data Set by Directory**) describes the data set's objects under a "Checking which fields the target org fills itself..." progress notification. It removes a field the describe reports as not createable *and* calculated, auto number, or on the `ReadOnlyFields` list, and shows one warning naming up to 20 `Object.Field`s. That covers data sets generated before this change. A field the user's permissions alone block is still sent, so its insert fails with the org's own error and the existing permissions triage. The normalized describe gains `isAutoNumber`.
+- **The Recipe Cockpit's Treecipe tab** marks each such row **read only** with its reason (a formula field shows `formula: <formula>`), and locks its pencil as `read only: <reason>` in both the panel and the host.
+- **A validation rule naming a read-only field isn't applied,** and its reason says the field is read only, not that it wasn't read.
+- **Six faker-js built-in standard-field values now generate data instead of literal text.** `Campaign.BudgetedCost`, `ActualCost`, `ExpectedRevenue` and `ExpectedResponse` were written as `"{{ (faker.string.numeric(5)) }}.00` (a stray quote and no `$`), and `Event.Location` and `Asset.SerialNumber` had a `$` on their first expression only. faker-js evaluates only `${{ … }}`, so the rest went to Salesforce as text. A new test holds every built-in value in both backends to that shape; snowfakery's already passed.
+- **The dead `'formula'` entries are gone from both faker maps.** A formula field's `<type>` is its result type, so they never matched.
+- The ? help and the guide each gain one note.
+
+What a user now gets differently in the golden files:
+- `Formula__c` is `READ ONLY -- formula`.
+- faker-js's Opportunity loses `ForecastCategory`, and its `ExpectedRevenue` (the mock project has the file) is `READ ONLY -- set by Salesforce` in both backends.
+- The data sets lose both fields. Many other faker-js data set values shift too, because generation draws fewer random values. The fields themselves are unchanged.
+- The nested writer fixture is regenerated from the pipeline, and the flat one loses its `ForecastCategory` line.
+
+Tests:
+- `ReadOnlyFields.test.ts` pins the list and the markers.
+- `XmlFileProcessor.test.ts` covers formulas of four result types, empty and malformed `<formula>`, roll-up and auto number.
+- `DirectoryProcessor.readOnlyFields.test.ts` runs both backends over a new fixture of every case.
+- Both processor suites test the drop.
+- `CollectionsApiService.test.ts` tests the describe backstop and its warning.
+- `RecipeCockpitReadOnlyFields.test.ts` draws each row and lock in the real panel.
+
 ## [3.206.0] - Recipe Cockpit: "A data set for each record type" makes one data set per record type combination, inserted one after another (#624)
 
 ### A data set for each record type

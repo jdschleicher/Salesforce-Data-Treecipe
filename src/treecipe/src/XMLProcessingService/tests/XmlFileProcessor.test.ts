@@ -697,3 +697,63 @@ describe('extractPicklistDetailsFromValueSettings', () => {
     });
 
 });
+
+describe('processXmlFieldContent marks a field Salesforce calculates as read only (#685)', () => {
+
+    const buildFieldXml = (innerMarkup: string) => `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Calculated__c</fullName>
+    <label>Calculated</label>
+    ${innerMarkup}
+</CustomField>`;
+
+    test.each([
+        ['Number', '<formula>Amount__c * 2</formula><precision>18</precision><scale>2</scale>', 'Amount__c * 2'],
+        ['Text', '<formula>Name &amp; &apos; - &apos; &amp; Code__c</formula>', "Name & ' - ' & Code__c"],
+        ['Checkbox', '<formula>ISPICKVAL(Status__c, "Closed")</formula>', 'ISPICKVAL(Status__c, "Closed")'],
+        ['Date', '<formula>TODAY() + 30</formula>', 'TODAY() + 30']
+    ])('a %s formula field is read only as "formula", and keeps its formula text', async (fieldType, formulaMarkup, expectedFormula) => {
+
+        const fieldDetail = await XmlFileProcessor.processXmlFieldContent(buildFieldXml(`<type>${fieldType}</type>${formulaMarkup}`), 'Calculated__c.field-meta.xml');
+
+        expect(fieldDetail.fieldType).toBe(fieldType);
+        expect(fieldDetail.readOnlyReason).toBe('formula');
+        expect(fieldDetail.formula).toBe(expectedFormula);
+
+    });
+
+    test.each([
+        ['empty', '<formula></formula>'],
+        ['self-closing', '<formula/>'],
+        ['malformed', '<formula><unexpected>child</unexpected></formula>']
+    ])('an %s <formula> still makes the field read only, with no formula text', async (unusedCase, formulaMarkup) => {
+
+        const fieldDetail = await XmlFileProcessor.processXmlFieldContent(buildFieldXml(`<type>Number</type>${formulaMarkup}`), 'Calculated__c.field-meta.xml');
+
+        expect(fieldDetail.readOnlyReason).toBe('formula');
+        expect(fieldDetail.formula).toBe('');
+
+    });
+
+    test.each([
+        ['Summary', 'roll-up summary', '<summaryOperation>count</summaryOperation><summaryForeignKey>Child__c.Parent__c</summaryForeignKey>'],
+        ['AutoNumber', 'auto number', '<displayFormat>A-{0000}</displayFormat>']
+    ])('a %s field is read only as "%s", with no formula', async (fieldType, expectedReason, extraMarkup) => {
+
+        const fieldDetail = await XmlFileProcessor.processXmlFieldContent(buildFieldXml(`<type>${fieldType}</type>${extraMarkup}`), 'Calculated__c.field-meta.xml');
+
+        expect(fieldDetail.readOnlyReason).toBe(expectedReason);
+        expect(fieldDetail).not.toHaveProperty('formula');
+
+    });
+
+    test('an ordinary field carries neither a read-only reason nor a formula, so it is written as before', async () => {
+
+        const fieldDetail = await XmlFileProcessor.processXmlFieldContent(buildFieldXml('<type>Text</type><length>40</length>'), 'Calculated__c.field-meta.xml');
+
+        expect(fieldDetail).not.toHaveProperty('readOnlyReason');
+        expect(fieldDetail).not.toHaveProperty('formula');
+
+    });
+
+});

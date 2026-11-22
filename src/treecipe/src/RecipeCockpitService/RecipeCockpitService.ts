@@ -148,6 +148,9 @@ import {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -581,6 +584,9 @@ export {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX,
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_EXPRESSION_OPENER,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
@@ -726,6 +732,7 @@ import {
 import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedFields';
+import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
@@ -1044,6 +1051,8 @@ export interface IRecipeCockpitFieldViewModel {
     validationRules?: IRecipeCockpitFieldValidationRulesViewModel;
     // SET ONLY ON A FIELD WHOSE RECIPE LINES CARRY A TODO COMMENT (#354), SO A RECIPE WITHOUT ONE POSTS AS IT ALWAYS DID
     todos?: IRecipeCockpitTodoViewModel[];
+    // SET ONLY ON A FORMULA FIELD (#685): ITS FORMULA, WHICH ITS READ-ONLY ROW SHOWS
+    formula?: string;
 }
 
 /*
@@ -3558,6 +3567,11 @@ export class RecipeCockpitService {
         const derivedField = StandardDerivedFields.resolveDerivedField(objectViewModel.objectApiName, fieldViewModel.fieldApiName);
         if ( derivedField ) {
             return `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}${derivedField.throughFieldApiName}`;
+        }
+
+        const readOnlyReason = ReadOnlyFields.readReason(fieldViewModel.recipeValue);
+        if ( readOnlyReason ) {
+            return `${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}${readOnlyReason}`;
         }
 
         if ( fieldViewModel.controllingField ) {
@@ -10798,6 +10812,11 @@ export class RecipeCockpitService {
                 const validationRules = this.readFieldValidationRules(wrapperFieldRecord);
                 if ( validationRules ) {
                     fieldViewModel.validationRules = validationRules;
+                }
+
+                // WORKSPACE TEXT: A STRING, AND NO LONGER THAN SALESFORCE ALLOWS A FORMULA
+                if ( typeof wrapperFieldRecord.formula === 'string' && wrapperFieldRecord.formula.length <= RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH ) {
+                    fieldViewModel.formula = wrapperFieldRecord.formula;
                 }
 
                 if ( RECIPE_COCKPIT_PICKLIST_FIELD_TYPES.includes(fieldType) ) {

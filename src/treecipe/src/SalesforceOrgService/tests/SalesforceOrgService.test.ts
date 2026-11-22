@@ -97,6 +97,18 @@ describe('SalesforceOrgService', () => {
 
     describe('normalizeDescribeResult', () => {
 
+        test('carries the describe\'s autoNumber, which the insert reads to leave such a field out (#685)', () => {
+
+            const normalizedDescribe = SalesforceOrgService.normalizeDescribeResult('Case', {
+                name: 'Case', label: 'Case', createable: true, updateable: true,
+                fields: [{ name: 'CaseNumber', label: 'Case Number', type: 'string', createable: false, autoNumber: true }, { name: 'Subject', label: 'Subject', type: 'string', createable: true }]
+            });
+
+            expect(normalizedDescribe.fields.map(field => [field.fieldApiName, field.isAutoNumber])).toEqual([['CaseNumber', true], ['Subject', false]]);
+
+        });
+
+
         it('reduces a describe to the comparable field model, keeping precision, scale and picklist values', () => {
 
             const normalizedDescribe = SalesforceOrgService.normalizeDescribeResult('Account', ACCOUNT_DESCRIBE);
@@ -121,6 +133,7 @@ describe('SalesforceOrgService', () => {
                 isCreateable: true,
                 isUpdateable: true,
                 isCalculated: false,
+                isAutoNumber: false,
                 isDefaultedOnCreate: false,
                 isNameField: false
             });
@@ -196,6 +209,7 @@ describe('SalesforceOrgService', () => {
                     isCreateable: false,
                     isUpdateable: false,
                     isCalculated: false,
+                    isAutoNumber: false,
                     isDefaultedOnCreate: false,
                     isNameField: false
                 }]
