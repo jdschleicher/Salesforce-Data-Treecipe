@@ -184,7 +184,7 @@ export class RecipeCockpitPanelPlace {
         Every optional field a tree's place can hold, in the order it is written: the place is kept as
         JSON, so this order is its key order. A field is written only when its check finds a value.
     */
-    static readonly OPTIONAL_TREE_PLACE_FIELDS: readonly OptionalTreePlaceRule[] = Object.freeze([
+    static readonly OPTIONAL_TREE_PLACE_FIELDS: readonly OptionalTreePlaceRule[] = Object.freeze<OptionalTreePlaceRule[]>([
         {
             field: 'isDatasetFavoritesOnly',
             check: candidateTree => candidateTree.isDatasetFavoritesOnly === true ? true : undefined,
@@ -273,7 +273,7 @@ export class RecipeCockpitPanelPlace {
                 && candidateTree.updaterParentWhereText.length <= RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH ? candidateTree.updaterParentWhereText : undefined,
             reason: 'the Treecipe Adapter parent\'s WHERE (#443), within the query bound'
         }
-    ] as OptionalTreePlaceRule[]);
+    ]);
 
     /*
         A place read back from workspaceState, or posted by the panel, checked field by field: both
