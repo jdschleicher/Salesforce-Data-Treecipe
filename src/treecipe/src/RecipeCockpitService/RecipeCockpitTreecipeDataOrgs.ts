@@ -81,6 +81,10 @@ import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingServi
 import { IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { RecipeCockpitInsertFailureTriage } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
 import { RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS } from './RecipeCockpitTroubleshootingConstants';
+import {
+    IRecordTypeSetOutcome,
+    RecipeCockpitRecordTypeSets
+} from './RecipeCockpitRecordTypeSets';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
@@ -1519,6 +1523,48 @@ export class RecipeCockpitTreecipeDataOrgs {
             { label: RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL, filePath: fs.existsSync(failedFilePath) ? failedFilePath : undefined, missingFileText: 'The generated file that failed no longer exists in this workspace.' },
             resultsFileAction
         ], workspaceRoot, insertedTree && insertedTree.treeFolderName !== '' ? [{
+            label: RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
+            run: () => this.openTroubleshootingAfterInsert(hub, workspaceRoot, { ...insertedTree, troubleshootingSubTab: troubleshootingSubTab })
+        }] : []);
+
+    }
+
+    /*
+        How "A data set for each record type" ended (#624), as ONE notification naming every set's
+        outcome. The first set that failed or stopped with an insert result offers "View errors" on
+        its results file, and "View failed file" and "Open Troubleshooting" as a single tree insert's
+        does; a cancel or a thrown step offers none. NOT AWAITED. treeLabel and orgLabel arrive escaped.
+    */
+    static showRecordTypeSetsNotification(hub: IRecipeCockpitHubForTreecipeDataOrgs, setOutcomes: readonly IRecordTypeSetOutcome[], treeLabel: string, orgLabel: string, workspaceRoot: string, insertedTree: { runFolderName: string; treeFolderName: string }) {
+
+        const { severity, notificationText } = RecipeCockpitRecordTypeSets.buildRecordTypeSetsNotification(setOutcomes, treeLabel, orgLabel);
+        const failedSetResult = setOutcomes
+            .map(setOutcome => setOutcome.insertResult)
+            .find((insertResult): insertResult is IDataSetInsertResult => !!insertResult && insertResult.outcome !== 'cancelled' && !RecipeCockpitRecordTypeSets.isInsertWhollyLanded(insertResult));
+
+        if ( !failedSetResult ) {
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [], workspaceRoot);
+            return;
+        }
+
+        const resultsFileAction = {
+            label: RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
+            filePath: failedSetResult.resultsFilePath && fs.existsSync(failedSetResult.resultsFilePath) ? failedSetResult.resultsFilePath : undefined,
+            missingFileText: 'The insert results file no longer exists in this workspace.'
+        };
+        const failedFilePath = failedSetResult.failedFilePath;
+
+        if ( typeof failedFilePath !== 'string' ) {
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [resultsFileAction], workspaceRoot);
+            return;
+        }
+
+        const troubleshootingSubTab = RecipeCockpitInsertFailureTriage.resolveSubTab(failedSetResult.firstFailure);
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity,
+            `${notificationText} The first file that failed is ${RecipeYamlScalar.escapeForNotification(path.basename(failedFilePath))}; its ${RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS[troubleshootingSubTab]} in the Troubleshooting tab may fix it.`, [
+            { label: RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL, filePath: fs.existsSync(failedFilePath) ? failedFilePath : undefined, missingFileText: 'The generated file that failed no longer exists in this workspace.' },
+            resultsFileAction
+        ], workspaceRoot, insertedTree.treeFolderName !== '' ? [{
             label: RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
             run: () => this.openTroubleshootingAfterInsert(hub, workspaceRoot, { ...insertedTree, troubleshootingSubTab: troubleshootingSubTab })
         }] : []);

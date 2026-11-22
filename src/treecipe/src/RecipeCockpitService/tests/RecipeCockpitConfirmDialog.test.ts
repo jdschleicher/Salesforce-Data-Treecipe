@@ -607,7 +607,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             await openAndDraw();
 
-            const foldedAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded'] }, 'Go');
+            const foldedAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: [{ mode: 'folded' }] }, 'Go');
             expect(lastPosted('confirmRequest')).toMatchObject({
                 title: 'Modes?',
                 buttons: ['Go'],
@@ -618,7 +618,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             await expect(foldedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false, recordTypeSetMode: 'folded' });
 
             // A MODE UNDER CANCEL IS NOTHING
-            const cancelledAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded'] }, 'Go');
+            const cancelledAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: [{ mode: 'folded' }] }, 'Go');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, recordTypeSetMode: 'folded' });
             await expect(cancelledAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
 
@@ -628,6 +628,30 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             expect(lastPosted('confirmRequest')).not.toHaveProperty('recordTypeSetModeLegend');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'folded' });
             await expect(plainAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false });
+
+        });
+
+        it('posts a disabled mode with its reason, and reads an answer naming it as Cancel (#624)', async () => {
+
+            await openAndDraw();
+
+            const offers = [{ mode: 'separate' as const, disabledReason: 'Not available: 12 data sets.' }, { mode: 'folded' as const }];
+            const separateAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: offers }, 'Go');
+            expect(lastPosted('confirmRequest').recordTypeSetModes).toEqual([
+                { name: 'separate', label: 'A data set for each record type', disabledReason: 'Not available: 12 data sets.' },
+                { name: 'folded', label: 'One data set with the record types folded together' }
+            ]);
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'separate' });
+            await expect(separateAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+            const foldedAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: offers }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: 'folded' });
+            await expect(foldedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false, recordTypeSetMode: 'folded' });
+
+            // EVERY MODE DISABLED: NO ANSWER IS ONE IT ACCEPTS, AND NO MODE AT ALL IS CANCEL TOO
+            const noneEnabledAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: [offers[0]] }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: null });
+            await expect(noneEnabledAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
 
         });
 
@@ -641,7 +665,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             await openAndDraw();
 
-            const modeAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: ['folded'] }, 'Go');
+            const modeAnswer = RecipeCockpitService.confirmInPanelWithRecordTypeSetModes('Modes?', { summary: ['x'], recordTypeSetModes: [{ mode: 'folded' }] }, 'Go');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, recordTypeSetMode: recordTypeSetMode });
 
             await expect(modeAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
@@ -1224,6 +1248,38 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             // WITH NONE DRAWN, A CHOSEN BUTTON NAMES NO MODE
             panel.findAll(dialogOf(panel), 'confirmChoice')[0].dispatch('click');
             expect(responses(panel).pop()).toEqual({ command: 'confirmResponse', confirmationId: '4'.repeat(32), choice: 0 });
+
+        });
+
+        it('draws a disabled mode with its reason, chooses the first enabled one, and leaves the disabled one out of the Tab cycle and the answer (#624)', () => {
+
+            const panel = drawnPanel();
+            const reason = 'Not available: one data set per record type would make <12> data sets.';
+            panel.postToPanel(confirmRequest({ recordTypeSetModes: [{ ...MODES[0], disabledReason: reason }, MODES[1]], isDestructive: false }));
+            const dialogElement = dialogOf(panel);
+            const radioElements = panel.findAll(dialogElement, 'confirmModeRadio');
+            const labelElements = panel.findAll(dialogElement, 'confirmModeLabel');
+
+            expect(radioElements.map((radioElement: any) => ({ checked: radioElement.attributes['aria-checked'], disabled: radioElement.attributes['aria-disabled'] ?? null }))).toEqual([
+                { checked: 'false', disabled: 'true' },
+                { checked: 'true', disabled: null }
+            ]);
+            expect(panel.findAll(dialogElement, 'confirmModeReason').map((reasonElement: any) => reasonElement.textContent)).toEqual([reason]);
+
+            radioElements[0].dispatch('click');
+            labelElements[0].dispatch('click');
+            expect(radioElements.map((radioElement: any) => radioElement.attributes['aria-checked'])).toEqual(['false', 'true']);
+
+            panel.findAll(dialogElement, 'confirmBody')[0].focus();
+            [1, 2, 3].forEach(() => dialogElement.dispatch('keydown', { key: 'Tab' }));
+            expect(panel.activeElement()).toBe(radioElements[1]);
+
+            panel.findAll(dialogElement, 'confirmChoice')[0].dispatch('click');
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: 0, recordTypeSetMode: 'folded' }]);
+
+            // A REASON THAT IS NOT TEXT IS A MODE IT CANNOT READ
+            panel.postToPanel(confirmRequest({ confirmationId: 'd'.repeat(32), recordTypeSetModes: [{ ...MODES[0], disabledReason: 3 }, MODES[1]] }));
+            expect(panel.findAll(dialogOf(panel), 'confirmModeGroup')).toEqual([]);
 
         });
 

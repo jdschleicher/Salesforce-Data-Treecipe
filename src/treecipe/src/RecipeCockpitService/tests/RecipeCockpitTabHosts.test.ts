@@ -364,7 +364,7 @@ const TAB_HOSTS: ITabHost[] = [
             },
             {
                 pureModuleFileName: 'RecipeCockpitRecordTypeRecipe.ts',
-                importedNames: ['OccurrenceSettingPlacer', 'RECORD_TYPE_SET_MODE_LABELS', 'RECORD_TYPE_SET_MODE_LEGEND', 'RecordTypeSetMode'],
+                importedNames: ['IRecordTypeSetModeOffer', 'OccurrenceSettingPlacer', 'RECORD_TYPE_SET_MODE_LABELS', 'RECORD_TYPE_SET_MODE_LEGEND', 'RecordTypeSetMode'],
                 members: [],
                 owedBy: 'the in-panel confirmation every tab asks through offers the record type set modes, and #669 part b moves buildRunFakerFilteredRecipe\'s setting placer'
             }
