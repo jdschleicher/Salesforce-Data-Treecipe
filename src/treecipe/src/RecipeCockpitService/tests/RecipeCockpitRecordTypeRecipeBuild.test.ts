@@ -125,3 +125,55 @@ describe('Generate fake data and insert, when the reader cancels the recipe buil
     });
 
 });
+
+/*
+    Every recipe of "A data set for each record type" is built before the confirmation (#624): N+1
+    cancellable notifications in a row. Each says which build it is (#695); a lone build keeps its title.
+*/
+describe('Generate fake data and insert, the progress titles of the record type recipe builds (#695)', () => {
+
+    let journey: RecipeCockpitJourney;
+
+    beforeEach(async () => {
+        journey = await openTreecipeTabJourney();
+    });
+
+    afterEach(async () => {
+        await journey.close();
+    });
+
+    const recipeBuildTitles = () => journey.hostCalls
+        .filter(hostCall => hostCall.call === 'window.withProgress')
+        .map(hostCall => String(hostCall.args[0]))
+        .filter(progressTitle => progressTitle.startsWith(RECORD_TYPE_RECIPE_PROGRESS_TITLE));
+
+    it('numbers the folded build and each set\'s build when there is a set for each record type', async () => {
+
+        await journey.click('button', `Manage record types (${TREE_NAME})`);
+        await journey.click('checkbox', 'Partner (Account)');
+        await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+        await journey.answerQuickPick(INSERT_ORG_LABEL);
+        await journey.waitForConfirmation();
+
+        expect(recipeBuildTitles()).toEqual([
+            `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: one data set, folded`,
+            `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set 1 of 2 · Account · Business`,
+            `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set 2 of 2 · Account · Partner`
+        ]);
+
+    });
+
+    it('keeps the one title when only one data set can be made', async () => {
+
+        await journey.click('button', `Manage record types (${TREE_NAME})`);
+        await journey.click('checkbox', 'Partner (Account)');
+        await journey.click('checkbox', 'Business (Account)');
+        await journey.click('button', GENERATE_AND_INSERT_BUTTON_NAME);
+        await journey.answerQuickPick(INSERT_ORG_LABEL);
+        await journey.waitForConfirmation();
+
+        expect(recipeBuildTitles()).toEqual([RECORD_TYPE_RECIPE_PROGRESS_TITLE]);
+
+    });
+
+});

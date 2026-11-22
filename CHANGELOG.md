@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.208.4] - Recipe Cockpit: each record type recipe build's progress notification says which one it is (#695)
+
+With **A data set for each record type** offered, **Generate fake data and insert** builds the folded recipe and then one recipe per set before the confirmation opens. With up to 10 sets that is 11 progress notifications in a row, all titled "Building the recipe for the ticked record types". Each one now says which build it is:
+
+- **The folded build** reads `Building the recipe for the ticked record types: one data set, folded`.
+- **Each set's build** reads `…: set 2 of 4 · Account · Partner`, in the same words as the set's label in the confirmation. Object and record type names are escaped, so a name shaped like a command link shows as plain text.
+- **A lone build keeps today's title.** When the ticks make only one data set, nothing changes. Cancel works as before on every one of these notifications.
+- Recipes, the palette's **Generate Treecipe** and both faker backends are unchanged.
+- **Tests:** the set title and its escaping, the titles of a two-set run in order, and a one-set run keeping its single title.
+
 ## [3.208.3] - Recipe Cockpit: the host half of the reader's place is a pure module of its own, its optional fields a named list (#670, slice 6 of #566)
 
 ### Under the hood (behaviour unchanged)
