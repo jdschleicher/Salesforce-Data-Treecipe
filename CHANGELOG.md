@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.207.2] - Recipe Cockpit: the "Customize and create new recipe" modal lays out only the fields near the view, so ↺ on a big tree answers at once (#693)
+
+### Customize and create new recipe
+
+- **The browser now lays out only the field lists near the view.** Each list is `content-visibility: auto`, so a list scrolled out of sight costs nothing until it comes back.
+  - With 40 objects × 300 fields all open, ↺ on the root takes about 17 ms, against 0.4–0.6 s. ↺ on an object with 13 below it takes about 19 ms, against about 190 ms. Opening every object one by one takes about 0.45 s, against about 1.1 s, and the modal opens in about 30 ms, against about 110 ms.
+  - A ✕ on a field you can see still leaves the list exactly where it was, and focus still reaches a field far down a list that has not been drawn.
+- **A list not yet drawn is given a height from its field count**, rounded up to a power of 2 (8 to 1024 fields, 1.85rem a field), as a CSS class rather than an inline style. So until every list has been drawn, the scroll bar can show the modal up to about twice as long as it is.
+
 ## [3.207.1] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
 
 Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.

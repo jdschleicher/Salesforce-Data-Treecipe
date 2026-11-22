@@ -545,12 +545,26 @@ function countKeptFields(dialog: ICustomTreecipeDialog, dialogObject: IDialogObj
 
 }
 
+/*
+    How tall a field list not yet drawn is (#693): its field count rounded up to one of these, each a
+    rule in CustomTreecipeDialog.css at 1.85rem a row, as a one-line field row measured in Chromium. A class,
+    since the panel sets no inline style; one height for every list would move the scroll bar under
+    the reader, and one at most twice too tall does not.
+*/
+const CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024];
+
+function customTreecipeFieldListSizeClassName(fieldCount: number): string {
+    const sizeFieldCount = CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS.find(function (candidate) { return fieldCount <= candidate; })
+        || CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS[CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS.length - 1];
+    return 'fieldCountUpTo' + sizeFieldCount;
+}
+
 // ONE OBJECT'S FIELDS, EACH WITH ITS ✕; A LOCK THE CARD HOLDS (RecordTypeId, A CONTROLLING FIELD) TURNS ITS ✕ OFF WITH THE REASON
 function buildFieldList(dialog: ICustomTreecipeDialog, dialogObject: IDialogObject): HTMLElement {
 
     const objectApiName = dialogObject.objectApiName;
     // A BORDERED ROW BOX (#558): THE OBJECT'S FIELDS, EDITED IN PLACE UNDER IT
-    const listElement = createElement('ul', 'treeFieldsBox customTreecipeFields');
+    const listElement = createElement('ul', 'treeFieldsBox customTreecipeFields ' + customTreecipeFieldListSizeClassName(dialogObject.fields.length));
     listElement.setAttribute('aria-label', 'Fields of ' + objectApiName);
     const removedFields = removedFieldsOf(dialog, objectApiName);
     const lockedFields = dialog.preview ? dialog.preview.lockedFieldsByObject.get(objectApiName) : undefined;
