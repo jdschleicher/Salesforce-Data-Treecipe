@@ -4,6 +4,7 @@ jest.mock('vscode', () => ({}), { virtual: true });
 
 import { IRecipeCockpitRecipeViewModel, RecipeCockpitService } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../RecipeCockpitPanelStylesheet.generated';
 
 /*
     The panel half of "Customize and create new recipe" (#677), on the real panel script: the modal
@@ -297,6 +298,46 @@ describe('the "Customize and create new recipe" modal (#677)', () => {
 
             expect(controlOf(panel, 'Account', 'customTreecipeChain')).toBe(accountChain);
             expect(panel.activeElement()).toBe(accountChain);
+
+        });
+
+    });
+
+    describe('a field list the browser has not drawn yet is about as tall as its fields (#693)', () => {
+
+        const FIELD_LIST_RULE_PATTERN = /\.treeFieldsBox\.customTreecipeFields\.fieldCountUpTo(\d+) \{ contain-intrinsic-size: auto ([\d.]+)rem; \}/g;
+        const sizeRulesInStylesheet = () => [...RECIPE_COCKPIT_PANEL_STYLESHEET.matchAll(FIELD_LIST_RULE_PATTERN)]
+            .map(ruleMatch => ({ fieldCount: Number(ruleMatch[1]), heightRem: Number(ruleMatch[2]) }));
+
+        it('lays out only the lists near the view, and never lets the body\'s column squeeze one it skipped', () => {
+
+            expect(RECIPE_COCKPIT_PANEL_STYLESHEET).toMatch(/\.treeFieldsBox\.customTreecipeFields \{[^}]*content-visibility: auto;[^}]*contain-intrinsic-size: auto [\d.]+rem;[^}]*flex-shrink: 0;[^}]*\}/);
+
+        });
+
+        it('has a size rule for each power of 2 from 8 to 1024 fields, each 2.35rem a field', () => {
+
+            expect(sizeRulesInStylesheet()).toEqual([8, 16, 32, 64, 128, 256, 512, 1024].map(fieldCount => ({ fieldCount: fieldCount, heightRem: Number((fieldCount * 2.35).toFixed(2)) })));
+
+        });
+
+        it('gives each list the smallest size class that holds its fields, kept when the list is reused', () => {
+
+            const panel = openModalWithEveryObjectOpen();
+            const sizeFieldCounts = sizeRulesInStylesheet().map(sizeRule => sizeRule.fieldCount);
+            const sizeClassOf = (listElement: any) => listElement.className.split(' ').filter((className: string) => className.startsWith('fieldCountUpTo'));
+
+            everyFieldList(panel).forEach((listElement: any) => {
+                const fieldCount = panel.findAll(listElement, 'customTreecipeField').length;
+                expect(sizeClassOf(listElement)).toEqual([`fieldCountUpTo${sizeFieldCounts.find(sizeFieldCount => fieldCount <= sizeFieldCount)}`]);
+            });
+
+            const accountFieldsBefore = fieldListOf(panel, 'Account');
+            controlOf(panel, 'Contact', 'customTreecipeChain').dispatch('click');
+            answerLatestPreview(panel, { outOfRunExclusions: [{ objectApiName: 'Contact', kind: 'excluded' }] });
+
+            expect(fieldListOf(panel, 'Account')).toBe(accountFieldsBefore);
+            expect(sizeClassOf(fieldListOf(panel, 'Account'))).toHaveLength(1);
 
         });
 

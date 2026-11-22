@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.208.1] - A validation rule on a compound address or geolocation part names its compound field; #694 review follow-ups (#697)
+## [3.208.2] - A validation rule on a compound address or geolocation part names its compound field; #694 review follow-ups (#697)
 
 ### Validation rules on an address or geolocation part
 
@@ -11,6 +11,14 @@
 - `ObjectInfoWrapper/CompoundComponentApiName.ts` (imports nothing) holds the part naming rule `RecipeService.buildCompoundComponentApiName` used to hold, and that method delegates to it, so `SOQLTemplateService` reads the rule without loading `RecipeService`. `StandardCompoundAddressFields` builds its entries in private static methods, and freezes every list and entry.
 - **Tests.** `DirectoryProcessor.standardCompoundAddress.test.ts` covers the rule reasons in both backends: standard, case-insensitive, configured custom, Geolocation, a standard map part, a missing field, and another object's part. `StandardCompoundAddressFields.test.ts` tests the freezing, and `CompoundComponentApiName.test.ts` covers every branch and checks the file imports nothing. Generated output for a workspace with no such rule is unchanged (the golden files are untouched).
 
+## [3.208.1] - Recipe Cockpit: the "Customize and create new recipe" modal lays out only the fields near the view, so ↺ on a big tree answers at once (#693)
+
+### Customize and create new recipe
+
+- **The browser now lays out only the field lists near the view.** Each list is `content-visibility: auto`, so a list scrolled out of sight costs nothing until it comes back.
+  - With 40 objects × 300 fields all open, ↺ on the root takes about 27 ms, against about 0.5 s. ↺ on an object with 13 below it takes about 22 ms, against about 175 ms. Opening every object one by one takes about 0.46 s, against about 1 s, and the modal opens in about 28 ms, against about 43 ms. A ✕, a chain link, closing an object and the save step take as long as before.
+  - A ✕ on a field you can see still leaves the list exactly where it was, and focus still reaches a field far down a list that has not been drawn.
+- **A list not yet drawn is given a height from its field count**, rounded up to a power of 2 (8 to 1024 fields, 2.35rem a field), as a CSS class rather than an inline style. So until every list has been drawn, the scroll bar can show the modal up to about twice as long as it is.
 ## [3.208.0] - Every standard compound Address field is written as its parts, on every standard object that has one, retrieved or not (#694)
 
 ### Recipe generation
