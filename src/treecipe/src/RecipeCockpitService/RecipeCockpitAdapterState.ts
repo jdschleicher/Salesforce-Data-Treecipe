@@ -42,7 +42,7 @@ import type {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 
 /*
     What the Treecipe Adapter holds between clicks (moved out of the hub by #668): the one load per

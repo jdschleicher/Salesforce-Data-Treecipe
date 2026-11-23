@@ -17,10 +17,12 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL

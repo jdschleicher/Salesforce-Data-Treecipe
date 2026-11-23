@@ -10,7 +10,7 @@ import type {
     IRecipeCockpitTreeViewModel,
     RecipeCockpitObjectRefreshStep,
     RecipeCockpitPanelAction
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import {
     IObjectRefreshComparisonRequest,
     IObjectRefreshItem,

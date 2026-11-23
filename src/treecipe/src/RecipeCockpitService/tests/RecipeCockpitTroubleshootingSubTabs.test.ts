@@ -4,14 +4,16 @@ jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_NO_TREE_TODOS_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 

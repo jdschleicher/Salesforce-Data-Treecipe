@@ -4,13 +4,13 @@ jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX,
     RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
 } from '../RecipeCockpitService';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_CREATE_REASON_CODES } from '../RecipeCockpitRecordCreation';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 

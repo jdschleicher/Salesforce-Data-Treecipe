@@ -46,10 +46,10 @@ import { execFile } from 'child_process';
 import { Org } from '@salesforce/core';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_OPEN_ORG_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { ORG_FRONT_DOOR_FAILURE_TEXTS, ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';

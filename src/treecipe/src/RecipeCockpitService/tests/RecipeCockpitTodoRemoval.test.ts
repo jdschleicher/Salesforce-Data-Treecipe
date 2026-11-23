@@ -17,14 +17,16 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON,
     RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON,
     RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL,

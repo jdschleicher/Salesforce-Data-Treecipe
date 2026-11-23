@@ -48,12 +48,12 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
     RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
     RECIPE_COCKPIT_VERB_BUTTON_VERBS
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,

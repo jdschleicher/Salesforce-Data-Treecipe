@@ -26,7 +26,7 @@ import type {
     IRecipeCockpitTreeFocus,
     IRecipeCockpitTreeViewModel,
     RecipeCockpitPanelAction
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {

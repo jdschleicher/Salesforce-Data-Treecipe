@@ -47,7 +47,6 @@ import { execFile } from 'child_process';
 import JSZip = require('jszip');
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
@@ -57,6 +56,7 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,

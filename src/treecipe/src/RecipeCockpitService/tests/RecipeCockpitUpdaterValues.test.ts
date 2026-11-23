@@ -43,7 +43,6 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_UPDATER_GENERATE_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATING_LABEL,
@@ -51,6 +50,7 @@ import {
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE,

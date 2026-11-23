@@ -33,13 +33,13 @@ import {
 } from './RecipeCockpitQuery';
 import { RecipeCockpitRecordLinks } from './RecipeCockpitRecordLinks';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForQueryTab
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     IRecipeCockpitWorkspaceState,
-    RecipeCockpitHostMessage,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    RecipeCockpitHostMessage
+} from './RecipeCockpitViewModel';
 
 /*
     The Query tab's host half (#367, moved out of the hub by #665): the messages it answers, the

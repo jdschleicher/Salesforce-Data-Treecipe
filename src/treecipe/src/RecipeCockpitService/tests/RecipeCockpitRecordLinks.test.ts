@@ -46,12 +46,12 @@ import { execFile } from 'child_process';
 import { Org } from '@salesforce/core';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
     RECIPE_COCKPIT_RECORD_LINK_TITLE,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import {

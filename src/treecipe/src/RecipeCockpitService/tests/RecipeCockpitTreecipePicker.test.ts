@@ -14,8 +14,6 @@ jest.mock('vscode', () => ({
 import {
     RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX,
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_NO_FAVORITES_MESSAGE,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
@@ -26,6 +24,10 @@ import {
     RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL,
     RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 

@@ -16,11 +16,6 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitFieldViewModel,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
@@ -31,6 +26,13 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitFieldViewModel,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL } from '../RecipeCockpitTreecipeSelection';
 import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,

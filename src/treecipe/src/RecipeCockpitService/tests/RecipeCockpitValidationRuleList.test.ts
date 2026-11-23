@@ -43,8 +43,6 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RecipeCockpitService,
     RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE,
@@ -53,6 +51,10 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTroubleshootingViews } from '../RecipeCockpitTroubleshootingViews';
 import {
     IValidationRuleListObject,

@@ -16,14 +16,16 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitFieldViewModel,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITH_CONSTRAINTS
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitFieldViewModel,
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';

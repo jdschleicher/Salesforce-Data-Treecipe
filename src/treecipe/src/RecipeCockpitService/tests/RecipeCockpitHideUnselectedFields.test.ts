@@ -13,13 +13,15 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL,
     RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE,

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForTreecipeTab
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitAddFriendStateMessage,
     IRecipeCockpitAddableParentViewModel,
@@ -12,9 +13,8 @@ import type {
     IRecipeCockpitTreePreferencesMessage,
     IRecipeCockpitTreeViewModel,
     IRecipeCockpitWireLookupStateMessage,
-    RecipeCockpitPanelAction,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    RecipeCockpitPanelAction
+} from './RecipeCockpitViewModel';
 import {
     IRemovedTodoComment,
     RecipeCockpitRecipeWriter

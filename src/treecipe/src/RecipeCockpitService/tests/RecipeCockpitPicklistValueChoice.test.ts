@@ -17,14 +17,16 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitFieldViewModel,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON,
     RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
     RECIPE_COCKPIT_PICKLIST_RESET_LABEL
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitFieldViewModel,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,

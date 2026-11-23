@@ -41,6 +41,7 @@ import {
 import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from './RecipeCockpitNavigationConstants';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForDatasetsTab
 import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitInsertStateMessage,
     IRecipeCockpitPanelMessage,
@@ -49,9 +50,8 @@ import type {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeFocus,
     IRecipeCockpitTreeViewModel,
-    IRecipeCockpitWorkspaceState,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    IRecipeCockpitWorkspaceState
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*

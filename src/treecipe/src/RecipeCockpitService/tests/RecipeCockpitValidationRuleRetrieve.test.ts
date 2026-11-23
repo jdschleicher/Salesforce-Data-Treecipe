@@ -45,7 +45,6 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
@@ -53,6 +52,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,

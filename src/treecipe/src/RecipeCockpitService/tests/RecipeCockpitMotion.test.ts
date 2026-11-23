@@ -13,13 +13,13 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS,
     RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS,
     RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS,
     RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS,
     RECIPE_COCKPIT_PALETTE
 } from '../RecipeCockpitService';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript, IPanelScriptOptions } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 

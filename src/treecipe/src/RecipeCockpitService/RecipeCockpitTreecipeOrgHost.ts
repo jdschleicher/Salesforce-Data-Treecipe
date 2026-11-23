@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForTreecipeOrgTab
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitDataOrgListingRefusedMessage,
     IRecipeCockpitInsertStateMessage,
@@ -7,9 +8,8 @@ import type {
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     IRecipeCockpitScratchOrgStateMessage,
-    RecipeCockpitPanelAction,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    RecipeCockpitPanelAction
+} from './RecipeCockpitViewModel';
 import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHost';
 import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';

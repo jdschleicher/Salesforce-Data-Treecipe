@@ -28,7 +28,7 @@ import type {
     IRecipeCockpitTroubleshootingSummaryMessage,
     IRecipeCockpitValidationRuleSourceViewModel
 } from './RecipeCockpitTroubleshootingHost';
-import type { IRecipeCockpitPanelState } from './RecipeCockpitService';
+import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
 
 /*
     What the Troubleshooting tab reads and shows (#326, #327, #485; moved out of the hub by #666):

@@ -5,8 +5,6 @@ import * as path from 'path';
 jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE,
     RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE,
     RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE,
@@ -14,6 +12,10 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     IRecipeCockpitDatasetJourneyMessage,

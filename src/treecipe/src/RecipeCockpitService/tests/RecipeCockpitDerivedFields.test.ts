@@ -15,10 +15,10 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX
 } from '../RecipeCockpitService';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*

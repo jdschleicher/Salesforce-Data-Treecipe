@@ -15,8 +15,6 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
@@ -25,6 +23,10 @@ import {
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX } from '../RecipeCockpitTreecipeOrgHost';
 import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,

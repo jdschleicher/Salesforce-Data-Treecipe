@@ -41,13 +41,15 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import {
-    IRecipeCockpitFieldViewModel,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RecipeCockpitService,
     RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitFieldViewModel,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX,
     RecipeCockpitTroubleshootingViews

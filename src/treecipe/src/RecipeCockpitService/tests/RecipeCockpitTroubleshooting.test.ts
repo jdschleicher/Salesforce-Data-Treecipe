@@ -45,7 +45,6 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
     RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
@@ -56,6 +55,7 @@ import {
     RECIPE_COCKPIT_TREE_TABS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {

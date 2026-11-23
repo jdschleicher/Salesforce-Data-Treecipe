@@ -14,10 +14,6 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreePreferences,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
     RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
     RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH,
@@ -27,6 +23,12 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreePreferences,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeHost } from '../RecipeCockpitTreecipeHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';

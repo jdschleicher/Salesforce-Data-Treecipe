@@ -41,7 +41,6 @@ jest.mock('@salesforce/core', () => ({
 }));
 
 import {
-    IRecipeCockpitPanelMessage,
     RecipeCockpitService,
     RECIPE_COCKPIT_CHANGELOG_LINK_LABEL,
     RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE,
@@ -50,6 +49,7 @@ import {
     RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX,
     RECIPE_COCKPIT_NO_RUN_MESSAGE
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelMessage } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 

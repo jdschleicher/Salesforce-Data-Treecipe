@@ -47,11 +47,11 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,

@@ -45,12 +45,12 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RecipeCockpitTreecipeDataOrgs

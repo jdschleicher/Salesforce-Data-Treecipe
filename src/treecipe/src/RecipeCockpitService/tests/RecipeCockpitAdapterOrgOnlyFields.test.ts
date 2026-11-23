@@ -43,7 +43,6 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
@@ -53,6 +52,7 @@ import {
     RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON,
     RecipeCockpitAdapterMetadata

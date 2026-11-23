@@ -16,12 +16,14 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY
 } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
