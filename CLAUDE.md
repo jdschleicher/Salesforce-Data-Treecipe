@@ -175,7 +175,11 @@ src/
     │   ├── FieldInfo.ts
     │   └── tests/
     ├── RecipeCockpitService/
-    │   ├── RecipeCockpitService.ts           # Owns the Recipe Cockpit webview panel: shell, model, message router and executor
+    │   ├── RecipeCockpitService.ts           # The hub (#671): the panel's lifecycle, render and replay, its state and allow-lists, the message router and executor, run locks and confirmations
+    │   ├── RecipeCockpitViewModel.ts         # Every view model, message, panel action and panel state type the hub and hosts share (#671); type-only imports, loads nothing
+    │   ├── RecipeCockpitModelBuild.ts        # The model built from a run on disk (#671): runs found, objects wrapper normalized, recipe sources parsed and attached, cards and iterations
+    │   ├── RecipeCockpitTreeSelectionStore.ts # A card's object and field selection, counts and fixed values in workspaceState and the fixed-values file, and a fixed value's checks (#671)
+    │   ├── RecipeCockpitOrgRuns.ts           # The org runs every tab shares (#671): runCancellableCli, runCancellableRetrieve, resolveSelectedReadOrg; the hub delegates to them
     │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files; RecipeCockpitPanelHost.ts starts it and routes host messages (#657); RecipeCockpitPanel.css is the stylesheet (#644)
     │   │   ├── shell/                        # The model on screen and its failure path, the reader's place, help and the CHANGELOG button (#657)
     │   │   ├── adapter/                      # The Treecipe Adapter tab: steps, field editor, load and update, retrieve, add child (#641)
