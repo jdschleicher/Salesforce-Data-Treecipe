@@ -81,6 +81,12 @@ import {
 const SOURCE_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const COCKPIT_FOLDER = path.join(__dirname, '..');
 const HUB_FILE_NAME = 'RecipeCockpitService.ts';
+/*
+    The hub and the modules #671 moved its shared work into: what any of them takes from a tab's pure
+    module is still owed by the hub's side, so moving a use into one of them never drops it from the
+    ledger below.
+*/
+const HUB_SIDE_FILE_NAMES = [HUB_FILE_NAME, 'RecipeCockpitViewModel.ts', 'RecipeCockpitModelBuild.ts', 'RecipeCockpitTreeSelectionStore.ts', 'RecipeCockpitOrgRuns.ts'];
 
 /*
     What the hub still takes from one of a tab's pure modules: the names it imports and the members
@@ -117,6 +123,8 @@ interface ITabHost {
     kinds have a case in its host and nowhere else, so a reader looking for what a Query message does
     opens one file; and the hub never runs a host's work for it, only hands the message over.
 */
+const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays on the hub\'s side, in RecipeCockpitOrgRuns (#671)';
+
 const TAB_HOSTS: ITabHost[] = [
     {
         tabName: 'Query',
@@ -181,27 +189,45 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
-                importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject'],
+                importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject', 'RecipeCockpitMetadataDeploy'],
+                members: ['readApiVersion'],
+                owedBy: 'the shared retrieve runner and listTreeDeployObjects, which reads the cockpit\'s model, stay in the hub; readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitMetadataDeployPackage.ts',
+                importedNames: ['RecipeCockpitMetadataDeployPackage'],
+                members: ['describeError'],
+                owedBy: SHARED_RETRIEVE_RUNNER
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitMetadataRetrieve.ts',
+                importedNames: ['METADATA_RETRIEVE_TIMEOUT_MILLISECONDS'],
                 members: [],
-                owedBy: 'listTreeDeployObjects, which reads the cockpit\'s model, stays in the hub, and the hub\'s delegate to RecipeCockpitOrgRuns\'s runCancellableRetrieve names a retrieve\'s components (#671)'
+                owedBy: SHARED_RETRIEVE_RUNNER
             },
             {
                 pureModuleFileName: 'RecipeCockpitMetadataRetrievePackage.ts',
-                importedNames: ['MetadataRetrieveDestination'],
+                importedNames: ['IMetadataRetrieveConnection', 'METADATA_RETRIEVE_METHOD_SETTING', 'MetadataRetrieveDestination', 'RecipeCockpitMetadataRetrievePackage'],
+                members: ['buildRetrieveRequest', 'convertToSourceFiles', 'readRetrieveMethod', 'readZip', 'readZipFile', 'runRetrieve', 'toCliShapedPayload', 'writeSourceFiles'],
+                owedBy: SHARED_RETRIEVE_RUNNER
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitPermissionSetAssign.ts',
+                importedNames: ['PERMISSION_SET_MAX_BUFFER_BYTES'],
                 members: [],
-                owedBy: 'the hub\'s delegate to RecipeCockpitOrgRuns\'s runCancellableRetrieve, which the Troubleshooting and Adapter hub types read, names a retrieve\'s destination (#671)'
+                owedBy: 'runCancellableCli\'s default output buffer: the one CLI runner every tab shares stays in the hub'
             },
             {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
                 importedNames: ['RecipeCockpitValidationRuleList'],
-                members: ['buildRuleSourceKey'],
-                owedBy: 'the hub collects the model\'s rule links into their allow-list and promotes it, which only the hub does'
+                members: ['buildRuleSourceKey', 'resolveRuleSourceFilePaths'],
+                owedBy: 'the hub builds the model\'s rule links and promotes their allow-list, which only the hub does'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRemovedTodoStore.ts',
-                importedNames: ['IRemovedTodoFileRead'],
-                members: [],
-                owedBy: 'the hub\'s delegate to RecipeCockpitModelBuild\'s readRemovedTodoFile, which the Treecipe tab\'s hub type reads, names it in its signature (#671)'
+                importedNames: ['IRemovedTodoFileRead', 'RecipeCockpitRemovedTodoStore'],
+                members: ['buildFilePath', 'parse'],
+                owedBy: 'the model reads each recipe\'s removed TODOs, and only the hub builds the model'
             }
         ],
         sharedWithHosts: [
@@ -264,9 +290,9 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitTreeHistory.ts',
-                importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'RecipeCockpitTreeHistory'],
-                members: ['buildEmptyTargets'],
-                owedBy: 'the hub builds the panel state\'s empty allow-lists and adds a data set row\'s entries to them'
+                importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'IRecipeCockpitTreeHistoryTargets', 'IRecipeCockpitTreeHistoryViewModel', 'RecipeCockpitTreeHistory'],
+                members: ['buildEmptyTargets', 'buildTreeHistories', 'buildUnmatchedDatasetsNotice'],
+                owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from'
             }
         ]
     },
@@ -297,7 +323,13 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
                 importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
                 members: ['toOutputDirectoryArgument'],
-                owedBy: 'the hub\'s delegate to RecipeCockpitModelBuild\'s offerStagedField, which the Adapter and Get latest object detail both read, names a staged field, and the staging an open dialog leaves when the panel reloads stays in the hub (#671)'
+                owedBy: 'offerStagedField, which the Adapter and Get latest object detail both read, and the staging an open dialog leaves when the panel reloads stay in the hub'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitAdaptedDataset.ts',
+                importedNames: ['RecipeCockpitAdaptedDataset'],
+                members: ['isAdaptedRecipeFileName'],
+                owedBy: 'the hub lists a run\'s recipes when it loads the model, and leaves an adapted recipe out'
             }
         ],
         sharedWithHosts: [
@@ -338,9 +370,9 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitCustomTreecipe.ts',
-                importedNames: ['ICustomTreecipeDefinition'],
-                members: [],
-                owedBy: 'the hub\'s delegate to RecipeCockpitModelBuild\'s readCustomTreecipeDefinition, which the custom treecipe host\'s hub type reads, names it in its signature (#671)'
+                importedNames: ['ICustomTreecipeDefinition', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES', 'RecipeCockpitCustomTreecipe'],
+                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'readDefinition', 'resolveOriginalTreeFolderName'],
+                owedBy: '#677, #684: a run loads its custom- trees in the hub, where every run loads, reads each one\'s customTreecipe.json there, and lists each as its own run picker entry'
             }
         ]
     },
@@ -357,6 +389,12 @@ const TAB_HOSTS: ITabHost[] = [
             { fileName: 'RecipeCockpitTreecipeInsert.ts', otherHostFileName: 'RecipeCockpitDatasetsHost.ts', reason: 'a tree insert that lands adds its new data set to Previously Used Data Sets (#226)' }
         ],
         hubUsesStillOwed: [
+            {
+                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
+                importedNames: ['IRecipeCockpitCreateReadinessViewModel'],
+                members: [],
+                owedBy: 'the model\'s types name a card\'s create readiness'
+            },
             {
                 pureModuleFileName: 'RecipeCockpitRecordTypeRecipe.ts',
                 importedNames: ['IRecordTypeSetModeOffer', 'OccurrenceSettingPlacer', 'RECORD_TYPE_SET_MODE_LABELS', 'RECORD_TYPE_SET_MODE_LEGEND', 'RecordTypeSetMode'],
@@ -392,10 +430,22 @@ const TAB_HOSTS: ITabHost[] = [
         pureModuleFileNames: ['RecipeCockpitObjectSelection.ts', 'RecipeCockpitFixedValueStore.ts', 'RecipeCockpitObjectRefresh.ts'],
         hubUsesStillOwed: [
             {
+                pureModuleFileName: 'RecipeCockpitObjectSelection.ts',
+                importedNames: ['IObjectSelectionDisabledLookup', 'IObjectSelectionExclusion', 'IObjectSelectionRemovedLookup', 'RecipeCockpitObjectSelection'],
+                members: ['computeObjectSelection'],
+                owedBy: 'the model draws a card\'s object selection cascade (#219), and only the hub builds the model'
+            },
+            {
                 pureModuleFileName: 'RecipeCockpitFixedValueStore.ts',
-                importedNames: ['IFixedValueEntry', 'IFixedValueFileRead'],
+                importedNames: ['IFixedValueEntry', 'IFixedValueFileRead', 'RecipeCockpitFixedValueStore'],
+                members: ['buildFilePath', 'isSalesforceRecordId', 'listValuesByObject', 'parse'],
+                owedBy: 'the model reads each recipe\'s pinned fixed values (#342), and findLookupValueRefusal, which the model and a fixed value\'s save both read, stays in the hub'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitObjectRefresh.ts',
+                importedNames: ['IObjectRefreshComparisonRequest', 'IObjectRefreshItem', 'IObjectRefreshPlannedItem', 'ObjectRefreshKind'],
                 members: [],
-                owedBy: 'the hub\'s delegates to RecipeCockpitTreeSelectionStore, which the Treecipe tab\'s hub type reads, name them in their signatures (#671)'
+                owedBy: 'the hub\'s message types and the open dialog\'s session, which a reload discards, name them'
             }
         ],
         sharedWithHosts: [
@@ -416,7 +466,6 @@ const TAB_HOSTS: ITabHost[] = [
         ]
     }
 ];
-
 const HOST_FILE_NAMES = TAB_HOSTS.flatMap(tabHost => tabHost.hostFileNames);
 
 // EVERY FILE THE EXTENSION HOST RUNS: NOT A TEST, NOT THE PANEL (A BROWSER BUNDLE) AND NOT A GENERATED FILE
@@ -615,7 +664,7 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
 
             const strayImports: string[] = [];
             const hubUses: Omit<IHubUseStillOwed, 'owedBy'>[] = [];
-            const hubSource = parse(hubFilePath);
+            const hubSideSources = HUB_SIDE_FILE_NAMES.map(fileName => parse(path.join(COCKPIT_FOLDER, fileName)));
 
             tabHost.pureModuleFileNames.forEach(pureModuleFileName => {
                 const pureModulePath = path.join(COCKPIT_FOLDER, pureModuleFileName);
@@ -626,11 +675,11 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                     importsOf(sourceFile)
                         .filter(importDeclaration => resolvedImportPath(sourceFile, importDeclaration) === pureModulePath)
                         .forEach(importDeclaration => {
-                            if ( filePath === hubFilePath ) {
+                            if ( HUB_SIDE_FILE_NAMES.includes(fileName) ) {
                                 // A NAMESPACE OR DEFAULT IMPORT WOULD HIDE WHICH NAMES THE HUB USES, SO ONLY NAMED IMPORTS COUNT AS OWED
                                 const importClause = importDeclaration.importClause;
                                 if ( importClause?.name || ( importClause?.namedBindings && !ts.isNamedImports(importClause.namedBindings) ) ) {
-                                    strayImports.push(`${HUB_FILE_NAME}: ${importDeclaration.getText()}`);
+                                    strayImports.push(`${fileName}: ${importDeclaration.getText()}`);
                                 }
                                 hubImportedNames.push(...importedNames(importDeclaration));
                             } else if ( HOST_FILE_NAMES.includes(fileName) && !tabHost.hostFileNames.includes(fileName)
@@ -640,11 +689,12 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                         });
                 });
                 const hubMembers = new Set<string>();
-                visit(hubSource, node => {
+                hubSideSources.forEach(hubSideSource => visit(hubSideSource, node => {
                     if ( ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && hubImportedNames.includes(node.expression.text) ) {
                         hubMembers.add(node.name.text);
                     }
-                });
+                }));
+                hubImportedNames.splice(0, hubImportedNames.length, ...new Set(hubImportedNames));
                 if ( hubImportedNames.length > 0 ) {
                     hubUses.push({ pureModuleFileName: pureModuleFileName, importedNames: [...hubImportedNames].sort(), members: [...hubMembers].sort() });
                 }

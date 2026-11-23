@@ -27,7 +27,8 @@ import * as RecipeCockpitHelpConstants from '../RecipeCockpitHelpConstants';
 import * as RecipeCockpitShellConstants from '../RecipeCockpitShellConstants';
 import * as RecipeCockpitObjectRefreshConstants from '../RecipeCockpitObjectRefreshConstants';
 import * as RecipeCockpitObjectRefreshModule from '../RecipeCockpitObjectRefresh';
-import { RECIPE_COCKPIT_ACTION_VERB_EMOJI } from '../RecipeCockpitPanelConstants';
+import * as RecipeCockpitPanelConstants from '../RecipeCockpitPanelConstants';
+import * as RecipeCockpitCustomTreecipeConstants from '../RecipeCockpitCustomTreecipeConstants';
 import { YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { REFERENCE_ID_REQUIRED_TODO } from '../../RelationshipService/ReferenceIdRequiredTodo';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
@@ -124,7 +125,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
         Object.entries(verbButtonVerbs).forEach(([className, verb]) =>
             expect(RECIPE_COCKPIT_PANEL_STYLESHEET).toContain(`    .sdtButton.${className}::before { content: var(--sdt-verb-emoji-${verb}) / ''; margin-right: 0.35em; }`));
         expect(RecipeCockpitServiceModule.RECIPE_COCKPIT_CUSTOM_PROPERTIES['--sdt-verb-emoji-generateData'])
-            .toBe(`'${RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData}'`);
+            .toBe(`'${RecipeCockpitPanelConstants.RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData}'`);
 
     });
 
@@ -181,9 +182,9 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
     });
 
     // CALLERS AND TESTS IMPORT A TAB'S PANEL CONSTANTS FROM THE FILE THAT HOLDS THEM, NEVER THROUGH THE SERVICE (#671)
-    it('re-exports from the service none of the constants the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows, navigation, help and the frame (#671)', () => {
+    it('re-exports from the service none of the constants the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows, navigation, help, the frame, the shared glyphs and action words, and Customize and create new recipe (#671)', () => {
 
-        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants, ...RecipeCockpitNavigationConstants, ...RecipeCockpitHelpConstants, ...RecipeCockpitShellConstants };
+        const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants, ...RecipeCockpitNavigationConstants, ...RecipeCockpitHelpConstants, ...RecipeCockpitShellConstants, ...RecipeCockpitPanelConstants, ...RecipeCockpitCustomTreecipeConstants };
         const constantNames = Object.keys(tabConstants);
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
 
@@ -195,7 +196,8 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL', 'RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE',
             'RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON', 'RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES', 'RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL', 'RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX',
             'RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET', 'RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL', 'RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER', 'RECIPE_COCKPIT_FRIENDS_MENU_HINT',
-            'RECIPE_COCKPIT_QUERY_MAX_LENGTH', 'RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH', 'RECIPE_COCKPIT_HELP_SECTIONS', 'RECIPE_COCKPIT_PANEL_PLACE_VERSION', 'RECIPE_COCKPIT_TREE_TABS', 'RECIPE_COCKPIT_NO_FAVORITES_MESSAGE', 'RECIPE_COCKPIT_RESET_SELECTION_LABEL']));
+            'RECIPE_COCKPIT_QUERY_MAX_LENGTH', 'RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH', 'RECIPE_COCKPIT_HELP_SECTIONS', 'RECIPE_COCKPIT_PANEL_PLACE_VERSION', 'RECIPE_COCKPIT_TREE_TABS', 'RECIPE_COCKPIT_NO_FAVORITES_MESSAGE', 'RECIPE_COCKPIT_RESET_SELECTION_LABEL',
+            'RECIPE_COCKPIT_ACTION_VERB_EMOJI', 'RECIPE_COCKPIT_CUSTOMIZE_TREE_LABEL']));
         expect(constantNames.filter(constantName => constantName in serviceExports)).toEqual([]);
 
     });
