@@ -2,7 +2,7 @@
     What the Recipe Cockpit's navigation draws and how far its filters reach (#656): the tree
     picker and its insert order line, the Treecipes search, the nickname and friends menus, and the
     filter's expand budget. It imports nothing, so the panel bundle can import it;
-    RecipeCockpitService.ts re-exports every name.
+    every importer reads its names here (#671).
 */
 
 /*

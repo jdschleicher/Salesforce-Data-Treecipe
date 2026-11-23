@@ -82,7 +82,7 @@ import type {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 // #326: ASKED EVERY TIME, IN THE COMMAND PALETTE, OVER EVERY CONNECTED ORG: A RETRIEVE ONLY READS

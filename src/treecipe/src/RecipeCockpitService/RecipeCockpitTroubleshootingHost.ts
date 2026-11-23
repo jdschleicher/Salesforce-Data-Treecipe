@@ -22,11 +22,11 @@ import {
     RecipeCockpitTroubleshootingRuns
 } from './RecipeCockpitTroubleshootingRuns';
 import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitPanelMessage,
-    IRecipeCockpitPanelState,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    IRecipeCockpitPanelState
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*

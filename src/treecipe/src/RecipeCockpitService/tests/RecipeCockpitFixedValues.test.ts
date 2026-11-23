@@ -14,29 +14,37 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
+    RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
+    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
+    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER
+} from '../RecipeCockpitTreecipeFieldEditorConstants';
+import {
+    RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
+    RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
+    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON
+} from '../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX,
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
-    RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
-    RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX,
-    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER,
-    RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
-    RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
-} from '../RecipeCockpitService';
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
     RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL,
@@ -137,8 +145,8 @@ async function generateWithFakerJs(recipeText: string): Promise<Array<{ object: 
     }
 }
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );
@@ -174,7 +182,7 @@ const fieldOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string, f
 const applyFixedValues = (recipe: IRecipeCockpitRecipeViewModel,
                             fixedValuesByFolderName: Record<string, Record<string, Record<string, string>>>,
                             excludedObjectApiNamesByFolderName: Record<string, string[]> = {},
-                            excludedFieldApiNamesByFolderName: Record<string, Record<string, string[]>> = {}) => RecipeCockpitService.applyObjectSelections(
+                            excludedFieldApiNamesByFolderName: Record<string, Record<string, string[]>> = {}) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(Object.entries(excludedObjectApiNamesByFolderName).map(([folderName, objectApiNames]) => [folderName, new Set(objectApiNames)])),
     new Map(Object.entries(excludedFieldApiNamesByFolderName).map(([folderName, byObject]) => [folderName, new Map(Object.entries(byObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))])),
@@ -408,7 +416,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }) });
 
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map());
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map());
 
             await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
@@ -419,7 +427,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         it('never writes the fixed values it is handed into workspaceState', async () => {
 
             const workspaceState = buildWorkspaceState();
-            await expect(RecipeCockpitService.writeTreeSelections(workspaceState, {
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, {
                 excludedObjectApiNamesByFolderName: new Map(),
                 excludedFieldApiNamesByFolderName: new Map(),
                 objectCountsByFolderName: new Map(),
@@ -439,7 +447,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                 objectCountsByFolderName: { [LEAD_TREE_KEY]: { Lead: 3 } }
             } });
 
-            const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState);
+            const treeSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
 
             expect(treeSelections.fixedValuesByFolderName.size).toBe(0);
             expect(treeSelections.excludedObjectApiNamesByFolderName).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
@@ -452,7 +460,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
     describe('findFixedValueLockReason, buildTreeFixedValues and applyObjectSelections', () => {
 
         const lockReasonOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string, fieldApiName: string, treeKey = ACCOUNT_TREE_KEY) =>
-            RecipeCockpitService.findFixedValueLockReason(treeOf(recipe, treeKey), objectOf(recipe, objectApiName), fieldOf(recipe, objectApiName, fieldApiName));
+            RecipeCockpitTreeSelectionStore.findFixedValueLockReason(treeOf(recipe, treeKey), objectOf(recipe, objectApiName), fieldOf(recipe, objectApiName, fieldApiName));
 
         it('locks RecordTypeId, a dependent picklist and a controlling field, and leaves every lookup and every other field free (#627)', () => {
 
@@ -579,7 +587,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         const recipe = loadRecipe();
         const validate = (objectApiName: string, fieldApiName: string, value: string, declaredValues?: string[]) =>
-            RecipeCockpitService.validateFixedValueInput(value, fieldOf(recipe, objectApiName, fieldApiName), declaredValues);
+            RecipeCockpitTreeSelectionStore.validateFixedValueInput(value, fieldOf(recipe, objectApiName, fieldApiName), declaredValues);
 
         it('holds a custom geolocation component, which the wrapper types Text, to a number in its range, written plain (#342)', () => {
 
@@ -587,16 +595,16 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const latitude = componentOf('Site_Location__Latitude__s');
             const longitude = componentOf('Site_Location__Longitude__s');
 
-            expect(RecipeCockpitService.getFixedValueKind(latitude)).toBe('number');
-            expect(RecipeCockpitService.validateFixedValueInput('-45.5', latitude, undefined)).toBeUndefined();
-            expect(RecipeCockpitService.validateFixedValueInput('90', latitude, undefined)).toBeUndefined();
-            expect(RecipeCockpitService.validateFixedValueInput('90.01', latitude, undefined)).toBe('A latitude is a number from -90 to 90.');
-            expect(RecipeCockpitService.validateFixedValueInput('-180', longitude, undefined)).toBeUndefined();
-            expect(RecipeCockpitService.validateFixedValueInput('181', longitude, undefined)).toBe('A longitude is a number from -180 to 180.');
-            expect(RecipeCockpitService.validateFixedValueInput('north', latitude, undefined)).toBe('Type a plain number, such as 42, -7 or 3.25.');
+            expect(RecipeCockpitTreeSelectionStore.getFixedValueKind(latitude)).toBe('number');
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('-45.5', latitude, undefined)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('90', latitude, undefined)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('90.01', latitude, undefined)).toBe('A latitude is a number from -90 to 90.');
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('-180', longitude, undefined)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('181', longitude, undefined)).toBe('A longitude is a number from -180 to 180.');
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('north', latitude, undefined)).toBe('Type a plain number, such as 42, -7 or 3.25.');
             // A FIELD THAT ONLY ENDS LIKE ONE, OF ANOTHER TYPE, IS NOT A COMPONENT
-            expect(RecipeCockpitService.getFixedValueKind({ ...latitude, fieldType: 'Number' })).toBe('number');
-            expect(RecipeCockpitService.getFixedValueKind({ ...latitude, fieldApiName: 'Latitude__c' })).toBe('text');
+            expect(RecipeCockpitTreeSelectionStore.getFixedValueKind({ ...latitude, fieldType: 'Number' })).toBe('number');
+            expect(RecipeCockpitTreeSelectionStore.getFixedValueKind({ ...latitude, fieldApiName: 'Latitude__c' })).toBe('text');
 
         });
 
@@ -633,16 +641,16 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         it('takes a value under 1 for a field whose precision equals its scale', () => {
             const fraction = { ...fieldOf(recipe, 'OtherChildObject__c', 'Ratio__c'), fieldTypeWithSize: 'Number(2,2)' };
-            expect(RecipeCockpitService.validateFixedValueInput('0.5', fraction, undefined)).toBeUndefined();
-            expect(RecipeCockpitService.validateFixedValueInput('-0.99', fraction, undefined)).toBeUndefined();
-            expect(RecipeCockpitService.validateFixedValueInput('1.5', fraction, undefined)).toBe('Number(2,2) takes at most 0 digits before the decimal point.');
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('0.5', fraction, undefined)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('-0.99', fraction, undefined)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('1.5', fraction, undefined)).toBe('Number(2,2) takes at most 0 digits before the decimal point.');
         });
 
         it('escapes a type the workspace wrote that could form a link, and the typed text it echoes', () => {
             const linkType = '[Show allowed values](command:workbench.action.terminal.sendSequence)';
             const linkField = { ...fieldOf(recipe, 'Account', 'Legacy_Code__c'), fieldType: linkType, fieldTypeWithSize: `${linkType}(1)` };
 
-            const message = RecipeCockpitService.validateFixedValueInput('xy', linkField, undefined) as string;
+            const message = RecipeCockpitTreeSelectionStore.validateFixedValueInput('xy', linkField, undefined) as string;
             expect(message).toEndWith(' takes at most 1 characters.');
             expect(message).not.toMatch(/[[\]()]/);
             expect(validate('Lead', 'Status', '[x](command:y)', ['Open'])).toBe('"\\u005bx\\u005d\\u0028command:y\\u0029" is not a value this picklist declares.');
@@ -671,12 +679,12 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const date = { ...checkbox, fieldType: 'Date', fieldTypeWithSize: 'Date' };
             const dateTime = { ...checkbox, fieldType: 'DateTime', fieldTypeWithSize: 'DateTime' };
 
-            expect(RecipeCockpitService.validateFixedValueInput('true', checkbox, undefined)).toBeUndefined();
-            expect(RecipeCockpitService.validateFixedValueInput('Yes', checkbox, undefined)).toBe('Type true or false.');
-            expect(RecipeCockpitService.validateFixedValueInput('2024-02-29', date, undefined)).toBeUndefined();
-            ['2023-02-29', '2024-13-01', '01/02/2024', '2024-1-1'].forEach(value => expect(RecipeCockpitService.validateFixedValueInput(value, date, undefined)).toBe('Type a date as YYYY-MM-DD, such as 2026-01-31.'));
-            ['2026-01-31T09:30:00Z', '2026-01-31T09:30Z', '2026-01-31T09:30:00.123+05:30'].forEach(value => expect(RecipeCockpitService.validateFixedValueInput(value, dateTime, undefined)).toBeUndefined());
-            ['2026-01-31T09:30:00', '2026-01-31 09:30:00Z', '2026-02-30T09:30:00Z', '2026-01-31T24:00:00Z'].forEach(value => expect(RecipeCockpitService.validateFixedValueInput(value, dateTime, undefined)).toBe('Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.'));
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('true', checkbox, undefined)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('Yes', checkbox, undefined)).toBe('Type true or false.');
+            expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput('2024-02-29', date, undefined)).toBeUndefined();
+            ['2023-02-29', '2024-13-01', '01/02/2024', '2024-1-1'].forEach(value => expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput(value, date, undefined)).toBe('Type a date as YYYY-MM-DD, such as 2026-01-31.'));
+            ['2026-01-31T09:30:00Z', '2026-01-31T09:30Z', '2026-01-31T09:30:00.123+05:30'].forEach(value => expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput(value, dateTime, undefined)).toBeUndefined());
+            ['2026-01-31T09:30:00', '2026-01-31 09:30:00Z', '2026-02-30T09:30:00Z', '2026-01-31T24:00:00Z'].forEach(value => expect(RecipeCockpitTreeSelectionStore.validateFixedValueInput(value, dateTime, undefined)).toBe('Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.'));
         });
 
     });
@@ -1093,7 +1101,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             // AN OCCURRENCE RECORDED WITHOUT A NICKNAME MATCHES ONLY AN OCCURRENCE WITHOUT ONE
             const entry = { objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', occurrences: [{ occurrenceIndex: 0, writtenLine: '    Legacy_Code__c: "X-1"' }] };
-            expect(RecipeCockpitService.buildPinnedFieldRestoreRequests(entry, '${{fake.Word}}')).toEqual([{ occurrenceIndex: 0, writtenLine: '    Legacy_Code__c: "X-1"', valueText: '${{fake.Word}}' }]);
+            expect(RecipeCockpitTreeSelectionStore.buildPinnedFieldRestoreRequests(entry, '${{fake.Word}}')).toEqual([{ occurrenceIndex: 0, writtenLine: '    Legacy_Code__c: "X-1"', valueText: '${{fake.Word}}' }]);
 
         });
 

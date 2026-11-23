@@ -17,15 +17,15 @@ import {
     RECIPE_COCKPIT_CUSTOM_TREECIPE_OPEN_RECIPE_LABEL
 } from './RecipeCockpitCustomTreecipeConstants';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE, AND A HOST NEVER LOADS THE HUB'S CODE
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeFieldSelectionViewModel,
     IRecipeCockpitTreeObjectSelectionViewModel,
-    IRecipeCockpitTreeViewModel,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    IRecipeCockpitTreeViewModel
+} from './RecipeCockpitViewModel';
 
 /*
     "Customize and create new recipe" (#677), the host half: the modal's preview and its Save as new

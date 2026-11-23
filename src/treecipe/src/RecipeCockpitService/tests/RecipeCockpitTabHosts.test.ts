@@ -13,11 +13,11 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }), parse: (uriValue: string) => ({ toString: () => uriValue }) }
 }), { virtual: true });
 import * as RecipeCockpitServiceModule from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     IRecipeCockpitPanelMessage,
-    IRecipeCockpitPanelState,
-    RecipeCockpitService
-} from '../RecipeCockpitService';
+    IRecipeCockpitPanelState
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitQueryHost } from '../RecipeCockpitQueryHost';
 import { RecipeCockpitTroubleshootingHost } from '../RecipeCockpitTroubleshootingHost';
 import * as RecipeCockpitDatasetsHostModule from '../RecipeCockpitDatasetsHost';
@@ -81,6 +81,12 @@ import {
 const SOURCE_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const COCKPIT_FOLDER = path.join(__dirname, '..');
 const HUB_FILE_NAME = 'RecipeCockpitService.ts';
+/*
+    The hub and the modules #671 moved its shared work into: what any of them takes from a tab's pure
+    module is still owed by the hub's side, so moving a use into one of them never drops it from the
+    ledger below.
+*/
+const HUB_SIDE_FILE_NAMES = [HUB_FILE_NAME, 'RecipeCockpitViewModel.ts', 'RecipeCockpitModelBuild.ts', 'RecipeCockpitTreeSelectionStore.ts', 'RecipeCockpitOrgRuns.ts'];
 
 /*
     What the hub still takes from one of a tab's pure modules: the names it imports and the members
@@ -112,13 +118,13 @@ interface ITabHost {
     loadsOtherHosts?: { fileName: string; otherHostFileName: string; reason: string }[];
 }
 
-const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays in the hub';
-
 /*
     One row per tab whose host half is out of the hub (#566). A tab's panel commands and action
     kinds have a case in its host and nowhere else, so a reader looking for what a Query message does
     opens one file; and the hub never runs a host's work for it, only hands the message over.
 */
+const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays on the hub\'s side, in RecipeCockpitOrgRuns (#671)';
+
 const TAB_HOSTS: ITabHost[] = [
     {
         tabName: 'Query',
@@ -308,12 +314,6 @@ const TAB_HOSTS: ITabHost[] = [
         ],
         hubUsesStillOwed: [
             {
-                pureModuleFileName: 'RecipeCockpitTreeUpdaterQuery.ts',
-                importedNames: ['RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH'],
-                members: [],
-                owedBy: '#670: the reader\'s place keeps a card\'s WHERE text to the same limit'
-            },
-            {
                 pureModuleFileName: 'RecipeCockpitRecordUpdate.ts',
                 importedNames: ['IUpdateSnapshotObject'],
                 members: [],
@@ -466,7 +466,6 @@ const TAB_HOSTS: ITabHost[] = [
         ]
     }
 ];
-
 const HOST_FILE_NAMES = TAB_HOSTS.flatMap(tabHost => tabHost.hostFileNames);
 
 // EVERY FILE THE EXTENSION HOST RUNS: NOT A TEST, NOT THE PANEL (A BROWSER BUNDLE) AND NOT A GENERATED FILE
@@ -665,7 +664,7 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
 
             const strayImports: string[] = [];
             const hubUses: Omit<IHubUseStillOwed, 'owedBy'>[] = [];
-            const hubSource = parse(hubFilePath);
+            const hubSideSources = HUB_SIDE_FILE_NAMES.map(fileName => parse(path.join(COCKPIT_FOLDER, fileName)));
 
             tabHost.pureModuleFileNames.forEach(pureModuleFileName => {
                 const pureModulePath = path.join(COCKPIT_FOLDER, pureModuleFileName);
@@ -676,11 +675,11 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                     importsOf(sourceFile)
                         .filter(importDeclaration => resolvedImportPath(sourceFile, importDeclaration) === pureModulePath)
                         .forEach(importDeclaration => {
-                            if ( filePath === hubFilePath ) {
+                            if ( HUB_SIDE_FILE_NAMES.includes(fileName) ) {
                                 // A NAMESPACE OR DEFAULT IMPORT WOULD HIDE WHICH NAMES THE HUB USES, SO ONLY NAMED IMPORTS COUNT AS OWED
                                 const importClause = importDeclaration.importClause;
                                 if ( importClause?.name || ( importClause?.namedBindings && !ts.isNamedImports(importClause.namedBindings) ) ) {
-                                    strayImports.push(`${HUB_FILE_NAME}: ${importDeclaration.getText()}`);
+                                    strayImports.push(`${fileName}: ${importDeclaration.getText()}`);
                                 }
                                 hubImportedNames.push(...importedNames(importDeclaration));
                             } else if ( HOST_FILE_NAMES.includes(fileName) && !tabHost.hostFileNames.includes(fileName)
@@ -690,11 +689,12 @@ describe('Recipe Cockpit tab hosts (#566)', () => {
                         });
                 });
                 const hubMembers = new Set<string>();
-                visit(hubSource, node => {
+                hubSideSources.forEach(hubSideSource => visit(hubSideSource, node => {
                     if ( ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && hubImportedNames.includes(node.expression.text) ) {
                         hubMembers.add(node.name.text);
                     }
-                });
+                }));
+                hubImportedNames.splice(0, hubImportedNames.length, ...new Set(hubImportedNames));
                 if ( hubImportedNames.length > 0 ) {
                     hubUses.push({ pureModuleFileName: pureModuleFileName, importedNames: [...hubImportedNames].sort(), members: [...hubMembers].sort() });
                 }

@@ -2,10 +2,9 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
-import {
-    IRecipeCockpitRecipeViewModel,
-    RecipeCockpitService
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { IRecipeCockpitDatasetJourneyMessage } from '../RecipeCockpitDatasetsHost';
 import { IRecipeCockpitTroubleshootingHistoryMessage } from '../RecipeCockpitTroubleshootingHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -40,8 +39,8 @@ const functionBodyOf = (scriptText: string, functionName: string) => {
     return scriptText.substring(start);
 };
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(HISTORY_FIXTURE_ROOT, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(HISTORY_FIXTURE_ROOT, 'treecipe', 'GeneratedRecipes')),
     HISTORY_FIXTURE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

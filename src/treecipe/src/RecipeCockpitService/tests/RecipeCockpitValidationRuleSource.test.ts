@@ -40,14 +40,17 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    RecipeCockpitService,
-    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LIST_LINK_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_TITLE_PREFIX
-} from '../RecipeCockpitService';
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_GONE_PREFIX,
     RecipeCockpitTroubleshootingViews
@@ -308,8 +311,8 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
 
         it.each([FAKERJS_RUN_FOLDER_NAME, SNOWFAKERY_RUN_FOLDER_NAME])('names on each rule-constrained field the rules whose file the project holds, applied or not (%s)', (runFolderName) => {
 
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, runFolderName
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, runFolderName
             ).recipeViewModel;
 
             expect(fieldOf(recipe, 'Gadget__c', 'Amount__c').validationRules?.sourceRuleNames).toEqual(AMOUNT_RULES);
@@ -321,15 +324,15 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
         it('posts the model it did when the project holds no rule file, and reads no configuration for a run without rules', () => {
 
             fs.rmSync(path.join(workspaceRoot, OBJECTS_RELATIVE_PATH), { recursive: true, force: true });
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, FAKERJS_RUN_FOLDER_NAME
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, FAKERJS_RUN_FOLDER_NAME
             ).recipeViewModel;
 
             expect(JSON.stringify(recipe)).not.toContain('sourceRuleNames');
 
             const configurationSpy = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock;
             configurationSpy.mockClear();
-            RecipeCockpitService.attachValidationRuleSources([{ objectApiName: 'Account', recipeFilePath: '', fields: [fieldOf(recipe, 'Gadget__c', 'Region__c')] }], workspaceRoot);
+            RecipeCockpitModelBuild.attachValidationRuleSources([{ objectApiName: 'Account', recipeFilePath: '', fields: [fieldOf(recipe, 'Gadget__c', 'Region__c')] }], workspaceRoot);
             expect(configurationSpy).not.toHaveBeenCalled();
 
         });
@@ -430,8 +433,8 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
             await flushAsyncWork();
             expect(panelState().pendingValidationRuleListKeys.size).toBe(0);
 
-            (RecipeCockpitService as any).renderRecipeModel((RecipeCockpitService as any).recipeCockpitPanel, RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, FAKERJS_RUN_FOLDER_NAME
+            (RecipeCockpitService as any).renderRecipeModel((RecipeCockpitService as any).recipeCockpitPanel, RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, FAKERJS_RUN_FOLDER_NAME
             ));
             expect(panelState().openableValidationRuleKeys.size).toBe(0);
             expect(panelState().pendingOpenableValidationRuleKeys.has(ruleKey('Gadget__c', 'Require_Amount_Maximum'))).toBeTrue();
@@ -445,8 +448,8 @@ describe('RecipeCockpitService, a validation rule\'s file (#560)', () => {
         type Panel = ReturnType<typeof runPanelScript>;
 
         const loadRecipe = (): IRecipeCockpitRecipeViewModel => {
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(VALIDATION_RULE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(VALIDATION_RULE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
                 VALIDATION_RULE_WORKSPACE_ROOT,
                 FAKERJS_RUN_FOLDER_NAME
             ).recipeViewModel;

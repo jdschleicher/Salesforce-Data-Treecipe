@@ -7,7 +7,7 @@
     It patches LINES rather than round-tripping YAML. Both faker backends write recipes as template
     strings, and the "### TODO" comments in them carry meaning -- which record type to pick, which
     lookup needs a reference. js-yaml drops every comment on dump, so a load and dump would delete
-    them all. The writer instead holds to one layout contract, which RecipeCockpitService.parseRecipeSource
+    them all. The writer instead holds to one layout contract, which RecipeCockpitModelBuild.parseRecipeSource
     reads through this file's own scanRecipeObjects: "- object: X" at column zero, "  fields:" under
     it, one field per line at exactly four spaces, anything deeper as the continuation of the field
     above, and a comment at one to four spaces as neither. A faker-js recipe nests child objects
@@ -2194,7 +2194,7 @@ export class RecipeCockpitRecipeWriter {
 
             /*
                 An object written more than once is wired only when EVERY occurrence has a nickname of
-                its own: RecipeCockpitService.parseRecipeSource draws such an object as one row with no
+                its own: RecipeCockpitModelBuild.parseRecipeSource draws such an object as one row with no
                 nickname (hasIndistinctOccurrences), so a wiring keyed by one occurrence's nickname would
                 have no "Wire to…" to show and would be written by "Wire TODO lookups" alone.
             */
@@ -4338,7 +4338,7 @@ export class RecipeCockpitRecipeWriter {
 
     /*
         Every object in the file, in the order written, duplicates included and friends at every
-        depth. This is the one scan of the layout contract: RecipeCockpitService.parseRecipeSource
+        depth. This is the one scan of the layout contract: RecipeCockpitModelBuild.parseRecipeSource
         reads its objects and fields from it, and keeps only the FIRST of each name, where the
         writer refuses a name it finds twice.
 

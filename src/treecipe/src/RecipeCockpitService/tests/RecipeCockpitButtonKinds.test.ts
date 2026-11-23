@@ -14,9 +14,10 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_BUTTON_KINDS,
-    RECIPE_COCKPIT_NO_RUN_MESSAGE
+    RECIPE_COCKPIT_BUTTON_KINDS
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -35,8 +36,8 @@ const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
 };
 
 const collectButtons = (rootElements: any[]): any[] => {

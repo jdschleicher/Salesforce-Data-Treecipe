@@ -14,14 +14,17 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitDatasetsTabConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DATASET_INSERT_CONFIRM_LABEL,
@@ -80,8 +83,8 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
         return resultsFilePath;
     };
 
-    const loadRecipe = () => RecipeCockpitService.loadRecipeRunByRuns(
-        RecipeCockpitService.findGeneratedRecipeRuns(generatedRecipesPath()),
+    const loadRecipe = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+        RecipeCockpitModelBuild.findGeneratedRecipeRuns(generatedRecipesPath()),
         workspaceRoot,
         CURRENT_RUN_FOLDER_NAME
     );
@@ -416,8 +419,8 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
 
         const drawRecipe = (recipeChanges: (recipe: IRecipeCockpitRecipeViewModel) => void) => {
             const panel = runPanelScript();
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(HISTORY_FIXTURE_ROOT, 'treecipe', 'GeneratedRecipes')),
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(HISTORY_FIXTURE_ROOT, 'treecipe', 'GeneratedRecipes')),
                 HISTORY_FIXTURE_ROOT,
                 CURRENT_RUN_FOLDER_NAME
             ).recipeViewModel;

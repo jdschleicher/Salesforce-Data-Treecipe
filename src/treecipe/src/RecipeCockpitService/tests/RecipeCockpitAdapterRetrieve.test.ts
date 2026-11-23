@@ -42,11 +42,13 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_ADAPTER_APPLY_LABEL,
     RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON,
-    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL,
     RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING,
     RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL,
@@ -56,10 +58,11 @@ import {
     RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL,
     RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
-    RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL
+} from '../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
@@ -84,8 +87,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const fieldXml = (fieldApiName: string, fieldType: string, extra = '') => [

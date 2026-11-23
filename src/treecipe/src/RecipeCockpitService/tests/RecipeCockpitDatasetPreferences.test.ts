@@ -14,14 +14,17 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
-    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
+    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH } from '../RecipeCockpitDatasetsTabConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from '../RecipeCockpitNavigationConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     IRecipeCockpitDatasetPreferences,
@@ -48,8 +51,8 @@ const ACCOUNT_DATASET = 'dataset-2026-09-21T00-00-00-2';
 const LEAD_DATASETS = ['dataset-2026-09-21T00-00-00', 'dataset-2026-09-15T00-00-00', 'dataset-2026-09-02T00-00-00'];
 const DATASETS_TAB_LABEL = 'Previously Used Data Sets';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

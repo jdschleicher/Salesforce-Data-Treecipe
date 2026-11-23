@@ -15,7 +15,7 @@ import type {
     IRecipeCockpitTreeViewModel,
     IRecipeCockpitTypedLookupId,
     RecipeCockpitPanelAction
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitDatasetsHost } from './RecipeCockpitDatasetsHost';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import {

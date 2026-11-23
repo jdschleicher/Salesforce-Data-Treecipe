@@ -1,10 +1,10 @@
 import {
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
-    RECIPE_COCKPIT_TREECIPE_PICKER_LABEL,
-    RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../../RecipeCockpitService';
+} from '../../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_TREECIPE_PICKER_LABEL } from '../../RecipeCockpitNavigationConstants';
+import { RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL } from '../../RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitJourney } from './RecipeCockpitJourney';
 import { IScreenNode, RecipeCockpitScreen } from './RecipeCockpitScreen';
 

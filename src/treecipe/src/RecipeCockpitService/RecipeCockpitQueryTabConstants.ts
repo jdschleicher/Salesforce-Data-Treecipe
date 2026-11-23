@@ -1,6 +1,6 @@
 /*
     What the Query tab's panel module draws with (#640). It imports nothing, so the panel bundle can
-    import it; RecipeCockpitService.ts re-exports every name, and RecipeCockpitQuery.ts re-exports the
+    import it; every importer reads its names here (#671), and RecipeCockpitQuery.ts re-exports the
     query length limit its check holds a query to.
 */
 

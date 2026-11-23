@@ -4,14 +4,19 @@ jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_ACTION_CARD_HEIGHT,
-    RECIPE_COCKPIT_ACTION_CARD_WIDTH,
-    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
-    RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE,
-    RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI
+    RECIPE_COCKPIT_ACTION_CARD_WIDTH
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI
+} from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE } from '../RecipeCockpitTroubleshootingConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
@@ -29,8 +34,8 @@ const GADGET_TREE_KEY = 'Gadget__c-thru-Widget__c';
 
 type Panel = ReturnType<typeof runPanelScript>;
 
-const loadRecipe = (workspaceRoot: string, runFolderName: string): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (workspaceRoot: string, runFolderName: string): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
     workspaceRoot,
     runFolderName
 ).recipeViewModel;

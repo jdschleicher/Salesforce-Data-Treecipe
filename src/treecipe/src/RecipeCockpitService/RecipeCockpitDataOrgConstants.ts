@@ -4,8 +4,8 @@ import type { RecipeCockpitTroubleshootingSubTab } from './RecipeCockpitTroubles
 /*
     What Target Org Manager and a tree's insert button draw (#654): the org picker's buttons and
     placeholders, the insert's label and its reasons. It imports only types from host-free files, so
-    the panel bundle can import it; RecipeCockpitService.ts re-exports every name, and
-    RecipeCockpitOrgAuthorize.ts the Authorize org words, which its notifications quote.
+    the panel bundle can import it; every importer reads its names here (#671), and
+    RecipeCockpitOrgAuthorize.ts re-exports the Authorize org words, which its notifications quote.
 */
 
 export const RECIPE_COCKPIT_REFRESH_ORGS_LABEL = 'Refresh orgs';

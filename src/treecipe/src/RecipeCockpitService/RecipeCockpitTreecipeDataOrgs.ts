@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 // TYPES ONLY: THE HUB IMPORTS THIS HOST, AND A HOST NEVER LOADS THE HUB'S CODE; IT CALLS IT THROUGH IRecipeCockpitHubForTreecipeDataOrgs
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitCreateReadinessByTarget,
     IRecipeCockpitCreateTarget,
@@ -12,9 +13,8 @@ import type {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitScratchOrgStateMessage,
     IRecipeCockpitTreeViewModel,
-    IRecipeCockpitTroubleshootingFocusRequest,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    IRecipeCockpitTroubleshootingFocusRequest
+} from './RecipeCockpitViewModel';
 import {
     IScratchOrgAliasChoice,
     IScratchOrgPlan,

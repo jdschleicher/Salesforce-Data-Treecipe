@@ -44,16 +44,17 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL } from '../RecipeCockpitDataOrgConstants';
 import {
-    IRecipeCockpitPanelState,
-    RecipeCockpitService,
-    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
     RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE,
     RECIPE_COCKPIT_UPDATER_RESTORE_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORING_LABEL,
-    RECIPE_COCKPIT_UPDATER_SNAPSHOTS_HEADING,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_UPDATER_SNAPSHOTS_HEADING
+} from '../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
@@ -89,8 +90,8 @@ const CONTACT_ID_PREFIX = '003';
 const buildRecordId = (keyPrefix: string, recordIndex: number) => `${keyPrefix}${String(recordIndex).padStart(12, '0')}AAA`;
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const validSnapshot = (): IUpdateSnapshot => ({

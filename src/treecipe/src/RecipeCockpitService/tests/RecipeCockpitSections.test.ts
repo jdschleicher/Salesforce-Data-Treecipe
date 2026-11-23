@@ -13,14 +13,17 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_NO_RUN_MESSAGE,
-    RECIPE_COCKPIT_ORG_SECTION_TITLE,
     RECIPE_COCKPIT_PALETTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
-    RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
+    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ORG_SECTION_TITLE,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
+} from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
@@ -38,8 +41,8 @@ const HISTORY_GENERATED_RECIPES_PATH = path.join(HISTORY_WORKSPACE_ROOT, 'treeci
 const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

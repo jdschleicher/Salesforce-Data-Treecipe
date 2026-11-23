@@ -72,7 +72,7 @@ import type {
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
     RecipeCockpitPanelAction
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*

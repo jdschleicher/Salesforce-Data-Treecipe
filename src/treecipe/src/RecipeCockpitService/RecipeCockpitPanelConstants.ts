@@ -1,7 +1,7 @@
 /*
     What the Recipe Cockpit's panel modules draw with (#638): glyph paths and the action cards' words.
     Imports nothing, so a panel module can import it and the bundle pulls in no host code.
-    RecipeCockpitService.ts re-exports every name.
+    Every importer reads its names here (#671).
 */
 
 /*

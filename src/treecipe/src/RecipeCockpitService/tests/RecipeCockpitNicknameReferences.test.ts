@@ -13,13 +13,14 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI,
     RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT,
     RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitNavigationConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -80,7 +81,7 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
         if ( workspaceRoot ) { fs.rmSync(workspaceRoot, { recursive: true, force: true }); }
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const renderModel = (recipeViewModel: IRecipeCockpitRecipeViewModel) => {
         const panel = runPanelScript();

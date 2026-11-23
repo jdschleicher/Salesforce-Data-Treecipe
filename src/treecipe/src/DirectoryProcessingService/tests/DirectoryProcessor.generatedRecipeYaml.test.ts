@@ -77,6 +77,7 @@ import { CollectionsApiService } from '../../CollectionsApiService/CollectionsAp
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 import { SavedRecordTypeSelection } from '../../RecordTypeSelectionService/SavedRecordTypeSelection';
 import { RecipeCockpitService } from '../../RecipeCockpitService/RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../../RecipeCockpitService/RecipeCockpitModelBuild';
 import { SalesforceApiName } from '../../SalesforceApiName/SalesforceApiName';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
@@ -604,7 +605,7 @@ describe.each([
         test('the Recipe Cockpit reads the second block as an occurrence of its own, by nickname', () => {
 
             const everythingRecipeText = multiBlockRecipeTexts().find(recipeText => recipeText.includes('Example_Everything__c_OneRecType_NickName'));
-            const everythingEntry = RecipeCockpitService.parseRecipeSource(everythingRecipeText).get('Example_Everything__c');
+            const everythingEntry = RecipeCockpitModelBuild.parseRecipeSource(everythingRecipeText).get('Example_Everything__c');
 
             expect(everythingEntry.nickname).toBe('Example_Everything__c_TwoRecType_NickName');
             expect(everythingEntry.hasIndistinctOccurrences).toBeUndefined();

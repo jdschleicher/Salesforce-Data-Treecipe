@@ -14,12 +14,15 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL,
     RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
+} from '../RecipeCockpitTreeSelectionStore';
+import { IRecipeCockpitTreeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
@@ -322,8 +325,8 @@ describe('RecipeCockpitService run switch (#399)', () => {
         it('puts the dropdown back on the run on screen when the host says the switch was cancelled', () => {
 
             const panel = runPanelScript();
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
                 HISTORY_WORKSPACE_ROOT,
                 CURRENT_RUN_FOLDER_NAME
             ).recipeViewModel;

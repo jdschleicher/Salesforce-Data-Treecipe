@@ -1,5 +1,5 @@
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
-import type { IRecipeCockpitPanelState } from './RecipeCockpitService';
+import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
 
 /*
     A preview row's record link (#556; moved out of the hub by #668): the registry the Query and

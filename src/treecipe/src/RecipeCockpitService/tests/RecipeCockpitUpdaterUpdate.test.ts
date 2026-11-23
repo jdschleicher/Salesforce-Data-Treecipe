@@ -44,15 +44,18 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    IRecipeCockpitPanelState,
-    RecipeCockpitService,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
-    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL,
+    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
+} from '../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
+import {
     RECIPE_COCKPIT_UPDATER_UPDATE_LABEL,
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitAdapterConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
     RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
@@ -91,8 +94,8 @@ const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', 
 const OTHER_SANDBOX_ORG = { targetOrgIdentifier: 'uat', username: 'uat@example.com.uat', alias: 'uat' };
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const ACCOUNT_DESCRIBE: IUpdateObjectDescribe = {
@@ -778,11 +781,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 expect(datasetAdded.dataset).toMatchObject({ datasetFolderName: adaptedDatasetFolderNames()[0], fakerService: 'snowfakery', runFolderName: TREE_RUN_FOLDER_NAME, isAdapted: true });
 
                 // A RELOAD LISTS IT THE SAME WAY, AND THE ADAPTED RECIPE IS NOT READ AS A SECOND RECIPE OF THE TREE
-                const reloadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, TREE_RUN_FOLDER_NAME).recipeViewModel;
+                const reloadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, TREE_RUN_FOLDER_NAME).recipeViewModel;
                 const reloadedTree = reloadedRecipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY)!;
                 expect(reloadedTree.history!.datasets[0]).toMatchObject({ datasetFolderName: adaptedDatasetFolderNames()[0], isAdapted: true });
                 expect(reloadedRecipe.objects.filter(object => object.objectApiName === 'Account')).toHaveLength(1);
-                expect(RecipeCockpitService.collectRecipeFilePaths(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME)).map(filePath => path.basename(filePath))).not.toContain(adaptedRecipeFileNames()[0]);
+                expect(RecipeCockpitModelBuild.collectRecipeFilePaths(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME)).map(filePath => path.basename(filePath))).not.toContain(adaptedRecipeFileNames()[0]);
 
             });
 

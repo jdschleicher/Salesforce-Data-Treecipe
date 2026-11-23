@@ -11,13 +11,15 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
-    RecipeCockpitService,
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeObjectViewModel,
     IRecipeCockpitTreeViewModel
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeSelection } from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
@@ -27,15 +29,15 @@ const HISTORY_GENERATED_RECIPES_PATH = path.join(HISTORY_WORKSPACE_ROOT, 'treeci
 const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel) => recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY) as IRecipeCockpitTreeViewModel;
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])
@@ -74,9 +76,9 @@ describe('RecipeCockpitService, an unticked lookup field (#677)', () => {
         ] as unknown as IRecipeCockpitTreeObjectViewModel[];
         const storedFieldsByObject = new Map([[RecipeCockpitRecipeWriter.buildOccurrenceKey('Case', 'Case_First'), new Set(['ContactId'])]]);
 
-        expect(RecipeCockpitService.listRemovedTreeLookups(objectsByApiName, drawnTreeObjects, storedFieldsByObject))
+        expect(RecipeCockpitTreeSelectionStore.listRemovedTreeLookups(objectsByApiName, drawnTreeObjects, storedFieldsByObject))
             .toEqual([{ objectApiName: 'Case', fieldApiName: 'ContactId' }]);
-        expect(RecipeCockpitService.listRemovedTreeLookups(objectsByApiName, drawnTreeObjects, new Map([[RecipeCockpitRecipeWriter.buildOccurrenceKey('Case', 'Case_Child'), new Set(['ContactId'])]])))
+        expect(RecipeCockpitTreeSelectionStore.listRemovedTreeLookups(objectsByApiName, drawnTreeObjects, new Map([[RecipeCockpitRecipeWriter.buildOccurrenceKey('Case', 'Case_Child'), new Set(['ContactId'])]])))
             .toEqual([]);
 
     });

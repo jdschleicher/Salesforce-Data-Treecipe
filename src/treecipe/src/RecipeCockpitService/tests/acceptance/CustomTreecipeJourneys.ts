@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { RecipeCockpitJourney } from './RecipeCockpitJourney';
-import { RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitService';
+import { RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitShellConstants';
 import {
     INSERT_ORG_LABEL,
     INSERT_OUTCOME_NOTIFICATION,
