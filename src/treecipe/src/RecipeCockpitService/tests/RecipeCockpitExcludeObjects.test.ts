@@ -13,20 +13,26 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
     RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
     RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH,
-    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH
+} from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_RUN_FAKER_COMMAND } from '../RecipeCockpitTreecipeInsert';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -47,8 +53,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, CURRENT_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -91,8 +97,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         it('marks an object written twice with no nickname to tell the occurrences apart, and not one told apart by nickname', () => {
 
-            const indistinct = RecipeCockpitService.parseRecipeSource('- object: Account\n  fields:\n    Name: a\n- object: Account\n  fields:\n    Name: b\n');
-            const distinct = RecipeCockpitService.parseRecipeSource([
+            const indistinct = RecipeCockpitModelBuild.parseRecipeSource('- object: Account\n  fields:\n    Name: a\n- object: Account\n  fields:\n    Name: b\n');
+            const distinct = RecipeCockpitModelBuild.parseRecipeSource([
                 '- object: Account', '  nickname: Account_NickName', '  fields:', '    Name: a', '  friends:',
                 '    - object: Account', '      nickname: Account_child_NickName', '      fields:', '        ParentId: Account_NickName', ''
             ].join('\n'));
@@ -112,7 +118,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipe = loadRecipe();
             const before = JSON.parse(JSON.stringify(recipe));
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map());
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map());
 
             const after = JSON.parse(JSON.stringify(recipe));
             // A DEPENDENT PICKLIST LOCKS ITS CONTROLLING FIELD, WHICH IS ALL A CARD WITH NOTHING UNTICKED SAYS ABOUT FIELDS
@@ -129,7 +135,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             const recipe = loadRecipe();
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
             expect(treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection).toEqual({
                 exclusions: [
@@ -151,9 +157,9 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             // Contact ALSO LOOKS UP User, WHICH THE TREE LISTS BUT NO RECIPE GENERATES
             treeOf(recipe, ACCOUNT_TREE_KEY).objects.find(treeObject => treeObject.objectApiName === 'Contact')!.parentLookups.push({ fieldApiName: 'Approver__c', parentObjectApiName: 'User' });
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
 
-            expect(RecipeCockpitService.listExcludedObjectApiNames(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
 
         });
 
@@ -171,7 +177,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             }));
             const startedAt = Date.now();
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([['Object7__c-ONLY', new Set(['Object7__c'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([['Object7__c-ONLY', new Set(['Object7__c'])]]));
             const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
 
             // A PER-CARD REBUILD OF THE NAME MAP TOOK ABOUT 30 s HERE
@@ -186,7 +192,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipe = loadRecipe();
             recipe.trees.push(buildUngroupedTree());
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([
                 [ACCOUNT_TREE_KEY, new Set(['Gone__c', 'User'])],
                 ['', new Set(['Lead'])],
                 ['Vanished-Tree', new Set(['Account'])]
@@ -199,10 +205,10 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
         it('lists every excluded object of a card, the auto-excluded ones included', () => {
 
             const recipe = loadRecipe();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
 
-            expect(RecipeCockpitService.listExcludedObjectApiNames(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
-            expect(RecipeCockpitService.listExcludedObjectApiNames(treeOf(recipe, LEAD_TREE_KEY))).toEqual([]);
+            expect(RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(treeOf(recipe, LEAD_TREE_KEY))).toEqual([]);
 
         });
 
@@ -260,7 +266,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             } });
 
             expect(RecipeCockpitService.readObjectSelections(workspaceState)).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).objectCountsByFolderName.size).toBe(0);
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).objectCountsByFolderName.size).toBe(0);
 
             workspaceState.storedValues.set(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY, { ...storedSelections({}), objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } } });
             await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
@@ -362,7 +368,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             // User IS A LOOKUP TARGET WITH NO RECIPE, SO NOTHING INSERTS IT
             expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
             expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account']);
             expect(RecipeCockpitTreecipeDataOrgs.listTreeInsertObjectApiNames(RecipeCockpitService, recipe, treeOf(recipe, LEAD_TREE_KEY))).toEqual(['Lead']);
@@ -545,7 +551,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             return panel;
         };
 
-        const excludeContact = (recipe: IRecipeCockpitRecipeViewModel) => RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+        const excludeContact = (recipe: IRecipeCockpitRecipeViewModel) => RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
         const objectNamed = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.objectElements().find(objectElement => panel.objectNameOf(objectElement) === objectApiName);
         const includeOf = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.findAll(objectNamed(panel, objectApiName).children[0], 'treeObjectInclude')[0];
@@ -722,7 +728,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             };
             const panel = drawRecipe(recipe => {
                 addIteration(recipe);
-                RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
+                RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
             });
 
             const accountElements = panel.objectElements().filter(objectElement => panel.objectNameOf(objectElement) === 'Account');
@@ -800,7 +806,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             expect(insertReasonOf(0)).toBe('Can\'t insert: Contact is not createable in this org.');
 
             const recipe = loadRecipe();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
             panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY, objectSelection: treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection });
             expect(insertOf(0).disabled).toBeTrue();
             expect(insertReasonOf(0)).toBe('Can\'t insert: Every object of this tree is excluded.');
@@ -836,7 +842,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
         };
         const excludeContact = (recipe: IRecipeCockpitRecipeViewModel) => {
             giveOtherChildAnAccountParent(recipe);
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
         };
 
         const objectNamed = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.objectElements().find(objectElement => panel.objectNameOf(objectElement) === objectApiName);
@@ -891,7 +897,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         it('never marks an auto-excluded object impacted, and puts the row back in place when the parent is included again', () => {
 
-            const panel = drawRecipe(recipe => RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]])));
+            const panel = drawRecipe(recipe => RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]])));
             expect(glyphOf(includeOf(panel, 'OtherChildObject__c')).attributes.class).toBe('treeGlyph autoExcluded');
             expect(labelOf(panel, 'OtherChildObject__c').textContent).toBe('auto-excluded — parent Contact excluded');
 

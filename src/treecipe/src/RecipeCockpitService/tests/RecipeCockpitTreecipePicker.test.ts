@@ -11,21 +11,24 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX,
-    RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_NO_FAVORITES_MESSAGE,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH,
     RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX,
     RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT,
     RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS,
     RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL,
     RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitNavigationConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -43,8 +46,8 @@ const LEAD_TREE_KEY = 'Lead-ONLY';
 
 type Panel = ReturnType<typeof runPanelScript>;
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -128,7 +131,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             const panel = runPanelScript();
             const recipe = loadRecipe();
-            recipe.trees = RecipeCockpitService.buildRecipeTreeViewModels({
+            recipe.trees = RecipeCockpitModelBuild.buildRecipeTreeViewModels({
                 recipeTrees: [{ objectApiNames: ['Account', 'Contact', 'OtherChildObject__c'] }, { objectApiNames: ['Lead'] }, { objectApiNames: ['Lead'] }],
                 parentLookupsByObjectApiName: new Map()
             }, recipe.objects, [], 'run').trees;

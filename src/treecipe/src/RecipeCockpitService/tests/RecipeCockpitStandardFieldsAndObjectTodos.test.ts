@@ -12,20 +12,26 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
+    RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE,
+    RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL
+} from '../RecipeCockpitRecordTypesConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_STANDARD_FIELDS_LABEL } from '../RecipeCockpitFieldRowsConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_STANDARD_FIELDS_LABEL
-} from '../RecipeCockpitService';
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeSelection } from '../RecipeCockpitTreecipeSelection';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -50,8 +56,8 @@ const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_STANDARD_FIELDS = ['Name', 'ParentId', 'OwnerId'];
 const ACCOUNT_CUSTOM_FIELDS = ['Legacy_Code__c', 'Annual_Budget__c', 'Rating__c', 'Sub_Rating__c', 'Regions__c'];
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -60,7 +66,7 @@ const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recip
 const objectOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string) => recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName) as IRecipeCockpitObjectViewModel;
 const fieldSelectionOf = (tree: IRecipeCockpitTreeViewModel, objectApiName: string) => tree.fieldSelection?.objects.find(objectFieldSelection => objectFieldSelection.objectApiName === objectApiName);
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])
@@ -427,7 +433,7 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
 
             it('is disabled while the object is excluded', () => {
 
-                const panel = drawRecipe(recipe => RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]), new Map()));
+                const panel = drawRecipe(recipe => RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]), new Map()));
                 const standardElement = standardOf(panel, expanded(panel, 'Contact'));
 
                 expect(standardElement.disabled).toBeTrue();

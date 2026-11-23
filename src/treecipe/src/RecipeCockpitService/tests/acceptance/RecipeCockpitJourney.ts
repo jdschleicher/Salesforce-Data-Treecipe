@@ -5,13 +5,11 @@ import * as path from 'path';
 import { faker } from '@faker-js/faker';
 import type { ExtensionContext } from 'vscode';
 import { activate } from '../../../../../extension';
-import {
-    RecipeCockpitService,
-    IRecipeCockpitWorkspaceState,
-    RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
-    RECIPE_COCKPIT_RUN_PICKER_LABEL,
-    RECIPE_COCKPIT_TREECIPE_PICKER_LABEL
-} from '../../RecipeCockpitService';
+import { RecipeCockpitService } from '../../RecipeCockpitService';
+import { RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER } from '../../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_TREECIPE_PICKER_LABEL } from '../../RecipeCockpitNavigationConstants';
+import { IRecipeCockpitWorkspaceState } from '../../RecipeCockpitViewModel';
 import { RecipeCockpitTroubleshootingViews } from '../../RecipeCockpitTroubleshootingViews';
 import { RecipeCockpitQueryHost } from '../../RecipeCockpitQueryHost';
 import { copyAsVsCodeDelivers, runPanelScript } from '../RecipeCockpitPanelHarness';

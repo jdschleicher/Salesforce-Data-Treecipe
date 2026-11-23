@@ -45,17 +45,22 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
+} from '../RecipeCockpitPanelConstants';
+import {
     RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
-    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
-    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
-    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_TREE_TABS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_TREE_TABS } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
@@ -1408,8 +1413,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
     describe('the panel script', () => {
 
         const loadTreeRecipe = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
         };
 
         const cardOf = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.treeCards()

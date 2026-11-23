@@ -4,16 +4,19 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE,
     RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE,
     RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE,
-    RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RecipeCockpitService
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY
+} from '../RecipeCockpitDatasetsTabConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     IRecipeCockpitDatasetJourneyMessage,
@@ -37,8 +40,8 @@ const LEAD_DATASETS = ['dataset-2026-09-21T00-00-00', 'dataset-2026-09-15T00-00-
 const DATASETS_TAB_LABEL = 'Previously Used Data Sets';
 const QA_USERNAME = 'qa@example.com.sandbox';
 
-const loadRecipe = (workspaceRoot: string) => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (workspaceRoot: string) => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
     workspaceRoot,
     CURRENT_RUN_FOLDER_NAME
 );

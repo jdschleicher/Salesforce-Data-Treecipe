@@ -14,14 +14,17 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
-    RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL,
-    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
-    RECIPE_COCKPIT_NO_RUN_MESSAGE,
-    RECIPE_COCKPIT_STANDALONE_ACTION_CARDS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
     RECIPE_COCKPIT_VERB_BUTTON_VERBS
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_STANDALONE_ACTION_CARDS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
+} from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
@@ -40,8 +43,8 @@ const styleSheetOf = (html: string) => withCustomPropertyValues(html.substring(h
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
 };
 
 const drawTreeRecipe = (): Panel => {

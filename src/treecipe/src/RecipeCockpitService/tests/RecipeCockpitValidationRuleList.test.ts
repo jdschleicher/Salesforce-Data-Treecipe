@@ -42,17 +42,20 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import { execFile } from 'child_process';
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT } from '../RecipeCockpitNavigationConstants';
 import {
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    RecipeCockpitService,
-    RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE,
     RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTroubleshootingViews } from '../RecipeCockpitTroubleshootingViews';
 import {
     IValidationRuleListObject,
@@ -534,8 +537,8 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
 
     describe('the panel script', () => {
 
-        const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-            RecipeCockpitService.findGeneratedRecipeRuns(path.join(VALIDATION_RULE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+        const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+            RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(VALIDATION_RULE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
             VALIDATION_RULE_WORKSPACE_ROOT,
             FAKERJS_RUN_FOLDER_NAME
         ).recipeViewModel;

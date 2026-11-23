@@ -8,11 +8,11 @@ import type { IRecipeCockpitOpenableRecordPreview } from './RecipeCockpitRecordL
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
 import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitPanelMessage,
-    IRecipeCockpitPanelState,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    IRecipeCockpitPanelState
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*

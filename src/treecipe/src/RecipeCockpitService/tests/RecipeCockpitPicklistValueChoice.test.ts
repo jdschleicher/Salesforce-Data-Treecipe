@@ -15,16 +15,20 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitFieldViewModel,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON,
-    RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
     RECIPE_COCKPIT_PICKLIST_RESET_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTreecipeFieldEditorConstants';
+import { RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL } from '../RecipeCockpitFieldRowsConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
+    IRecipeCockpitFieldViewModel,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
@@ -67,8 +71,8 @@ const BACKENDS: Array<['faker-js' | 'snowfakery', () => IRecipeFakerService]> = 
 
 const picklistField = (fieldType = 'Picklist'): IRecipeCockpitFieldViewModel => ({ fieldApiName: 'Status', fieldType: fieldType } as IRecipeCockpitFieldViewModel);
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );
@@ -224,7 +228,7 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
         const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
         const loadedRecipe = loadRecipeRun();
         const recipe: IRecipeCockpitRecipeViewModel = loadedRecipe.recipeViewModel;
-        RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
+        RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
@@ -328,7 +332,7 @@ describe('routePanelMessage resetPicklistValueChoice (#479)', () => {
         const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
         const loadedRecipe = loadRecipeRun();
         const recipe: IRecipeCockpitRecipeViewModel = loadedRecipe.recipeViewModel;
-        RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
+        RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);

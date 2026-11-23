@@ -11,15 +11,16 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_ORG_CHOOSE_LABEL,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_PICKER_NAME,
     RECIPE_COCKPIT_ORG_SEARCH_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_UNSELECTED_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitDataOrgConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
@@ -51,8 +52,8 @@ const SCRATCH_LABEL = 'test-active@example.com -- https://ability-active-3.scrat
 
 function renderPickerPanel(orgPickerLabels: unknown = [QA_LABEL, UAT_LABEL, SCRATCH_LABEL], orgLabels: string[] = ['qa (default)', 'uat', 'test-active@example.com'], selectedOrgIndex: number | null = null) {
 
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
     const panel = runPanelScript();
     panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
     panel.expandAllTrees();

@@ -45,13 +45,14 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { execFile } from 'child_process';
 import { Org } from '@salesforce/core';
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    IRecipeCockpitPanelState,
-    RecipeCockpitService,
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
-    RECIPE_COCKPIT_RECORD_LINK_TITLE,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_RECORD_LINK_TITLE } from '../RecipeCockpitAdapterConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import {
@@ -483,8 +484,8 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
     describe('the panel script', () => {
 
         const loadTreeRecipe = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
         };
 
         const renderedPanel = () => {

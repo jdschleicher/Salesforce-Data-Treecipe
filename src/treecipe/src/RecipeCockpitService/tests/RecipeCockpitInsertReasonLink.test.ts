@@ -2,15 +2,17 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX,
-    RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS
+} from '../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from '../RecipeCockpitTroubleshootingConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_CREATE_REASON_CODES } from '../RecipeCockpitRecordCreation';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -27,8 +29,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
 type Panel = ReturnType<typeof runPanelScript>;
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
     TREE_WORKSPACE_ROOT,
     RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -158,7 +160,7 @@ describe('RecipeCockpitService, a disabled insert links its reason to the fix (#
 
     it('shows the field even when its object\'s own Hide unselected or TODOs only hides it, and turns that filter off', () => {
 
-        const panel = renderPanel(recipe => RecipeCockpitService.applyObjectSelections(
+        const panel = renderPanel(recipe => RecipeCockpitTreeSelectionStore.applyObjectSelections(
             recipe, new Map(), new Map([[ACCOUNT_TREE_KEY, new Map([['Contact', new Set(['LastName'])]])]])
         ));
         selectOrg(panel);

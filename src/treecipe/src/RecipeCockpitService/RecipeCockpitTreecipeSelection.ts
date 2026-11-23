@@ -14,7 +14,7 @@ import type {
     IRecipeCockpitTreeViewModel,
     RecipeCockpitFieldEdit,
     RecipeCockpitPanelAction
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import type { IRecipeCockpitHubForTreecipeTab } from './RecipeCockpitTreecipeHost';
 import {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,

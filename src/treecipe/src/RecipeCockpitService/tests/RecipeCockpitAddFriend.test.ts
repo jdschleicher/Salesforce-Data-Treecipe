@@ -14,13 +14,14 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL } from '../RecipeCockpitTreecipeFieldEditorConstants';
+import { RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
-    RecipeCockpitService,
     IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
-    RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH
-} from '../RecipeCockpitService';
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL } from '../RecipeCockpitTreecipeRecipeEdits';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -120,7 +121,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
@@ -198,7 +199,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
                     ] }]
             ]);
 
-            const placed = RecipeCockpitService.placeTreeIterations([
+            const placed = RecipeCockpitModelBuild.placeTreeIterations([
                 { objectApiName: 'Account', parentLookups: [] },
                 { objectApiName: 'Contact', parentLookups: [] }
             ], objectsByApiName);
@@ -218,7 +219,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
 
             const treeObjects = [{ objectApiName: 'Lead', parentLookups: [] }];
 
-            expect(RecipeCockpitService.placeTreeIterations(treeObjects, new Map([['Lead', { objectApiName: 'Lead', recipeFilePath: recipeFilePath, fields: [] }]]))).toBe(treeObjects);
+            expect(RecipeCockpitModelBuild.placeTreeIterations(treeObjects, new Map([['Lead', { objectApiName: 'Lead', recipeFilePath: recipeFilePath, fields: [] }]]))).toBe(treeObjects);
 
         });
 
@@ -236,7 +237,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             }
 
             const startedAt = Date.now();
-            const objectEntries = RecipeCockpitService.parseRecipeSource(recipeLines.join('\n'));
+            const objectEntries = RecipeCockpitModelBuild.parseRecipeSource(recipeLines.join('\n'));
 
             expect(Date.now() - startedAt).toBeLessThan(3000);
             expect(objectEntries.get('Obj499__c').iterations[0].insertableFriendObjectApiNames).toHaveLength(20);
@@ -251,7 +252,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             expect(RecipeCockpitService.collectInsertableFriendTargets(recipeViewModel).size).toBe(0);
 
             const snowfakeryRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-snowfakery--RelationshipTree_1.yml'), 'utf-8');
-            expect(Array.from(RecipeCockpitService.parseRecipeSource(snowfakeryRecipeText).values()).filter(objectEntry => objectEntry.iterations)).toEqual([]);
+            expect(Array.from(RecipeCockpitModelBuild.parseRecipeSource(snowfakeryRecipeText).values()).filter(objectEntry => objectEntry.iterations)).toEqual([]);
 
         });
 

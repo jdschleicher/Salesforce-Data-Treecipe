@@ -14,7 +14,6 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitPanelState,
     RECIPE_COCKPIT_BUTTON_KINDS,
     RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL,
     RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER,
@@ -22,9 +21,10 @@ import {
     RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON,
     RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
     RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL,
-    RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY
+    RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY } from '../RecipeCockpitTreeSelectionStore';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL } from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

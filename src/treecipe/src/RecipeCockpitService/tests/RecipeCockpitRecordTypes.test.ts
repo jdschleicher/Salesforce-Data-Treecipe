@@ -11,17 +11,22 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE
+} from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import {
     RECIPE_COCKPIT_RECORD_TYPES_INTRO,
     RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY,
     RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL,
-    RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitRecordTypesConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -48,8 +53,8 @@ const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(TREE_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(TREE_GENERATED_RECIPES_PATH),
     TREE_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -108,7 +113,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             it('names each restricted picklist field by kind, leaves out a field that is not a picklist, and reads Active', () => {
 
-                const recordTypeOptions = RecipeCockpitService.readRecordTypeOptions({
+                const recordTypeOptions = RecipeCockpitModelBuild.readRecordTypeOptions({
                     Customer: { Active: false, PicklistFieldSectionsToPicklistDetail: { Rating__c: ['Hot'], Sub_Rating__c: ['A', 'B'], Regions__c: ['East', 'West', 'North'], Name: ['x'] } }
                 }, fields);
 
@@ -126,7 +131,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             it('offers only a developer name that is an api name, since generation refuses any other (#120)', () => {
 
-                const recordTypeOptions = RecipeCockpitService.readRecordTypeOptions({
+                const recordTypeOptions = RecipeCockpitModelBuild.readRecordTypeOptions({
                     Valid: {},
                     'Evil\n    Injected__c: x': {},
                     '1Leading': {},
@@ -140,13 +145,13 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             it.each([undefined, null, 'Customer', []])('given %p, offers nothing', (recordTypesMap) => {
 
-                expect(RecipeCockpitService.readRecordTypeOptions(recordTypesMap, fields)).toEqual([]);
+                expect(RecipeCockpitModelBuild.readRecordTypeOptions(recordTypesMap, fields)).toEqual([]);
 
             });
 
             it('leaves an object with one usable record type out of the tab', () => {
 
-                const normalizedObjectsWrapper = RecipeCockpitService.normalizeObjectsWrapper({
+                const normalizedObjectsWrapper = RecipeCockpitModelBuild.normalizeObjectsWrapper({
                     ObjectToObjectInfoMap: {
                         Thing__c: { Fields: fields, RecordTypesMap: { Only: {}, 'Bad Name': {} } }
                     }
@@ -162,7 +167,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             const readRecordTypeBlocks = (recipeTexts: string[]) => {
                 const recordTypeBlocks = RecipeCockpitRecipeWriter.buildEmptyRecordTypeBlocks();
-                recipeTexts.forEach(recipeText => RecipeCockpitService.parseRecipeSource(recipeText, recordTypeBlocks));
+                recipeTexts.forEach(recipeText => RecipeCockpitModelBuild.parseRecipeSource(recipeText, recordTypeBlocks));
                 return recordTypeBlocks;
             };
 
@@ -179,7 +184,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                 const thing = buildObjectWithRecordTypes('Thing__c', ['OneRecType', 'TwoRecType', 'Three']);
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([['    RecordTypeId: Thing__c.TwoRecType'], ['    RecordTypeId: Thing__c.OneRecType']])]));
+                RecipeCockpitModelBuild.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([['    RecordTypeId: Thing__c.TwoRecType'], ['    RecordTypeId: Thing__c.OneRecType']])]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['TwoRecType', 'OneRecType']);
                 expect(thing.isRecordTypeSelectionApplied).toBe(true);
@@ -190,7 +195,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                 const thing = buildObjectWithRecordTypes('Thing__c', ['OneRecType', 'TwoRecType']);
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([[
+                RecipeCockpitModelBuild.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([[
                     '    RecordTypeId: Thing__c.OneRecType',
                     '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
                     '                    # Thing__c.TwoRecType'
@@ -205,7 +210,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                 const thing = buildObjectWithRecordTypes('Thing__c', ['Retired', 'Live']);
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([['    RecordTypeId: Thing__c.Gone'], ['    RecordTypeId: Other__c.Live'], ['    # RecordTypeId: Thing__c.Live']])]));
+                RecipeCockpitModelBuild.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([['    RecordTypeId: Thing__c.Gone'], ['    RecordTypeId: Other__c.Live'], ['    # RecordTypeId: Thing__c.Live']])]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['Live']);
                 expect(thing.isRecordTypeSelectionApplied).toBeUndefined();
@@ -217,7 +222,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                 const thing = buildObjectWithRecordTypes('Thing__c', ['Retired', 'Live']);
                 thing.recordTypes.forEach(recordType => { recordType.isActive = false; });
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([]));
+                RecipeCockpitModelBuild.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['Retired']);
 
@@ -240,7 +245,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                     .join('\n');
                 const readGenerated = (selectedDeveloperNames: string[]) => {
                     const thing = buildObjectWithRecordTypes('Thing__c', ['OneRecType', 'TwoRecType']);
-                    RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([generatedHeaders(selectedDeveloperNames)]));
+                    RecipeCockpitModelBuild.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([generatedHeaders(selectedDeveloperNames)]));
                     return [thing.generatedRecordTypeDeveloperNames, thing.isRecordTypeSelectionApplied];
                 };
 
@@ -272,7 +277,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                     '    RecordTypeId: Thing__c.TwoRecType'
                 ].join('\n');
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([nestedRecipe]));
+                RecipeCockpitModelBuild.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([nestedRecipe]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['OneRecType', 'TwoRecType']);
 

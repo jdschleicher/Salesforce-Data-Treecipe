@@ -15,16 +15,19 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON,
     RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON,
     RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL,
@@ -116,7 +119,7 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
     const accountOf = (recipeViewModel: IRecipeCockpitRecipeViewModel) => recipeViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account');
 
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
@@ -234,7 +237,7 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
 
             writeRemovedTodoFile(RECIPE_TEXT, PHONE_TODO.lineNumber, PHONE_TODO.text);
             const panelState = buildActivePanelState();
-            panelState.removedTodosByTreeKey = new Map([[TREE_KEY, RecipeCockpitService.readRemovedTodos(recipeFilePath, workspaceRoot, fs.readFileSync(recipeFilePath, 'utf-8')).entries]]);
+            panelState.removedTodosByTreeKey = new Map([[TREE_KEY, RecipeCockpitModelBuild.readRemovedTodos(recipeFilePath, workspaceRoot, fs.readFileSync(recipeFilePath, 'utf-8')).entries]]);
 
             expect(RecipeCockpitService.routePanelMessage({ ...restoreMessage('0'), removed: { originalLine: '- object: Evil' } } as any, panelState)).toEqual({
                 kind: 'restoreTodo', treeKey: TREE_KEY, recipeFilePath: recipeFilePath, removed: expect.objectContaining({ fieldApiName: 'Phone', originalLine: '        # TODO check the phone format' })

@@ -41,23 +41,26 @@ jest.mock('@salesforce/core', () => ({
 }));
 
 import {
-    IRecipeCockpitPanelMessage,
     RecipeCockpitService,
-    RECIPE_COCKPIT_CHANGELOG_LINK_LABEL,
     RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE,
-    RECIPE_COCKPIT_CHANGELOG_URL,
-    RECIPE_COCKPIT_GITHUB_GLYPH_PATH,
-    RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX,
-    RECIPE_COCKPIT_NO_RUN_MESSAGE
+    RECIPE_COCKPIT_CHANGELOG_URL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_CHANGELOG_LINK_LABEL,
+    RECIPE_COCKPIT_GITHUB_GLYPH_PATH,
+    RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX
+} from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelMessage } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
 };
 
 const NO_RUN_RECIPE = { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE };

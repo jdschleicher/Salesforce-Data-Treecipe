@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
-import { IRecipeCockpitConfirmAnswer, IRecipeCockpitConfirmOptions, IRecipeCockpitConfirmWithCheckboxOptions, RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import {
+    IRecipeCockpitConfirmAnswer,
+    IRecipeCockpitConfirmOptions,
+    IRecipeCockpitConfirmWithCheckboxOptions
+} from '../RecipeCockpitViewModel';
 
 /*
     The cockpit asks its confirmations inside the panel (#349), through RecipeCockpitService.confirmInPanel,

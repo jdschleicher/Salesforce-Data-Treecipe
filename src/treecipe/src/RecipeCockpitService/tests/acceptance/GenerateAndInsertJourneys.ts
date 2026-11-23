@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL } from '../../RecipeCockpitService';
+import { RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL } from '../../RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitJourney } from './RecipeCockpitJourney';
 import { RECORD_TYPE_SET_MODE_LABELS } from '../../RecipeCockpitRecordTypeRecipe';
 import { GENERATE_AND_INSERT_BUTTON_NAME, INSERT_ORG_LABEL, INSERT_OUTCOME_NOTIFICATION, RECIPE_FILE_NAME, RECIPE_RELATIVE_PATH, TREE_NAME, expectEqual, fileChangesSince, generateAndInsert, insertsSent, readFixtureFile, readWorkspaceFile, writtenDatasetFolder } from './TreecipeTabWorkspace';

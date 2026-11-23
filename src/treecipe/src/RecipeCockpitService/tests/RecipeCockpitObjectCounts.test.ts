@@ -14,19 +14,23 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL } from '../RecipeCockpitTreecipeSelection';
 import { RECIPE_COCKPIT_RUN_FAKER_COMMAND } from '../RecipeCockpitTreecipeInsert';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult, RecipeWriterRefusalReason } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
@@ -114,8 +118,8 @@ function writeTemporaryRecipe(recipeText: string): string {
     return recipeFilePath;
 }
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );
@@ -145,7 +149,7 @@ const storedSelections = (objectCountsByFolderName: Record<string, unknown>, exc
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
 const objectOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string) => recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName) as IRecipeCockpitObjectViewModel;
 
-const applyCounts = (recipe: IRecipeCockpitRecipeViewModel, countsByFolderName: Record<string, Record<string, number>>, excludedObjectApiNamesByFolderName: Record<string, string[]> = {}) => RecipeCockpitService.applyObjectSelections(
+const applyCounts = (recipe: IRecipeCockpitRecipeViewModel, countsByFolderName: Record<string, Record<string, number>>, excludedObjectApiNamesByFolderName: Record<string, string[]> = {}) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(Object.entries(excludedObjectApiNamesByFolderName).map(([folderName, objectApiNames]) => [folderName, new Set(objectApiNames)])),
     new Map(),
@@ -450,7 +454,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
                 validationRulesOffByFolderName: new Map()
             };
 
-            await expect(RecipeCockpitService.writeTreeSelections(workspaceState, treeSelections)).resolves.toBeTrue();
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, treeSelections)).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
             expect(stored.version).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION);
@@ -459,7 +463,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             expect(Object.keys(stored.objectCountsByFolderName[ACCOUNT_TREE_KEY])).toEqual(['Contact', '__proto__']);
 
             // __proto__ IS NO OBJECT API NAME, SO READING IT BACK DROPS IT -- AS A KEY, NEVER AS A PROTOTYPE
-            const readBack = RecipeCockpitService.readTreeSelections(workspaceState);
+            const readBack = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
             expect(readBack.objectCountsByFolderName).toEqual(new Map([
                 [ACCOUNT_TREE_KEY, new Map([['Contact', 4]])],
                 ['__proto__', new Map([['Lead', 3]])]
@@ -479,7 +483,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
                 'Empty-Folder': { Lead: 0 }
             }) });
 
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).objectCountsByFolderName)
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).objectCountsByFolderName)
                 .toEqual(new Map([[ACCOUNT_TREE_KEY, new Map([['OtherChildObject__c', 3]])]]));
 
         });
@@ -496,7 +500,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
                 objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 4 } }
             } });
 
-            const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState);
+            const treeSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
 
             expect(treeSelections.objectCountsByFolderName.size).toBe(0);
             expect(treeSelections.excludedObjectApiNamesByFolderName).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
@@ -520,7 +524,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
         it('carries each object\'s own count, and the parent a nested friend\'s count is per', () => {
 
-            const recipeEntries = RecipeCockpitService.parseRecipeSource(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE));
+            const recipeEntries = RecipeCockpitModelBuild.parseRecipeSource(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE));
 
             expect(recipeEntries.get('Account')).toMatchObject({ recordCount: 2 });
             expect(recipeEntries.get('Account')?.countParentObjectApiName).toBeUndefined();
@@ -560,7 +564,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             const untouched = loadRecipe();
             const applied = loadRecipe();
-            RecipeCockpitService.applyObjectSelections(untouched, new Map(), new Map());
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(untouched, new Map(), new Map());
             applyCounts(applied, { [ACCOUNT_TREE_KEY]: { Account: 1, Contact: 1, OtherChildObject__c: 1 }, [LEAD_TREE_KEY]: { Lead: 1 } });
 
             applied.trees.forEach(tree => expect(tree).not.toHaveProperty('objectCounts'));

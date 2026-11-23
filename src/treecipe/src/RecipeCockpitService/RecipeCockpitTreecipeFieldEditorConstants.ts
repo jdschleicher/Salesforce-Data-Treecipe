@@ -1,7 +1,7 @@
 /*
     What the Treecipe tab's field editor, picklist tiles and lookup wiring draw with (#653). It
-    imports nothing, so the panel bundle can import it; RecipeCockpitService.ts re-exports every
-    name, and the host's checks read the same values from there.
+    imports nothing, so the panel bundle can import it; every importer reads its names here
+    (#671), and the host's checks read the same values from there.
 */
 
 /*

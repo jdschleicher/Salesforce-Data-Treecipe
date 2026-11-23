@@ -30,12 +30,12 @@ import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHost';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
 import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import type { RecipeCockpitService } from './RecipeCockpitService';
 import type {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitPanelMessage,
-    IRecipeCockpitPanelState,
-    RecipeCockpitService
-} from './RecipeCockpitService';
+    IRecipeCockpitPanelState
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*

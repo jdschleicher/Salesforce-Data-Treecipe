@@ -13,18 +13,21 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
-    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
     RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON } from '../RecipeCockpitDatasetsTabConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_DATA_ORG_LISTING_HELD_REFUSAL_SUFFIX } from '../RecipeCockpitTreecipeOrgHost';
 import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
@@ -65,8 +68,8 @@ function buildDataOrgListing(orgDetails: IAuthenticatedOrgDetail[], hiddenOrgs: 
 
 function loadTreeRecipe(): IRecipeCockpitRecipeViewModel {
 
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 
 }
 

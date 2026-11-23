@@ -1,7 +1,7 @@
 /*
     What the Recipe Cockpit's frame draws and keeps (#657): its sections, the run picker, a card's
     tabs and name, the reader's place, and the CHANGELOG button. Imports nothing, so the panel
-    modules import it; RecipeCockpitService re-exports every name.
+    modules import it; every importer reads its names here (#671).
 */
 
 // OFFERED ONLY IN THE NO-RUN EMPTY STATE (#214)

@@ -3,15 +3,18 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT } from '../RecipeCockpitNavigationConstants';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitRecordTypesConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -28,8 +31,8 @@ const TREE_GENERATED_RECIPES_PATH = path.join(TREE_WORKSPACE_ROOT, 'treecipe', '
 const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(TREE_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(TREE_GENERATED_RECIPES_PATH),
     TREE_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

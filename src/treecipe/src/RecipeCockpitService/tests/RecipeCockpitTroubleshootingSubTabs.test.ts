@@ -2,16 +2,19 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_NO_TREE_TODOS_NOTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -26,8 +29,8 @@ const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
     TREE_WORKSPACE_ROOT,
     RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -240,7 +243,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
             const regionsValue = "${{ faker.helpers.arrayElement(['Fix # TODO list', 'West']) }}\n### TODO: -- RecordType Options -- Business";
             if (regions) {
                 regions.recipeValue = regionsValue;
-                regions.todos = RecipeCockpitService.buildFieldTodoViewModels([{ lineNumber: 20, text: '### TODO: -- RecordType Options -- Business' }], regionsValue);
+                regions.todos = RecipeCockpitModelBuild.buildFieldTodoViewModels([{ lineNumber: 20, text: '### TODO: -- RecordType Options -- Business' }], regionsValue);
             }
             if (parentId) { parentId.todos = [{ lineNumber: 21, valueStart: 5, valueLength: 100000 }]; }
 

@@ -2,15 +2,18 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_TODO_IN_VALUE_LABEL,
-    RecipeCockpitService,
-    IRecipeCockpitObjectViewModel,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_NO_TODOS_NOTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TODOS_ONLY_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitRecordTypesConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
+    IRecipeCockpitObjectViewModel,
+    IRecipeCockpitRecipeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -31,8 +34,8 @@ const VALIDATION_RULE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'validation
 const SNOWFAKERY_RUN_FOLDER_NAME = 'recipe-2026-10-01T08-00-00';
 const FAKERJS_RUN_FOLDER_NAME = 'recipe-fakerjs-2026-10-01T09-00-00';
 
-const loadRun = (workspaceRoot: string, runFolderName: string): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
+const loadRun = (workspaceRoot: string, runFolderName: string): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
     workspaceRoot,
     runFolderName
 ).recipeViewModel;
@@ -182,7 +185,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
 
     describe('the model', () => {
 
-        const parse = (recipeLines: string[]) => RecipeCockpitService.parseRecipeSource(recipeLines.join('\n'));
+        const parse = (recipeLines: string[]) => RecipeCockpitModelBuild.parseRecipeSource(recipeLines.join('\n'));
 
         it('puts a TODO on the field whose lines hold it, and one on no field on the object', () => {
 
@@ -284,7 +287,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
 
             const value = "${{ x('Fix # TODO list') }}\n### TODO -- RecordType A";
 
-            expect(RecipeCockpitService.buildFieldTodoViewModels([
+            expect(RecipeCockpitModelBuild.buildFieldTodoViewModels([
                 { lineNumber: 4, text: '### TODO -- RecordType A' },
                 { lineNumber: 5, text: '# TODO hand-written, not in the wrapper value' },
                 { lineNumber: 6 }
@@ -305,7 +308,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
                 '    LastName: ${{fake.LastName}}'
             ].join('\n');
 
-            const lead = RecipeCockpitService.parseRecipeSource(recipeText).get('Lead');
+            const lead = RecipeCockpitModelBuild.parseRecipeSource(recipeText).get('Lead');
 
             expect(lead).not.toHaveProperty('todos');
             expect(lead.fieldEntries.get('LastName')).toEqual({ lineNumber: 4, valueText: expect.any(String) });

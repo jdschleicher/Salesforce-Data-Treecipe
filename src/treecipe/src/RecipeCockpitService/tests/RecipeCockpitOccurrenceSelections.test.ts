@@ -14,14 +14,18 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitPanelState,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
@@ -122,14 +126,14 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     describe('the model', () => {
 
         it('carries the iteration\'s own count, and lists each occurrence once', () => {
 
             const recipe = loadModel();
-            const occurrences = RecipeCockpitService.listTreeOccurrences(RecipeCockpitService.buildObjectsByApiName(recipe), treeOf(recipe));
+            const occurrences = RecipeCockpitTreeSelectionStore.listTreeOccurrences(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe));
 
             expect(occurrences.map(occurrence => [occurrence.objectApiName, occurrence.nickname, occurrence.objectViewModel.recordCount])).toEqual([
                 ['Account', FIRST_NICKNAME, 2],
@@ -144,7 +148,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('gives the iteration its own lines, the field line it writes and none it does not', () => {
 
             const recipe = loadModel();
-            const iteration = RecipeCockpitService.findTreeOccurrence(RecipeCockpitService.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
+            const iteration = RecipeCockpitService.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
             const lines = fixtureText.split('\n');
 
             expect(iteration.objectViewModel.fields.map(field => [field.fieldApiName, field.lineNumber && lines[field.lineNumber - 1].trim()])).toEqual([
@@ -158,7 +162,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('applies an entry its object holds from before #467 to every occurrence', () => {
 
             const recipe = loadModel();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([['Account', new Set(['Name'])]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([['Account', new Set(['Name'])]])]]));
 
             expect(treeOf(recipe).fieldSelection?.objects.map(selection => [selection.nickname, selection.excludedFieldApiNames])).toEqual([
                 [FIRST_NICKNAME, ['Name']],
@@ -170,7 +174,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('applies an occurrence\'s own entry to it alone, over its object\'s', () => {
 
             const recipe = loadModel();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([['Account', new Set(['Name'])], [ITERATION_KEY, new Set<string>(['ParentId'])]])]]),
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([['Account', new Set(['Name'])], [ITERATION_KEY, new Set<string>(['ParentId'])]])]]),
                 undefined, new Map([[TREE_KEY, new Map([[ITERATION_KEY, 5]])]]));
 
             expect(treeOf(recipe).fieldSelection?.objects.map(selection => [selection.nickname, selection.excludedFieldApiNames])).toEqual([
@@ -189,7 +193,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const recipe = loadModel();
             const nameField = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account').fields.find(field => field.fieldApiName === 'Name');
             nameField.validationRules = { appliedRuleNames: ['Name_Format'], notAppliedRules: [], recipeValue: '${{ faker.company.name() }}', unconstrainedRecipeValue: '${{ faker.lorem.word() }}' } as any;
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
 
             expect(treeOf(recipe).validationRulesOff).toEqual([{ objectApiName: 'Account', nickname: ITERATION_NICKNAME, fieldApiName: 'Name' }]);
             expect([...RecipeCockpitService.listUnconstrainedValuesByObject(recipe, treeOf(recipe)).keys()]).toEqual([ITERATION_KEY]);
@@ -201,10 +205,10 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const recipe = loadModel();
             const accountObject = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account');
             accountObject.iterations[0].fields.push({ fieldApiName: 'Description', lineNumber: 99, recipeValue: 'x' });
-            const iteration = RecipeCockpitService.findTreeOccurrence(RecipeCockpitService.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
+            const iteration = RecipeCockpitService.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
 
             expect(iteration.objectViewModel.fields.find(field => field.fieldApiName === 'Description')).toMatchObject({ isOnlyInRecipeFile: true, lineNumber: 99, recipeValue: 'x' });
-            expect(RecipeCockpitService.listSelectableFieldApiNames(iteration.objectViewModel)).toEqual(['Name', 'ParentId', 'Description']);
+            expect(RecipeCockpitTreeSelectionStore.listSelectableFieldApiNames(iteration.objectViewModel)).toEqual(['Name', 'ParentId', 'Description']);
 
         });
 
@@ -214,7 +218,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const accountObject = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account');
             accountObject.iterations[0].nickname = 'Account-child';
 
-            expect(RecipeCockpitService.listTreeOccurrences(RecipeCockpitService.buildObjectsByApiName(recipe), treeOf(recipe))
+            expect(RecipeCockpitTreeSelectionStore.listTreeOccurrences(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe))
                 .filter(occurrence => occurrence.objectApiName === 'Account')
                 .map(occurrence => occurrence.nickname)).toEqual([undefined]);
 
@@ -225,10 +229,10 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const recipe = loadModel();
             const deployedAccountFields = () => RecipeCockpitService.listTreeDeployObjects(recipe, treeOf(recipe)).find(deployObject => deployObject.objectApiName === 'Account').fieldApiNames;
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
             expect(deployedAccountFields()).toEqual(['Name', 'ParentId']);
 
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])], [FIRST_KEY, new Set(['Name'])]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])], [FIRST_KEY, new Set(['Name'])]])]]));
             expect(deployedAccountFields()).toEqual(['ParentId']);
 
         });
@@ -236,7 +240,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('keeps an object written once on its object key, posting no nickname', () => {
 
             const recipe = loadModel();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([['Contact', new Set(['LastName'])]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([['Contact', new Set(['LastName'])]])]]));
 
             expect(treeOf(recipe).fieldSelection?.objects).toEqual([{ objectApiName: 'Contact', excludedFieldApiNames: ['LastName'], lockedFields: [] }]);
 
@@ -638,7 +642,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('draws the iteration\'s own count box, and reads its own stored count', () => {
 
             const recipe = loadModel();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map([[TREE_KEY, new Map([[ITERATION_KEY, 9]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map([[TREE_KEY, new Map([[ITERATION_KEY, 9]])]]));
             const panel = renderModel(recipe);
             const [firstButton] = panel.findAll(panel.objectElements()[0].children[0], 'treeRecordCountButton');
             const [iterationButton] = panel.findAll(iterationElementOf(panel).children[0], 'treeRecordCountButton');
@@ -651,7 +655,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('draws an untick of the iteration on its row alone', () => {
 
             const recipe = loadModel();
-            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
             const panel = renderModel(recipe);
             const boxesOf = (objectElement: any) => {
                 panel.expandObject(objectElement);

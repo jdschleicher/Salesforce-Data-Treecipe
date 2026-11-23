@@ -13,16 +13,22 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
-    RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE,
+    RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE
+} from '../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import {
+    IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeSelection } from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitTreecipeInsert } from '../RecipeCockpitTreecipeInsert';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -44,8 +50,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const ACCOUNT_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, CURRENT_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
 const CONTACT_FIELDS = ['LastName', 'AccountId'];
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -53,7 +59,7 @@ const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loa
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel) => recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY) as IRecipeCockpitTreeViewModel;
 const exclusionsOf = (tree: IRecipeCockpitTreeViewModel) => tree.objectSelection?.exclusions;
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(excludedObjectApiNames.length > 0 ? [[ACCOUNT_TREE_KEY, new Set(excludedObjectApiNames)]] : []),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])

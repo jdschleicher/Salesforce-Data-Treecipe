@@ -42,13 +42,16 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import {
-    IRecipeCockpitPanelState,
     RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL,
-    RECIPE_COCKPIT_OBJECT_REFRESH_LABEL,
-    RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH,
-    RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_OBJECT_REFRESH_LABEL,
+    RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH
+} from '../RecipeCockpitObjectRefreshConstants';
+import { RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX } from '../RecipeCockpitPanelConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_BUSY_REFUSAL,
     RECIPE_COCKPIT_OBJECT_REFRESH_BUSY_REFUSAL,
@@ -71,8 +74,8 @@ const ACCOUNT_RECIPE_RELATIVE_PATH = path.join('treecipe', 'GeneratedRecipes', T
 const QA_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
 
 const loadTreeRecipe = (workspaceRoot: string = TREE_WORKSPACE_ROOT) => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, workspaceRoot, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, workspaceRoot, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 beforeEach(() => {

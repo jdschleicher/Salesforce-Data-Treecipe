@@ -42,16 +42,18 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    IRecipeCockpitPanelState,
-    RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL,
     RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
-    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX
+} from '../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
+import { RecipeCockpitOrgRuns } from '../RecipeCockpitOrgRuns';
+import { RECIPE_COCKPIT_UPDATER_FORMULA_REASON } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_ADAPTER_CHILD_OTHER_LOOKUP_REASON,
@@ -85,8 +87,8 @@ const OTHER_SANDBOX_ORG = { targetOrgIdentifier: 'uat', username: 'uat@example.c
 const CHILD_OBJECT = 'Shipment__c';
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const fieldXml = (fieldApiName: string, fieldType: string, extra = '') => [
@@ -720,7 +722,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
                 await openRetrieveAndLoad();
 
-                jest.spyOn(RecipeCockpitService as any, 'runCancellableCli').mockResolvedValueOnce({ isCancelled: true, invocation: { stdout: '', stderr: '', exitCode: 0 } });
+                jest.spyOn(RecipeCockpitOrgRuns, 'runCancellableCli').mockResolvedValueOnce({ isCancelled: true, invocation: { stdout: '', stderr: '', exitCode: 0 } });
                 await prepareDirectly();
                 expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: its retrieve was cancelled. Nothing in the project changed.`);
 

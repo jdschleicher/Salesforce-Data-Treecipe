@@ -42,17 +42,18 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    IRecipeCockpitPanelState,
-    RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
-    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON
+} from '../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX } from '../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_UPDATER_FORMULA_REASON } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON,
     RecipeCockpitAdapterMetadata
@@ -89,8 +90,8 @@ const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', 
 const OTHER_SANDBOX_ORG = { targetOrgIdentifier: 'uat', username: 'uat@example.com.uat', alias: 'uat' };
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const fieldXml = (fieldApiName: string, fieldType: string, extra = '') => [

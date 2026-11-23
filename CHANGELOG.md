@@ -1,5 +1,22 @@
 # Change Log
 
+## [3.208.5] - Recipe Cockpit: the hub keeps the panel's lifecycle; the view model, model build, tree selections and org runs are modules of their own (#671 part a, slice 7a of #566)
+
+### Under the hood (behaviour unchanged)
+
+- **`RecipeCockpitService.ts` went from 8,650 lines and 91 import statements to 3,899 lines and 67.** It keeps the panel's lifecycle, render and replay, the panel state and its allow-lists, `routePanelMessage` and `executePanelAction`, the run locks and the in-panel confirmations.
+- **`RecipeCockpitViewModel.ts`** (1,472 lines) holds every interface and type the hub declared: the view model, the panel and host messages, the panel action and the panel state. It imports types only.
+- **`RecipeCockpitModelBuild.ts`** (1,709 lines) holds the model build. That is run loading, the objects wrapper's normalize, the recipe source parse and attach, the cards and their iterations, validation rule sources, generated record types and `offerStagedField`.
+- **`RecipeCockpitTreeSelectionStore.ts`** (1,110 lines) holds a card's object and field selection, counts and fixed values, and the checks a fixed value is held to.
+- **`RecipeCockpitOrgRuns.ts`** (261 lines) holds the CLI runner, the retrieve runner, the read org prompt, `readSourceApiVersion` and `describeThrown`.
+- **The code moved verbatim.** None of the new modules loads the hub at run time. The hub keeps a thin delegate for each moved name a tab's host reads through its hub type, so no host or hub type changed.
+- **The hub re-exports nothing.** About 90 test files and the cockpit's hosts import each name from the module that owns it. A test that calls or spies on a moved method now names that method's module.
+- **Tests.** No test changed beyond its imports and the module it calls or spies on, except for three:
+  - `RecipeCockpitPanelBundle.test.ts` now holds the service to re-exporting none of the panel's constants. Until now it held it to re-exporting all of them.
+  - `RecipeCockpitTabHosts.test.ts`'s owed lists drop the pure modules the hub no longer imports.
+  - `SalesforceCliCallSites.test.ts` lists the CLI and retrieve runners in `RecipeCockpitOrgRuns.ts`.
+  The golden files and rendered baselines are unchanged.
+
 ## [3.208.4] - Recipe Cockpit: each record type recipe build's progress notification says which one it is (#695)
 
 With **A data set for each record type** offered, **Generate fake data and insert** builds the folded recipe and then one recipe per set before the confirmation opens. With up to 10 sets that is 11 progress notifications in a row, all titled "Building the recipe for the ticked record types". Each one now says which build it is:

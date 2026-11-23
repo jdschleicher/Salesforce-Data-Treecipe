@@ -14,19 +14,26 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
+    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
+    RECIPE_COCKPIT_TREE_PREFERENCES_VERSION
+} from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION
+} from '../RecipeCockpitShellConstants';
+import {
+    RECIPE_COCKPIT_NO_FAVORITES_MESSAGE,
+    RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
+} from '../RecipeCockpitNavigationConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreePreferences,
-    IRecipeCockpitTreeViewModel,
-    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
-    RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
-    RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_NO_FAVORITES_MESSAGE,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
-} from '../RecipeCockpitService';
+    IRecipeCockpitTreeViewModel
+} from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeHost } from '../RecipeCockpitTreecipeHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -44,8 +51,8 @@ const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

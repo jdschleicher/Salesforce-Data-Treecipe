@@ -33,14 +33,14 @@ import {
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 import {
-    IRecipeCockpitWorkspaceState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
     VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
-} from "../RecipeCockpitService/RecipeCockpitService";
+} from '../RecipeCockpitService/RecipeCockpitService';
+import { IRecipeCockpitWorkspaceState } from '../RecipeCockpitService/RecipeCockpitViewModel';
 
 import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { TreecipeSideBarService } from '../TreecipeSideBarService/TreecipeSideBarService';

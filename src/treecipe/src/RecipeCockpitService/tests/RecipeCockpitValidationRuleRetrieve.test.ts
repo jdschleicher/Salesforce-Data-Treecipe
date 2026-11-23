@@ -45,14 +45,17 @@ import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
-    IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
-    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
@@ -1145,8 +1148,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
     describe('the panel script', () => {
 
         const loadTreeRecipe = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
         };
 
         const cardOf = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.treeCards()

@@ -45,11 +45,10 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { execFile } from 'child_process';
 import { Org } from '@salesforce/core';
 
-import {
-    IRecipeCockpitPanelState,
-    RecipeCockpitService,
-    RECIPE_COCKPIT_OPEN_ORG_LABEL
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_OPEN_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { ORG_FRONT_DOOR_FAILURE_TEXTS, ORG_FRONT_DOOR_SINGLE_ACCESS_PATH, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -401,8 +400,8 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279,
     describe('the panel script', () => {
 
         const loadTreeRecipe = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, 'recipe-2026-09-20T10-00-00').recipeViewModel;
         };
 
         const renderPanel = () => {

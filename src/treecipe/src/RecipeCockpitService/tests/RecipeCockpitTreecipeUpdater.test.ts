@@ -38,12 +38,15 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX } from '../RecipeCockpitFieldRowsConstants';
 import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TREE_TABS,
+    RECIPE_COCKPIT_UPDATER_TAB_LABEL
+} from '../RecipeCockpitShellConstants';
+import {
     RECIPE_COCKPIT_UPDATER_INTRO,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
     RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN,
@@ -58,9 +61,9 @@ import {
     RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL,
     RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE,
     RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER,
-    RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX
+} from '../RecipeCockpitAdapterConstants';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
@@ -72,8 +75,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 type Panel = ReturnType<typeof runPanelScript>;
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const drawRecipe = (recipe: any, panelScriptOptions: IPanelScriptOptions = {}) => {

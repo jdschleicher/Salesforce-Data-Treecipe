@@ -13,13 +13,14 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS,
     RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS,
     RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS,
     RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS,
     RECIPE_COCKPIT_PALETTE
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
+import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript, IPanelScriptOptions } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
@@ -43,8 +44,8 @@ const reducedMotionBlockOf = (styleSheet: string): string => {
     return blockStart === -1 ? '' : styleSheet.substring(blockStart);
 };
 
-const loadHistoryRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadHistoryRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT
 ).recipeViewModel;
 

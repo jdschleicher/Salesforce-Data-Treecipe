@@ -1,7 +1,7 @@
 /*
     The words the Treecipe Adapter tab draws (#415, #443 … #447, #556), moved out of the service so
     its panel modules can import them (#641). This file imports nothing, so nothing it brings into
-    the webview can reach vscode or Node; RecipeCockpitService re-exports every name.
+    the webview can reach vscode or Node; every importer reads its names here (#671).
 */
 
 export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';

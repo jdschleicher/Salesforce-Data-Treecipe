@@ -48,7 +48,7 @@ import type {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
     RecipeCockpitPanelAction
-} from './RecipeCockpitService';
+} from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
