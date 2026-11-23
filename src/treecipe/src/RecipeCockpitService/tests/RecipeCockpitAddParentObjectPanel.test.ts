@@ -16,6 +16,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -523,7 +524,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
                 });
 
                 it.each([
-                    ['a field set in the Recipe Cockpit', () => jest.spyOn(RecipeCockpitService, 'readFixedValueFile').mockReturnValue({
+                    ['a field set in the Recipe Cockpit', () => jest.spyOn(RecipeCockpitTreeSelectionStore, 'readFixedValueFile').mockReturnValue({
                         entries: [{ objectApiName: 'Contact', fieldApiName: 'LastName', value: 'Smith', occurrences: [{ occurrenceIndex: 0, writtenLine: '    LastName: "Smith"' }] }],
                         isUnreadable: false
                     }), 'Contact.LastName has a value set in the Recipe Cockpit'],
@@ -571,7 +572,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
                 it('writes nothing when a moved field is pinned while the confirmation was open', async () => {
 
                     (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
-                        jest.spyOn(RecipeCockpitService, 'readFixedValueFile').mockReturnValue({
+                        jest.spyOn(RecipeCockpitTreeSelectionStore, 'readFixedValueFile').mockReturnValue({
                             entries: [{ objectApiName: 'Contact', fieldApiName: 'LastName', value: 'Smith', occurrences: [{ occurrenceIndex: 0, writtenLine: '    LastName: "Smith"' }] }],
                             isUnreadable: false
                         });

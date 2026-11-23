@@ -15,14 +15,17 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
+    RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
+    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS,
-    RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
-    RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
@@ -89,7 +92,7 @@ const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recip
 const objectOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string) => recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName) as IRecipeCockpitObjectViewModel;
 const fieldSelectionOf = (tree: IRecipeCockpitTreeViewModel, objectApiName: string) => tree.fieldSelection?.objects.find(objectFieldSelection => objectFieldSelection.objectApiName === objectApiName);
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(excludedObjectApiNames.length > 0 ? [[ACCOUNT_TREE_KEY, new Set(excludedObjectApiNames)]] : []),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])
@@ -123,12 +126,12 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
     describe('buildObjectFieldSelection', () => {
 
         it('says nothing about an object with nothing unticked and nothing locked', () => {
-            expect(RecipeCockpitService.buildObjectFieldSelection(buildObject([{ fieldApiName: 'Name' }, { fieldApiName: 'Phone' }]), undefined, new Set())).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(buildObject([{ fieldApiName: 'Name' }, { fieldApiName: 'Phone' }]), undefined, new Set())).toBeUndefined();
         });
 
         it('leaves out the unticked fields that have a line in the recipe, and never one that has none', () => {
 
-            const objectFieldSelection = RecipeCockpitService.buildObjectFieldSelection(
+            const objectFieldSelection = RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(
                 buildObject([{ fieldApiName: 'Name' }, { fieldApiName: 'Phone' }, { fieldApiName: 'NotInRecipe__c', lineNumber: undefined }]),
                 new Set(['Phone', 'NotInRecipe__c', 'Gone__c']),
                 new Set()
@@ -142,12 +145,12 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             const fields = [{ fieldApiName: 'RecordTypeId' }, { fieldApiName: 'Name' }];
 
-            expect(RecipeCockpitService.buildObjectFieldSelection(buildObject(fields, true), new Set(['RecordTypeId']), new Set())).toEqual({
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(buildObject(fields, true), new Set(['RecordTypeId']), new Set())).toEqual({
                 objectApiName: 'Thing__c',
                 excludedFieldApiNames: [],
                 lockedFields: [{ fieldApiName: 'RecordTypeId', reason: RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON }]
             });
-            expect(RecipeCockpitService.buildObjectFieldSelection(buildObject(fields, false), new Set(['RecordTypeId']), new Set())?.excludedFieldApiNames).toEqual(['RecordTypeId']);
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(buildObject(fields, false), new Set(['RecordTypeId']), new Set())?.excludedFieldApiNames).toEqual(['RecordTypeId']);
 
         });
 
@@ -159,14 +162,14 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 { fieldApiName: 'City__c', controllingField: 'State__c' }
             ]);
 
-            const cityTicked = RecipeCockpitService.buildObjectFieldSelection(object, new Set(['Country__c', 'State__c']), new Set());
+            const cityTicked = RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(object, new Set(['Country__c', 'State__c']), new Set());
             expect(cityTicked?.excludedFieldApiNames).toEqual([]);
             expect(cityTicked?.lockedFields).toEqual([
                 { fieldApiName: 'Country__c', reason: 'controls State__c' },
                 { fieldApiName: 'State__c', reason: 'controls City__c' }
             ]);
 
-            expect(RecipeCockpitService.buildObjectFieldSelection(object, new Set(['Country__c', 'State__c', 'City__c']), new Set())?.excludedFieldApiNames)
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(object, new Set(['Country__c', 'State__c', 'City__c']), new Set())?.excludedFieldApiNames)
                 .toEqual(['Country__c', 'State__c', 'City__c']);
 
         });
@@ -179,16 +182,16 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 { fieldApiName: 'Region__c', controllingField: 'Country__c' }
             ]);
 
-            expect(RecipeCockpitService.buildObjectFieldSelection(object, new Set(['Country__c', 'Region__c']), new Set())?.lockedFields)
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(object, new Set(['Country__c', 'Region__c']), new Set())?.lockedFields)
                 .toEqual([{ fieldApiName: 'Country__c', reason: 'controls State__c' }]);
-            expect(RecipeCockpitService.buildObjectFieldSelection(object, new Set(['Country__c']), new Set())?.lockedFields)
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(object, new Set(['Country__c']), new Set())?.lockedFields)
                 .toEqual([{ fieldApiName: 'Country__c', reason: 'controls State__c, Region__c' }]);
 
         });
 
         it('locks a lookup whose parent is excluded as "parent excluded", never as unticked', () => {
 
-            const objectFieldSelection = RecipeCockpitService.buildObjectFieldSelection(buildObject([{ fieldApiName: 'AccountId' }, { fieldApiName: 'Name' }]), new Set(['AccountId']), new Set(['AccountId']));
+            const objectFieldSelection = RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(buildObject([{ fieldApiName: 'AccountId' }, { fieldApiName: 'Name' }]), new Set(['AccountId']), new Set(['AccountId']));
 
             expect(objectFieldSelection).toEqual({
                 objectApiName: 'Thing__c',
@@ -200,8 +203,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
         it('says when every field is unticked, a parent-excluded lookup counted as left out', () => {
 
-            expect(RecipeCockpitService.buildObjectFieldSelection(buildObject([{ fieldApiName: 'AccountId' }, { fieldApiName: 'Name' }]), new Set(['Name']), new Set(['AccountId']))?.isEveryFieldExcluded).toBeTrue();
-            expect(RecipeCockpitService.buildObjectFieldSelection(buildObject([{ fieldApiName: 'AccountId' }, { fieldApiName: 'Name' }]), new Set(['Name']), new Set())?.isEveryFieldExcluded).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(buildObject([{ fieldApiName: 'AccountId' }, { fieldApiName: 'Name' }]), new Set(['Name']), new Set(['AccountId']))?.isEveryFieldExcluded).toBeTrue();
+            expect(RecipeCockpitTreeSelectionStore.buildObjectFieldSelection(buildObject([{ fieldApiName: 'AccountId' }, { fieldApiName: 'Name' }]), new Set(['Name']), new Set())?.isEveryFieldExcluded).toBeUndefined();
 
         });
 
@@ -244,7 +247,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 { fieldApiName: 'Ratio__c', parentObjectApiName: 'Account' },
                 { fieldApiName: 'Score__c', parentObjectApiName: 'Contact' }
             );
-            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
             expect(fieldSelectionOf(treeOf(recipe, ACCOUNT_TREE_KEY), 'OtherChildObject__c')).toEqual({
                 objectApiName: 'OtherChildObject__c',
@@ -304,7 +307,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 validationRulesOffByFolderName: new Map()
             };
 
-            await expect(RecipeCockpitService.writeTreeSelections(workspaceState, treeSelections)).resolves.toBeTrue();
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, treeSelections)).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
             expect(stored.version).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION);
@@ -313,7 +316,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(stored.objectCountsByFolderName).toEqual({ [ACCOUNT_TREE_KEY]: { Contact: 6 } });
             // __proto__ IS NO OBJECT API NAME, SO READING IT BACK DROPS IT -- AS A KEY, NEVER AS A PROTOTYPE
             treeSelections.excludedFieldApiNamesByFolderName.get(ACCOUNT_TREE_KEY)?.delete('__proto__');
-            expect(RecipeCockpitService.readTreeSelections(workspaceState)).toEqual(treeSelections);
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState)).toEqual(treeSelections);
 
         });
 
@@ -324,8 +327,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             const failingWorkspaceState = buildWorkspaceState();
             failingWorkspaceState.update.mockImplementation(() => Promise.reject('read-only [x](command:y)'));
 
-            await expect(RecipeCockpitService.writeTreeSelections(undefined, emptySelections)).resolves.toBeFalse();
-            await expect(RecipeCockpitService.writeTreeSelections(failingWorkspaceState, emptySelections)).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(undefined, emptySelections)).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(failingWorkspaceState, emptySelections)).resolves.toBeFalse();
 
             expect(warningSpy).toHaveBeenCalledTimes(2);
             expect(warningSpy.mock.calls[1][0]).not.toContain('[x](command:y)');
@@ -351,7 +354,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } }
             } });
 
-            expect(RecipeCockpitService.readTreeSelections(workspaceState)).toEqual({
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState)).toEqual({
                 excludedObjectApiNamesByFolderName: new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]),
                 excludedFieldApiNamesByFolderName: new Map([[ACCOUNT_TREE_KEY, new Map([['Account', new Set(['Legacy_Code__c'])]])]]),
                 objectCountsByFolderName: new Map(),
@@ -369,7 +372,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 excludedFieldApiNamesByFolderName: { [ACCOUNT_TREE_KEY]: { Account: ['Legacy_Code__c'] } }
             } });
 
-            const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState);
+            const treeSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
 
             expect(treeSelections.excludedObjectApiNamesByFolderName).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
             expect(treeSelections.excludedFieldApiNamesByFolderName.size).toBe(0);
@@ -385,7 +388,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 '': { Lead: ['Company'] }
             }) });
 
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).excludedFieldApiNamesByFolderName)
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).excludedFieldApiNamesByFolderName)
                 .toEqual(new Map([[ACCOUNT_TREE_KEY, new Map([['Account', new Set(['Legacy_Code__c'])]])]]));
 
         });

@@ -18,6 +18,7 @@ import {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -135,7 +136,7 @@ describe('RecipeCockpitService, a field Salesforce sets from another lookup (#68
 
         expect(pinElement.disabled).toBeTrue();
         expect(pinElement.attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}OpportunityId`);
-        expect(RecipeCockpitService.findFixedValueLockReason(tree, quoteObject as any, quoteAccountIdField)).toBe(`${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}OpportunityId`);
+        expect(RecipeCockpitTreeSelectionStore.findFixedValueLockReason(tree, quoteObject as any, quoteAccountIdField)).toBe(`${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}OpportunityId`);
 
     });
 

@@ -284,7 +284,7 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitTreeHistory.ts',
-                importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'IRecipeCockpitTreeHistoryTargets', 'IRecipeCockpitTreeHistoryViewModel', 'RecipeCockpitTreeHistory'],
+                importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'RecipeCockpitTreeHistory'],
                 members: ['buildEmptyTargets', 'buildTreeHistories', 'buildUnmatchedDatasetsNotice'],
                 owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from'
             }
@@ -390,12 +390,6 @@ const TAB_HOSTS: ITabHost[] = [
         ],
         hubUsesStillOwed: [
             {
-                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
-                importedNames: ['IRecipeCockpitCreateReadinessViewModel'],
-                members: [],
-                owedBy: 'the model\'s types name a card\'s create readiness'
-            },
-            {
                 pureModuleFileName: 'RecipeCockpitRecordTypeRecipe.ts',
                 importedNames: ['IRecordTypeSetModeOffer', 'OccurrenceSettingPlacer', 'RECORD_TYPE_SET_MODE_LABELS', 'RECORD_TYPE_SET_MODE_LEGEND', 'RecordTypeSetMode'],
                 members: [],
@@ -430,22 +424,10 @@ const TAB_HOSTS: ITabHost[] = [
         pureModuleFileNames: ['RecipeCockpitObjectSelection.ts', 'RecipeCockpitFixedValueStore.ts', 'RecipeCockpitObjectRefresh.ts'],
         hubUsesStillOwed: [
             {
-                pureModuleFileName: 'RecipeCockpitObjectSelection.ts',
-                importedNames: ['IObjectSelectionDisabledLookup', 'IObjectSelectionExclusion', 'IObjectSelectionRemovedLookup', 'RecipeCockpitObjectSelection'],
-                members: ['computeObjectSelection'],
-                owedBy: 'the model draws a card\'s object selection cascade (#219), and only the hub builds the model'
-            },
-            {
                 pureModuleFileName: 'RecipeCockpitFixedValueStore.ts',
-                importedNames: ['IFixedValueEntry', 'IFixedValueFileRead', 'RecipeCockpitFixedValueStore'],
-                members: ['buildFilePath', 'isSalesforceRecordId', 'listValuesByObject', 'parse'],
-                owedBy: 'the model reads each recipe\'s pinned fixed values (#342), and findLookupValueRefusal, which the model and a fixed value\'s save both read, stays in the hub'
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitObjectRefresh.ts',
-                importedNames: ['IObjectRefreshComparisonRequest', 'IObjectRefreshItem', 'IObjectRefreshPlannedItem', 'ObjectRefreshKind'],
+                importedNames: ['IFixedValueEntry', 'IFixedValueFileRead'],
                 members: [],
-                owedBy: 'the hub\'s message types and the open dialog\'s session, which a reload discards, name them'
+                owedBy: 'the hub\'s delegates to RecipeCockpitTreeSelectionStore, which the Treecipe tab\'s hub type reads, name them in their signatures (#671)'
             }
         ],
         sharedWithHosts: [

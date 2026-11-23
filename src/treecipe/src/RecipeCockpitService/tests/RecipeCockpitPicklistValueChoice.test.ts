@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
     RECIPE_COCKPIT_PICKLIST_RESET_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitPanelState,
@@ -226,7 +227,7 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
         const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
         const loadedRecipe = loadRecipeRun();
         const recipe: IRecipeCockpitRecipeViewModel = loadedRecipe.recipeViewModel;
-        RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
+        RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
@@ -330,7 +331,7 @@ describe('routePanelMessage resetPicklistValueChoice (#479)', () => {
         const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
         const loadedRecipe = loadRecipeRun();
         const recipe: IRecipeCockpitRecipeViewModel = loadedRecipe.recipeViewModel;
-        RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
+        RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);

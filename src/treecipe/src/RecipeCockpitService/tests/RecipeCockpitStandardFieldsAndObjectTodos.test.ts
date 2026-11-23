@@ -14,14 +14,17 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_STANDARD_FIELDS_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
@@ -62,7 +65,7 @@ const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recip
 const objectOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string) => recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName) as IRecipeCockpitObjectViewModel;
 const fieldSelectionOf = (tree: IRecipeCockpitTreeViewModel, objectApiName: string) => tree.fieldSelection?.objects.find(objectFieldSelection => objectFieldSelection.objectApiName === objectApiName);
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])
@@ -429,7 +432,7 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
 
             it('is disabled while the object is excluded', () => {
 
-                const panel = drawRecipe(recipe => RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]), new Map()));
+                const panel = drawRecipe(recipe => RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]), new Map()));
                 const standardElement = standardOf(panel, expanded(panel, 'Contact'));
 
                 expect(standardElement.disabled).toBeTrue();

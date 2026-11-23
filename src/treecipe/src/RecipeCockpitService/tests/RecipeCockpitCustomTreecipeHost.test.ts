@@ -15,6 +15,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { RecipeCockpitCustomTreecipe } from '../RecipeCockpitCustomTreecipe';
 import { RecipeCockpitCustomTreecipeHost } from '../RecipeCockpitCustomTreecipeHost';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -372,7 +373,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
         it('starts a reused folder name clean: no selection, count or name of a custom tree deleted by hand', async () => {
 
             const workspaceState = buildWorkspaceState();
-            await RecipeCockpitService.writeTreeSelections(workspaceState as any, {
+            await RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState as any, {
                 excludedObjectApiNamesByFolderName: new Map([[CUSTOM_FOLDER_NAME, new Set(['Contact'])]]),
                 excludedFieldApiNamesByFolderName: new Map([[CUSTOM_FOLDER_NAME, new Map([['Account', new Set(['Legacy_Code__c'])]])]]),
                 objectCountsByFolderName: new Map([[CUSTOM_FOLDER_NAME, new Map([['Account', 9]])]]),
@@ -391,7 +392,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 ...removal({ removedObjectApiNames: ['OtherChildObject__c'] })
             });
 
-            const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState as any);
+            const treeSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState as any);
             expect(treeSelections.excludedObjectApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
             expect(treeSelections.excludedFieldApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
             expect(treeSelections.objectCountsByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();

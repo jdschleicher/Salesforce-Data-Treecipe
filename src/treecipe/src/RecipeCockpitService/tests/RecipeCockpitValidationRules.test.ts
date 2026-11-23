@@ -19,13 +19,16 @@ import {
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitFieldViewModel,
@@ -273,7 +276,7 @@ interface ISelectionChoices {
     excludedFields?: Record<string, Record<string, string[]>>;
 }
 
-const applySelections = (recipe: IRecipeCockpitRecipeViewModel, choices: ISelectionChoices = {}) => RecipeCockpitService.applyObjectSelections(
+const applySelections = (recipe: IRecipeCockpitRecipeViewModel, choices: ISelectionChoices = {}) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(Object.entries(choices.excludedObjects ?? {}).map(([folderName, objectApiNames]) => [folderName, new Set(objectApiNames)])),
     toFieldSets(choices.excludedFields ?? {}),
@@ -366,7 +369,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
         it('writes version 7 with only the unticks, names named __proto__ as keys, and reads back every api name', async () => {
 
             const workspaceState = buildWorkspaceState();
-            await expect(RecipeCockpitService.writeTreeSelections(workspaceState, {
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, {
                 excludedObjectApiNamesByFolderName: new Map(),
                 excludedFieldApiNamesByFolderName: new Map(),
                 objectCountsByFolderName: new Map(),
@@ -378,7 +381,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             expect(stored.version).toBe(7);
             expect(stored.validationRulesOffByFolderName).toEqual({ [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', '__proto__'] }, ['__proto__']: { Lead: ['Company'] } });
             expect(Object.keys(stored.validationRulesOffByFolderName)).toEqual([GADGET_TREE_KEY, '__proto__']);
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).validationRulesOffByFolderName)
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).validationRulesOffByFolderName)
                 .toEqual(toFieldSets({ [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] }, ['__proto__']: { Lead: ['Company'] } }));
 
         });
@@ -389,7 +392,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             workspaceState.update.mockRejectedValueOnce('disk full');
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
-            await expect(RecipeCockpitService.writeTreeSelections(workspaceState, RecipeCockpitService.readTreeSelections(workspaceState))).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState))).resolves.toBeFalse();
             expect(warningSpy).toHaveBeenCalledWith('The excluded objects, unticked fields, record counts and validation rule choices could not be saved: disk full');
 
         });
@@ -398,7 +401,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Amount__c: 1'], 'Bad Object': ['X'] } } }) });
 
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).validationRulesOffByFolderName).toEqual(toFieldSets({ [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } }));
+            expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).validationRulesOffByFolderName).toEqual(toFieldSets({ [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } }));
 
         });
 
@@ -410,7 +413,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES
             } });
 
-            const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState);
+            const treeSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
             expect(treeSelections.validationRulesOffByFolderName).toEqual(new Map());
             expect(treeSelections).not.toHaveProperty('constraintsByFolderName');
 
@@ -457,14 +460,14 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const gadget = objectOf(recipe, 'Gadget__c');
 
             expect(tree).not.toHaveProperty('validationRulesOff');
-            expect(RecipeCockpitService.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Amount__c'))).toBe(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON);
-            expect(RecipeCockpitService.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Quantity__c'))).toBe(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON);
-            expect(RecipeCockpitService.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Notes__c'))).toBeUndefined();
-            expect(RecipeCockpitService.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Score__c'))).toBe(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL);
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Amount__c'))).toBe(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON);
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Quantity__c'))).toBe(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON);
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Notes__c'))).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(tree, gadget, fieldOf(recipe, 'Gadget__c', 'Score__c'))).toBe(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL);
 
             const excludedRecipe = loadRecipe();
             applySelections(excludedRecipe, { excludedObjects: { [GADGET_TREE_KEY]: ['Gadget__c'] }, validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } } });
-            expect(RecipeCockpitService.findValidationRuleLockReason(treeOf(excludedRecipe), objectOf(excludedRecipe, 'Gadget__c'), fieldOf(excludedRecipe, 'Gadget__c', 'Amount__c'))).toBe(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON);
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(treeOf(excludedRecipe), objectOf(excludedRecipe, 'Gadget__c'), fieldOf(excludedRecipe, 'Gadget__c', 'Amount__c'))).toBe(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON);
 
         });
 
@@ -491,10 +494,10 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const amount = fieldOf(recipe, 'Gadget__c', 'Amount__c');
 
             tree.fieldSelection = { objects: [{ objectApiName: 'Gadget__c', excludedFieldApiNames: [], lockedFields: [{ fieldApiName: 'Amount__c', reason: RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON }] }] } as any;
-            expect(RecipeCockpitService.findValidationRuleLockReason(tree, gadget, amount)).toBe(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON);
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(tree, gadget, amount)).toBe(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON);
 
             delete tree.fieldSelection;
-            expect(RecipeCockpitService.findValidationRuleLockReason(tree, gadget, amount)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.findValidationRuleLockReason(tree, gadget, amount)).toBeUndefined();
 
         });
 

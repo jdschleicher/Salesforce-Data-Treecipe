@@ -19,6 +19,7 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -287,7 +288,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
     const loadModel = (): IRecipeCockpitRecipeViewModel => {
         const generatedRecipesFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes');
         const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(generatedRecipesFolderPath), workspaceRoot);
-        RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitService.withPinnedFixedValues(RecipeCockpitService.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
+        RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitService.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
         return loadedRecipe.recipeViewModel;
     };
     const treeOf = (recipeViewModel: IRecipeCockpitRecipeViewModel) => recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === TREE_KEY);
@@ -371,10 +372,10 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             const contact = recipeViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact');
             const accountId = contact.fields.find(field => field.fieldApiName === 'AccountId');
 
-            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId)).toBeUndefined();
+            expect(RecipeCockpitTreeSelectionStore.findFixedValueLockReason(tree, contact, accountId)).toBeUndefined();
 
             tree.objectSelection = { exclusions: [{ objectApiName: 'Contact', isDirect: true } as any], disabledLookups: [], includedObjectCount: 0, objectCount: 1 };
-            expect(RecipeCockpitService.findFixedValueLockReason(tree, contact, accountId)).toBe(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON);
+            expect(RecipeCockpitTreeSelectionStore.findFixedValueLockReason(tree, contact, accountId)).toBe(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON);
 
         });
 

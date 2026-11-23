@@ -44,6 +44,7 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_CUSTOM_PROPERTIES
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitLoadedRecipe,
     IRecipeCockpitPanelState,
@@ -4225,7 +4226,7 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'ready' });
 
             const expectedRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
-            RecipeCockpitService.applyObjectSelections(expectedRecipe, new Map());
+            RecipeCockpitTreeSelectionStore.applyObjectSelections(expectedRecipe, new Map());
             expect(postedPanelMessages).toEqual([{
                 command: 'recipeData',
                 recipe: expectedRecipe,

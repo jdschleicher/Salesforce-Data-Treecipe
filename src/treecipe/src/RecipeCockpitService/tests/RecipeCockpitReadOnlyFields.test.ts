@@ -19,6 +19,7 @@ import {
     RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
     RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -125,7 +126,7 @@ describe('RecipeCockpitService, a field Salesforce calculates or sets itself (#6
 
         expect(pinElement.disabled).toBeTrue();
         expect(pinElement.attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}${reason}`);
-        expect(RecipeCockpitService.findFixedValueLockReason(tree, gizmoObject as any, fieldViewModel)).toBe(`${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}${reason}`);
+        expect(RecipeCockpitTreeSelectionStore.findFixedValueLockReason(tree, gizmoObject as any, fieldViewModel)).toBe(`${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}${reason}`);
 
     });
 

@@ -10,6 +10,7 @@ import {
     RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS,
     RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_CREATE_REASON_CODES } from '../RecipeCockpitRecordCreation';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -158,7 +159,7 @@ describe('RecipeCockpitService, a disabled insert links its reason to the fix (#
 
     it('shows the field even when its object\'s own Hide unselected or TODOs only hides it, and turns that filter off', () => {
 
-        const panel = renderPanel(recipe => RecipeCockpitService.applyObjectSelections(
+        const panel = renderPanel(recipe => RecipeCockpitTreeSelectionStore.applyObjectSelections(
             recipe, new Map(), new Map([[ACCOUNT_TREE_KEY, new Map([['Contact', new Set(['LastName'])]])]])
         ));
         selectOrg(panel);

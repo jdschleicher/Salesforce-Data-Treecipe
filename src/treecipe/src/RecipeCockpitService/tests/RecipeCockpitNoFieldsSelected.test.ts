@@ -17,10 +17,13 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE,
-    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel
@@ -55,7 +58,7 @@ const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loa
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel) => recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY) as IRecipeCockpitTreeViewModel;
 const exclusionsOf = (tree: IRecipeCockpitTreeViewModel) => tree.objectSelection?.exclusions;
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(excludedObjectApiNames.length > 0 ? [[ACCOUNT_TREE_KEY, new Set(excludedObjectApiNames)]] : []),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])

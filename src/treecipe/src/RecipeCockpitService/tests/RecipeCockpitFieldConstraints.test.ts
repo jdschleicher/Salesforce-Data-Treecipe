@@ -14,12 +14,13 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITH_CONSTRAINTS
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitObjectViewModel,
@@ -244,7 +245,7 @@ describe('RecipeCockpitService -- faker bounds removed (#356)', () => {
     it('reads a version 6 entry with everything but its bounds, and writes version 7 without them', async () => {
 
         const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedVersion6 });
-        const read = RecipeCockpitService.readTreeSelections(workspaceState);
+        const read = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
 
         expect(read).not.toHaveProperty('constraintsByFolderName');
         expect(read.excludedObjectApiNamesByFolderName).toEqual(new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
@@ -277,7 +278,7 @@ describe('RecipeCockpitService -- faker bounds removed (#356)', () => {
     it('builds a card\'s Run Faker copy and data set record with no bounds', () => {
 
         const recipe = loadRecipe();
-        RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+        RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
         const filtered = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
         expect(filtered).not.toHaveProperty('refusalMessage');

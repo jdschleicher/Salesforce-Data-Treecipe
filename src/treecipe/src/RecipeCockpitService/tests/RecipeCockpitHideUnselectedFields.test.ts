@@ -18,6 +18,7 @@ import {
     RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION
 } from '../RecipeCockpitService';
+import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel
@@ -49,7 +50,7 @@ const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loa
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
 
-const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitService.applyObjectSelections(
+const untick = (recipe: IRecipeCockpitRecipeViewModel, fieldsByObject: Record<string, string[]>, excludedObjectApiNames: string[] = []) => RecipeCockpitTreeSelectionStore.applyObjectSelections(
     recipe,
     new Map(excludedObjectApiNames.length > 0 ? [[ACCOUNT_TREE_KEY, new Set(excludedObjectApiNames)]] : []),
     new Map([[ACCOUNT_TREE_KEY, new Map(Object.entries(fieldsByObject).map(([objectApiName, fieldApiNames]) => [objectApiName, new Set(fieldApiNames)]))]])
