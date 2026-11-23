@@ -344,7 +344,8 @@ describe('RecipeCockpitService, a derived field follows its through lookup (#704
 
     test.each([
         ['a faker expression', '${{fake.uuid4}}'],
-        ['a YAML keyword', 'true']
+        ['a YAML keyword', 'true'],
+        ['a reference() in a YAML comment', `\${{fake.uuid4}} # was reference(${SMB})`]
     ])('with %s in OpportunityId, the row stays as it is today', (unusedCase, opportunityIdValue) => {
 
         const panel = renderRecipe(buildSnowfakeryQuoteRecipe([`    OpportunityId: ${opportunityIdValue}`]));

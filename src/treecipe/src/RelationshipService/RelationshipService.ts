@@ -435,7 +435,7 @@ export class RelationshipService {
 
     const sourceNicknameByFieldApiName = new Map(derivedFieldApiNames.map(fieldApiName => {
       const derivedField = StandardDerivedFields.resolveDerivedField(objectName, fieldApiName);
-      const namedSourceNickname = StandardDerivedFields.readThroughSourceNickname(readFieldValue(derivedField.throughFieldApiName) ?? '');
+      const namedSourceNickname = StandardDerivedFields.readThroughSourceNickname(readFieldValue(derivedField.throughFieldApiName));
       const sourceNickname = namedSourceNickname ?? firstNicknameByObjectName.get(derivedField.sourceObjectApiName) ?? `${derivedField.sourceObjectApiName}_NickName`;
       return [fieldApiName, StandardDerivedFields.formatRecipeValue(sourceNickname, derivedField)] as const;
     }));

@@ -1117,16 +1117,22 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     /*
         The record a through lookup's recipe value names (#704): a bare nickname, or the one a
-        snowfakery child copy's reference(<nickname>) names. Only the first line counts, since
-        #194's record type blocks note can follow it. Anything else (a TODO, an expression, an Id)
-        names no record.
+        snowfakery child copy's \${{reference(<nickname>)...}} names. Only the first line counts, and
+        only when every later line is a comment (#194's record type blocks note), as for any other
+        nickname the Recipe Cockpit reads. Anything else (a TODO, an expression, an Id, a
+        reference() in a comment) names no record.
     */
     static readThroughSourceNickname(throughValue) {
       if (typeof throughValue !== "string") {
         return void 0;
       }
-      const firstLine = throughValue.split("\\n")[0].trim();
-      return /^[A-Za-z]\\w*$/.test(firstLine) ? firstLine : /\\breference\\(([A-Za-z]\\w*)\\)/.exec(firstLine)?.[1];
+      const firstLineEnd = throughValue.indexOf("\\n");
+      const firstLine = (firstLineEnd === -1 ? throughValue : throughValue.slice(0, firstLineEnd)).trim();
+      const isFollowedOnlyByComments = firstLineEnd === -1 || throughValue.slice(firstLineEnd + 1).split("\\n").every((valueLine) => valueLine.trim().startsWith("#"));
+      if (!isFollowedOnlyByComments) {
+        return void 0;
+      }
+      return /^[A-Za-z]\\w*$/.test(firstLine) ? firstLine : /^[^#]*\\$\\{\\{\\s*reference\\(([A-Za-z]\\w*)\\)/.exec(firstLine)?.[1];
     }
     // THE SOURCE NICKNAME OF A RECIPE VALUE formatRecipeValue WROTE, OR undefined FOR ANY OTHER VALUE
     static readSourceNickname(recipeValue, derivedField) {
