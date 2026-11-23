@@ -53,6 +53,8 @@ import type {
     IRecipeCockpitWorkspaceState
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
+import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
 
 /*
     The Previously Used Data Sets tab's host half (moved out of the hub by #667, after #665's pattern):
@@ -69,23 +71,18 @@ import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
     names and read-only, so a read after an await sees the panel and state open now.
 */
 export type IRecipeCockpitHubForDatasetsTab = Readonly<Pick<typeof RecipeCockpitService,
-    'addDatasetToAllowLists' |
     'buildConfirmOrg' |
-    'cloneTreeHistoryAllowLists' |
     'confirmInPanel' |
-    'describeCustomNameProblem' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
     'loadRecipeIntoPanel' |
     'postNameEditResult' |
     'postToPanel' |
-    'readNamePreferences' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'resolveTreeSnapshotLocations' |
-    'toDisplayedRelativePath' |
-    'writeNamePreferences'>> & IRecipeCockpitHubForTreecipeDataOrgs;
+    'toDisplayedRelativePath'>> & IRecipeCockpitHubForTreecipeDataOrgs;
 
 // WHAT workspaceState HOLDS FOR THE DATA SET ROWS, BY DATA SET FOLDER NAME; NEITHER IS A PLAIN {}
 export interface IRecipeCockpitDatasetPreferences {
@@ -530,20 +527,20 @@ export class RecipeCockpitDatasetsHost {
     // THE DATA SET ROWS' NAMES AND FAVORITES, READ AND CHECKED BY THE SAME RULE AS THE CARDS'
     static readDatasetPreferences(hub: IRecipeCockpitHubForDatasetsTab, workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitDatasetPreferences {
 
-        return hub.readNamePreferences(workspaceState, RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
+        return RecipeCockpitTreeSelectionStore.readNamePreferences(workspaceState, RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
             trimmedName => this.describeDatasetNameProblem(hub, trimmedName));
 
     }
 
     static async writeDatasetPreferences(hub: IRecipeCockpitHubForDatasetsTab, workspaceState: IRecipeCockpitWorkspaceState | undefined, datasetPreferences: IRecipeCockpitDatasetPreferences): Promise<boolean> {
 
-        return hub.writeNamePreferences(workspaceState, RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION, datasetPreferences, 'data set');
+        return RecipeCockpitTreeSelectionStore.writeNamePreferences(workspaceState, RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION, datasetPreferences, 'data set');
 
     }
 
     private static describeDatasetNameProblem(hub: IRecipeCockpitHubForDatasetsTab, trimmedName: string): string | undefined {
 
-        return hub.describeCustomNameProblem(trimmedName, 'A data set name', RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH);
+        return RecipeCockpitTreeSelectionStore.describeCustomNameProblem(trimmedName, 'A data set name', RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH);
 
     }
 
@@ -855,8 +852,8 @@ export class RecipeCockpitDatasetsHost {
             panelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.delete(datasetFolderName);
         }
 
-        panelState.pendingTreeHistoryAllowLists = hub.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
-        panelState.treeHistoryAllowLists = hub.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
+        panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
         panelState.treeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.delete(datasetFolderName);
         if ( resultsFilePath !== undefined ) {
             panelState.pendingTreeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.add(datasetFolderName);
@@ -920,8 +917,8 @@ export class RecipeCockpitDatasetsHost {
         if ( addedDataset.insertResultsFilePath !== undefined ) {
             panelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.set(datasetFolderName, addedDataset.insertResultsFilePath);
         }
-        panelState.pendingTreeHistoryAllowLists = hub.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
-        hub.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset.dataset);
+        panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
+        RecipeCockpitDrawnModel.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset.dataset);
 
         const datasetAddedMessage: IRecipeCockpitDatasetAddedMessage = {
             command: 'datasetAdded',

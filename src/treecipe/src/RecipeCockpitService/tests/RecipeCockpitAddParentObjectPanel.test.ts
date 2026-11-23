@@ -35,6 +35,7 @@ import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRe
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     "Add <Parent> to recipe" (#294), end to end on the host and in the panel: the model offers each
@@ -135,7 +136,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipeViewModel, renderSequence: 1 };
-        panelState.pendingAddableParentTargets = RecipeCockpitService.collectAddableParentTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
+        panelState.pendingAddableParentTargets = RecipeCockpitDrawnModel.collectAddableParentTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
         panelState.addableParentTargets = panelState.pendingAddableParentTargets;
         return panelState;
     };
@@ -171,10 +172,10 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
         it('maps each drawn "Add" to the card\'s recipe file, host-only', () => {
 
-            const targets = RecipeCockpitService.collectAddableParentTargets(loadModel(), new Map([[TREE_KEY, recipeFilePath]]));
+            const targets = RecipeCockpitDrawnModel.collectAddableParentTargets(loadModel(), new Map([[TREE_KEY, recipeFilePath]]));
 
             expect([...targets.entries()]).toEqual([[`${TREE_KEY}\nContact\n\nAccountId`, { recipeFilePath: recipeFilePath, addition: ACCOUNT_ADDITION }]]);
-            expect(RecipeCockpitService.collectAddableParentTargets(loadModel(), new Map()).size).toBe(0);
+            expect(RecipeCockpitDrawnModel.collectAddableParentTargets(loadModel(), new Map()).size).toBe(0);
 
         });
 

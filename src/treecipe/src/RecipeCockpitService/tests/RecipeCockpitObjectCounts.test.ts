@@ -39,6 +39,8 @@ import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTest
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #255: a count box right of each object's name sets how many records the generate button and the whole-tree
@@ -511,7 +513,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: 4 } }) });
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['OtherChildObject__c'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['OtherChildObject__c'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY))
                 .toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: 4 } }, { [ACCOUNT_TREE_KEY]: ['OtherChildObject__c'] }));
@@ -603,12 +605,12 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const accountTree = treeOf(recipe, ACCOUNT_TREE_KEY);
 
             expect(accountTree.objectCounts).toEqual([{ objectApiName: 'Account', count: 2 }, { objectApiName: 'Contact', count: 5 }]);
-            expect(RecipeCockpitService.listObjectCountsByObject(accountTree)).toEqual(new Map([['Account', 2]]));
+            expect(RecipeCockpitDrawnModel.listObjectCountsByObject(accountTree)).toEqual(new Map([['Account', 2]]));
 
             // RE-INCLUDED, ITS COUNT COMES BACK
             applyCounts(recipe, { [ACCOUNT_TREE_KEY]: { Contact: 5, Account: 2 } });
-            expect(RecipeCockpitService.listObjectCountsByObject(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(new Map([['Account', 2], ['Contact', 5]]));
-            expect(RecipeCockpitService.listObjectCountsByObject(undefined)).toEqual(new Map());
+            expect(RecipeCockpitDrawnModel.listObjectCountsByObject(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(new Map([['Account', 2], ['Contact', 5]]));
+            expect(RecipeCockpitDrawnModel.listObjectCountsByObject(undefined)).toEqual(new Map());
 
         });
 
@@ -617,7 +619,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const recipe = loadRecipe();
             applyCounts(recipe, { [ACCOUNT_TREE_KEY]: { Contact: 5 } });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
@@ -639,7 +641,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             recipe.trees.push({ treeKey: '', title: RECIPE_COCKPIT_UNGROUPED_TREE_TITLE, folderName: '', objects: [{ objectApiName: 'Lead', parentLookups: [] }], fieldCount: 2 });
             recipeChanges(recipe);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -713,7 +715,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
         it('does nothing before "rendered", after "ready" or a failure to draw, or with no model', () => {
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
 
@@ -1180,7 +1182,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
         it('draws the changed edge only on an enabled button, so a disabled one keeps the shared disabled border', () => {
 
-            const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const styleSheet = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(styleSheet).toContain('.treeRecordCountButton.changed:not(:disabled) { border-color: var(--sdt-changed); }');
             expect(styleSheet).not.toMatch(/\.treeRecordCountButton\.changed \{/);

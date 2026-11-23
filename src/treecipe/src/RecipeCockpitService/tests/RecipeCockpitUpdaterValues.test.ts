@@ -69,6 +69,7 @@ import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/Snowfakery
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 
 // A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)
@@ -159,20 +160,20 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
         it('takes the first expression line of a display value, unquoting a double-quoted one, and nothing from a TODO', () => {
 
-            expect(RecipeCockpitService.findRecipeExpression('${{ random_choice(\'East\') }}\n### TODO -- RecordType Options --\n# ${{ random_choice(\'West\') }}')).toBe('${{ random_choice(\'East\') }}');
-            expect(RecipeCockpitService.findRecipeExpression('"${{ faker.number.int({min: 1, max: 5}) }}"\n### Driven by ValidationRule "Cap"')).toBe('${{ faker.number.int({min: 1, max: 5}) }}');
-            expect(RecipeCockpitService.findRecipeExpression('"${{ broken')).toBeUndefined();
-            expect(RecipeCockpitService.findRecipeExpression('"not json\\x"')).toBeUndefined();
-            expect(RecipeCockpitService.findRecipeExpression('### TODO -- NO PICKLIST VALUES')).toBeUndefined();
-            expect(RecipeCockpitService.findRecipeExpression(undefined)).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findRecipeExpression('${{ random_choice(\'East\') }}\n### TODO -- RecordType Options --\n# ${{ random_choice(\'West\') }}')).toBe('${{ random_choice(\'East\') }}');
+            expect(RecipeCockpitDrawnModel.findRecipeExpression('"${{ faker.number.int({min: 1, max: 5}) }}"\n### Driven by ValidationRule "Cap"')).toBe('${{ faker.number.int({min: 1, max: 5}) }}');
+            expect(RecipeCockpitDrawnModel.findRecipeExpression('"${{ broken')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findRecipeExpression('"not json\\x"')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findRecipeExpression('### TODO -- NO PICKLIST VALUES')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findRecipeExpression(undefined)).toBeUndefined();
 
         });
 
         it('reads a field whatever casing the org answers with', () => {
 
-            expect(RecipeCockpitService.readRecordFieldValue({ Legacy_Code__c: 'A' }, 'Legacy_Code__c')).toBe('A');
-            expect(RecipeCockpitService.readRecordFieldValue({ legacy_code__c: 'B' }, 'Legacy_Code__c')).toBe('B');
-            expect(RecipeCockpitService.readRecordFieldValue({ Other__c: 'C' }, 'Legacy_Code__c')).toBeNull();
+            expect(RecipeCockpitDrawnModel.readRecordFieldValue({ Legacy_Code__c: 'A' }, 'Legacy_Code__c')).toBe('A');
+            expect(RecipeCockpitDrawnModel.readRecordFieldValue({ legacy_code__c: 'B' }, 'Legacy_Code__c')).toBe('B');
+            expect(RecipeCockpitDrawnModel.readRecordFieldValue({ Other__c: 'C' }, 'Legacy_Code__c')).toBeNull();
 
         });
 
@@ -185,7 +186,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             const fieldNames = ['Amount__c', 'Score__c', 'Stage__c', 'Quantity__c', 'Notes__c', 'Code__c'];
 
             const fields = fieldNames.map(fieldApiName => {
-                const expression = RecipeCockpitService.findRecipeExpression(gadget.fields.find((field: any) => field.fieldApiName === fieldApiName)!.recipeValue);
+                const expression = RecipeCockpitDrawnModel.findRecipeExpression(gadget.fields.find((field: any) => field.fieldApiName === fieldApiName)!.recipeValue);
                 expect(expression).toMatch(/^\$\{\{.*\}\}$/);
                 return { fieldApiName: fieldApiName, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: expression!, kind: 'expression' }) };
             });

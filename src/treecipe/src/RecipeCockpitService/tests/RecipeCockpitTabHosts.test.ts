@@ -86,7 +86,7 @@ const HUB_FILE_NAME = 'RecipeCockpitService.ts';
     module is still owed by the hub's side, so moving a use into one of them never drops it from the
     ledger below.
 */
-const HUB_SIDE_FILE_NAMES = [HUB_FILE_NAME, 'RecipeCockpitViewModel.ts', 'RecipeCockpitModelBuild.ts', 'RecipeCockpitTreeSelectionStore.ts', 'RecipeCockpitOrgRuns.ts'];
+const HUB_SIDE_FILE_NAMES = [HUB_FILE_NAME, 'RecipeCockpitViewModel.ts', 'RecipeCockpitModelBuild.ts', 'RecipeCockpitTreeSelectionStore.ts', 'RecipeCockpitOrgRuns.ts', 'RecipeCockpitShell.ts', 'RecipeCockpitDrawnModel.ts'];
 
 /*
     What the hub still takes from one of a tab's pure modules: the names it imports and the members

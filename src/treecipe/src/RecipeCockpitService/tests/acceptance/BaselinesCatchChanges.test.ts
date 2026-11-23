@@ -3,9 +3,8 @@ expect.extend(matchers);
 
 jest.mock('vscode', () => require('./RecipeCockpitJourneyFakes').journeyVscodeModule, { virtual: true });
 jest.mock('@salesforce/core', () => require('./RecipeCockpitJourneyFakes').journeySalesforceCoreModule);
-
-import { RecipeCockpitService } from '../../RecipeCockpitService';
 import { BASELINE_SCREENS, describeBaselineMismatch, readBaseline, renderBaselineScreen } from './CockpitBaselines';
+import { RecipeCockpitShell } from '../../RecipeCockpitShell';
 
 /*
     A baseline is worth the change it catches (#580): each test changes the shell the cockpit draws the
@@ -17,8 +16,8 @@ describe('the rendered baselines catch a changed label and a changed order (#580
 
     // THE SHELL WITH ONE EDIT MADE: A SHELL THAT NO LONGER HOLDS THE TEXT TO EDIT NEEDS THIS SUITE UPDATED, NOT A PASS
     const editShell = (textToReplace: string, replacement: string) => {
-        const buildShellHtml = RecipeCockpitService.buildWebviewShellHtml.bind(RecipeCockpitService);
-        jest.spyOn(RecipeCockpitService, 'buildWebviewShellHtml').mockImplementation((nonce: string) => {
+        const buildShellHtml = RecipeCockpitShell.buildWebviewShellHtml.bind(RecipeCockpitShell);
+        jest.spyOn(RecipeCockpitShell, 'buildWebviewShellHtml').mockImplementation((nonce: string) => {
             const shellHtml = buildShellHtml(nonce);
             expect(shellHtml).toContain(textToReplace);
             return shellHtml.replace(textToReplace, replacement);

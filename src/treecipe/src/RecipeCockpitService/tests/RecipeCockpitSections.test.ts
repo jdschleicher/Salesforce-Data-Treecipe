@@ -12,11 +12,6 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_PALETTE,
-    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING
-} from '../RecipeCockpitService';
-import {
     RECIPE_COCKPIT_ORG_SECTION_TITLE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
@@ -27,6 +22,11 @@ import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
+import {
+    RECIPE_COCKPIT_PALETTE,
+    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     #348: the org controls are one section under the toolbar, and every tree card is in a
@@ -216,7 +216,7 @@ describe('RecipeCockpitService, the Target Org Manager and Treecipes sections (#
 
         it('pins the org section to the top of the panel over the cards, on its own opaque light tint (#433), and pads a scrolled-to row below it (#364)', () => {
 
-            const shellHtml = withCustomPropertyValues(RecipeCockpitService.buildWebviewShellHtml('nonce'));
+            const shellHtml = withCustomPropertyValues(RecipeCockpitShell.buildWebviewShellHtml('nonce'));
             const pinnedRule = shellHtml.split('\n').find(line => line.trim().startsWith('#cockpitOrgSection {'));
 
             expect(pinnedRule).toBeDefined();
@@ -239,7 +239,7 @@ describe('RecipeCockpitService, the Target Org Manager and Treecipes sections (#
 
         it('styles the sections only from the palette', () => {
 
-            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('nonce');
+            const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('nonce');
             const sectionRules = shellHtml.split('\n').filter(line => /cockpitSection|cockpitOrgSectionBody/.test(line) && line.includes('{'));
 
             expect(sectionRules.length).toBeGreaterThan(0);

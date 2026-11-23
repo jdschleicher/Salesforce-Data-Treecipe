@@ -2,7 +2,6 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
-import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_TODO_IN_VALUE_LABEL,
     RECIPE_COCKPIT_NO_TODOS_NOTE,
@@ -17,6 +16,7 @@ import {
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     "TODOs only" (#354): every TODO comment of a card's recipe, found by the one scan the cockpit
@@ -319,9 +319,9 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
 
             const recipe = loadRun(VALIDATION_RULE_WORKSPACE_ROOT, SNOWFAKERY_RUN_FOLDER_NAME);
             const gadget = objectOf(recipe, 'Gadget__c');
-            const openableSourceKeys = RecipeCockpitService.collectOpenableSourceKeys(recipe);
+            const openableSourceKeys = RecipeCockpitDrawnModel.collectOpenableSourceKeys(recipe);
 
-            (gadget.todos ?? []).forEach(todo => expect(openableSourceKeys).toContain(RecipeCockpitService.buildOpenSourceKey(gadget.recipeFilePath, todo.lineNumber)));
+            (gadget.todos ?? []).forEach(todo => expect(openableSourceKeys).toContain(RecipeCockpitDrawnModel.buildOpenSourceKey(gadget.recipeFilePath, todo.lineNumber)));
             expect(new Set(openableSourceKeys).size).toBe(openableSourceKeys.length);
 
         });

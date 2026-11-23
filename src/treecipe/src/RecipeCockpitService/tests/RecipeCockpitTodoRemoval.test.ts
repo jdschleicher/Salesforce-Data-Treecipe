@@ -37,6 +37,7 @@ import { RecipeCockpitRemovedTodoStore } from '../RecipeCockpitRemovedTodoStore'
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     "Remove TODO" and "Restore" (#391), on the host and in the panel: the model says which TODOs
@@ -127,7 +128,7 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
         const runFakerRecipeFilePathsByTreeKey = new Map([[TREE_KEY, recipeFilePath]]);
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipeViewModel, renderSequence: 1 };
         panelState.treeHistoryTargets = { ...panelState.treeHistoryTargets, runFakerRecipeFilePathsByTreeKey: runFakerRecipeFilePathsByTreeKey };
-        panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel, runFakerRecipeFilePathsByTreeKey);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel, runFakerRecipeFilePathsByTreeKey);
         return panelState;
     };
 
@@ -148,13 +149,13 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
         it('offers a Remove for every TODO of the card\'s own recipe no lock holds, and posts no removed list when nothing was removed', () => {
 
             const recipeViewModel = loadModel();
-            const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
+            const allowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
 
             expect([...allowLists.removableTodoKeys].sort()).toEqual([NAME_TODO, PHONE_TODO, OBJECT_TODO].map(todo => `${TREE_KEY}\n${todo.lineNumber}`).sort());
             expect([...allowLists.restorableTodoKeys]).toEqual([]);
             expect(recipeViewModel.trees[0]).not.toHaveProperty('removedTodos');
             // A CARD WITH NO SINGLE RECIPE FILE OFFERS NONE
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel).removableTodoKeys]).toEqual([]);
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel).removableTodoKeys]).toEqual([]);
 
         });
 
@@ -215,7 +216,7 @@ describe('RecipeCockpitService, removing and restoring TODOs (#391)', () => {
         it('refuses until the panel has confirmed drawing the model', () => {
 
             const panelState = buildActivePanelState();
-            panelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
 
             expect(RecipeCockpitService.routePanelMessage(removeMessage(PHONE_TODO.lineNumber), panelState)).toEqual(NOTHING_RUNS);
 

@@ -87,6 +87,7 @@ import {
 } from './RecipeCockpitRecordTypeSets';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     Target Org Manager (moved out of the hub by #669 part a): the org list and its refusals, a
@@ -106,13 +107,11 @@ export type IRecipeCockpitHubForTreecipeDataOrgs = Readonly<Pick<typeof RecipeCo
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
     'isUsableWorkspacePath' |
-    'listExcludedFieldApiNamesByObject' |
     'listExcludedObjectApiNames' |
     'postToPanel' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
-    'resolveTroubleshootingFocus' |
     'toSingleLine'>>;
 
 // A FAILED INSERT'S "Open Troubleshooting" (#375) OPENS A CLOSED COCKPIT THROUGH ITS OWN COMMAND, SO THE FEATURE FLAG STILL DECIDES
@@ -1329,7 +1328,7 @@ export class RecipeCockpitTreecipeDataOrgs {
                 continue;
             }
 
-            const excludedFieldApiNamesByObject = hub.listExcludedFieldApiNamesByObject(tree);
+            const excludedFieldApiNamesByObject = RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(tree);
             const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
                 objectApiName: objectApiName,
                 objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName)),
@@ -1584,7 +1583,7 @@ export class RecipeCockpitTreecipeDataOrgs {
         const panelState = hub.recipeCockpitPanelState;
         const recipeDataMessage = panelState.recipeDataMessage;
         const focusTree = recipeDataMessage && recipeDataMessage.recipe.selectedRunFolderName === focusRequest.runFolderName
-            ? hub.resolveTroubleshootingFocus(recipeDataMessage.recipe, focusRequest)
+            ? RecipeCockpitDrawnModel.resolveTroubleshootingFocus(recipeDataMessage.recipe, focusRequest)
             : undefined;
 
         if ( cockpitPanel && panelState.workspaceRoot === workspaceRoot && recipeDataMessage && focusTree ) {

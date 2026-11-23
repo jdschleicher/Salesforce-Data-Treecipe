@@ -1,5 +1,6 @@
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitRecipeWriter, RecipeFixedValueKind } from '../RecipeWriter/RecipeCockpitRecipeWriter';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     The fixed-values file (#342): <recipe>.fixedValues.json beside a recipe the Recipe Cockpit wrote a
@@ -79,7 +80,7 @@ export class RecipeCockpitFixedValueStore {
             return { entries: [], isUnreadable: true };
         }
 
-        if ( !this.isPlainRecord(parsed) || parsed.version !== RECIPE_COCKPIT_FIXED_VALUE_FILE_VERSION || !Array.isArray(parsed.fields) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(parsed) || parsed.version !== RECIPE_COCKPIT_FIXED_VALUE_FILE_VERSION || !Array.isArray(parsed.fields) ) {
             return { entries: [], isUnreadable: true };
         }
 
@@ -88,7 +89,7 @@ export class RecipeCockpitFixedValueStore {
 
         parsed.fields.slice(0, MAX_ENTRIES).forEach((storedEntry: unknown) => {
 
-            if ( !this.isPlainRecord(storedEntry)
+            if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedEntry)
                     || !SalesforceApiName.isApiName(storedEntry.objectApiName) || !SalesforceApiName.isApiName(storedEntry.fieldApiName)
                     || !this.isBoundedText(storedEntry.value) || storedEntry.value === ''
                     || !Array.isArray(storedEntry.occurrences) ) {
@@ -280,7 +281,7 @@ export class RecipeCockpitFixedValueStore {
 
         storedOccurrences.slice(0, MAX_OCCURRENCES).forEach((storedOccurrence: unknown) => {
 
-            if ( !this.isPlainRecord(storedOccurrence)
+            if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedOccurrence)
                     || !Number.isSafeInteger(storedOccurrence.occurrenceIndex) || ( storedOccurrence.occurrenceIndex as number ) < 0
                     || seenIndexes.has(storedOccurrence.occurrenceIndex as number)
                     || ( storedOccurrence.nickname !== undefined && !this.isBoundedText(storedOccurrence.nickname) )
@@ -321,7 +322,7 @@ export class RecipeCockpitFixedValueStore {
     */
     private static readOrgRecord(storedOrgRecord: unknown, value: string): IFixedValueOrgRecord | undefined {
 
-        if ( storedOrgRecord === undefined || !this.isPlainRecord(storedOrgRecord) || !this.isSalesforceRecordId(value)
+        if ( storedOrgRecord === undefined || !RecipeCockpitUntrustedValue.isPlainRecord(storedOrgRecord) || !this.isSalesforceRecordId(value)
                 || !this.isOrgName(storedOrgRecord.orgUsername)
                 || ( storedOrgRecord.orgAlias !== undefined && !this.isOrgName(storedOrgRecord.orgAlias) )
                 || !SalesforceApiName.isApiName(storedOrgRecord.parentObjectApiName) ) {
@@ -344,9 +345,6 @@ export class RecipeCockpitFixedValueStore {
         return `${objectApiName}\n${fieldApiName}\n${scopeNickname ?? ''}`;
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-    }
 
     private static isBoundedText(candidate: unknown): candidate is string {
         return typeof candidate === 'string' && candidate.length <= MAX_TEXT_LENGTH;

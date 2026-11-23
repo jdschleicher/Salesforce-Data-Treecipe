@@ -40,6 +40,7 @@ import type {
     IRecipeCockpitWorkspaceState,
     RecipeCockpitHostMessage
 } from './RecipeCockpitViewModel';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     The Query tab's host half (#367, moved out of the hub by #665): the messages it answers, the
@@ -372,7 +373,7 @@ export class RecipeCockpitQueryHost {
                     objectsWrapper: RecipeCockpitQuery.toQueryObjectsWrapper(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')))
                 };
             } catch (readError) {
-                return { ...treeRead, failureMessage: `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${this.describeThrown(readError)} Run "Generate Treecipe" again.` };
+                return { ...treeRead, failureMessage: `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${RecipeCockpitUntrustedValue.describeThrown(readError)} Run "Generate Treecipe" again.` };
             }
         }
 
@@ -437,7 +438,7 @@ export class RecipeCockpitQueryHost {
             return queryEdits;
         }
 
-        if ( !this.isPlainRecord(storedEdits) || storedEdits.version !== RECIPE_COCKPIT_QUERY_EDITS_VERSION || !this.isPlainRecord(storedEdits.editsByFolderName) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedEdits) || storedEdits.version !== RECIPE_COCKPIT_QUERY_EDITS_VERSION || !RecipeCockpitUntrustedValue.isPlainRecord(storedEdits.editsByFolderName) ) {
             return queryEdits;
         }
 
@@ -445,14 +446,14 @@ export class RecipeCockpitQueryHost {
 
         Object.keys(editsByFolderName).slice(0, RECIPE_COCKPIT_QUERY_EDITS_MAX_ENTRIES).forEach(folderName => {
             const storedFolderEdits = editsByFolderName[folderName];
-            if ( folderName.length > RECIPE_COCKPIT_QUERY_EDITS_FOLDER_NAME_MAX_LENGTH || folderName === '' || !this.isPlainRecord(storedFolderEdits) ) {
+            if ( folderName.length > RECIPE_COCKPIT_QUERY_EDITS_FOLDER_NAME_MAX_LENGTH || folderName === '' || !RecipeCockpitUntrustedValue.isPlainRecord(storedFolderEdits) ) {
                 return;
             }
             const folderEdits = new Map<string, IRecipeCockpitQueryEdit>();
             Object.keys(storedFolderEdits).slice(0, RECIPE_COCKPIT_QUERY_EDITS_MAX_ENTRIES).forEach(queryKey => {
                 const storedEdit = storedFolderEdits[queryKey];
                 const isQueryText = (candidateText: unknown): candidateText is string => typeof candidateText === 'string' && candidateText !== '' && candidateText.length <= RECIPE_COCKPIT_QUERY_MAX_LENGTH;
-                if ( this.isQueryKeyShaped(queryKey) && this.isPlainRecord(storedEdit) && isQueryText(storedEdit.generatedText) && isQueryText(storedEdit.editedText) ) {
+                if ( this.isQueryKeyShaped(queryKey) && RecipeCockpitUntrustedValue.isPlainRecord(storedEdit) && isQueryText(storedEdit.generatedText) && isQueryText(storedEdit.editedText) ) {
                     folderEdits.set(queryKey, { generatedText: storedEdit.generatedText, editedText: storedEdit.editedText });
                 }
             });
@@ -479,7 +480,7 @@ export class RecipeCockpitQueryHost {
             await workspaceState.update(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY, { version: RECIPE_COCKPIT_QUERY_EDITS_VERSION, editsByFolderName: editsByFolderName });
             return true;
         } catch (updateError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query edit could not be saved: ${this.describeThrown(updateError)}`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query edit could not be saved: ${RecipeCockpitUntrustedValue.describeThrown(updateError)}`));
             return false;
         }
 
@@ -608,7 +609,7 @@ export class RecipeCockpitQueryHost {
         try {
             orgDetail = await this.resolveTreeQueryOrg(hub, cockpitPanel, hub.recipeCockpitPanelState);
         } catch (listError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${this.describeThrown(listError)}`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${RecipeCockpitUntrustedValue.describeThrown(listError)}`));
             return;
         }
 
@@ -643,7 +644,7 @@ export class RecipeCockpitQueryHost {
                 }, queryText, RECIPE_COCKPIT_QUERY_RECORD_CAP, () => cancellationToken.isCancellationRequested);
             });
         } catch (queryError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} failed in ${orgLabel}: ${this.describeThrown(queryError)}`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} failed in ${orgLabel}: ${RecipeCockpitUntrustedValue.describeThrown(queryError)}`));
             return;
         }
 
@@ -756,7 +757,7 @@ export class RecipeCockpitQueryHost {
                 : RecipeCockpitQuery.buildCsvExport(heldResult.records);
             exportFilePath = runArtifactsLocation && RecipeCockpitQuery.writeQueryExport(runArtifactsLocation, heldResult.objectApiName, heldResult.kind, exportFormat, exportContent, new Date());
         } catch (exportError) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be built: ${this.describeThrown(exportError)}`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be built: ${RecipeCockpitUntrustedValue.describeThrown(exportError)}`));
             return;
         }
 
@@ -784,16 +785,6 @@ export class RecipeCockpitQueryHost {
 
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
 
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-
-    }
-
-    private static describeThrown(thrownValue: unknown): string {
-
-        return String(( thrownValue as Error | undefined )?.message ?? thrownValue);
-
-    }
 
 }

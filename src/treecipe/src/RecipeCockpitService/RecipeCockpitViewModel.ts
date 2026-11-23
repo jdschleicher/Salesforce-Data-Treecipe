@@ -9,7 +9,8 @@ import type { CockpitPaletteToken } from '../CockpitKit/CockpitPalette';
 import type {
     CreateParentRefusalReason,
     IRemovedTodoComment,
-    RecipeFixedValueKind
+    RecipeFixedValueKind,
+    RecipeTodoRemoveLock
 } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import type { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import type {
@@ -90,6 +91,22 @@ import type {
     IRecipeCockpitTroubleshootingSummaryMessage,
     RecipeCockpitTroubleshootingPanelAction
 } from './RecipeCockpitTroubleshootingHost';
+import type { RecipeCockpitDatasetInsertStatus } from './RecipeCockpitDatasetsTabConstants';
+import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTreecipeFieldEditorConstants';
+import type { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
+
+// THE PANEL'S INSERT STATUS UNION IS SPELLED OUT (#642); A STATUS ADDED TO DatasetInsertAttemptService WITHOUT IT FAILS HERE
+type DatasetInsertStatusesMatch<Expected extends InsertAttemptStatus & RecipeCockpitDatasetInsertStatus> = Expected;
+export type RecipeCockpitDatasetInsertStatusMatchesAttempts = DatasetInsertStatusesMatch<InsertAttemptStatus | RecipeCockpitDatasetInsertStatus>;
+
+// THE PANEL'S CREATE-PARENT REFUSAL UNION IS SPELLED OUT (#653); A WRITER CODE ADDED OR RENAMED WITHOUT IT FAILS HERE
+type CreateParentRefusalReasonsMatch<Expected extends CreateParentRefusalReason & RecipeCockpitCreateParentRefusalReason> = Expected;
+export type RecipeCockpitCreateParentRefusalReasonMatchesWriter = CreateParentRefusalReasonsMatch<CreateParentRefusalReason | RecipeCockpitCreateParentRefusalReason>;
+
+// THE PANEL'S LOCK UNION IS SPELLED OUT (#639); A WRITER LOCK ADDED OR RENAMED WITHOUT IT FAILS HERE
+type WriterTodoRemoveLock = RecipeTodoRemoveLock | 'indistinct-occurrence';
+type TodoRemoveLocksMatch<Expected extends WriterTodoRemoveLock & RecipeCockpitTodoRemoveLock> = Expected;
+export type RecipeCockpitTodoRemoveLockMatchesWriter = TodoRemoveLocksMatch<WriterTodoRemoveLock | RecipeCockpitTodoRemoveLock>;
 
 // THE PALETTE AND BUTTON KINDS ARE THE COCKPIT KIT'S (#524), SHARED WITH EVERY COCKPIT; THESE NAMES STAY FOR WHAT ALREADY READS THEM
 export type RecipeCockpitPaletteToken = CockpitPaletteToken;

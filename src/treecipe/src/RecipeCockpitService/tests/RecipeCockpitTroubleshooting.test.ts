@@ -86,6 +86,7 @@ import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitCon
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 import JSZip = require('jszip');
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 const findDescendantsByClass = (rootElement: any, className: string): any[] => {
     const found: any[] = [];
@@ -1716,7 +1717,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             it('styles the card by its kind alone: one fixed size, a wrapping grid that is one column in a narrow panel, and clamped text', () => {
 
-                const styleSheet = withCustomPropertyValues(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+                const styleSheet = withCustomPropertyValues(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
                 expect(styleSheet).toMatch(/\.sdtButton-card \{[^}]*height: 10.5rem;[^}]*overflow: hidden;/);
                 expect(styleSheet).toMatch(/\.troubleshootingCards \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(100%, 18rem\), 1fr\)\);/);
                 expect(styleSheet).toMatch(/\.actionCardTitle \{ -webkit-line-clamp: 2; font-size: inherit; \}/);

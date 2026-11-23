@@ -13,10 +13,6 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }), parse: (uriValue: string) => ({ toString: () => uriValue }) }
 }), { virtual: true });
 import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_VERB_BUTTON_VERBS
-} from '../RecipeCockpitService';
-import {
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
     RECIPE_COCKPIT_STANDALONE_ACTION_CARDS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
@@ -27,6 +23,10 @@ import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
+import {
+    RECIPE_COCKPIT_VERB_BUTTON_VERBS,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     #384: the standalone actions outside the Troubleshooting tab are #381's cards too, and the two
@@ -38,7 +38,7 @@ const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 
 type Panel = ReturnType<typeof runPanelScript>;
 
-const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
+const shellHtml = () => RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 const styleSheetOf = (html: string) => withCustomPropertyValues(html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>')));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 

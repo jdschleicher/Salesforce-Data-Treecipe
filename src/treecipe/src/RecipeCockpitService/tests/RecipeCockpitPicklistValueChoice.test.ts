@@ -48,6 +48,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { pinFieldInRecipeFile, restoreRecipeFiles } from './RecipeCockpitFixedValueFiles';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #465: a picklist's "Edit values" opens a tile per value. Saving the ticked ones writes the
@@ -158,7 +159,7 @@ describe('buildPicklistChoiceExpression (#465)', () => {
 
                 const loaded = yaml.load(buildOneFieldRecipe(expression)) as Array<{ fields: Record<string, unknown> }>;
                 expect(loaded[0].fields).toEqual({ Choice__c: expression });
-                expect(RecipeCockpitService.recoverPicklistValueChoice(expression, [hostileValue, 'Other', 'Unchosen'], picklistField(isMultiSelect ? 'MultiselectPicklist' : 'Picklist'))).toEqual([hostileValue, 'Other']);
+                expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice(expression, [hostileValue, 'Other', 'Unchosen'], picklistField(isMultiSelect ? 'MultiselectPicklist' : 'Picklist'))).toEqual([hostileValue, 'Other']);
             });
 
         });
@@ -203,7 +204,7 @@ describe('recoverPicklistValueChoice (#465)', () => {
         [false, true].forEach(isMultiSelect => {
             const field = picklistField(isMultiSelect ? 'MultiselectPicklist' : 'Picklist');
             [['Hot'], ['Very Hot'], ['Hot', 'Cold'], ['Very Hot', 'Warm', 'Cold'], declared].forEach(chosen => {
-                expect(RecipeCockpitService.recoverPicklistValueChoice(createFakerService().buildPicklistChoiceExpression(chosen, isMultiSelect), declared, field)).toEqual(chosen);
+                expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice(createFakerService().buildPicklistChoiceExpression(chosen, isMultiSelect), declared, field)).toEqual(chosen);
             });
         });
 
@@ -212,11 +213,11 @@ describe('recoverPicklistValueChoice (#465)', () => {
     it('reads nothing from an expression it would not build: hand-written, of another field kind, or naming a value the field does not declare', () => {
 
         const declared = ['Open', 'Closed'];
-        expect(RecipeCockpitService.recoverPicklistValueChoice('${{ random_choice("Open") }}', declared, picklistField())).toBeUndefined();
-        expect(RecipeCockpitService.recoverPicklistValueChoice("${{ random_choice('Open','Closed') }}", declared, picklistField())).toBeUndefined();
-        expect(RecipeCockpitService.recoverPicklistValueChoice('${{ faker.helpers.arrayElement([`Open`]) }}', declared, picklistField('MultiselectPicklist'))).toBeUndefined();
-        expect(RecipeCockpitService.recoverPicklistValueChoice("${{ random_choice('Open', 'Gone') }}", declared, picklistField())).toBeUndefined();
-        expect(RecipeCockpitService.recoverPicklistValueChoice('${{ faker.string.alpha(4) }}', declared, picklistField())).toBeUndefined();
+        expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice('${{ random_choice("Open") }}', declared, picklistField())).toBeUndefined();
+        expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice("${{ random_choice('Open','Closed') }}", declared, picklistField())).toBeUndefined();
+        expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice('${{ faker.helpers.arrayElement([`Open`]) }}', declared, picklistField('MultiselectPicklist'))).toBeUndefined();
+        expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice("${{ random_choice('Open', 'Gone') }}", declared, picklistField())).toBeUndefined();
+        expect(RecipeCockpitDrawnModel.recoverPicklistValueChoice('${{ faker.string.alpha(4) }}', declared, picklistField())).toBeUndefined();
 
     });
 
@@ -231,7 +232,7 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
         RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
-        panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
         return panelState;
     };
 
@@ -268,7 +269,7 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
     it('does nothing before "rendered", or with no model', () => {
 
         const undrawnPanelState = buildDrawnPanelState();
-        undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+        undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
         const modelLessPanelState = buildDrawnPanelState();
         modelLessPanelState.recipeDataMessage = undefined;
 
@@ -280,7 +281,7 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
     it('answers a loadPicklistValues that names a card with what the card\'s edit ticks, and one that names none as before', () => {
 
         const panelState = buildDrawnPanelState();
-        panelState.loadablePicklistKeys = new Set(RecipeCockpitService.collectLoadablePicklistKeys(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel));
+        panelState.loadablePicklistKeys = new Set(RecipeCockpitDrawnModel.collectLoadablePicklistKeys(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel));
         const leadTree = panelState.recipeDataMessage?.recipe.trees.find(tree => tree.treeKey === LEAD_TREE_KEY);
         const load = (payload: Record<string, unknown>) => RecipeCockpitService.routePanelMessage({ command: 'loadPicklistValues', objectApiName: 'Lead', fieldApiName: 'Status', ...payload } as any, panelState) as any;
 
@@ -312,11 +313,11 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
         delete ( statusField as Partial<IRecipeCockpitFieldViewModel> ).recipeValue;
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
-        expect(RecipeCockpitService.readPicklistValueChoice(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel, LEAD_TREE_KEY, 'Gone__c', 'Status', ['Open']))
+        expect(RecipeCockpitDrawnModel.readPicklistValueChoice(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel, LEAD_TREE_KEY, 'Gone__c', 'Status', ['Open']))
             .toEqual({ treeKey: LEAD_TREE_KEY });
 
         // AN EDIT OF A FIELD THE MODEL NO LONGER LISTS TICKS NOTHING IT CAN NAME
-        expect(RecipeCockpitService.readPicklistValueChoice(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel, LEAD_TREE_KEY, 'Lead', 'Gone__c', ['Open']))
+        expect(RecipeCockpitDrawnModel.readPicklistValueChoice(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel, LEAD_TREE_KEY, 'Lead', 'Gone__c', ['Open']))
             .toEqual({ treeKey: LEAD_TREE_KEY });
 
         // A CARD NOT ON SCREEN IS ANSWERED THE VALUES ALONE
@@ -335,7 +336,7 @@ describe('routePanelMessage resetPicklistValueChoice (#479)', () => {
         RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
-        panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
         return panelState;
     };
 
@@ -366,7 +367,7 @@ describe('routePanelMessage resetPicklistValueChoice (#479)', () => {
     it('does nothing before "rendered", or with no model', () => {
 
         const undrawnPanelState = buildDrawnPanelState();
-        undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+        undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
         const modelLessPanelState = buildDrawnPanelState();
         modelLessPanelState.recipeDataMessage = undefined;
 

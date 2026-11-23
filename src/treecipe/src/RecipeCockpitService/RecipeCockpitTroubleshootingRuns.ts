@@ -84,6 +84,7 @@ import type {
     IRecipeCockpitTreeViewModel
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 // #326: ASKED EVERY TIME, IN THE COMMAND PALETTE, OVER EVERY CONNECTED ORG: A RETRIEVE ONLY READS
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose the org to retrieve this tree\'s validation rules from';
@@ -394,7 +395,7 @@ export class RecipeCockpitTroubleshootingRuns {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
             packageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            return refuse(`Nothing was deployed: ${hub.describeThrown(projectError)}`);
+            return refuse(`Nothing was deployed: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`);
         }
 
         const deployObjects = hub.listTreeDeployObjects(recipeViewModel, tree);
@@ -446,7 +447,7 @@ export class RecipeCockpitTroubleshootingRuns {
         try {
             orgDetail = await resolveOrgDetail();
         } catch (listError) {
-            return refuse(`Nothing was deployed: ${hub.describeThrown(listError)}`);
+            return refuse(`Nothing was deployed: ${RecipeCockpitUntrustedValue.describeThrown(listError)}`);
         }
 
         if ( !orgDetail ) {
@@ -512,7 +513,7 @@ export class RecipeCockpitTroubleshootingRuns {
             deployConnection = await SalesforceOrgService.getConnection(orgDetail.username);
             orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(deployConnection));
         } catch (connectionError) {
-            return refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${hub.describeThrown(connectionError)}`);
+            return refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${RecipeCockpitUntrustedValue.describeThrown(connectionError)}`);
         }
 
         if ( orgTypeDetail?.isSandbox !== true ) {
@@ -551,7 +552,7 @@ export class RecipeCockpitTroubleshootingRuns {
                 deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlWrittenFilePath), orgDetail.username);
             }
         } catch (argumentError) {
-            return refuse(hub.describeThrown(argumentError));
+            return refuse(RecipeCockpitUntrustedValue.describeThrown(argumentError));
         }
 
         const cliStarted: IRecipeCockpitMetadataDeployClosingState = { cliStartedFor: { orgDetail: orgDetail, objectApiNames: touchedObjectApiNames } };
@@ -593,7 +594,7 @@ export class RecipeCockpitTroubleshootingRuns {
                 try {
                     zipInput = await RecipeCockpitMetadataDeployPackage.buildDeployZip(packageXml, sourceFiles, isCancellationRequested);
                 } catch (zipError) {
-                    return { kind: 'notBuilt', refusalText: hub.describeThrown(zipError) };
+                    return { kind: 'notBuilt', refusalText: RecipeCockpitUntrustedValue.describeThrown(zipError) };
                 }
                 return zipInput
                     ? await RecipeCockpitMetadataDeployPackage.runDeploy(metadataConnection, zipInput, { isCancellationRequested: isCancellationRequested, timeoutMilliseconds: METADATA_DEPLOY_TIMEOUT_MILLISECONDS })
@@ -650,7 +651,7 @@ export class RecipeCockpitTroubleshootingRuns {
                     try {
                         return { zipInput: await RecipeCockpitMetadataDeployPackage.buildDeployZip(packageXml, sourceFiles, () => cancellationToken.isCancellationRequested) };
                     } catch (zipError) {
-                        return { refusalText: hub.describeThrown(zipError) };
+                        return { refusalText: RecipeCockpitUntrustedValue.describeThrown(zipError) };
                     }
                 });
                 if ( zipAttempt.refusalText !== undefined ) {
@@ -668,7 +669,7 @@ export class RecipeCockpitTroubleshootingRuns {
                 try {
                     deployArguments = RecipeCockpitMetadataDeploy.buildMetadataZipDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, metadataZipWrittenFilePath), orgDetail.username);
                 } catch (argumentError) {
-                    return refuse(hub.describeThrown(argumentError));
+                    return refuse(RecipeCockpitUntrustedValue.describeThrown(argumentError));
                 }
             }
 
@@ -856,7 +857,7 @@ export class RecipeCockpitTroubleshootingRuns {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
             defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            return refuse(`No ${manyNoun} were retrieved: ${hub.describeThrown(projectError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`);
         }
 
         // WHAT A FIELD OR VALUE SET RETRIEVE NAMES, AND WHAT A VALUE SET RETRIEVE COUNTS AS ALREADY HERE, IS READ FROM THE PROJECT NOW
@@ -882,7 +883,7 @@ export class RecipeCockpitTroubleshootingRuns {
         try {
             orgDetail = await resolveOrgDetail();
         } catch (listError) {
-            return refuse(`No ${manyNoun} were retrieved: ${hub.describeThrown(listError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${RecipeCockpitUntrustedValue.describeThrown(listError)}`);
         }
 
         if ( !orgDetail ) {
@@ -1005,7 +1006,7 @@ export class RecipeCockpitTroubleshootingRuns {
             }
             retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, retrievePackageXmlFilePath), orgDetail.username);
         } catch (argumentError) {
-            return refuse(`No ${manyNoun} were retrieved: ${hub.describeThrown(argumentError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${RecipeCockpitUntrustedValue.describeThrown(argumentError)}`);
         }
 
         if ( !isListed ) {
@@ -1159,7 +1160,7 @@ export class RecipeCockpitTroubleshootingRuns {
             packageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
             objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            refuse(hub.describeThrown(projectError));
+            refuse(RecipeCockpitUntrustedValue.describeThrown(projectError));
             return;
         }
 
@@ -1246,10 +1247,10 @@ export class RecipeCockpitTroubleshootingRuns {
                 outcome: 'failed',
                 startedAt: stepStartedAt,
                 finishedAt: new Date(),
-                detail: `${relativeFilePath} could not be written: ${hub.describeThrown(writeError)}`,
+                detail: `${relativeFilePath} could not be written: ${RecipeCockpitUntrustedValue.describeThrown(writeError)}`,
                 filePaths: []
             });
-            refuse(hub.describeThrown(writeError));
+            refuse(RecipeCockpitUntrustedValue.describeThrown(writeError));
             return;
         }
 
@@ -1395,7 +1396,7 @@ export class RecipeCockpitTroubleshootingRuns {
         try {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
         } catch (projectError) {
-            return refuse(`Nothing was assigned: ${hub.describeThrown(projectError)}`);
+            return refuse(`Nothing was assigned: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`);
         }
 
         const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(objectApiNames, workspaceRoot, packageDirectoryPaths);
@@ -1428,7 +1429,7 @@ export class RecipeCockpitTroubleshootingRuns {
         try {
             orgDetail = await resolveOrgDetail();
         } catch (listError) {
-            return refuse(`Nothing was assigned: ${hub.describeThrown(listError)}`);
+            return refuse(`Nothing was assigned: ${RecipeCockpitUntrustedValue.describeThrown(listError)}`);
         }
 
         if ( !orgDetail ) {
@@ -1461,7 +1462,7 @@ export class RecipeCockpitTroubleshootingRuns {
             querySource = SalesforceOrgService.toQuerySource(connection);
             orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
         } catch (connectionError) {
-            return refuse(`Nothing was assigned: could not connect to ${orgLabel}: ${hub.describeThrown(connectionError)}`);
+            return refuse(`Nothing was assigned: could not connect to ${orgLabel}: ${RecipeCockpitUntrustedValue.describeThrown(connectionError)}`);
         }
 
         if ( orgTypeDetail?.isSandbox !== true ) {

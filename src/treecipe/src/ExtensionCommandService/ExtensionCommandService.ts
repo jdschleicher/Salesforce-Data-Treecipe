@@ -51,6 +51,7 @@ import * as os from 'os';
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import path = require("path");
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitService/RecipeCockpitPanelPlace';
 
 export const RECORD_TYPE_OPTIONS_TODO_MARKER = '### TODO: -- RecordType Options --';
 const RECIPE_EXPRESSION_OPENING = '${{';
@@ -1973,7 +1974,7 @@ export class ExtensionCommandService {
             }
 
             await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot(), workspaceState,
-                RecipeCockpitService.readTroubleshootingFocusRequest(openOptions) ?? RecipeCockpitService.readRecordTypesFocusRequest(openOptions));
+                RecipeCockpitPanelPlace.readTroubleshootingFocusRequest(openOptions) ?? RecipeCockpitPanelPlace.readRecordTypesFocusRequest(openOptions));
 
         } catch(error) {
 

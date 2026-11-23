@@ -46,7 +46,6 @@ export type IRecipeCockpitHubForTroubleshootingTab = Readonly<Pick<typeof Recipe
     'buildConfirmOrg' |
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
-    'describeThrown' |
     'findRetrievedFilesApplyRefusal' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |

@@ -13,6 +13,13 @@ import {
 import type { RecipeCockpitTreeTab } from './RecipeCockpitShellConstants';
 import { RECIPE_COCKPIT_HISTORY_SORT_COLUMNS, RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from './RecipeCockpitTroubleshootingConstants';
 import type { RecipeCockpitHistorySortColumn, RecipeCockpitTroubleshootingSubTab } from './RecipeCockpitTroubleshootingConstants';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import type {
+    IRecipeCockpitRecordTypesFocusRequest,
+    IRecipeCockpitTreeFocus,
+    IRecipeCockpitTroubleshootingFocusRequest,
+    RecipeCockpitOpenFocusRequest
+} from './RecipeCockpitViewModel';
 
 /*
     The host half of the reader's place (#670): its shape, its bounds and the check every place read
@@ -109,13 +116,8 @@ type OptionalTreePlaceRule = { [Field in OptionalTreePlaceField]: IOptionalTreeP
 
 export class RecipeCockpitPanelPlace {
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
 
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-
-    }
-
-    private static isBoundedText(candidate: unknown): candidate is string {
+    static isBoundedText(candidate: unknown): candidate is string {
 
         return typeof candidate === 'string' && candidate.length <= RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH;
 
@@ -127,7 +129,7 @@ export class RecipeCockpitPanelPlace {
 
     }
 
-    private static normalizePlaceNames(candidateNames: unknown): string[] {
+    static normalizePlaceNames(candidateNames: unknown): string[] {
 
         if ( !Array.isArray(candidateNames) ) {
             return [];
@@ -155,7 +157,7 @@ export class RecipeCockpitPanelPlace {
 
     private static readTroubleshootingSearchQueries(candidateTree: Record<string, unknown>): Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> | undefined {
 
-        const storedSubTabQueries = RecipeCockpitPanelPlace.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
+        const storedSubTabQueries = RecipeCockpitUntrustedValue.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
         const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
         RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.forEach(subTab => {
             const candidateQuery = Object.prototype.hasOwnProperty.call(storedSubTabQueries, subTab) ? storedSubTabQueries[subTab] : undefined;
@@ -170,7 +172,7 @@ export class RecipeCockpitPanelPlace {
     private static readTroubleshootingHistorySort(candidateTree: Record<string, unknown>): IRecipeCockpitPanelTreePlace['troubleshootingHistorySort'] {
 
         const candidateSort = candidateTree.troubleshootingHistorySort;
-        if ( !RecipeCockpitPanelPlace.isPlainRecord(candidateSort)
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(candidateSort)
                 || !( RECIPE_COCKPIT_HISTORY_SORT_COLUMNS as readonly unknown[] ).includes(candidateSort.column)
                 || typeof candidateSort.isDescending !== 'boolean'
                 || ( candidateSort.column === 'time' && candidateSort.isDescending ) ) {
@@ -283,7 +285,7 @@ export class RecipeCockpitPanelPlace {
     */
     static normalize(candidatePlace: unknown): IRecipeCockpitPanelPlace | undefined {
 
-        if ( !RecipeCockpitPanelPlace.isPlainRecord(candidatePlace)
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(candidatePlace)
                 || ( candidatePlace.version !== RECIPE_COCKPIT_PANEL_PLACE_VERSION && candidatePlace.version !== RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB ) ) {
             return undefined;
         }
@@ -331,7 +333,7 @@ export class RecipeCockpitPanelPlace {
 
     private static readSearchQueries(candidateTree: Record<string, unknown>, isOlderPlace: boolean): Partial<Record<RecipeCockpitTreeTab, string>> {
 
-        const storedQueries = RecipeCockpitPanelPlace.isPlainRecord(candidateTree.searchQueries) ? candidateTree.searchQueries : {};
+        const storedQueries = RecipeCockpitUntrustedValue.isPlainRecord(candidateTree.searchQueries) ? candidateTree.searchQueries : {};
         const candidateQueries: Record<string, unknown> = Object.create(null);
         Object.keys(storedQueries).forEach(storedTabName => {
             const tabName = RecipeCockpitPanelPlace.readTabName(storedTabName, isOlderPlace);
@@ -359,7 +361,7 @@ export class RecipeCockpitPanelPlace {
     // ONE CARD'S PLACE, OR NONE WHEN IT NAMES NO TREE; ITS OPTIONAL FIELDS ARE OPTIONAL_TREE_PLACE_FIELDS, RUN IN ORDER
     static normalizeTreePlace(candidateTree: unknown, isOlderPlace: boolean = false): IRecipeCockpitPanelTreePlace | undefined {
 
-        if ( !RecipeCockpitPanelPlace.isPlainRecord(candidateTree) || !RecipeCockpitPanelPlace.isNonEmptyBoundedText(candidateTree.treeKey) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(candidateTree) || !RecipeCockpitPanelPlace.isNonEmptyBoundedText(candidateTree.treeKey) ) {
             return undefined;
         }
 
@@ -382,6 +384,55 @@ export class RecipeCockpitPanelPlace {
         });
 
         return treePlace;
+
+    }
+
+    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
+
+        return typeof (focusRequest as IRecipeCockpitTreeFocus).treeKey === 'string';
+
+    }
+
+    static isTroubleshootingFocusRequest(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTroubleshootingFocusRequest {
+
+        return typeof (focusRequest as IRecipeCockpitTroubleshootingFocusRequest).treeFolderName === 'string';
+
+    }
+
+    /*
+        The options "treecipe.openRecipeCockpit" was run with. The command is callable by id, so only
+        { focusRecordTypes: true } asks for the Record types section, and an object name is kept only
+        if it is an api name -- it is matched against the loaded model and scrolled to, never opened.
+    */
+    static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
+
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
+            return undefined;
+        }
+
+        return SalesforceApiName.isApiName(openOptions.objectApiName) ? { objectApiName: openOptions.objectApiName } : {};
+
+    }
+
+    /*
+        The options "treecipe.openRecipeCockpit" was run with, for "Open Troubleshooting" (#375). The
+        command is callable by id, so the run and tree are kept only as plain folder NAMES and the
+        sub-tab only when it is one the tab draws; they are matched against the loaded run, never opened.
+    */
+    static readTroubleshootingFocusRequest(openOptions: unknown): IRecipeCockpitTroubleshootingFocusRequest | undefined {
+
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
+            return undefined;
+        }
+
+        const { runFolderName, treeFolderName, troubleshootingSubTab } = openOptions;
+        const isFolderName = (candidate: unknown): candidate is string => RecipeCockpitPanelPlace.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
+
+        if ( !isFolderName(runFolderName) || !isFolderName(treeFolderName) || !( RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS as readonly unknown[] ).includes(troubleshootingSubTab) ) {
+            return undefined;
+        }
+
+        return { runFolderName: runFolderName, treeFolderName: treeFolderName, troubleshootingSubTab: troubleshootingSubTab as RecipeCockpitTroubleshootingSubTab };
 
     }
 

@@ -26,7 +26,8 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON
+    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
+    RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX
 } from '../RecipeCockpitFieldRowsConstants';
 import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
 import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
@@ -46,12 +47,10 @@ import {
     IRecipeCockpitTreeViewModel
 } from '../RecipeCockpitViewModel';
 import {
-    RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
     RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL,
     RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL,
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH,
     RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES,
     RecipeCockpitTreecipeSelection
@@ -66,13 +65,13 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { pinFieldInRecipeFile, restoreRecipeFiles } from './RecipeCockpitFixedValueFiles';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #262: a pin beside each field's checkbox gives the field a fixed value that the generate button and the
@@ -418,7 +417,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map());
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({}, { [ACCOUNT_TREE_KEY]: ['Contact'] }));
 
@@ -551,7 +550,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const recipe = loadRecipe();
             applyFixedValues(recipe, { [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: 'X "1"', Annual_Budget__c: '12.5' } } });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
@@ -698,7 +697,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             applyFixedValues(recipe, {});
             recipeChanges(recipe);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -749,7 +748,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         it('does nothing before "rendered", after "ready" or a failure to draw, or with no model', () => {
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
 

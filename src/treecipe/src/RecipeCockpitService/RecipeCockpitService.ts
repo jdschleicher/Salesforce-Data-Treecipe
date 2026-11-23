@@ -1,65 +1,14 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
-    COCKPIT_PALETTE,
-    CockpitPalette
-} from '../CockpitKit/CockpitPalette';
-import {
-    COCKPIT_ACTION_CARD_HEIGHT,
-    COCKPIT_BUTTON_KINDS
-} from '../CockpitKit/CockpitButtonKinds';
-import {
-    COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
-    COCKPIT_SPINNER_ROTATION_MILLISECONDS
-} from '../CockpitKit/CockpitOrgPicker';
-import {
     COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
     COCKPIT_CONFIRM_WARNINGS_LABEL,
-    COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP,
     CockpitConfirmDialog
 } from '../CockpitKit/CockpitConfirmDialog';
-import { RECIPE_COCKPIT_ACTION_VERB_EMOJI } from './RecipeCockpitPanelConstants';
-import type { RecipeCockpitActionVerb } from './RecipeCockpitPanelConstants';
-import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitKit/CockpitMotion';
-import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from './RecipeCockpitPanelBundle.generated';
-import { RECIPE_COCKPIT_PANEL_STYLESHEET } from './RecipeCockpitPanelStylesheet.generated';
-import { CockpitKitStylesheet } from '../CockpitKit/CockpitKitStylesheet';
-import { RECIPE_COCKPIT_HELP_SECTIONS } from './RecipeCockpitHelpConstants';
-import { RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH } from './RecipeCockpitShellConstants';
-import type { RecipeCockpitDatasetInsertStatus } from './RecipeCockpitDatasetsTabConstants';
-import type { RecipeCockpitCreateParentRefusalReason } from './RecipeCockpitTreecipeFieldEditorConstants';
-import {
-    RECIPE_COCKPIT_EXPRESSION_OPENER,
-    RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX
-} from './RecipeCockpitFieldRowsConstants';
-import {
-    RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_UPDATER_LOOKUP_REASON
-} from './RecipeCockpitAdapterConstants';
-import {
-    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS,
-    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL
-} from './RecipeCockpitTroubleshootingConstants';
-import type {
-    RecipeCockpitTodoRemoveLock,
-    RecipeCockpitTroubleshootingSubTab
-} from './RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL } from './RecipeCockpitTroubleshootingConstants';
 
-// THE PANEL'S INSERT STATUS UNION IS SPELLED OUT (#642); A STATUS ADDED TO DatasetInsertAttemptService WITHOUT IT FAILS HERE
-type DatasetInsertStatusesMatch<Expected extends InsertAttemptStatus & RecipeCockpitDatasetInsertStatus> = Expected;
-export type RecipeCockpitDatasetInsertStatusMatchesAttempts = DatasetInsertStatusesMatch<InsertAttemptStatus | RecipeCockpitDatasetInsertStatus>;
-
-// THE PANEL'S CREATE-PARENT REFUSAL UNION IS SPELLED OUT (#653); A WRITER CODE ADDED OR RENAMED WITHOUT IT FAILS HERE
-type CreateParentRefusalReasonsMatch<Expected extends CreateParentRefusalReason & RecipeCockpitCreateParentRefusalReason> = Expected;
-export type RecipeCockpitCreateParentRefusalReasonMatchesWriter = CreateParentRefusalReasonsMatch<CreateParentRefusalReason | RecipeCockpitCreateParentRefusalReason>;
-
-// THE PANEL'S LOCK UNION IS SPELLED OUT (#639); A WRITER LOCK ADDED OR RENAMED WITHOUT IT FAILS HERE
-type WriterTodoRemoveLock = RecipeTodoRemoveLock | 'indistinct-occurrence';
-type TodoRemoveLocksMatch<Expected extends WriterTodoRemoveLock & RecipeCockpitTodoRemoveLock> = Expected;
-export type RecipeCockpitTodoRemoveLockMatchesWriter = TodoRemoveLocksMatch<WriterTodoRemoveLock | RecipeCockpitTodoRemoveLock>;
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
@@ -73,57 +22,36 @@ import {
     IRecipeCockpitConfirmRequestParts,
     RecipeCockpitConfirmContent
 } from './RecipeCockpitConfirmContent';
-import { RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
     IMetadataDeployObject
 } from './RecipeCockpitMetadataDeploy';
 import { MetadataRetrieveDestination } from './RecipeCockpitMetadataRetrievePackage';
+import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 import {
-    INormalizedOrgField,
-    SalesforceOrgService
-} from '../SalesforceOrgService/SalesforceOrgService';
-import {
-    CreateParentRefusalReason,
     ILookupWiringContext,
     IPinnedFieldRestoreRequest,
-    IRecipeFilterLookup,
-    IRecipeFixedValue,
-    IRecipeUnconstrainedValue,
     IRemovedTodoComment,
-    RecipeCockpitRecipeWriter,
-    RecipeFixedValueKind,
-    RecipeTodoRemoveLock
+    RecipeFixedValueKind
 } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import {
     IFixedValueEntry,
     IFixedValueFileRead
 } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead } from './RecipeCockpitRemovedTodoStore';
-import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import {
     IRecordTypeSetModeOffer,
-    OccurrenceSettingPlacer,
     RECORD_TYPE_SET_MODE_LABELS,
     RECORD_TYPE_SET_MODE_LEGEND,
     RecordTypeSetMode
 } from './RecipeCockpitRecordTypeRecipe';
-import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
-import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import {
     IRecipeCockpitPanelPlace,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
     RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
     RecipeCockpitPanelPlace
 } from './RecipeCockpitPanelPlace';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
-import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
-import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
-import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
-import {
-    IRecipeCockpitTreeDatasetViewModel,
-    RecipeCockpitTreeHistory
-} from './RecipeCockpitTreeHistory';
+import { RecipeCockpitTreeHistory } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitQueryHost } from './RecipeCockpitQueryHost';
@@ -147,7 +75,6 @@ import {
     RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE,
     RecipeCockpitRunArtifacts
 } from '../RunArtifacts/RecipeCockpitRunArtifacts';
-import { IUpdateSnapshotObject } from './RecipeCockpitRecordUpdate';
 import { IOrgNewFieldDetail, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
 import { RecipeService } from '../RecipeService/RecipeService';
 // A RUN LOADS ITS custom- TREES IN RecipeCockpitModelBuild (#677, #671); THE HUB'S DELEGATE NAMES A DEFINITION, AND SAVING ONE IS RecipeCockpitCustomTreecipeHost's
@@ -159,7 +86,6 @@ import {
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitTreecipeHost } from './RecipeCockpitTreecipeHost';
 import type {
-    IRecipeCockpitAddableParentTarget,
     IRecipeCockpitConfirmAnswer,
     IRecipeCockpitConfirmChangeOrg,
     IRecipeCockpitConfirmOptions,
@@ -167,54 +93,40 @@ import type {
     IRecipeCockpitConfirmWithRecordTypeSetModesOptions,
     IRecipeCockpitCreateReadinessByTarget,
     IRecipeCockpitEmptyLookupViewModel,
-    IRecipeCockpitFieldReferenceViewModel,
     IRecipeCockpitFieldViewModel,
     IRecipeCockpitLoadFailedMessage,
     IRecipeCockpitLoadedRecipe,
-    IRecipeCockpitLookupWiringTarget,
     IRecipeCockpitNameEditResultMessage,
     IRecipeCockpitObjectFieldSelectionViewModel,
     IRecipeCockpitObjectViewModel,
-    IRecipeCockpitOrgRecordLookupTarget,
     IRecipeCockpitOrgRecordLookupViewModel,
     IRecipeCockpitPanelCancellation,
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeDataMessage,
     IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitRecordTypesFocusRequest,
     IRecipeCockpitRunFakerFilteredRecipe,
-    IRecipeCockpitTodoViewModel,
     IRecipeCockpitTreeFocus,
-    IRecipeCockpitTreeHistoryAllowLists,
     IRecipeCockpitTreeOccurrence,
-    IRecipeCockpitTreePreferences,
     IRecipeCockpitTreeSelections,
     IRecipeCockpitTreeViewModel,
-    IRecipeCockpitTroubleshootingFocusRequest,
     IRecipeCockpitWorkspaceState,
     RecipeCockpitHostMessage,
     RecipeCockpitOpenFocusRequest,
-    RecipeCockpitPaletteToken,
-    RecipeCockpitPanelAction,
-    RecipeCockpitVerbButtonClassName
+    RecipeCockpitPanelAction
 } from './RecipeCockpitViewModel';
-import {
-    RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
-    RecipeCockpitModelBuild
-} from './RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from './RecipeCockpitModelBuild';
 import { RecipeCockpitOrgRuns } from './RecipeCockpitOrgRuns';
 import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import {
+    RECIPE_COCKPIT_PANEL_TITLE,
+    RecipeCockpitShell
+} from './RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
-
-export const RECIPE_COCKPIT_PANEL_TITLE = 'Recipe Cockpit';
-
-// WHAT THE PANEL SHOWS BEFORE THE HOST HAS ANSWERED, SO A HANDSHAKE THAT NEVER COMPLETES IS VISIBLE RATHER THAN BLANK
-export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecipe extension host…';
-export const RECIPE_COCKPIT_PALETTE = COCKPIT_PALETTE;
-export const RECIPE_COCKPIT_BUTTON_KINDS = COCKPIT_BUTTON_KINDS;
 
 export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
@@ -228,46 +140,13 @@ export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificati
 // ONE workspaceState WRITE OF THE PLACE (#230) PER THIS MANY ms: A RELOAD OR A CRASH MAY NEVER RUN onDidDispose, SO IT IS WRITTEN AS IT CHANGES
 export const RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY = 500;
 
-/*
-    A tree card's own name and favorite (#235), kept in workspaceState by the tree's FOLDER NAME --
-    the one identity a tree keeps across runs, and the one a regeneration of the same objects writes
-    again -- so neither renumbers when another tree is added, and both survive a reload.
-*/
-export const RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit.treePreferences';
 // WHAT A RUN SWITCH ASKS WHEN A TREE ON SCREEN HAS A STORED SELECTION (#399)
 export const RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL = 'Reset selections';
 export const RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL = 'Apply same selections';
-export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
-
-/*
-    Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
-    than swapping. A body the reader opens fades in once it is built; one the reader closes carries
-    "hidden" at once -- aria-hidden and inert while it fades out -- so what is hidden is hidden from
-    assistive technology for the whole animation. Only a reader's click animates: a restore, a
-    focusTree and a search stay instant. prefers-reduced-motion turns every transition and
-    animation off, in the stylesheet and in the script. The reveal and conceal timings are the kit's
-    (CockpitKit/CockpitMotion.ts), since setShownWithMotion is a kit panel module (#638).
-*/
-export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = COCKPIT_MOTION_REVEAL_MILLISECONDS;
-export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = COCKPIT_MOTION_CONCEAL_MILLISECONDS;
-export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
-export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
-// AN OBJECT HEADER IS ITS PADDING, THE CHAIN LINK, ONE GAP, THEN THE ▸ (#494): THE FIELD CHECKBOXES START WHERE THE ▸ DOES
-export const RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM = 0.6;
-export const RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM = 2.6;
-export const RECIPE_COCKPIT_TREE_HEADER_GAP_REM = 0.5;
-export const RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM = RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM + RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM + RECIPE_COCKPIT_TREE_HEADER_GAP_REM;
-// AN OBJECT'S CONTROLS ROW AND ITS FIELDS ARE EACH A BORDERED BOX (#494), PADDED INSIDE, WITH A ROW'S OWN INSET INSIDE THAT
-export const RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM = 0.25;
-export const RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM = 0.25;
-export const RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT = `calc(${Math.round(( RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM - RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM - RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM ) * 100) / 100}rem - 1px)`;
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
-// THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
-export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING;
-
 /*
     Where the cockpit's tracked work lives, as a label query rather than a list of issue numbers.
 
@@ -278,8 +157,6 @@ export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = COCKPIT_PINNED_O
 export const RECIPE_COCKPIT_ISSUES_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit';
 
 export const RECIPE_COCKPIT_HELP_GUIDE_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/RECIPE-COCKPIT-GUIDE.md';
-
-export const RECIPE_COCKPIT_HELP_SECTION_HEADINGS: readonly string[] = RECIPE_COCKPIT_HELP_SECTIONS.map(helpSection => helpSection.heading);
 
 export const ENABLE_RECIPE_COCKPIT_ACTION_LABEL = 'Enable Recipe Cockpit';
 
@@ -307,9 +184,6 @@ Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. T
 What is built, what is next, and what is known to be missing are tracked under the recipe-cockpit label:
 ${RECIPE_COCKPIT_ISSUES_URL}`;
 
-// ONE TURN OF THE ORG CHECK'S SPINNER (#305): A LOOP RATHER THAN A TRANSITION, SO IT IS NOT HELD TO THE 120-180 MS OF MOTION (#227)
-export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = COCKPIT_SPINNER_ROTATION_MILLISECONDS;
-
 /*
     The version and the CHANGELOG link at the top right (#333). The URL is the HOST's: the shell's
     default-src 'none' would make a link in the panel dead, and a URL interpolated into the shell is
@@ -324,38 +198,7 @@ export const RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE = 'The Treecipe CHANGEL
 // A RELEASE VERSION, OR ONE WITH A PRE-RELEASE SUFFIX; ANYTHING ELSE IS NOT POSTED
 export const RECIPE_COCKPIT_EXTENSION_VERSION_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
-
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
-
-
-// EVERY STANDALONE ACTION IS A CARD (#381, #384): ITS VERBS, EMOJI AND WORDS ARE IN RecipeCockpitPanelConstants.ts, WHICH THE PANEL IMPORTS (#638)
-export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
-export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = COCKPIT_ACTION_CARD_HEIGHT;
-export const RECIPE_COCKPIT_VERB_BUTTON_VERBS: Readonly<Record<RecipeCockpitVerbButtonClassName, RecipeCockpitActionVerb>> = Object.freeze({
-    treeInsert: 'generateData',
-    dataOrgNewScratch: 'create',
-    dataOrgAuthorize: 'authorize'
-});
-
-/*
-    The cockpit's own values its stylesheet reads (#644), written into :root by the shell beside the
-    palette and the kit's: panel/RecipeCockpitPanel.css holds var(--sdt-…) for each, never the number,
-    so a value the TypeScript or a test also reads keeps one source.
-*/
-export const RECIPE_COCKPIT_CUSTOM_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({
-    '--sdt-motion-hover': `${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms`,
-    '--sdt-tree-header-gap': `${RECIPE_COCKPIT_TREE_HEADER_GAP_REM}rem`,
-    '--sdt-tree-object-header-padding': `${RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM}rem`,
-    '--sdt-tree-object-include-width': `${RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM}rem`,
-    '--sdt-tree-field-box-padding': `${RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM}rem`,
-    '--sdt-tree-field-row-inset': `${RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM}rem`,
-    '--sdt-tree-field-box-margin-left': RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT,
-    // ONE INDENT PER friends: LEVEL; THE STYLESHEET WRITES ONE RULE PER LEVEL UP TO RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH
-    '--sdt-nesting-indent': `${RECIPE_COCKPIT_NESTING_INDENT_REM}rem`,
-    '--sdt-action-card-width': RECIPE_COCKPIT_ACTION_CARD_WIDTH,
-    // A VERB BUTTON'S EMOJI (#384), AS A CSS STRING THE STYLESHEET'S ::before content READS
-    ...Object.fromEntries(Object.values(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(verb => [`--sdt-verb-emoji-${verb}`, `'${RECIPE_COCKPIT_ACTION_VERB_EMOJI[verb]}'`]))
-});
 
 export const RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL = 'Nothing was started: the Treecipe Adapter is applying retrieved files to this project. Try again when it ends.';
 export const RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL = 'Nothing was started: Get latest detail is applying retrieved files to this project. Try again when it ends.';
@@ -449,9 +292,6 @@ export class RecipeCockpitService {
     private static panelPlacePersistTimer: ReturnType<typeof setTimeout> | undefined;
 
     // WHAT A HOST READS OF THE TREE SELECTIONS AND FIXED VALUES THROUGH ITS HUB TYPE: RecipeCockpitTreeSelectionStore OWNS IT (#671)
-    static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-        return RecipeCockpitTreeSelectionStore.isPlainRecord(candidate);
-    }
 
     static readTreeSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreeSelections {
         return RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
@@ -607,170 +447,6 @@ export class RecipeCockpitService {
 
     }
 
-    static buildEmptyTreePreferences(): IRecipeCockpitTreePreferences {
-
-        return { customNamesByFolderName: new Map(), favoriteFolderNames: new Set() };
-
-    }
-
-    /*
-        The cards' names and favorites as workspaceState kept them, each entry checked on its own:
-        the store is the reader's, but a name is drawn in the panel and compared with every other,
-        so one that could not have been saved through the input box is dropped rather than drawn.
-    */
-    static readTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreePreferences {
-
-        return this.readNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
-            trimmedName => this.describeTreeNameProblem(trimmedName));
-
-    }
-
-    // A FAILED WRITE IS SAID ONCE, AND THE CARDS ARE LEFT AS THEY WERE: A NAME THE NEXT OPEN WOULD NOT SHOW IS NOT ONE TO DRAW NOW
-    static async writeTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
-
-        return this.writeNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION, treePreferences, 'tree');
-
-    }
-
-    static readNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
-                                        stateKey: string,
-                                        stateVersion: number,
-                                        describeNameProblem: (trimmedName: string) => string | undefined): IRecipeCockpitTreePreferences {
-
-        const namePreferences = this.buildEmptyTreePreferences();
-        let storedPreferences: unknown;
-
-        try {
-            storedPreferences = workspaceState?.get<unknown>(stateKey);
-        } catch {
-            return namePreferences;
-        }
-
-        if ( !RecipeCockpitTreeSelectionStore.isPlainRecord(storedPreferences) || storedPreferences.version !== stateVersion ) {
-            return namePreferences;
-        }
-
-        const storedCustomNames = RecipeCockpitTreeSelectionStore.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
-
-        Object.keys(storedCustomNames).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
-            const customName = storedCustomNames[folderName];
-            if ( RecipeCockpitTreeSelectionStore.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
-                    && customName !== '' && customName === customName.trim() && describeNameProblem(customName) === undefined ) {
-                namePreferences.customNamesByFolderName.set(folderName, customName);
-            }
-        });
-
-        RecipeCockpitTreeSelectionStore.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => namePreferences.favoriteFolderNames.add(folderName));
-
-        return namePreferences;
-
-    }
-
-    static async writeNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
-                                                stateKey: string,
-                                                stateVersion: number,
-                                                namePreferences: IRecipeCockpitTreePreferences,
-                                                namedThing: string): Promise<boolean> {
-
-        if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage(`The Recipe Cockpit has no workspace to keep ${namedThing} names and favorites in. Open a folder and re-open the cockpit.`);
-            return false;
-        }
-
-        // fromEntries DEFINES EACH KEY, SO A FOLDER NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
-        const customNames: Record<string, string> = Object.fromEntries(namePreferences.customNamesByFolderName);
-
-        try {
-            await workspaceState.update(stateKey, {
-                version: stateVersion,
-                customNames: customNames,
-                favoriteFolderNames: [...namePreferences.favoriteFolderNames]
-            });
-            return true;
-        } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The ${namedThing} name or favorite could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
-            return false;
-        }
-
-    }
-
-    // WHY A NAME CANNOT BE ANY CARD'S, WHOEVER ELSE HAS IT -- ONE LINE OF TEXT, WITHIN THE LENGTH THE HEADER IS DRAWN FOR
-    static describeTreeNameProblem(trimmedName: string): string | undefined {
-
-        return this.describeCustomNameProblem(trimmedName, 'A tree name', RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH);
-
-    }
-
-    static describeCustomNameProblem(trimmedName: string, nameLabel: string, maxLength: number): string | undefined {
-
-        if ( /[\p{Cc}\u2028\u2029]/u.test(trimmedName) ) {
-            return `${nameLabel} must be one line, with no control characters.`;
-        }
-
-        if ( trimmedName.length > maxLength ) {
-            return `${nameLabel} can be at most ${maxLength} characters.`;
-        }
-
-        return undefined;
-
-    }
-
-    // THE NAMES AND FAVORITES ONTO THE CARDS, IN PLACE: EVERY CARD OF A FOLDER, AND NEVER THE UNGROUPED ONE, WHICH HAS NO FOLDER
-    static applyTreePreferences(trees: IRecipeCockpitTreeViewModel[], treePreferences: IRecipeCockpitTreePreferences): IRecipeCockpitTreeViewModel[] {
-
-        trees.forEach(tree => {
-
-            delete tree.customName;
-            delete tree.isFavorite;
-
-            if ( tree.folderName === '' ) {
-                return;
-            }
-
-            const customName = treePreferences.customNamesByFolderName.get(tree.folderName);
-
-            if ( customName !== undefined ) {
-                tree.customName = customName;
-            }
-
-            if ( treePreferences.favoriteFolderNames.has(tree.folderName) ) {
-                tree.isFavorite = true;
-            }
-
-        });
-
-        return trees;
-
-    }
-
-    static readObjectSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined): Map<string, Set<string>> {
-        return RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).excludedObjectApiNamesByFolderName;
-    }
-
-    // THE OBJECTS ALONE, KEEPING WHATEVER FIELDS ARE STORED
-    static async writeObjectSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, excludedObjectApiNamesByFolderName: Map<string, Set<string>>): Promise<boolean> {
-
-        const storedSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
-
-        return RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, {
-            excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
-            excludedFieldApiNamesByFolderName: storedSelections.excludedFieldApiNamesByFolderName,
-            objectCountsByFolderName: storedSelections.objectCountsByFolderName,
-            fixedValuesByFolderName: storedSelections.fixedValuesByFolderName,
-            validationRulesOffByFolderName: storedSelections.validationRulesOffByFolderName
-        });
-
-    }
-
-    static buildSelectableObjectKey(treeKey: string, objectApiName: string): string {
-        return `${treeKey}\n${objectApiName}`;
-    }
-
-    // workspaceState'S SELECTIONS WITH THE PINS THE FIXED-VALUES FILES HOLD (#342) IN PLACE OF ANY IT KEPT
-    static withPinnedFixedValues(treeSelections: IRecipeCockpitTreeSelections, pinnedFixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> | undefined): IRecipeCockpitTreeSelections {
-        return { ...treeSelections, fixedValuesByFolderName: pinnedFixedValuesByFolderName ?? new Map() };
-    }
-
     // WHAT A HOST READS OF THE MODEL BUILD THROUGH ITS HUB TYPE: RecipeCockpitModelBuild OWNS IT (#671)
     static listRemovedTodosStillOut(recipeText: string, entries: IRemovedTodoComment[]): IRemovedTodoComment[] {
         return RecipeCockpitModelBuild.listRemovedTodosStillOut(recipeText, entries);
@@ -804,280 +480,6 @@ export class RecipeCockpitService {
         return RecipeCockpitTreeSelectionStore.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.validationRulesOffByFolderName);
     }
 
-    // THE OCCURRENCE OF THE CARD'S OBJECT A MESSAGE NAMES: ITS FIRST WITHOUT A NICKNAME, ELSE THE ONE WITH THAT NICKNAME THE CARD LISTS (#467)
-    static findTreeOccurrence(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
-                                tree: IRecipeCockpitTreeViewModel,
-                                objectApiName: string,
-                                nickname: string | undefined): IRecipeCockpitTreeOccurrence | undefined {
-
-        const occurrences = RecipeCockpitTreeSelectionStore.listTreeOccurrences(objectsByApiName, tree, objectApiName);
-        if ( nickname === undefined ) {
-            return occurrences[0];
-        }
-        // AN OBJECT WRITTEN ONCE KEEPS NO NICKNAME FOR ITS SETTINGS, BUT A MESSAGE MAY STILL NAME THE ONE IT IS DRAWN WITH
-        return occurrences.find(occurrence => occurrence.nickname === nickname)
-            ?? ( occurrences.length === 1 && occurrences[0].nickname === undefined && occurrences[0].objectViewModel.nickname === nickname ? occurrences[0] : undefined );
-
-    }
-
-    // WHAT A CARD GENERATES WITH, BY OBJECT -- OR OCCURRENCE KEY, FOR AN OBJECT WITH iterations (#467) -- THEN FIELD
-    static listFixedValuesByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, Map<string, IRecipeFixedValue>> {
-
-        const fixedValuesByObject = new Map<string, Map<string, IRecipeFixedValue>>();
-        ( tree?.fixedValues ?? [] ).forEach(fixedValue => {
-            const occurrenceKey = RecipeCockpitRecipeWriter.buildOccurrenceKey(fixedValue.objectApiName, fixedValue.nickname);
-            const fixedValuesByField = fixedValuesByObject.get(occurrenceKey) ?? new Map<string, IRecipeFixedValue>();
-            fixedValuesByField.set(fixedValue.fieldApiName, { value: fixedValue.value, kind: fixedValue.kind });
-            fixedValuesByObject.set(occurrenceKey, fixedValuesByField);
-        });
-        return fixedValuesByObject;
-
-    }
-
-    // A FIELD OF A CARD AS THE MODEL ON SCREEN DRAWS IT -- WITH A LINE IN THE RECIPE -- OR undefined
-    static findDrawnField(recipeViewModel: IRecipeCockpitRecipeViewModel | undefined, treeKey: string, objectApiName: string, fieldApiName: string):
-        { tree: IRecipeCockpitTreeViewModel; objectViewModel: IRecipeCockpitObjectViewModel; fieldViewModel: IRecipeCockpitFieldViewModel } | undefined {
-
-        const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === treeKey);
-        const objectViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
-        const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
-
-        return tree && objectViewModel && fieldViewModel ? { tree: tree, objectViewModel: objectViewModel, fieldViewModel: fieldViewModel } : undefined;
-
-    }
-
-    /*
-        The occurrence of a card's object a panel message names (#467), as the model on screen draws
-        it: no nickname is the object's first occurrence; a nickname must be one of its occurrences the
-        card lists. nickname in the answer is the one its settings are kept by -- undefined for an
-        object written once.
-    */
-    static resolvePostedOccurrence(recipeViewModel: IRecipeCockpitRecipeViewModel | undefined, treeKey: string, objectApiName: string, postedNickname: unknown):
-        { tree: IRecipeCockpitTreeViewModel; occurrence: IRecipeCockpitTreeOccurrence } | undefined {
-
-        if ( !recipeViewModel || ( postedNickname !== undefined && typeof postedNickname !== 'string' ) ) {
-            return undefined;
-        }
-
-        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
-        const occurrence = tree ? this.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipeViewModel), tree, objectApiName, postedNickname as string | undefined) : undefined;
-
-        return tree && occurrence ? { tree: tree, occurrence: occurrence } : undefined;
-
-    }
-
-    // A FIELD OF ONE OCCURRENCE AS THE MODEL ON SCREEN DRAWS IT -- WITH A LINE IN THAT OCCURRENCE -- AND THE OBJECT'S OWN FIELD, WHICH HOLDS WHAT GENERATE TREECIPE WROTE
-    static findDrawnOccurrenceField(recipeViewModel: IRecipeCockpitRecipeViewModel | undefined, treeKey: string, objectApiName: string, postedNickname: unknown, fieldApiName: string):
-        { tree: IRecipeCockpitTreeViewModel; occurrence: IRecipeCockpitTreeOccurrence; objectViewModel: IRecipeCockpitObjectViewModel; fieldViewModel: IRecipeCockpitFieldViewModel; generatedFieldViewModel: IRecipeCockpitFieldViewModel } | undefined {
-
-        const resolved = this.resolvePostedOccurrence(recipeViewModel, treeKey, objectApiName, postedNickname);
-        const fieldViewModel = resolved?.occurrence.objectViewModel.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
-        const generatedFieldViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === objectApiName)?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName);
-
-        return resolved && fieldViewModel
-            ? { tree: resolved.tree, occurrence: resolved.occurrence, objectViewModel: resolved.occurrence.objectViewModel, fieldViewModel: fieldViewModel, generatedFieldViewModel: generatedFieldViewModel ?? fieldViewModel }
-            : undefined;
-
-    }
-
-    /*
-        What the copy writes for each field whose rules are off: both values as the wrapper recorded
-        them, so the writer swaps only lines that still hold what the rules wrote. A field the rules
-        did not change (an ISBLANK rule) has nothing to swap and is left out.
-    */
-    static listUnconstrainedValuesByObject(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): Map<string, Map<string, IRecipeUnconstrainedValue>> {
-
-        const unconstrainedValuesByObject = new Map<string, Map<string, IRecipeUnconstrainedValue>>();
-        ( tree.validationRulesOff ?? [] ).forEach(fieldReference => {
-            const validationRules = this.findDrawnField(recipeViewModel, tree.treeKey, fieldReference.objectApiName, fieldReference.fieldApiName)?.fieldViewModel.validationRules;
-            if ( validationRules?.recipeValue === undefined || validationRules.unconstrainedRecipeValue === undefined
-                    || validationRules.recipeValue === validationRules.unconstrainedRecipeValue ) {
-                return;
-            }
-            const occurrenceKey = RecipeCockpitRecipeWriter.buildOccurrenceKey(fieldReference.objectApiName, fieldReference.nickname);
-            const valuesByField = unconstrainedValuesByObject.get(occurrenceKey) ?? new Map<string, IRecipeUnconstrainedValue>();
-            valuesByField.set(fieldReference.fieldApiName, { constrainedValue: validationRules.recipeValue, unconstrainedValue: validationRules.unconstrainedRecipeValue });
-            unconstrainedValuesByObject.set(occurrenceKey, valuesByField);
-        });
-
-        return unconstrainedValuesByObject;
-
-    }
-
-    // WHAT A CARD GENERATES WITH: ITS CHANGED COUNTS, BY OBJECT OR OCCURRENCE KEY (#467), NEVER AN EXCLUDED OBJECT'S, WHICH IS NOT GENERATED AT ALL
-    static listObjectCountsByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, number> {
-
-        const excludedObjectApiNames = new Set(RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(tree));
-
-        return new Map(( tree?.objectCounts ?? [] )
-            .filter(objectCount => !excludedObjectApiNames.has(objectCount.objectApiName))
-            .map(objectCount => [RecipeCockpitRecipeWriter.buildOccurrenceKey(objectCount.objectApiName, objectCount.nickname), objectCount.count]));
-
-    }
-
-    /*
-        Every field a card leaves out of generation by object, never an excluded object's, which goes
-        whole. An object with iterations lists every field ANY of its occurrences leaves out (#467):
-        what the insert's readiness reads, which refuses an unticked field the org requires wherever
-        it is unticked.
-    */
-    static listExcludedFieldApiNamesByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, string[]> {
-
-        const excludedFieldApiNamesByObject = new Map<string, string[]>();
-        this.listExcludedFieldApiNamesByOccurrence(tree).forEach((fieldApiNames, occurrenceKey) => {
-            const objectApiName = RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey).objectApiName;
-            excludedFieldApiNamesByObject.set(objectApiName, [...new Set([...( excludedFieldApiNamesByObject.get(objectApiName) ?? [] ), ...fieldApiNames])]);
-        });
-        return excludedFieldApiNamesByObject;
-
-    }
-
-    // WHAT THE FILTERED COPY LEAVES OUT, BY OBJECT OR, FOR AN OBJECT WITH iterations, BY OCCURRENCE KEY (#467)
-    static listExcludedFieldApiNamesByOccurrence(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, string[]> {
-
-        const excludedObjectApiNames = new Set(RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(tree));
-
-        return new Map(( tree?.fieldSelection?.objects ?? [] )
-            .filter(objectFieldSelection => objectFieldSelection.excludedFieldApiNames.length > 0 && !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
-            .map(objectFieldSelection => [RecipeCockpitRecipeWriter.buildOccurrenceKey(objectFieldSelection.objectApiName, objectFieldSelection.nickname), [...objectFieldSelection.excludedFieldApiNames]]));
-
-    }
-
-    static buildSelectableFieldKey(treeKey: string, objectApiName: string, fieldApiName: string): string {
-        return `${treeKey}\n${objectApiName}\n${fieldApiName}`;
-    }
-
-    // AN ITERATION IS NO PART OF THE OBJECT CASCADE (#467), SO ONE WITH NO FIELD TICKED IS LEFT OUT ON ITS OWN, BY ITS OCCURRENCE KEY (#611)
-    static listNoFieldsSelectedIterationKeys(tree: IRecipeCockpitTreeViewModel | undefined): string[] {
-
-        const excludedObjectApiNames = new Set(RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(tree));
-        const iterationKeys = new Set(( tree?.objects ?? [] )
-            .filter(treeObject => treeObject.iterationNickname !== undefined)
-            .map(treeObject => RecipeCockpitRecipeWriter.buildOccurrenceKey(treeObject.objectApiName, treeObject.iterationNickname)));
-
-        return ( tree?.fieldSelection?.objects ?? [] )
-            .filter(objectFieldSelection => objectFieldSelection.isEveryFieldExcluded && !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
-            .map(objectFieldSelection => RecipeCockpitRecipeWriter.buildOccurrenceKey(objectFieldSelection.objectApiName, objectFieldSelection.nickname))
-            .filter(occurrenceKey => iterationKeys.has(occurrenceKey));
-
-    }
-
-    static buildPicklistChoiceExpression(fakerService: 'faker-js' | 'snowfakery', picklistValues: string[], fieldViewModel: IRecipeCockpitFieldViewModel): string {
-
-        const recipeFakerService: IRecipeFakerService = fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService();
-        return recipeFakerService.buildPicklistChoiceExpression(picklistValues, fieldViewModel.fieldType === 'MultiselectPicklist');
-
-    }
-
-    /*
-        The choice the field's GENERATED line makes (#465): its first "${{ ... }}" line, unquoted
-        when a validation rule wrote it double-quoted, read back as a choice. undefined when that
-        line is not one (a TODO, a hand edit), so nothing is claimed about what it generates.
-    */
-    static readGeneratedPicklistChoice(fieldViewModel: IRecipeCockpitFieldViewModel, declaredPicklistValues: readonly string[]): string[] | undefined {
-
-        const expressionLine = String(fieldViewModel.recipeValue ?? '').split(/\r?\n/)
-            .map(valueLine => this.unquoteExpressionLine(valueLine.trim()))
-            .find(valueLine => valueLine.startsWith(RECIPE_COCKPIT_EXPRESSION_OPENER));
-
-        return expressionLine === undefined ? undefined : this.recoverPicklistValueChoice(expressionLine, declaredPicklistValues, fieldViewModel);
-
-    }
-
-    private static unquoteExpressionLine(valueLine: string): string {
-
-        if ( valueLine.length < 2 || !valueLine.startsWith('"') || !valueLine.endsWith('"') ) {
-            return valueLine;
-        }
-        // A LINE OPENING AND CLOSING ON A DOUBLE QUOTE PARSES ONLY AS A STRING, OR NOT AT ALL
-        try {
-            return String(JSON.parse(valueLine));
-        } catch {
-            return valueLine;
-        }
-
-    }
-
-    /*
-        Which values an edit ticks (#465), or undefined when the edit is not a choice of them. Read
-        back by BUILDING: the values whose literal the expression holds, in declared order, must build
-        the expression exactly with one backend, so a hand-written expression is never read as a
-        choice it only resembles.
-    */
-    static recoverPicklistValueChoice(expression: string, declaredPicklistValues: readonly string[], fieldViewModel: IRecipeCockpitFieldViewModel): string[] | undefined {
-
-        const literalBuilders: { fakerService: 'faker-js' | 'snowfakery'; buildLiteral: (picklistValue: string) => string }[] = [
-            { fakerService: 'faker-js', buildLiteral: picklistValue => `\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(picklistValue, '`')}\`` },
-            { fakerService: 'snowfakery', buildLiteral: picklistValue => `'${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(picklistValue)}'` }
-        ];
-
-        for ( const literalBuilder of literalBuilders ) {
-            const chosenValues = declaredPicklistValues.filter(declaredValue => expression.includes(literalBuilder.buildLiteral(declaredValue)));
-            if ( chosenValues.length > 0 && this.buildPicklistChoiceExpression(literalBuilder.fakerService, chosenValues, fieldViewModel) === expression ) {
-                return chosenValues;
-            }
-        }
-
-        return undefined;
-
-    }
-
-    // WHAT A CARD'S EDIT OF A PICKLIST TICKS (#465), FOR THE TILES THAT ASKED; NOTHING FOR A CARD OR FIELD NOT ON SCREEN, OR NO EDIT
-    static readPicklistValueChoice(recipeViewModel: IRecipeCockpitRecipeViewModel,
-                                    treeKey: string,
-                                    objectApiName: string,
-                                    fieldApiName: string,
-                                    declaredPicklistValues: readonly string[],
-                                    nickname?: string): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true; isEdited?: true } {
-
-        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
-        if ( !tree ) {
-            return {};
-        }
-
-        // THE OCCURRENCE THE TILES WERE OPENED ON (#467): ITS OWN EDIT AND ITS OWN GENERATED LINE
-        const drawnField = this.findDrawnOccurrenceField(recipeViewModel, treeKey, objectApiName, nickname, fieldApiName);
-        if ( !drawnField ) {
-            return { treeKey: treeKey };
-        }
-        const fieldViewModel = drawnField.fieldViewModel;
-        const occurrenceNickname = drawnField.occurrence.nickname;
-        const fixedValue = ( tree.fixedValues ?? [] ).find(candidate => candidate.objectApiName === objectApiName && candidate.nickname === occurrenceNickname && candidate.fieldApiName === fieldApiName);
-        if ( !fixedValue ) {
-            const generatedChoice = this.readGeneratedPicklistChoice(fieldViewModel, declaredPicklistValues);
-            return generatedChoice ? { treeKey: treeKey, chosenPicklistValues: generatedChoice } : { treeKey: treeKey };
-        }
-
-        const chosenPicklistValues = fixedValue.kind === 'expression' ? this.recoverPicklistValueChoice(fixedValue.value, declaredPicklistValues, fieldViewModel) : undefined;
-        return chosenPicklistValues ? { treeKey: treeKey, chosenPicklistValues: chosenPicklistValues, isEdited: true } : { treeKey: treeKey, isOtherEdit: true, isEdited: true };
-
-    }
-
-    // A PICKLIST'S ACTIVE VALUES AND EVERY RECORD TYPE'S, FROM THE HOST-ONLY DISPLAY COPY; undefined FOR A FIELD THAT IS NOT A PICKLIST
-    static listDeclaredPicklistValues(panelState: IRecipeCockpitPanelState, objectApiName: string, fieldApiName: string): string[] | undefined {
-
-        const picklistDisplayValues = panelState.picklistDisplayValuesByObjectApiName.get(objectApiName)?.get(fieldApiName);
-
-        return picklistDisplayValues
-            ? [...picklistDisplayValues.picklistValues, ...picklistDisplayValues.recordTypePicklistValues.flatMap(recordTypeValues => recordTypeValues.picklistValues)]
-            : undefined;
-
-    }
-
-    // THE FOLDERS OF THE TREES ON SCREEN THAT HOLD AN EXCLUDED OBJECT, AN UNTICKED FIELD, A COUNT OR A RULE SWITCHED OFF
-    static listFolderNamesWithStoredSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): string[] {
-
-        const folderNames = new Set(recipeViewModel.trees.map(tree => tree.folderName).filter(folderName => !!folderName));
-
-        return [...folderNames].filter(folderName => (
-            treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
-                || treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
-                || treeSelections.objectCountsByFolderName.has(folderName)
-                || treeSelections.validationRulesOffByFolderName.has(folderName)
-        ));
-
-    }
-
     /*
         A run switch (#399): selections are kept by tree FOLDER, so a tree of the next run with the same
         folder would take them over unseen. When a tree on screen holds one, the reader chooses: Reset
@@ -1094,7 +496,7 @@ export class RecipeCockpitService {
             return true;
         }
 
-        const storedFolderNames = this.listFolderNamesWithStoredSelections(currentRecipe, RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState));
+        const storedFolderNames = RecipeCockpitTreeSelectionStore.listFolderNamesWithStoredSelections(currentRecipe, RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState));
 
         if ( storedFolderNames.length === 0 ) {
             return true;
@@ -1153,11 +555,6 @@ export class RecipeCockpitService {
 
     // THE CUSTOM TREE A RUN SHOWS INSTEAD OF ITS OWN TREES (#677), KEPT WHILE THE SAME RUN RELOADS; A RUN WITH NONE SHOWS ITS TREES
     static readonly selectedCustomTreeFolderNameByRunFolderName = new Map<string, string>();
-
-    // ONE RUN PICKER ENTRY: THE RUN, OR "<run>/<custom tree>" -- A FOLDER NAME NEVER HOLDS A "/"
-    static buildRunPickerKey(runFolderName: string, customTreeFolderName?: string): string {
-        return customTreeFolderName === undefined ? runFolderName : `${runFolderName}/${customTreeFolderName}`;
-    }
 
     // THE SAME FOR THE CARDS ONE PREDICATE PICKS
     static async refreshDataOrgReadinessForTrees(cockpitPanel: vscode.WebviewPanel,
@@ -1218,298 +615,6 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        What the generate button runs for a card with exclusions (#219): the filtered copy of its recipe, or
-        why there is none. Read at the click from the stored model, which is what the card shows.
-    */
-    static buildRunFakerFilteredRecipe(recipeText: string,
-                                        tree: IRecipeCockpitTreeViewModel,
-                                        objectLevelsByApiName: Map<string, number> | undefined,
-                                        recipeViewModel: IRecipeCockpitRecipeViewModel,
-                                        settingPlacer?: OccurrenceSettingPlacer): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } {
-
-        // A RECIPE BUILT FOR THE TICKED RECORD TYPES (#623) NAMES ITS BLOCKS ANEW, SO EACH SETTING IS PLACED ON THE BLOCK IT NOW BELONGS TO
-        const placeKeys = <T>(settingsByKey: Map<string, T>) => settingPlacer ? settingPlacer.placeKeys(settingsByKey) : settingsByKey;
-        const excludedObjectApiNames = RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(tree);
-        const placedExcludedFieldApiNames = placeKeys(this.listExcludedFieldApiNamesByOccurrence(tree));
-        const excludedFieldApiNamesByObject = settingPlacer ? settingPlacer.keepRecordTypeIdOfChoiceObjects(placedExcludedFieldApiNames) : placedExcludedFieldApiNames;
-        const objectCountsByObject = settingPlacer ? settingPlacer.placeCounts(this.listObjectCountsByObject(tree)) : this.listObjectCountsByObject(tree);
-        const fixedValuesByObject = placeKeys(this.listFixedValuesByObject(tree));
-        const unconstrainedValuesByObject = placeKeys(this.listUnconstrainedValuesByObject(recipeViewModel, tree));
-        const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
-        tree.objects
-            .filter(treeObject => treeObject.iterationNickname === undefined)
-            .forEach(treeObject => parentLookupsByObjectApiName.set(treeObject.objectApiName, treeObject.parentLookups.map(parentLookup => ({ ...parentLookup }))));
-
-        const noFieldsSelectedIterationKeys = [...placeKeys(new Map(this.listNoFieldsSelectedIterationKeys(tree).map(iterationKey => [iterationKey, true]))).keys()];
-        const filterResult = RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
-            excludedObjectApiNames: excludedObjectApiNames,
-            ...( noFieldsSelectedIterationKeys.length > 0 ? { excludedOccurrenceKeys: noFieldsSelectedIterationKeys } : {} ),
-            parentLookupsByObjectApiName: parentLookupsByObjectApiName,
-            levelsByObjectApiName: objectLevelsByApiName,
-            excludedFieldApiNamesByObject: excludedFieldApiNamesByObject,
-            objectCountsByObject: objectCountsByObject,
-            fixedValuesByObject: fixedValuesByObject,
-            unconstrainedValuesByObject: unconstrainedValuesByObject
-        });
-
-        if ( 'refusal' in filterResult ) {
-            return { refusalMessage: filterResult.refusal.message };
-        }
-
-        return {
-            recipeText: filterResult.recipeText,
-            excludedObjectApiNames: excludedObjectApiNames,
-            ...( excludedFieldApiNamesByObject.size > 0 ? { excludedFieldApiNamesByObject: Object.fromEntries(excludedFieldApiNamesByObject) } : {} ),
-            ...( filterResult.appliedCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(filterResult.appliedCounts.map(appliedCount => [appliedCount.objectApiName, appliedCount.count])) } : {} ),
-            ...( filterResult.appliedFixedValues.length > 0 ? { fixedValuesByObject: this.groupAppliedFixedValues(filterResult.appliedFixedValues) } : {} ),
-            ...( filterResult.appliedUnconstrainedValues.length > 0 ? { validationRulesOffByObject: this.groupFieldReferences(filterResult.appliedUnconstrainedValues) } : {} )
-        };
-
-    }
-
-    // fromEntries, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
-    static groupFieldReferences(fieldReferences: IRecipeCockpitFieldReferenceViewModel[]): Record<string, string[]> {
-
-        const objectApiNames = [...new Set(fieldReferences.map(fieldReference => fieldReference.objectApiName))];
-
-        return Object.fromEntries(objectApiNames.map(objectApiName => [objectApiName, fieldReferences
-            .filter(fieldReference => fieldReference.objectApiName === objectApiName)
-            .map(fieldReference => fieldReference.fieldApiName)]));
-
-    }
-
-    // fromEntries DEFINES EACH KEY, SO AN OBJECT OR FIELD NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
-    static groupAppliedFixedValues(appliedFixedValues: Array<{ objectApiName: string; fieldApiName: string; value: string }>): Record<string, Record<string, string>> {
-
-        const objectApiNames = [...new Set(appliedFixedValues.map(appliedFixedValue => appliedFixedValue.objectApiName))];
-
-        return Object.fromEntries(objectApiNames.map(objectApiName => [objectApiName, Object.fromEntries(appliedFixedValues
-            .filter(appliedFixedValue => appliedFixedValue.objectApiName === objectApiName)
-            .map(appliedFixedValue => [appliedFixedValue.fieldApiName, appliedFixedValue.value]))]));
-
-
-    }
-
-    static buildEmptyTreeHistoryAllowLists(): IRecipeCockpitTreeHistoryAllowLists {
-
-        return {
-            openableDatasetFolderNames: new Set(),
-            insertableDatasetFolderNames: new Set(),
-            countableDatasetFolderNames: new Set(),
-            viewableInsertResultsDatasetFolderNames: new Set(),
-            nameableTreeKeys: new Set(),
-            nameableDatasetFolderNames: new Set(),
-            selectableObjectKeys: new Set(),
-            selectableFieldKeys: new Set(),
-            selectableRecordTypeKeys: new Set(),
-            removableTodoKeys: new Set(),
-            restorableTodoKeys: new Set()
-        };
-
-    }
-
-    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
-
-        return typeof (focusRequest as IRecipeCockpitTreeFocus).treeKey === 'string';
-
-    }
-
-    static isTroubleshootingFocusRequest(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTroubleshootingFocusRequest {
-
-        return typeof (focusRequest as IRecipeCockpitTroubleshootingFocusRequest).treeFolderName === 'string';
-
-    }
-
-    /*
-        The options "treecipe.openRecipeCockpit" was run with. The command is callable by id, so only
-        { focusRecordTypes: true } asks for the Record types section, and an object name is kept only
-        if it is an api name -- it is matched against the loaded model and scrolled to, never opened.
-    */
-    static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
-
-        if ( !RecipeCockpitTreeSelectionStore.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
-            return undefined;
-        }
-
-        return SalesforceApiName.isApiName(openOptions.objectApiName) ? { objectApiName: openOptions.objectApiName } : {};
-
-    }
-
-    /*
-        The first card whose Record types section lists the object, opened there and scrolled to it;
-        with no object, or one no card lists, the first card that draws the section at all.
-        Undefined when no card does.
-    */
-    static resolveRecordTypesFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitRecordTypesFocusRequest): IRecipeCockpitTreeFocus | undefined {
-
-        const objectsByApiName = RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipeViewModel);
-        const listsRecordTypeObject = (tree: IRecipeCockpitTreeViewModel, objectApiName?: string) => tree.objects.some(treeObject =>
-            ( objectApiName === undefined || treeObject.objectApiName === objectApiName )
-            && !!objectsByApiName.get(treeObject.objectApiName)?.recordTypes);
-
-        const objectTree = focusRequest.objectApiName !== undefined
-            ? recipeViewModel.trees.find(tree => listsRecordTypeObject(tree, focusRequest.objectApiName))
-            : undefined;
-        if ( objectTree ) {
-            return { treeKey: objectTree.treeKey, tab: 'treecipe', recordTypes: { objectApiName: focusRequest.objectApiName } };
-        }
-
-        const anyTree = recipeViewModel.trees.find(tree => listsRecordTypeObject(tree));
-        return anyTree ? { treeKey: anyTree.treeKey, tab: 'treecipe', recordTypes: {} } : undefined;
-
-    }
-
-    // EVERY HISTORY ACTION THE RENDERED MODEL OFFERS, BY NAME, AND NOTHING ELSE
-    static collectTreeHistoryAllowLists(recipeViewModel: IRecipeCockpitRecipeViewModel, runFakerRecipeFilePathsByTreeKey: ReadonlyMap<string, string> = new Map()): IRecipeCockpitTreeHistoryAllowLists {
-
-        const treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
-        const objectsByApiName = RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipeViewModel);
-
-        recipeViewModel.trees.forEach(tree => {
-
-            tree.objects
-                .map(treeObject => objectsByApiName.get(treeObject.objectApiName))
-                .filter((objectViewModel): objectViewModel is IRecipeCockpitObjectViewModel => !!objectViewModel?.recordTypes)
-                .forEach(objectViewModel => {
-                    objectViewModel.recordTypes.forEach(recordType => treeHistoryAllowLists.selectableRecordTypeKeys.add(this.buildSelectableRecordTypeKey(objectViewModel.objectApiName, recordType.developerName)));
-                });
-
-            this.collectRemovableTodoLineNumbers(objectsByApiName, tree, runFakerRecipeFilePathsByTreeKey.get(tree.treeKey))
-                .forEach(lineNumber => treeHistoryAllowLists.removableTodoKeys.add(this.buildTodoActionKey(tree.treeKey, lineNumber)));
-            ( tree.removedTodos ?? [] ).forEach(removedTodo => treeHistoryAllowLists.restorableTodoKeys.add(this.buildTodoActionKey(tree.treeKey, removedTodo.removalKey)));
-
-            if ( tree.folderName !== '' ) {
-                treeHistoryAllowLists.nameableTreeKeys.add(tree.treeKey);
-                // EVERY OCCURRENCE'S FIELDS (#467): A FIELD ONLY AN ITERATION WRITES HAS A CHECKBOX ON THAT ROW
-                RecipeCockpitTreeSelectionStore.listTreeOccurrences(objectsByApiName, tree).forEach(({ objectApiName, objectViewModel }) => {
-                    treeHistoryAllowLists.selectableObjectKeys.add(this.buildSelectableObjectKey(tree.treeKey, objectApiName));
-                    RecipeCockpitTreeSelectionStore.listSelectableFieldApiNames(objectViewModel)
-                        .forEach(fieldApiName => treeHistoryAllowLists.selectableFieldKeys.add(this.buildSelectableFieldKey(tree.treeKey, objectApiName, fieldApiName)));
-                });
-            }
-
-            if ( !tree.history ) {
-                return;
-            }
-
-            tree.history.datasets.forEach(dataset => this.addDatasetToAllowLists(treeHistoryAllowLists, dataset));
-
-        });
-
-        return treeHistoryAllowLists;
-
-    }
-
-    static buildTodoActionKey(treeKey: string, todoName: string | number): string {
-
-        return `${treeKey}\n${todoName}`;
-
-    }
-
-    /*
-        Every TODO of the card's own recipe file a reader may remove (#391): on an object the card
-        draws whose recipe is that file, an iteration's and a field's included, and held by no lock.
-        A card with no single recipe file offers none, since there is no one file to write.
-    */
-    static collectRemovableTodoLineNumbers(objectsByApiName: Map<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel, recipeFilePath: string | undefined): number[] {
-
-        if ( !recipeFilePath ) {
-            return [];
-        }
-
-        return this.listTreeTodos(objectsByApiName, tree, recipeFilePath)
-            .filter(treeTodo => treeTodo.todo.removeLock === undefined)
-            .map(treeTodo => treeTodo.todo.lineNumber);
-
-    }
-
-    // EVERY TODO OF THE CARD'S OBJECTS WHOSE RECIPE IS recipeFilePath, WITH THE TEXT THE PANEL DRAWS FOR IT
-    static listTreeTodos(objectsByApiName: Map<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel, recipeFilePath: string): { todo: IRecipeCockpitTodoViewModel; text: string; objectApiName: string; fieldApiName?: string }[] {
-
-        const treeTodos: { todo: IRecipeCockpitTodoViewModel; text: string; objectApiName: string; fieldApiName?: string }[] = [];
-        const seenObjectApiNames = new Set<string>();
-
-        tree.objects.forEach(treeObject => {
-
-            const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
-            if ( !objectViewModel || objectViewModel.recipeFilePath !== recipeFilePath || seenObjectApiNames.has(objectViewModel.objectApiName) ) {
-                return;
-            }
-            seenObjectApiNames.add(objectViewModel.objectApiName);
-
-            const addTodos = (todos: IRecipeCockpitTodoViewModel[] | undefined, recipeValue: string | undefined, fieldApiName?: string) => ( todos ?? [] ).forEach(todo => {
-                treeTodos.push({ todo: todo, text: this.readTodoText(todo, recipeValue), objectApiName: objectViewModel.objectApiName, ...( fieldApiName !== undefined ? { fieldApiName: fieldApiName } : {} ) });
-            });
-
-            addTodos(objectViewModel.todos, undefined);
-            objectViewModel.fields.forEach(fieldViewModel => addTodos(fieldViewModel.todos, fieldViewModel.recipeValue, fieldViewModel.fieldApiName));
-            ( objectViewModel.iterations ?? [] ).forEach(iteration => {
-                addTodos(iteration.todos, undefined);
-                iteration.fields.forEach(iterationField => addTodos(iterationField.todos, iterationField.recipeValue, iterationField.fieldApiName));
-            });
-
-        });
-
-        return treeTodos;
-
-    }
-
-    // A TODO'S TEXT AS THE PANEL'S readFieldTodoText DRAWS IT: ITS OWN, OR THE SPAN OF THE FIELD'S VALUE THAT HOLDS IT
-    static readTodoText(todo: IRecipeCockpitTodoViewModel, recipeValue: string | undefined): string {
-
-        if ( typeof todo.text === 'string' ) {
-            return todo.text;
-        }
-
-        const value = typeof recipeValue === 'string' ? recipeValue : '';
-        const isUsableSpan = Number.isInteger(todo.valueStart) && Number.isInteger(todo.valueLength)
-            && todo.valueStart >= 0 && todo.valueLength > 0 && todo.valueStart + todo.valueLength <= value.length;
-
-        return isUsableSpan ? value.substr(todo.valueStart, todo.valueLength) : '';
-
-    }
-
-    static buildSelectableRecordTypeKey(objectApiName: string, developerName: string): string {
-
-        return `${objectApiName}\n${developerName}`;
-
-    }
-
-    // WHAT ONE DATA SET ROW OFFERS: THE ONE RULE A WHOLE MODEL AND A datasetAdded (#226) BOTH USE
-    static addDatasetToAllowLists(treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists, dataset: IRecipeCockpitTreeDatasetViewModel) {
-
-        treeHistoryAllowLists.openableDatasetFolderNames.add(dataset.datasetFolderName);
-        treeHistoryAllowLists.insertableDatasetFolderNames.add(dataset.datasetFolderName);
-        treeHistoryAllowLists.nameableDatasetFolderNames.add(dataset.datasetFolderName);
-
-        if ( dataset.recordCounts === null ) {
-            treeHistoryAllowLists.countableDatasetFolderNames.add(dataset.datasetFolderName);
-        }
-
-        if ( dataset.lastInsert?.hasResultsFile === true ) {
-            treeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.add(dataset.datasetFolderName);
-        }
-
-    }
-
-    /*
-        A COPY, never the same sets: once a model is acknowledged its pending and active lists ARE
-        the same objects, so adding a new row's names to "pending" in place would make them usable
-        before the panel has drawn the row.
-    */
-    static cloneTreeHistoryAllowLists(treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists): IRecipeCockpitTreeHistoryAllowLists {
-
-        const clonedAllowLists = this.buildEmptyTreeHistoryAllowLists();
-
-        (Object.keys(clonedAllowLists) as Array<keyof IRecipeCockpitTreeHistoryAllowLists>).forEach(allowListName => {
-            clonedAllowLists[allowListName] = new Set(treeHistoryAllowLists[allowListName]);
-        });
-
-        return clonedAllowLists;
-
-    }
-
     static buildInitialPanelState(workspaceRoot: string): IRecipeCockpitPanelState {
 
         return {
@@ -1528,8 +633,8 @@ export class RecipeCockpitService {
             selectableRunFolderNames: new Set(),
             loadablePicklistKeys: new Set(),
             treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
-            pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
-            treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
+            pendingTreeHistoryAllowLists: RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists(),
+            treeHistoryAllowLists: RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists(),
             pendingUpdatableTreeKeys: new Set(),
             updatableTreeKeys: new Set(),
             pendingOpenableRecordPreviews: new Map(),
@@ -1645,7 +750,7 @@ export class RecipeCockpitService {
         const persistedPanelPlace = previousPanelState?.recipeDataMessage || openFocusRequest ? undefined : this.readPersistedPanelPlace(workspaceState);
         // "Open Troubleshooting" (#375) IS ABOUT THE RUN THE INSERT WAS GENERATED FROM, WHICH IT NAMES
         const carriedRunFolderName = openFocusRequest
-            ? ( this.isTroubleshootingFocusRequest(openFocusRequest) ? openFocusRequest.runFolderName : undefined )
+            ? ( RecipeCockpitPanelPlace.isTroubleshootingFocusRequest(openFocusRequest) ? openFocusRequest.runFolderName : undefined )
             : previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || persistedPanelPlace?.runFolderName || undefined;
 
         const cockpitPanel = existingCockpitPanel
@@ -1721,7 +826,7 @@ export class RecipeCockpitService {
         }
 
         // A FRESH NONCE PER LOAD -- ONE REUSED ACROSS LOADS WOULD OUTLIVE THE ONE DOCUMENT IT AUTHORIZES
-        cockpitPanel.webview.html = this.buildWebviewShellHtml(this.buildNonce());
+        cockpitPanel.webview.html = RecipeCockpitShell.buildWebviewShellHtml(RecipeCockpitShell.buildNonce());
 
         this.registerPanelMessageSubscription(cockpitPanel);
 
@@ -2031,15 +1136,15 @@ export class RecipeCockpitService {
         const recipeViewModel = loadedRecipe.recipeViewModel;
         let focusTree: IRecipeCockpitTreeFocus | undefined;
         if ( focusRequest !== undefined ) {
-            focusTree = this.isTreeFocus(focusRequest)
+            focusTree = RecipeCockpitPanelPlace.isTreeFocus(focusRequest)
                 ? focusRequest
-                : this.isTroubleshootingFocusRequest(focusRequest)
-                    ? this.resolveTroubleshootingFocus(recipeViewModel, focusRequest)
-                    : this.resolveRecordTypesFocus(recipeViewModel, focusRequest);
+                : RecipeCockpitPanelPlace.isTroubleshootingFocusRequest(focusRequest)
+                    ? RecipeCockpitDrawnModel.resolveTroubleshootingFocus(recipeViewModel, focusRequest)
+                    : RecipeCockpitDrawnModel.resolveRecordTypesFocus(recipeViewModel, focusRequest);
         }
-        this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
+        RecipeCockpitTreeSelectionStore.applyTreePreferences(recipeViewModel.trees, RecipeCockpitTreeSelectionStore.readTreePreferences(this.recipeCockpitWorkspaceState));
         RecipeCockpitDatasetsHost.applyDatasetPreferences(recipeViewModel.trees, RecipeCockpitDatasetsHost.readDatasetPreferences(this, this.recipeCockpitWorkspaceState));
-        this.applyTreeSelections(recipeViewModel, this.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState), loadedRecipe.pinnedFixedValuesByFolderName));
+        this.applyTreeSelections(recipeViewModel, RecipeCockpitTreeSelectionStore.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState), loadedRecipe.pinnedFixedValuesByFolderName));
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
             recipe: recipeViewModel,
@@ -2054,7 +1159,7 @@ export class RecipeCockpitService {
             A saved place whose run is gone is dropped (#230): the newest run was loaded in its
             place, and a place is only ever about the run it names.
         */
-        panelState.openFocusTree = focusRequest !== undefined && !this.isTreeFocus(focusRequest) ? focusTree : undefined;
+        panelState.openFocusTree = focusRequest !== undefined && !RecipeCockpitPanelPlace.isTreeFocus(focusRequest) ? focusTree : undefined;
         panelState.restorePlace = persistedPanelPlace && persistedPanelPlace.runFolderName === recipeViewModel.selectedRunFolderName
             ? persistedPanelPlace
             : undefined;
@@ -2098,14 +1203,14 @@ export class RecipeCockpitService {
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
-        panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
-        panelState.pendingOpenableValidationRuleKeys = new Set(this.collectOpenableValidationRuleKeys(recipeViewModel));
+        panelState.pendingOpenableSourceKeys = new Set(RecipeCockpitDrawnModel.collectOpenableSourceKeys(recipeViewModel));
+        panelState.pendingOpenableValidationRuleKeys = new Set(RecipeCockpitDrawnModel.collectOpenableValidationRuleKeys(recipeViewModel));
         panelState.pendingValidationRuleListKeys = new Map();
         panelState.openableValidationRuleKeys = new Set();
-        panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => this.buildRunPickerKey(run.runFolderName, run.customTreeFolderName)));
-        panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
-        panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel, loadedRecipe.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
-        panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+        panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => RecipeCockpitDrawnModel.buildRunPickerKey(run.runFolderName, run.customTreeFolderName)));
+        panelState.pendingLoadablePicklistKeys = new Set(RecipeCockpitDrawnModel.collectLoadablePicklistKeys(recipeViewModel));
+        panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel, loadedRecipe.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
         // THE PANEL DRAWS THE BUTTON ONLY FOR A MODEL WITH NO RUN, AND ONLY ITS "rendered" SAYS THAT MODEL IS THE ONE ON SCREEN
         panelState.pendingIsGenerateTreecipeOffered = recipeViewModel.runs.length === 0;
         panelState.isGenerateTreecipeOffered = false;
@@ -2127,13 +1232,13 @@ export class RecipeCockpitService {
         panelState.pendingAssignableTreeKeys = new Set(RecipeCockpitTreecipeDataOrgs.collectAssignableTreeKeys(recipeViewModel));
         panelState.assignableTreeKeys = new Set();
         // A "+" OF THE OLD MODEL NAMES AN ITERATION THE NEW ONE'S ROWS MAY NOT DRAW WHERE IT WAS
-        panelState.pendingInsertableFriendTargets = this.collectInsertableFriendTargets(recipeViewModel);
+        panelState.pendingInsertableFriendTargets = RecipeCockpitDrawnModel.collectInsertableFriendTargets(recipeViewModel);
         panelState.insertableFriendTargets = new Map();
-        panelState.pendingWireableLookupTargets = this.collectWireableLookupTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
+        panelState.pendingWireableLookupTargets = RecipeCockpitDrawnModel.collectWireableLookupTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
         panelState.wireableLookupTargets = new Map();
-        panelState.pendingAddableParentTargets = this.collectAddableParentTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
+        panelState.pendingAddableParentTargets = RecipeCockpitDrawnModel.collectAddableParentTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
         panelState.addableParentTargets = new Map();
-        panelState.pendingOrgRecordLookupTargets = this.collectOrgRecordLookupTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
+        panelState.pendingOrgRecordLookupTargets = RecipeCockpitDrawnModel.collectOrgRecordLookupTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
         panelState.orgRecordLookupTargets = new Map();
         panelState.acknowledgedRenderSequence = null;
         panelState.dataOrgSelection = undefined;
@@ -2363,7 +1468,7 @@ export class RecipeCockpitService {
                 panelState.pendingValidationRuleListKeys = new Map();
                 panelState.selectableRunFolderNames = new Set();
                 panelState.loadablePicklistKeys = new Set();
-                panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+                panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
                 panelState.isGenerateTreecipeOffered = false;
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL BEING CHECKED IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
@@ -2429,7 +1534,7 @@ export class RecipeCockpitService {
                     panelState.pendingValidationRuleListKeys = new Map();
                     panelState.selectableRunFolderNames = new Set();
                     panelState.loadablePicklistKeys = new Set();
-                    panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+                    panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
                     panelState.isGenerateTreecipeOffered = false;
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.insertableTreeKeys = new Set();
@@ -2617,9 +1722,9 @@ export class RecipeCockpitService {
         const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === treeKey);
 
         if ( !recipeViewModel || !tree
-                || ( RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(tree).length === 0 && this.listExcludedFieldApiNamesByObject(tree).size === 0
-                    && this.listObjectCountsByObject(tree).size === 0 && !tree.fixedValues?.length
-                    && this.listUnconstrainedValuesByObject(recipeViewModel, tree).size === 0 ) ) {
+                || ( RecipeCockpitTreeSelectionStore.listExcludedObjectApiNames(tree).length === 0 && RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(tree).size === 0
+                    && RecipeCockpitDrawnModel.listObjectCountsByObject(tree).size === 0 && !tree.fixedValues?.length
+                    && RecipeCockpitDrawnModel.listUnconstrainedValuesByObject(recipeViewModel, tree).size === 0 ) ) {
             return undefined;
         }
 
@@ -2635,7 +1740,7 @@ export class RecipeCockpitService {
             return refuse(`its recipe could not be read (${String(readError?.code ?? readError)}).`);
         }
 
-        const filteredRecipe = this.buildRunFakerFilteredRecipe(recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel);
+        const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel);
 
         return 'refusalMessage' in filteredRecipe ? refuse(filteredRecipe.refusalMessage) : filteredRecipe;
 
@@ -2757,10 +1862,6 @@ export class RecipeCockpitService {
 
     static readSourceApiVersion(workspaceRoot: string): string | undefined {
         return RecipeCockpitOrgRuns.readSourceApiVersion(workspaceRoot);
-    }
-
-    static describeThrown(thrownValue: unknown): string {
-        return RecipeCockpitOrgRuns.describeThrown(thrownValue);
     }
 
     static async runCancellableRetrieve(progressTitle: string, cliArguments: string[], workspaceRoot: string, jsforceRetrieve: { orgUsername: string; components: IMetadataDeployComponent[]; destination: MetadataRetrieveDestination }, panelCancellation?: IRecipeCockpitPanelCancellation): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean; isNothingWritten?: boolean; payload: Record<string, unknown> | undefined }> {
@@ -2965,68 +2066,6 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        The expression a field's new values are generated from (#417): the FIRST "\${{ ... }}" line of
-        its recipe value, as the Updater's editor starts from it -- a double-quoted one unquoted. The
-        model's value is the display form (continuation lines moved to column 0, a block indicator
-        dropped), so a record type's commented variants and a "### Driven by ValidationRule" note are
-        left out rather than written as lines no recipe layout reads. Undefined when there is none
-        (a TODO comment loads as null).
-    */
-    static findRecipeExpression(recipeValue: string | undefined): string | undefined {
-
-        return RecipeCockpitRecipeWriter.findFirstExpressionLine(recipeValue);
-
-    }
-
-    // A FIELD'S VALUE AS THE ORG'S ANSWER CASES IT: SOQL NAMES ARE CASE-INSENSITIVE, AND THE ORG ANSWERS WITH ITS OWN CASING
-    static readRecordFieldValue(record: Record<string, unknown>, fieldApiName: string): unknown {
-        if ( Object.prototype.hasOwnProperty.call(record, fieldApiName) ) {
-            return record[fieldApiName];
-        }
-        const lowerCaseName = fieldApiName.toLowerCase();
-        const matchingKey = Object.keys(record).find(recordKey => recordKey.toLowerCase() === lowerCaseName);
-        return matchingKey === undefined ? null : record[matchingKey];
-    }
-
-    // WHICH FIELDS AN UPDATE OR A RESTORE WROTE THAT ONLY THE ORG HELD (#446), FOR THE RESULTS FILE; NOTHING WHEN THERE WERE NONE
-    static buildOrgOnlyFieldsResult(snapshotObjects: readonly IUpdateSnapshotObject[]): { orgOnlyFields?: Record<string, string[]> } {
-
-        const orgOnlyEntries = snapshotObjects
-            .filter(snapshotObject => ( snapshotObject.orgOnlyFieldApiNames ?? [] ).length > 0)
-            .map((snapshotObject): [string, string[]] => [snapshotObject.objectApiName, [...snapshotObject.orgOnlyFieldApiNames as string[]]]);
-
-        return orgOnlyEntries.length > 0 ? { orgOnlyFields: Object.fromEntries(orgOnlyEntries) } : {};
-
-    }
-
-    /*
-        Why a field a snapshot says only the org held (#446) is not one the Treecipe Adapter writes
-        back, from the org's describe: the Updater's lock rule read off what the org says the field is,
-        since the recipe has no model of it. Not updateable or calculated is findUpdateReason's.
-    */
-    static findDescribedOrgOnlyFieldLockReason(fieldApiName: string, describedField: INormalizedOrgField | undefined): string | undefined {
-
-        if ( !describedField ) {
-            return undefined;
-        }
-        if ( fieldApiName.toLowerCase() === 'recordtypeid' ) {
-            return RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON;
-        }
-        if ( describedField.fieldType === 'reference' || describedField.referenceTo.length > 0 ) {
-            return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
-        }
-        if ( describedField.controllingField ) {
-            return `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}${describedField.controllingField}`;
-        }
-        if ( describedField.isCalculated ) {
-            return RECIPE_COCKPIT_UPDATER_FORMULA_REASON;
-        }
-
-        return undefined;
-
-    }
-
     // A FOLDER NAME CAN CARRY A BIDI OR CONTROL CHARACTER THAT MAKES A PATH READ AS ANOTHER; THE FILE OPENED IS CHOSEN BY INDEX, SO ONLY THE TEXT IS CLEANED
     static toDisplayedRelativePath(workspaceRoot: string, filePath: string): string {
 
@@ -3034,22 +2073,6 @@ export class RecipeCockpitService {
             .split(path.sep)
             .join('/')
             .replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, '');
-
-    }
-
-    // WHETHER A PICKLIST IS WRITTEN ON AN OBJECT WITH RECORD TYPES, WHICH CAN NARROW IT: THE ORG DECIDES, PER RECORD (#418)
-    static hasRecordTypePicklist(recipe: IRecipeCockpitRecipeViewModel,
-                                         plannedObjects: ReadonlyArray<{ objectApiName: string; fieldApiNames: readonly string[] }>,
-                                         describeOutcomes: ReadonlyMap<string, { describe?: { fields: ReadonlyArray<{ fieldApiName: string; fieldType: string }> } }>): boolean {
-
-        return plannedObjects.some(plannedObject => {
-            const describedFields = describeOutcomes.get(plannedObject.objectApiName)?.describe?.fields ?? [];
-            return recipe.objects.some(object => object.objectApiName === plannedObject.objectApiName && ( object.recordTypes ?? [] ).length > 1)
-                && plannedObject.fieldApiNames.some(fieldApiName => {
-                    const fieldType = describedFields.find(describedField => describedField.fieldApiName.toLowerCase() === fieldApiName.toLowerCase())?.fieldType;
-                    return fieldType === 'picklist' || fieldType === 'multipicklist';
-                });
-        });
 
     }
 
@@ -3150,37 +2173,6 @@ export class RecipeCockpitService {
 
     }
 
-    // THE CARD OF THE NAMED TREE, ON THE TROUBLESHOOTING TAB AND SUB-TAB; undefined WHEN NO CARD HAS THAT FOLDER
-    static resolveTroubleshootingFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitTroubleshootingFocusRequest): IRecipeCockpitTreeFocus | undefined {
-
-        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.folderName !== '' && candidateTree.folderName === focusRequest.treeFolderName);
-
-        return tree ? { treeKey: tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: focusRequest.troubleshootingSubTab } : undefined;
-
-    }
-
-    /*
-        The options "treecipe.openRecipeCockpit" was run with, for "Open Troubleshooting" (#375). The
-        command is callable by id, so the run and tree are kept only as plain folder NAMES and the
-        sub-tab only when it is one the tab draws; they are matched against the loaded run, never opened.
-    */
-    static readTroubleshootingFocusRequest(openOptions: unknown): IRecipeCockpitTroubleshootingFocusRequest | undefined {
-
-        if ( !RecipeCockpitTreeSelectionStore.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
-            return undefined;
-        }
-
-        const { runFolderName, treeFolderName, troubleshootingSubTab } = openOptions;
-        const isFolderName = (candidate: unknown): candidate is string => RecipeCockpitTreeSelectionStore.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
-
-        if ( !isFolderName(runFolderName) || !isFolderName(treeFolderName) || !( RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS as readonly unknown[] ).includes(troubleshootingSubTab) ) {
-            return undefined;
-        }
-
-        return { runFolderName: runFolderName, treeFolderName: treeFolderName, troubleshootingSubTab: troubleshootingSubTab as RecipeCockpitTroubleshootingSubTab };
-
-    }
-
     /*
         The whole host side of the protocol, as a pure function of the message and the host's state.
 
@@ -3247,7 +2239,7 @@ export class RecipeCockpitService {
             case 'savePlace': {
 
                 const drawnRunFolderName = panelState.recipeDataMessage?.recipe.selectedRunFolderName;
-                const postedRunFolderName = RecipeCockpitTreeSelectionStore.isPlainRecord(panelMessage.place) ? panelMessage.place.runFolderName : undefined;
+                const postedRunFolderName = RecipeCockpitUntrustedValue.isPlainRecord(panelMessage.place) ? panelMessage.place.runFolderName : undefined;
 
                 // THE CHEAP CHECKS FIRST: A PLACE OF ANOTHER RUN IS REFUSED WITHOUT BEING NORMALIZED
                 if ( !drawnRunFolderName || postedRunFolderName !== drawnRunFolderName || !panelState.selectableRunFolderNames.has(drawnRunFolderName) ) {
@@ -3356,7 +2348,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( !panelState.openableSourceKeys.has(this.buildOpenSourceKey(filePath, lineNumber)) ) {
+                if ( !panelState.openableSourceKeys.has(RecipeCockpitDrawnModel.buildOpenSourceKey(filePath, lineNumber)) ) {
                     return undefined;
                 }
 
@@ -3419,7 +2411,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( !panelState.loadablePicklistKeys.has(this.buildPicklistKey(objectApiName, fieldApiName)) ) {
+                if ( !panelState.loadablePicklistKeys.has(RecipeCockpitDrawnModel.buildPicklistKey(objectApiName, fieldApiName)) ) {
                     return undefined;
                 }
 
@@ -3436,7 +2428,7 @@ export class RecipeCockpitService {
                         recordTypePicklistValues: picklistDisplayValues.recordTypePicklistValues,
                         renderSequence: panelState.recipeDataMessage.renderSequence,
                         ...( typeof nickname === 'string' ? { nickname: nickname } : {} ),
-                        ...( typeof treeKey === 'string' ? this.readPicklistValueChoice(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName, picklistDisplayValues.picklistValues, typeof nickname === 'string' ? nickname : undefined) : {} )
+                        ...( typeof treeKey === 'string' ? RecipeCockpitDrawnModel.readPicklistValueChoice(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName, picklistDisplayValues.picklistValues, typeof nickname === 'string' ? nickname : undefined) : {} )
                     }
                 };
 
@@ -3449,7 +2441,7 @@ export class RecipeCockpitService {
                 const customTreeFolderName = typeof panelMessage.customTreeFolderName === 'string' ? panelMessage.customTreeFolderName : undefined;
 
                 if ( typeof runFolderName !== 'string' || ( panelMessage.customTreeFolderName !== undefined && customTreeFolderName === undefined )
-                        || !panelState.selectableRunFolderNames.has(this.buildRunPickerKey(runFolderName, customTreeFolderName)) ) {
+                        || !panelState.selectableRunFolderNames.has(RecipeCockpitDrawnModel.buildRunPickerKey(runFolderName, customTreeFolderName)) ) {
                     return undefined;
                 }
 
@@ -3620,279 +2612,6 @@ export class RecipeCockpitService {
         }
 
         return replayMessages;
-
-    }
-
-    static buildOpenSourceKey(filePath: string, lineNumber: number): string {
-
-        return `${filePath}\n${lineNumber}`;
-
-    }
-
-    static buildInsertableFriendKey(treeKey: string, objectApiName: string, iterationNickname: string, friendObjectApiName: string): string {
-
-        return `${treeKey}\n${objectApiName}\n${iterationNickname}\n${friendObjectApiName}`;
-
-    }
-
-    /*
-        Every friend a "+" the rendered model draws can add, by card, object, iteration and friend,
-        each mapped to the recipe file the iteration is in -- host-only, so the panel never names it.
-        Only a card that LISTS the iteration offers it, so a key names a "+" that is on screen.
-    */
-    static collectInsertableFriendTargets(recipeViewModel: IRecipeCockpitRecipeViewModel): Map<string, string> {
-
-        const insertableFriendTargets = new Map<string, string>();
-        const objectsByApiName = new Map(recipeViewModel.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
-
-        recipeViewModel.trees.forEach(tree => tree.objects
-            .filter(treeObject => treeObject.iterationNickname !== undefined)
-            .forEach(treeObject => {
-
-                const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
-                const iteration = objectViewModel?.iterations?.find(candidateIteration => candidateIteration.nickname === treeObject.iterationNickname);
-
-                if ( !objectViewModel?.recipeFilePath || !iteration ) {
-                    return;
-                }
-
-                ( iteration.insertableFriendObjectApiNames ?? [] ).forEach(friendObjectApiName => insertableFriendTargets.set(
-                    this.buildInsertableFriendKey(tree.treeKey, objectViewModel.objectApiName, iteration.nickname, friendObjectApiName),
-                    objectViewModel.recipeFilePath
-                ));
-
-            }));
-
-        return insertableFriendTargets;
-
-    }
-
-    static buildWireableLookupKey(treeKey: string, objectApiName: string, objectNickname: string | undefined, fieldApiName: string): string {
-
-        return `${treeKey}\n${RecipeCockpitRecipeWriter.buildLookupWiringKey(objectApiName, objectNickname, fieldApiName)}`;
-
-    }
-
-    // EVERY "Wire to…" THE RENDERED MODEL DRAWS, MAPPED TO ITS CARD'S RECIPE FILE -- HOST-ONLY, SO THE PANEL NEVER NAMES IT
-    static collectWireableLookupTargets(recipeViewModel: IRecipeCockpitRecipeViewModel, recipeFilePathsByTreeKey: ReadonlyMap<string, string>): Map<string, IRecipeCockpitLookupWiringTarget> {
-
-        const wireableLookupTargets = new Map<string, IRecipeCockpitLookupWiringTarget>();
-
-        recipeViewModel.trees.forEach(tree => {
-
-            const recipeFilePath = recipeFilePathsByTreeKey.get(tree.treeKey);
-            if ( !recipeFilePath ) {
-                return;
-            }
-
-            ( tree.lookupWirings ?? [] ).forEach(wiring => wireableLookupTargets.set(
-                this.buildWireableLookupKey(tree.treeKey, wiring.objectApiName, wiring.objectNickname, wiring.fieldApiName),
-                { recipeFilePath: recipeFilePath, wiring: wiring }
-            ));
-
-        });
-
-        return wireableLookupTargets;
-
-    }
-
-    // EVERY "Add <Parent> to recipe" THE RENDERED MODEL DRAWS, MAPPED TO ITS CARD'S RECIPE FILE -- HOST-ONLY, SO THE PANEL NEVER NAMES IT
-    static collectAddableParentTargets(recipeViewModel: IRecipeCockpitRecipeViewModel, recipeFilePathsByTreeKey: ReadonlyMap<string, string>): Map<string, IRecipeCockpitAddableParentTarget> {
-
-        const addableParentTargets = new Map<string, IRecipeCockpitAddableParentTarget>();
-
-        recipeViewModel.trees.forEach(tree => {
-
-            const recipeFilePath = recipeFilePathsByTreeKey.get(tree.treeKey);
-            if ( !recipeFilePath ) {
-                return;
-            }
-
-            ( tree.addableParents ?? [] ).forEach(addition => addableParentTargets.set(
-                this.buildWireableLookupKey(tree.treeKey, addition.objectApiName, addition.objectNickname, addition.fieldApiName),
-                { recipeFilePath: recipeFilePath, addition: addition }
-            ));
-
-        });
-
-        return addableParentTargets;
-
-    }
-
-    // EVERY "Use existing <Parent> from org…" THE RENDERED MODEL DRAWS ENABLED, MAPPED TO ITS CARD'S RECIPE FILE -- HOST-ONLY
-    static collectOrgRecordLookupTargets(recipeViewModel: IRecipeCockpitRecipeViewModel, recipeFilePathsByTreeKey: ReadonlyMap<string, string>): Map<string, IRecipeCockpitOrgRecordLookupTarget> {
-
-        const orgRecordLookupTargets = new Map<string, IRecipeCockpitOrgRecordLookupTarget>();
-
-        recipeViewModel.trees.forEach(tree => {
-
-            const recipeFilePath = recipeFilePathsByTreeKey.get(tree.treeKey);
-            if ( !recipeFilePath ) {
-                return;
-            }
-
-            ( tree.emptyLookups ?? [] )
-                .filter(emptyLookup => emptyLookup.orgRecordRefusal === undefined)
-                .forEach(emptyLookup => orgRecordLookupTargets.set(
-                    this.buildWireableLookupKey(tree.treeKey, emptyLookup.objectApiName, emptyLookup.objectNickname, emptyLookup.fieldApiName),
-                    { recipeFilePath: recipeFilePath, emptyLookup: emptyLookup }
-                ));
-
-        });
-
-        return orgRecordLookupTargets;
-
-    }
-
-    static buildPicklistKey(objectApiName: string, fieldApiName: string): string {
-
-        return `${objectApiName}\n${fieldApiName}`;
-
-    }
-
-    // EVERY ROW THE RENDERED MODEL MARKS AS A PICKLIST, AND NOTHING ELSE
-    static collectLoadablePicklistKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
-
-        return recipeViewModel.objects.flatMap(objectViewModel => objectViewModel.fields
-            .filter(fieldViewModel => fieldViewModel.isPicklist)
-            .map(fieldViewModel => this.buildPicklistKey(objectViewModel.objectApiName, fieldViewModel.fieldApiName)));
-
-    }
-
-    static collectOpenableValidationRuleKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
-
-        const ruleKeys = new Set<string>();
-        const collect = (objectApiName: string, fieldViewModels: IRecipeCockpitFieldViewModel[]) => fieldViewModels.forEach(fieldViewModel =>
-            ( fieldViewModel.validationRules?.sourceRuleNames ?? [] ).forEach(ruleName => ruleKeys.add(RecipeCockpitValidationRuleList.buildRuleSourceKey(objectApiName, ruleName))));
-
-        recipeViewModel.objects.forEach(objectViewModel => collect(objectViewModel.objectApiName, objectViewModel.fields));
-
-        return [...ruleKeys];
-
-    }
-
-    // EVERY FILE AND LINE THE RENDERED MODEL OFFERS TO OPEN, AND NOTHING ELSE
-    static collectOpenableSourceKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
-
-        const openableSourceKeys: string[] = [];
-
-        recipeViewModel.objects.forEach(objectViewModel => {
-
-            if ( !objectViewModel.recipeFilePath ) {
-                return;
-            }
-
-            // EVERY TODO COMMENT THE PANEL LISTS IS ITS OWN LINK (#354); ONE ON ITS OWNER'S LINE IS THAT LINE'S KEY ALREADY
-            const pushTodoKeys = (todos: IRecipeCockpitTodoViewModel[] | undefined, ownerLineNumber: number | undefined) => ( todos ?? [] )
-                .filter(todo => todo.lineNumber !== ownerLineNumber)
-                .forEach(todo => openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, todo.lineNumber)));
-
-            if ( objectViewModel.lineNumber ) {
-                openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, objectViewModel.lineNumber));
-            }
-            pushTodoKeys(objectViewModel.todos, objectViewModel.lineNumber);
-
-            objectViewModel.fields.forEach(fieldViewModel => {
-                if ( fieldViewModel.lineNumber ) {
-                    openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, fieldViewModel.lineNumber));
-                }
-                pushTodoKeys(fieldViewModel.todos, fieldViewModel.lineNumber);
-            });
-
-            ( objectViewModel.iterations ?? [] ).forEach(iteration => {
-                openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iteration.lineNumber));
-                pushTodoKeys(iteration.todos, iteration.lineNumber);
-                iteration.fields.forEach(iterationField => {
-                    openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iterationField.lineNumber));
-                    pushTodoKeys(iterationField.todos, iterationField.lineNumber);
-                });
-            });
-
-        });
-
-        return openableSourceKeys;
-
-    }
-
-    static buildContentSecurityPolicy(nonce: string): string {
-
-        return `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none';`;
-
-    }
-
-    /*
-        From the crypto RNG rather than Math.random. The nonce is what lets the CSP deny every
-        script but this extension's own, so it should not depend on there being no injection
-        primitive to spend a predicted value on -- that is the property the CSP exists to provide
-        independently.
-    */
-    static buildNonce(): string {
-
-        /*
-            48 bytes rather than 24: base64 yields "+", "/" and "=" which are stripped so the value
-            is safe unquoted in the CSP header, and 24 bytes can fall short of 32 characters once
-            they are removed.
-        */
-        return crypto.randomBytes(48).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
-
-    }
-
-    static buildPaletteCustomPropertyName(paletteToken: RecipeCockpitPaletteToken): string {
-
-        return CockpitPalette.buildCustomPropertyName(paletteToken);
-
-    }
-
-    static buildPaletteCustomProperties(): string {
-
-        return CockpitPalette.buildCustomProperties();
-
-    }
-
-    /*
-        The cockpit's document, as a string carrying NO value this extension does not author.
-
-        The template interpolates the nonce and compile-time constants in this file, and nothing
-        else. Recipes -- object and field names, faker expressions, file paths -- come from files
-        this extension does not control, so none of it is interpolated into html: it arrives over
-        postMessage and is written through textContent, which is why this builder needs no escaping
-        rather than having escaping that could be forgotten.
-
-        Keeping the SIGNATURE to the nonce is what holds that line in place, because a value from
-        outside this file can only reach the template through a parameter. Widening it to take a
-        model would quietly re-open the markup context the guarantee rests on.
-    */
-    static buildWebviewShellHtml(nonce: string): string {
-
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${this.buildContentSecurityPolicy(nonce)}">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${RECIPE_COCKPIT_PANEL_TITLE}</title>
-<style nonce="${nonce}">
-    :root {
-${this.buildPaletteCustomProperties()}
-${CockpitKitStylesheet.buildCustomProperties()}
-${CockpitKitStylesheet.buildCustomProperties(RECIPE_COCKPIT_CUSTOM_PROPERTIES)}
-        color-scheme: light;
-    }
-${RECIPE_COCKPIT_PANEL_STYLESHEET}</style>
-</head>
-<body>
-<div class="cockpitHeader">
-<h1>${RECIPE_COCKPIT_PANEL_TITLE}</h1>
-<div id="cockpitMeta" class="cockpitMeta"></div>
-</div>
-<div id="loadStatus" class="loadStatus">${RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT}</div>
-<div id="cockpitBody"></div>
-${COCKPIT_KIT_CONFIRM_DIALOG_HOST_MARKUP}
-<script nonce="${nonce}">
-${RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT}</script>
-</body>
-</html>
-`;
 
     }
 

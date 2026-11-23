@@ -14,7 +14,6 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_BUTTON_KINDS,
     RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL,
     RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX,
@@ -30,6 +29,10 @@ import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs'
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import {
+    RECIPE_COCKPIT_BUTTON_KINDS,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     #349: the cockpit's confirmations are asked INSIDE the panel, in its own style, with a body that
@@ -1308,7 +1311,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
     describe('the stylesheet', () => {
 
-        const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
+        const shellHtml = () => RecipeCockpitShell.buildWebviewShellHtml('testNonce');
         const ruleFor = (selector: string) => new RegExp(`\\n\\s*${selector} \\{([^}]*)\\}`).exec(shellHtml())?.[1] ?? '';
 
         it('dims the cockpit behind a centred dialog whose body scrolls and whose buttons stay below it', () => {

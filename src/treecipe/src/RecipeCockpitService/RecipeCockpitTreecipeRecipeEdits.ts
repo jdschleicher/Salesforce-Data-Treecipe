@@ -38,6 +38,7 @@ import {
 import { RecipeCockpitRecordCreation } from './RecipeCockpitRecordCreation';
 import { RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     The Treecipe tab's recipe edits (moved out of the hub by #688): a friend on a self-lookup
@@ -127,7 +128,7 @@ export class RecipeCockpitTreecipeRecipeEdits {
             return refuse('its recipe file no longer exists in this workspace. Re-open the Recipe Cockpit to load the runs currently on disk.');
         }
 
-        const drawnField = hub.findDrawnField(panelState.recipeDataMessage?.recipe, tree.treeKey, objectApiName, fieldApiName);
+        const drawnField = RecipeCockpitDrawnModel.findDrawnField(panelState.recipeDataMessage?.recipe, tree.treeKey, objectApiName, fieldApiName);
         const lockReason = drawnField
             ? hub.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel)
             : 'the field is no longer drawn';

@@ -78,6 +78,7 @@ import { SalesforceCli } from '../../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 // A RECORD Id OF THE SALESFORCE SHAPE, ITS FIRST 15 CHARACTERS UNIQUE, AS A RESTORE'S SNAPSHOT CHECK READS THEM
 const fakeRecordId = (objectApiName: string, recordIndex: number) =>
@@ -319,12 +320,12 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         it('reads the Updater\'s lock off what the org says a field is', () => {
 
-            expect(RecipeCockpitService.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({}))).toBeUndefined();
-            expect(RecipeCockpitService.findDescribedOrgOnlyFieldLockReason('Region_Code__c', undefined)).toBeUndefined();
-            expect(RecipeCockpitService.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({ type: 'reference', referenceTo: ['Account'] }))).toBe(RECIPE_COCKPIT_UPDATER_LOOKUP_REASON);
-            expect(RecipeCockpitService.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({ type: 'picklist', dependentPicklist: true, controllerName: 'Rating__c' }))).toBe(`${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c`);
-            expect(RecipeCockpitService.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({ calculated: true }))).toBe(RECIPE_COCKPIT_UPDATER_FORMULA_REASON);
-            expect(RecipeCockpitService.findDescribedOrgOnlyFieldLockReason('RecordTypeId', describedField({ name: 'RecordTypeId' }))).toBe(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON);
+            expect(RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({}))).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason('Region_Code__c', undefined)).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({ type: 'reference', referenceTo: ['Account'] }))).toBe(RECIPE_COCKPIT_UPDATER_LOOKUP_REASON);
+            expect(RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({ type: 'picklist', dependentPicklist: true, controllerName: 'Rating__c' }))).toBe(`${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c`);
+            expect(RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason('Region_Code__c', describedField({ calculated: true }))).toBe(RECIPE_COCKPIT_UPDATER_FORMULA_REASON);
+            expect(RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason('RecordTypeId', describedField({ name: 'RecordTypeId' }))).toBe(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON);
 
         });
 

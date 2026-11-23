@@ -97,6 +97,8 @@ import { DATASET_COLLECTIONS_API_FOLDER_NAME } from '../../DatasetSourceService/
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const SNOWFAKERY_RUN = 'recipe-2026-09-20T10-00-00';
@@ -2434,8 +2436,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
                 const request = { focusTroubleshooting: true, runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' };
 
-                expect(RecipeCockpitService.readTroubleshootingFocusRequest(request)).toEqual({ runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
-                expect(RecipeCockpitService.readTroubleshootingFocusRequest({ ...request, extra: '/etc/passwd' })).toEqual({ runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
+                expect(RecipeCockpitPanelPlace.readTroubleshootingFocusRequest(request)).toEqual({ runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
+                expect(RecipeCockpitPanelPlace.readTroubleshootingFocusRequest({ ...request, extra: '/etc/passwd' })).toEqual({ runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
                 [
                     undefined,
                     { ...request, focusTroubleshooting: 'true' },
@@ -2447,7 +2449,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     { ...request, troubleshootingSubTab: 'compare' },
                     { ...request, troubleshootingSubTab: '__proto__' },
                     { focusRecordTypes: true }
-                ].forEach(openOptions => expect(RecipeCockpitService.readTroubleshootingFocusRequest(openOptions)).toBeUndefined());
+                ].forEach(openOptions => expect(RecipeCockpitPanelPlace.readTroubleshootingFocusRequest(openOptions)).toBeUndefined());
 
             });
 
@@ -2456,9 +2458,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
                 const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
 
-                expect(RecipeCockpitService.resolveTroubleshootingFocus(recipe, { runFolderName: SNOWFAKERY_RUN, treeFolderName: LEAD_TREE_KEY, troubleshootingSubTab: 'globalValueSets' }))
+                expect(RecipeCockpitDrawnModel.resolveTroubleshootingFocus(recipe, { runFolderName: SNOWFAKERY_RUN, treeFolderName: LEAD_TREE_KEY, troubleshootingSubTab: 'globalValueSets' }))
                     .toEqual({ treeKey: LEAD_TREE_KEY, tab: 'troubleshooting', troubleshootingSubTab: 'globalValueSets' });
-                expect(RecipeCockpitService.resolveTroubleshootingFocus(recipe, { runFolderName: SNOWFAKERY_RUN, treeFolderName: 'Opportunity-ONLY', troubleshootingSubTab: 'fields' })).toBeUndefined();
+                expect(RecipeCockpitDrawnModel.resolveTroubleshootingFocus(recipe, { runFolderName: SNOWFAKERY_RUN, treeFolderName: 'Opportunity-ONLY', troubleshootingSubTab: 'fields' })).toBeUndefined();
 
             });
 
