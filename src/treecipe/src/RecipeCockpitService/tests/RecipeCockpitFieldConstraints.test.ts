@@ -254,7 +254,7 @@ describe('RecipeCockpitService -- faker bounds removed (#356)', () => {
         expect(read.objectCountsByFolderName).toEqual(new Map([[ACCOUNT_TREE_KEY, new Map([['Account', 4]])]]));
         expect(read.validationRulesOffByFolderName).toEqual(new Map([[ACCOUNT_TREE_KEY, new Map([['Account', new Set(['Rating__c'])]])]]));
 
-        await RecipeCockpitService.writeObjectSelections(workspaceState, read.excludedObjectApiNamesByFolderName);
+        await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, read.excludedObjectApiNamesByFolderName);
         const written = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as Record<string, unknown>;
 
         expect(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITH_CONSTRAINTS + 1);

@@ -222,10 +222,10 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const workspaceState = buildWorkspaceState();
             const selections = new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])], ['__proto__', new Set(['Lead'])]]);
 
-            await expect(RecipeCockpitService.writeObjectSelections(workspaceState, selections)).resolves.toBeTrue();
+            await expect(RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, selections)).resolves.toBeTrue();
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'], ['__proto__']: ['Lead'] }));
-            expect(RecipeCockpitService.readObjectSelections(workspaceState)).toEqual(selections);
+            expect(RecipeCockpitTreeSelectionStore.readObjectSelections(workspaceState)).toEqual(selections);
 
         });
 
@@ -233,7 +233,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             const workspaceState = buildWorkspaceState();
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set<string>()], [LEAD_TREE_KEY, new Set(['Lead'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set<string>()], [LEAD_TREE_KEY, new Set(['Lead'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({ [LEAD_TREE_KEY]: ['Lead'] }));
 
@@ -241,12 +241,12 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         it('reads nothing from another shape or version, and drops every entry that is not a folder of object api names', () => {
 
-            const read = (storedValue: unknown) => RecipeCockpitService.readObjectSelections(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedValue }));
+            const read = (storedValue: unknown) => RecipeCockpitTreeSelectionStore.readObjectSelections(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedValue }));
 
             expect(read(undefined).size).toBe(0);
             expect(read('Contact').size).toBe(0);
             expect(read({ ...storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'] }), version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION + 1 }).size).toBe(0);
-            expect(RecipeCockpitService.readObjectSelections({ get: () => { throw new Error('no state'); }, update: jest.fn() } as any).size).toBe(0);
+            expect(RecipeCockpitTreeSelectionStore.readObjectSelections({ get: () => { throw new Error('no state'); }, update: jest.fn() } as any).size).toBe(0);
 
             expect(read(storedSelections({
                 [ACCOUNT_TREE_KEY]: ['Contact', 'Bad\nName', 7, ''],
@@ -266,11 +266,11 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
                 objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } }
             } });
 
-            expect(RecipeCockpitService.readObjectSelections(workspaceState)).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            expect(RecipeCockpitTreeSelectionStore.readObjectSelections(workspaceState)).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
             expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).objectCountsByFolderName.size).toBe(0);
 
             workspaceState.storedValues.set(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY, { ...storedSelections({}), objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } } });
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual({
                 ...storedSelections({ [LEAD_TREE_KEY]: ['Lead'] }),
@@ -284,8 +284,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
             const failingState = { get: jest.fn(), update: jest.fn(() => Promise.reject(new Error('[disk](command:x) full'))) };
 
-            await expect(RecipeCockpitService.writeObjectSelections(undefined, new Map())).resolves.toBeFalse();
-            await expect(RecipeCockpitService.writeObjectSelections(failingState as any, new Map())).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeObjectSelections(undefined, new Map())).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeObjectSelections(failingState as any, new Map())).resolves.toBeFalse();
 
             expect(warningSpy).toHaveBeenCalledTimes(2);
             expect(warningSpy.mock.calls[1][0]).not.toContain('[disk](command:x)');

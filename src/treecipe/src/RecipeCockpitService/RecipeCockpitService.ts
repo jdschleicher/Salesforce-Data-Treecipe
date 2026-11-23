@@ -7,12 +7,7 @@ import {
     COCKPIT_CONFIRM_WARNINGS_LABEL,
     CockpitConfirmDialog
 } from '../CockpitKit/CockpitConfirmDialog';
-import { RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH } from './RecipeCockpitShellConstants';
-import {
-    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS,
-    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL
-} from './RecipeCockpitTroubleshootingConstants';
-import type { RecipeCockpitTroubleshootingSubTab } from './RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL } from './RecipeCockpitTroubleshootingConstants';
 
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeSelectionConfiguration } from '../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
@@ -44,17 +39,14 @@ import {
     IFixedValueFileRead
 } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead } from './RecipeCockpitRemovedTodoStore';
-import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import {
     IRecordTypeSetModeOffer,
     RECORD_TYPE_SET_MODE_LABELS,
     RECORD_TYPE_SET_MODE_LEGEND,
     RecordTypeSetMode
 } from './RecipeCockpitRecordTypeRecipe';
-import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import {
     IRecipeCockpitPanelPlace,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
     RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
     RecipeCockpitPanelPlace
 } from './RecipeCockpitPanelPlace';
@@ -113,14 +105,11 @@ import type {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeDataMessage,
     IRecipeCockpitRecipeViewModel,
-    IRecipeCockpitRecordTypesFocusRequest,
     IRecipeCockpitRunFakerFilteredRecipe,
     IRecipeCockpitTreeFocus,
     IRecipeCockpitTreeOccurrence,
-    IRecipeCockpitTreePreferences,
     IRecipeCockpitTreeSelections,
     IRecipeCockpitTreeViewModel,
-    IRecipeCockpitTroubleshootingFocusRequest,
     IRecipeCockpitWorkspaceState,
     RecipeCockpitHostMessage,
     RecipeCockpitOpenFocusRequest,
@@ -151,16 +140,9 @@ export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificati
 // ONE workspaceState WRITE OF THE PLACE (#230) PER THIS MANY ms: A RELOAD OR A CRASH MAY NEVER RUN onDidDispose, SO IT IS WRITTEN AS IT CHANGES
 export const RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY = 500;
 
-/*
-    A tree card's own name and favorite (#235), kept in workspaceState by the tree's FOLDER NAME --
-    the one identity a tree keeps across runs, and the one a regeneration of the same objects writes
-    again -- so neither renumbers when another tree is added, and both survive a reload.
-*/
-export const RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit.treePreferences';
 // WHAT A RUN SWITCH ASKS WHEN A TREE ON SCREEN HAS A STORED SELECTION (#399)
 export const RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL = 'Reset selections';
 export const RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL = 'Apply same selections';
-export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
@@ -465,166 +447,6 @@ export class RecipeCockpitService {
 
     }
 
-    static buildEmptyTreePreferences(): IRecipeCockpitTreePreferences {
-
-        return { customNamesByFolderName: new Map(), favoriteFolderNames: new Set() };
-
-    }
-
-    /*
-        The cards' names and favorites as workspaceState kept them, each entry checked on its own:
-        the store is the reader's, but a name is drawn in the panel and compared with every other,
-        so one that could not have been saved through the input box is dropped rather than drawn.
-    */
-    static readTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreePreferences {
-
-        return this.readNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
-            trimmedName => this.describeTreeNameProblem(trimmedName));
-
-    }
-
-    // A FAILED WRITE IS SAID ONCE, AND THE CARDS ARE LEFT AS THEY WERE: A NAME THE NEXT OPEN WOULD NOT SHOW IS NOT ONE TO DRAW NOW
-    static async writeTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
-
-        return this.writeNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION, treePreferences, 'tree');
-
-    }
-
-    static readNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
-                                        stateKey: string,
-                                        stateVersion: number,
-                                        describeNameProblem: (trimmedName: string) => string | undefined): IRecipeCockpitTreePreferences {
-
-        const namePreferences = this.buildEmptyTreePreferences();
-        let storedPreferences: unknown;
-
-        try {
-            storedPreferences = workspaceState?.get<unknown>(stateKey);
-        } catch {
-            return namePreferences;
-        }
-
-        if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedPreferences) || storedPreferences.version !== stateVersion ) {
-            return namePreferences;
-        }
-
-        const storedCustomNames = RecipeCockpitUntrustedValue.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
-
-        Object.keys(storedCustomNames).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
-            const customName = storedCustomNames[folderName];
-            if ( RecipeCockpitPanelPlace.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
-                    && customName !== '' && customName === customName.trim() && describeNameProblem(customName) === undefined ) {
-                namePreferences.customNamesByFolderName.set(folderName, customName);
-            }
-        });
-
-        RecipeCockpitPanelPlace.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => namePreferences.favoriteFolderNames.add(folderName));
-
-        return namePreferences;
-
-    }
-
-    static async writeNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
-                                                stateKey: string,
-                                                stateVersion: number,
-                                                namePreferences: IRecipeCockpitTreePreferences,
-                                                namedThing: string): Promise<boolean> {
-
-        if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage(`The Recipe Cockpit has no workspace to keep ${namedThing} names and favorites in. Open a folder and re-open the cockpit.`);
-            return false;
-        }
-
-        // fromEntries DEFINES EACH KEY, SO A FOLDER NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
-        const customNames: Record<string, string> = Object.fromEntries(namePreferences.customNamesByFolderName);
-
-        try {
-            await workspaceState.update(stateKey, {
-                version: stateVersion,
-                customNames: customNames,
-                favoriteFolderNames: [...namePreferences.favoriteFolderNames]
-            });
-            return true;
-        } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The ${namedThing} name or favorite could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
-            return false;
-        }
-
-    }
-
-    // WHY A NAME CANNOT BE ANY CARD'S, WHOEVER ELSE HAS IT -- ONE LINE OF TEXT, WITHIN THE LENGTH THE HEADER IS DRAWN FOR
-    static describeTreeNameProblem(trimmedName: string): string | undefined {
-
-        return this.describeCustomNameProblem(trimmedName, 'A tree name', RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH);
-
-    }
-
-    static describeCustomNameProblem(trimmedName: string, nameLabel: string, maxLength: number): string | undefined {
-
-        if ( /[\p{Cc}\u2028\u2029]/u.test(trimmedName) ) {
-            return `${nameLabel} must be one line, with no control characters.`;
-        }
-
-        if ( trimmedName.length > maxLength ) {
-            return `${nameLabel} can be at most ${maxLength} characters.`;
-        }
-
-        return undefined;
-
-    }
-
-    // THE NAMES AND FAVORITES ONTO THE CARDS, IN PLACE: EVERY CARD OF A FOLDER, AND NEVER THE UNGROUPED ONE, WHICH HAS NO FOLDER
-    static applyTreePreferences(trees: IRecipeCockpitTreeViewModel[], treePreferences: IRecipeCockpitTreePreferences): IRecipeCockpitTreeViewModel[] {
-
-        trees.forEach(tree => {
-
-            delete tree.customName;
-            delete tree.isFavorite;
-
-            if ( tree.folderName === '' ) {
-                return;
-            }
-
-            const customName = treePreferences.customNamesByFolderName.get(tree.folderName);
-
-            if ( customName !== undefined ) {
-                tree.customName = customName;
-            }
-
-            if ( treePreferences.favoriteFolderNames.has(tree.folderName) ) {
-                tree.isFavorite = true;
-            }
-
-        });
-
-        return trees;
-
-    }
-
-    static readObjectSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined): Map<string, Set<string>> {
-        return RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).excludedObjectApiNamesByFolderName;
-    }
-
-    // THE OBJECTS ALONE, KEEPING WHATEVER FIELDS ARE STORED
-    static async writeObjectSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, excludedObjectApiNamesByFolderName: Map<string, Set<string>>): Promise<boolean> {
-
-        const storedSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
-
-        return RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, {
-            excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
-            excludedFieldApiNamesByFolderName: storedSelections.excludedFieldApiNamesByFolderName,
-            objectCountsByFolderName: storedSelections.objectCountsByFolderName,
-            fixedValuesByFolderName: storedSelections.fixedValuesByFolderName,
-            validationRulesOffByFolderName: storedSelections.validationRulesOffByFolderName
-        });
-
-    }
-
-    // workspaceState'S SELECTIONS WITH THE PINS THE FIXED-VALUES FILES HOLD (#342) IN PLACE OF ANY IT KEPT
-    static withPinnedFixedValues(treeSelections: IRecipeCockpitTreeSelections, pinnedFixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> | undefined): IRecipeCockpitTreeSelections {
-        return { ...treeSelections, fixedValuesByFolderName: pinnedFixedValuesByFolderName ?? new Map() };
-    }
-
     // WHAT A HOST READS OF THE MODEL BUILD THROUGH ITS HUB TYPE: RecipeCockpitModelBuild OWNS IT (#671)
     static listRemovedTodosStillOut(recipeText: string, entries: IRemovedTodoComment[]): IRemovedTodoComment[] {
         return RecipeCockpitModelBuild.listRemovedTodosStillOut(recipeText, entries);
@@ -658,20 +480,6 @@ export class RecipeCockpitService {
         return RecipeCockpitTreeSelectionStore.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.validationRulesOffByFolderName);
     }
 
-    // THE FOLDERS OF THE TREES ON SCREEN THAT HOLD AN EXCLUDED OBJECT, AN UNTICKED FIELD, A COUNT OR A RULE SWITCHED OFF
-    static listFolderNamesWithStoredSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): string[] {
-
-        const folderNames = new Set(recipeViewModel.trees.map(tree => tree.folderName).filter(folderName => !!folderName));
-
-        return [...folderNames].filter(folderName => (
-            treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
-                || treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
-                || treeSelections.objectCountsByFolderName.has(folderName)
-                || treeSelections.validationRulesOffByFolderName.has(folderName)
-        ));
-
-    }
-
     /*
         A run switch (#399): selections are kept by tree FOLDER, so a tree of the next run with the same
         folder would take them over unseen. When a tree on screen holds one, the reader chooses: Reset
@@ -688,7 +496,7 @@ export class RecipeCockpitService {
             return true;
         }
 
-        const storedFolderNames = this.listFolderNamesWithStoredSelections(currentRecipe, RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState));
+        const storedFolderNames = RecipeCockpitTreeSelectionStore.listFolderNamesWithStoredSelections(currentRecipe, RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState));
 
         if ( storedFolderNames.length === 0 ) {
             return true;
@@ -804,57 +612,6 @@ export class RecipeCockpitService {
             requestSequence: requestSequence,
             renderSequence: recipeDataMessage.renderSequence
         });
-
-    }
-
-    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
-
-        return typeof (focusRequest as IRecipeCockpitTreeFocus).treeKey === 'string';
-
-    }
-
-    static isTroubleshootingFocusRequest(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTroubleshootingFocusRequest {
-
-        return typeof (focusRequest as IRecipeCockpitTroubleshootingFocusRequest).treeFolderName === 'string';
-
-    }
-
-    /*
-        The options "treecipe.openRecipeCockpit" was run with. The command is callable by id, so only
-        { focusRecordTypes: true } asks for the Record types section, and an object name is kept only
-        if it is an api name -- it is matched against the loaded model and scrolled to, never opened.
-    */
-    static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
-
-        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
-            return undefined;
-        }
-
-        return SalesforceApiName.isApiName(openOptions.objectApiName) ? { objectApiName: openOptions.objectApiName } : {};
-
-    }
-
-    /*
-        The first card whose Record types section lists the object, opened there and scrolled to it;
-        with no object, or one no card lists, the first card that draws the section at all.
-        Undefined when no card does.
-    */
-    static resolveRecordTypesFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitRecordTypesFocusRequest): IRecipeCockpitTreeFocus | undefined {
-
-        const objectsByApiName = RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipeViewModel);
-        const listsRecordTypeObject = (tree: IRecipeCockpitTreeViewModel, objectApiName?: string) => tree.objects.some(treeObject =>
-            ( objectApiName === undefined || treeObject.objectApiName === objectApiName )
-            && !!objectsByApiName.get(treeObject.objectApiName)?.recordTypes);
-
-        const objectTree = focusRequest.objectApiName !== undefined
-            ? recipeViewModel.trees.find(tree => listsRecordTypeObject(tree, focusRequest.objectApiName))
-            : undefined;
-        if ( objectTree ) {
-            return { treeKey: objectTree.treeKey, tab: 'treecipe', recordTypes: { objectApiName: focusRequest.objectApiName } };
-        }
-
-        const anyTree = recipeViewModel.trees.find(tree => listsRecordTypeObject(tree));
-        return anyTree ? { treeKey: anyTree.treeKey, tab: 'treecipe', recordTypes: {} } : undefined;
 
     }
 
@@ -993,7 +750,7 @@ export class RecipeCockpitService {
         const persistedPanelPlace = previousPanelState?.recipeDataMessage || openFocusRequest ? undefined : this.readPersistedPanelPlace(workspaceState);
         // "Open Troubleshooting" (#375) IS ABOUT THE RUN THE INSERT WAS GENERATED FROM, WHICH IT NAMES
         const carriedRunFolderName = openFocusRequest
-            ? ( this.isTroubleshootingFocusRequest(openFocusRequest) ? openFocusRequest.runFolderName : undefined )
+            ? ( RecipeCockpitPanelPlace.isTroubleshootingFocusRequest(openFocusRequest) ? openFocusRequest.runFolderName : undefined )
             : previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || persistedPanelPlace?.runFolderName || undefined;
 
         const cockpitPanel = existingCockpitPanel
@@ -1379,15 +1136,15 @@ export class RecipeCockpitService {
         const recipeViewModel = loadedRecipe.recipeViewModel;
         let focusTree: IRecipeCockpitTreeFocus | undefined;
         if ( focusRequest !== undefined ) {
-            focusTree = this.isTreeFocus(focusRequest)
+            focusTree = RecipeCockpitPanelPlace.isTreeFocus(focusRequest)
                 ? focusRequest
-                : this.isTroubleshootingFocusRequest(focusRequest)
-                    ? this.resolveTroubleshootingFocus(recipeViewModel, focusRequest)
-                    : this.resolveRecordTypesFocus(recipeViewModel, focusRequest);
+                : RecipeCockpitPanelPlace.isTroubleshootingFocusRequest(focusRequest)
+                    ? RecipeCockpitDrawnModel.resolveTroubleshootingFocus(recipeViewModel, focusRequest)
+                    : RecipeCockpitDrawnModel.resolveRecordTypesFocus(recipeViewModel, focusRequest);
         }
-        this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
+        RecipeCockpitTreeSelectionStore.applyTreePreferences(recipeViewModel.trees, RecipeCockpitTreeSelectionStore.readTreePreferences(this.recipeCockpitWorkspaceState));
         RecipeCockpitDatasetsHost.applyDatasetPreferences(recipeViewModel.trees, RecipeCockpitDatasetsHost.readDatasetPreferences(this, this.recipeCockpitWorkspaceState));
-        this.applyTreeSelections(recipeViewModel, this.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState), loadedRecipe.pinnedFixedValuesByFolderName));
+        this.applyTreeSelections(recipeViewModel, RecipeCockpitTreeSelectionStore.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(this.recipeCockpitWorkspaceState), loadedRecipe.pinnedFixedValuesByFolderName));
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
             recipe: recipeViewModel,
@@ -1402,7 +1159,7 @@ export class RecipeCockpitService {
             A saved place whose run is gone is dropped (#230): the newest run was loaded in its
             place, and a place is only ever about the run it names.
         */
-        panelState.openFocusTree = focusRequest !== undefined && !this.isTreeFocus(focusRequest) ? focusTree : undefined;
+        panelState.openFocusTree = focusRequest !== undefined && !RecipeCockpitPanelPlace.isTreeFocus(focusRequest) ? focusTree : undefined;
         panelState.restorePlace = persistedPanelPlace && persistedPanelPlace.runFolderName === recipeViewModel.selectedRunFolderName
             ? persistedPanelPlace
             : undefined;
@@ -2413,37 +2170,6 @@ export class RecipeCockpitService {
         return outputFilePath && RecipeCockpitRunArtifacts.isRunFileExposedToGit(outputFilePath)
             ? { severity: 'warning', notificationText: `${notificationText} ${RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE}` }
             : { severity: severity, notificationText: notificationText };
-
-    }
-
-    // THE CARD OF THE NAMED TREE, ON THE TROUBLESHOOTING TAB AND SUB-TAB; undefined WHEN NO CARD HAS THAT FOLDER
-    static resolveTroubleshootingFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitTroubleshootingFocusRequest): IRecipeCockpitTreeFocus | undefined {
-
-        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.folderName !== '' && candidateTree.folderName === focusRequest.treeFolderName);
-
-        return tree ? { treeKey: tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: focusRequest.troubleshootingSubTab } : undefined;
-
-    }
-
-    /*
-        The options "treecipe.openRecipeCockpit" was run with, for "Open Troubleshooting" (#375). The
-        command is callable by id, so the run and tree are kept only as plain folder NAMES and the
-        sub-tab only when it is one the tab draws; they are matched against the loaded run, never opened.
-    */
-    static readTroubleshootingFocusRequest(openOptions: unknown): IRecipeCockpitTroubleshootingFocusRequest | undefined {
-
-        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
-            return undefined;
-        }
-
-        const { runFolderName, treeFolderName, troubleshootingSubTab } = openOptions;
-        const isFolderName = (candidate: unknown): candidate is string => RecipeCockpitPanelPlace.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
-
-        if ( !isFolderName(runFolderName) || !isFolderName(treeFolderName) || !( RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS as readonly unknown[] ).includes(troubleshootingSubTab) ) {
-            return undefined;
-        }
-
-        return { runFolderName: runFolderName, treeFolderName: treeFolderName, troubleshootingSubTab: troubleshootingSubTab as RecipeCockpitTroubleshootingSubTab };
 
     }
 

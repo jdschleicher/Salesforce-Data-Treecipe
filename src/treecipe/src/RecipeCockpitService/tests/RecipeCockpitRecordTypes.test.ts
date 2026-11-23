@@ -678,26 +678,26 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('reads only the exact option, and keeps an object name only when it is an api name', () => {
 
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 'Account' })).toEqual({ objectApiName: 'Account' });
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: '../Account' })).toEqual({});
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 7 })).toEqual({});
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: 'true' })).toBeUndefined();
-            expect(RecipeCockpitService.readRecordTypesFocusRequest(undefined)).toBeUndefined();
-            expect(RecipeCockpitService.readRecordTypesFocusRequest([true])).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 'Account' })).toEqual({ objectApiName: 'Account' });
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: '../Account' })).toEqual({});
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 7 })).toEqual({});
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: 'true' })).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest(undefined)).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest([true])).toBeUndefined();
 
         });
 
         it('focuses the card listing the object, its search set to the object', () => {
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Account' }))
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Account' }))
                 .toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Account' } });
 
         });
 
         it('focuses the first card with the tab, with no search, for no object or one no tab lists', () => {
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
 
         });
 
@@ -706,7 +706,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             const recipe = loadRecipe();
             delete accountOf(recipe).recordTypes;
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(recipe, { objectApiName: 'Account' })).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(recipe, { objectApiName: 'Account' })).toBeUndefined();
 
         });
 

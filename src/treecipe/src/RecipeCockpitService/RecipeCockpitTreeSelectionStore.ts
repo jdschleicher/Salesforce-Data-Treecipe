@@ -63,11 +63,13 @@ import type {
     IRecipeCockpitTreeObjectSelectionViewModel,
     IRecipeCockpitTreeObjectViewModel,
     IRecipeCockpitTreeOccurrence,
+    IRecipeCockpitTreePreferences,
     IRecipeCockpitTreeSelections,
     IRecipeCockpitTreeViewModel,
     IRecipeCockpitWorkspaceState
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH } from './RecipeCockpitShellConstants';
 
 /*
     What each tree folder's Structure tab excluded directly (#219) and the fields it unticked (#220);
@@ -88,6 +90,14 @@ export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
 export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections depend on it';
 // A LOOKUP'S PENCIL (#627) TAKES ONE RECORD'S Id: THE TREE INSERT KEEPS AN Id AND REPLACES ANY OTHER VALUE A LOOKUP HOLDS
 export const RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX = 'is a lookup, so it takes the Id of an existing record. Type a 15- or 18-character Salesforce Id.';
+
+/*
+    A tree card's own name and favorite (#235), kept in workspaceState by the tree's FOLDER NAME --
+    the one identity a tree keeps across runs, and the one a regeneration of the same objects writes
+    again -- so neither renumbers when another tree is added, and both survive a reload.
+*/
+export const RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit.treePreferences';
+export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 
 export class RecipeCockpitTreeSelectionStore {
 
@@ -1084,6 +1094,180 @@ export class RecipeCockpitTreeSelectionStore {
 
         return fs.existsSync(candidatePath)
                 && SfdxProjectService.isPathContainedInWorkspace(path.resolve(candidatePath), path.resolve(workspaceRoot));
+
+    }
+
+    static buildEmptyTreePreferences(): IRecipeCockpitTreePreferences {
+
+        return { customNamesByFolderName: new Map(), favoriteFolderNames: new Set() };
+
+    }
+
+    /*
+        The cards' names and favorites as workspaceState kept them, each entry checked on its own:
+        the store is the reader's, but a name is drawn in the panel and compared with every other,
+        so one that could not have been saved through the input box is dropped rather than drawn.
+    */
+    static readTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreePreferences {
+
+        return this.readNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
+            trimmedName => this.describeTreeNameProblem(trimmedName));
+
+    }
+
+    // A FAILED WRITE IS SAID ONCE, AND THE CARDS ARE LEFT AS THEY WERE: A NAME THE NEXT OPEN WOULD NOT SHOW IS NOT ONE TO DRAW NOW
+    static async writeTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
+
+        return this.writeNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION, treePreferences, 'tree');
+
+    }
+
+    static readNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
+                                        stateKey: string,
+                                        stateVersion: number,
+                                        describeNameProblem: (trimmedName: string) => string | undefined): IRecipeCockpitTreePreferences {
+
+        const namePreferences = this.buildEmptyTreePreferences();
+        let storedPreferences: unknown;
+
+        try {
+            storedPreferences = workspaceState?.get<unknown>(stateKey);
+        } catch {
+            return namePreferences;
+        }
+
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedPreferences) || storedPreferences.version !== stateVersion ) {
+            return namePreferences;
+        }
+
+        const storedCustomNames = RecipeCockpitUntrustedValue.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
+
+        Object.keys(storedCustomNames).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
+            const customName = storedCustomNames[folderName];
+            if ( RecipeCockpitPanelPlace.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
+                    && customName !== '' && customName === customName.trim() && describeNameProblem(customName) === undefined ) {
+                namePreferences.customNamesByFolderName.set(folderName, customName);
+            }
+        });
+
+        RecipeCockpitPanelPlace.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => namePreferences.favoriteFolderNames.add(folderName));
+
+        return namePreferences;
+
+    }
+
+    static async writeNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
+                                                stateKey: string,
+                                                stateVersion: number,
+                                                namePreferences: IRecipeCockpitTreePreferences,
+                                                namedThing: string): Promise<boolean> {
+
+        if ( !workspaceState ) {
+            VSCodeWorkspaceService.showWarningMessage(`The Recipe Cockpit has no workspace to keep ${namedThing} names and favorites in. Open a folder and re-open the cockpit.`);
+            return false;
+        }
+
+        // fromEntries DEFINES EACH KEY, SO A FOLDER NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
+        const customNames: Record<string, string> = Object.fromEntries(namePreferences.customNamesByFolderName);
+
+        try {
+            await workspaceState.update(stateKey, {
+                version: stateVersion,
+                customNames: customNames,
+                favoriteFolderNames: [...namePreferences.favoriteFolderNames]
+            });
+            return true;
+        } catch (writeError) {
+            VSCodeWorkspaceService.showWarningMessage(`The ${namedThing} name or favorite could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            return false;
+        }
+
+    }
+
+    // WHY A NAME CANNOT BE ANY CARD'S, WHOEVER ELSE HAS IT -- ONE LINE OF TEXT, WITHIN THE LENGTH THE HEADER IS DRAWN FOR
+    static describeTreeNameProblem(trimmedName: string): string | undefined {
+
+        return this.describeCustomNameProblem(trimmedName, 'A tree name', RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH);
+
+    }
+
+    static describeCustomNameProblem(trimmedName: string, nameLabel: string, maxLength: number): string | undefined {
+
+        if ( /[\p{Cc}\u2028\u2029]/u.test(trimmedName) ) {
+            return `${nameLabel} must be one line, with no control characters.`;
+        }
+
+        if ( trimmedName.length > maxLength ) {
+            return `${nameLabel} can be at most ${maxLength} characters.`;
+        }
+
+        return undefined;
+
+    }
+
+    // THE NAMES AND FAVORITES ONTO THE CARDS, IN PLACE: EVERY CARD OF A FOLDER, AND NEVER THE UNGROUPED ONE, WHICH HAS NO FOLDER
+    static applyTreePreferences(trees: IRecipeCockpitTreeViewModel[], treePreferences: IRecipeCockpitTreePreferences): IRecipeCockpitTreeViewModel[] {
+
+        trees.forEach(tree => {
+
+            delete tree.customName;
+            delete tree.isFavorite;
+
+            if ( tree.folderName === '' ) {
+                return;
+            }
+
+            const customName = treePreferences.customNamesByFolderName.get(tree.folderName);
+
+            if ( customName !== undefined ) {
+                tree.customName = customName;
+            }
+
+            if ( treePreferences.favoriteFolderNames.has(tree.folderName) ) {
+                tree.isFavorite = true;
+            }
+
+        });
+
+        return trees;
+
+    }
+
+    static readObjectSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined): Map<string, Set<string>> {
+        return RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).excludedObjectApiNamesByFolderName;
+    }
+
+    // THE OBJECTS ALONE, KEEPING WHATEVER FIELDS ARE STORED
+    static async writeObjectSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, excludedObjectApiNamesByFolderName: Map<string, Set<string>>): Promise<boolean> {
+
+        const storedSelections = RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
+
+        return RecipeCockpitTreeSelectionStore.writeTreeSelections(workspaceState, {
+            excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
+            excludedFieldApiNamesByFolderName: storedSelections.excludedFieldApiNamesByFolderName,
+            objectCountsByFolderName: storedSelections.objectCountsByFolderName,
+            fixedValuesByFolderName: storedSelections.fixedValuesByFolderName,
+            validationRulesOffByFolderName: storedSelections.validationRulesOffByFolderName
+        });
+
+    }
+
+    // workspaceState'S SELECTIONS WITH THE PINS THE FIXED-VALUES FILES HOLD (#342) IN PLACE OF ANY IT KEPT
+    static withPinnedFixedValues(treeSelections: IRecipeCockpitTreeSelections, pinnedFixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> | undefined): IRecipeCockpitTreeSelections {
+        return { ...treeSelections, fixedValuesByFolderName: pinnedFixedValuesByFolderName ?? new Map() };
+    }
+
+    // THE FOLDERS OF THE TREES ON SCREEN THAT HOLD AN EXCLUDED OBJECT, AN UNTICKED FIELD, A COUNT OR A RULE SWITCHED OFF
+    static listFolderNamesWithStoredSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): string[] {
+
+        const folderNames = new Set(recipeViewModel.trees.map(tree => tree.folderName).filter(folderName => !!folderName));
+
+        return [...folderNames].filter(folderName => (
+            treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
+                || treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
+                || treeSelections.objectCountsByFolderName.has(folderName)
+                || treeSelections.validationRulesOffByFolderName.has(folderName)
+        ));
 
     }
 

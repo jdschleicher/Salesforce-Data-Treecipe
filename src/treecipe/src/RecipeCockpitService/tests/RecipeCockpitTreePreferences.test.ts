@@ -12,11 +12,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
-    RECIPE_COCKPIT_TREE_PREFERENCES_VERSION
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION
@@ -39,6 +35,11 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitShell } from '../RecipeCockpitShell';
 import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
+import {
+    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
+    RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
+    RecipeCockpitTreeSelectionStore
+} from '../RecipeCockpitTreeSelectionStore';
 
 /*
     A tree card's own name and favorite, and the Favorites only filter (#235). The host keeps both
@@ -98,21 +99,21 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const isEmpty = (treePreferences: IRecipeCockpitTreePreferences) => treePreferences.customNamesByFolderName.size === 0 && treePreferences.favoriteFolderNames.size === 0;
 
-            expect(isEmpty(RecipeCockpitService.readTreePreferences(undefined))).toBe(true);
-            expect(isEmpty(RecipeCockpitService.readTreePreferences(buildWorkspaceState()))).toBe(true);
-            expect(isEmpty(RecipeCockpitService.readTreePreferences(buildWorkspaceState({
+            expect(isEmpty(RecipeCockpitTreeSelectionStore.readTreePreferences(undefined))).toBe(true);
+            expect(isEmpty(RecipeCockpitTreeSelectionStore.readTreePreferences(buildWorkspaceState()))).toBe(true);
+            expect(isEmpty(RecipeCockpitTreeSelectionStore.readTreePreferences(buildWorkspaceState({
                 [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: { ...storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }), version: RECIPE_COCKPIT_TREE_PREFERENCES_VERSION + 1 }
             })))).toBe(true);
-            expect(isEmpty(RecipeCockpitService.readTreePreferences(buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: 'Leads' })))).toBe(true);
+            expect(isEmpty(RecipeCockpitTreeSelectionStore.readTreePreferences(buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: 'Leads' })))).toBe(true);
 
             const throwingState = { get: () => { throw new Error('no state'); }, update: jest.fn() };
-            expect(isEmpty(RecipeCockpitService.readTreePreferences(throwingState as any))).toBe(true);
+            expect(isEmpty(RecipeCockpitTreeSelectionStore.readTreePreferences(throwingState as any))).toBe(true);
 
         });
 
         it('drops each entry that could not have been saved and keeps the rest, a folder named __proto__ included', () => {
 
-            const treePreferences = RecipeCockpitService.readTreePreferences(buildWorkspaceState({
+            const treePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(buildWorkspaceState({
                 [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: JSON.parse(JSON.stringify(storedPreferences({
                     [LEAD_TREE_KEY]: 'Leads',
                     ['__proto__']: 'Prototype tree',
@@ -139,10 +140,10 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             const workspaceState = buildWorkspaceState();
             const treePreferences = buildPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [ACCOUNT_TREE_KEY]);
 
-            await expect(RecipeCockpitService.writeTreePreferences(workspaceState, treePreferences)).resolves.toBe(true);
+            await expect(RecipeCockpitTreeSelectionStore.writeTreePreferences(workspaceState, treePreferences)).resolves.toBe(true);
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY)).toEqual(storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [ACCOUNT_TREE_KEY]));
-            expect(RecipeCockpitService.readTreePreferences(workspaceState)).toEqual(treePreferences);
+            expect(RecipeCockpitTreeSelectionStore.readTreePreferences(workspaceState)).toEqual(treePreferences);
 
         });
 
@@ -150,9 +151,9 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const workspaceState = buildWorkspaceState();
 
-            await RecipeCockpitService.writeTreePreferences(workspaceState, buildPreferences({ ['__proto__']: 'Prototype tree', [LEAD_TREE_KEY]: 'Leads' }));
+            await RecipeCockpitTreeSelectionStore.writeTreePreferences(workspaceState, buildPreferences({ ['__proto__']: 'Prototype tree', [LEAD_TREE_KEY]: 'Leads' }));
 
-            expect([...RecipeCockpitService.readTreePreferences(workspaceState).customNamesByFolderName.entries()])
+            expect([...RecipeCockpitTreeSelectionStore.readTreePreferences(workspaceState).customNamesByFolderName.entries()])
                 .toEqual([['__proto__', 'Prototype tree'], [LEAD_TREE_KEY, 'Leads']]);
             expect(Object.getPrototypeOf(workspaceState.storedValues.get(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY))).toBe(Object.prototype);
 
@@ -163,8 +164,8 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
             const failingState = { get: jest.fn(), update: jest.fn(() => Promise.reject(new Error('[disk](command:x) full'))) };
 
-            await expect(RecipeCockpitService.writeTreePreferences(undefined, buildPreferences())).resolves.toBe(false);
-            await expect(RecipeCockpitService.writeTreePreferences(failingState as any, buildPreferences())).resolves.toBe(false);
+            await expect(RecipeCockpitTreeSelectionStore.writeTreePreferences(undefined, buildPreferences())).resolves.toBe(false);
+            await expect(RecipeCockpitTreeSelectionStore.writeTreePreferences(failingState as any, buildPreferences())).resolves.toBe(false);
 
             expect(warningSpy).toHaveBeenCalledTimes(2);
             // A NOTIFICATION RENDERS [label](command:…) AS A LINK THAT RUNS THE COMMAND
@@ -223,7 +224,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const recipeTrees = [...loadRecipe().trees, buildUngroupedTree()];
 
-            RecipeCockpitService.applyTreePreferences(recipeTrees, buildPreferences({ [LEAD_TREE_KEY]: 'Leads', '': 'Nothing' }, [ACCOUNT_TREE_KEY, '']));
+            RecipeCockpitTreeSelectionStore.applyTreePreferences(recipeTrees, buildPreferences({ [LEAD_TREE_KEY]: 'Leads', '': 'Nothing' }, [ACCOUNT_TREE_KEY, '']));
 
             expect(recipeTrees.map(tree => [tree.treeKey, tree.customName, tree.isFavorite])).toEqual([
                 [ACCOUNT_TREE_KEY, undefined, true],
@@ -233,7 +234,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             // THE DEFAULT IS KEPT: IT IS WHAT A CLEARED NAME GOES BACK TO
             expect(recipeTrees[1].title).toBe('Lead-ONLY');
 
-            RecipeCockpitService.applyTreePreferences(recipeTrees, buildPreferences());
+            RecipeCockpitTreeSelectionStore.applyTreePreferences(recipeTrees, buildPreferences());
 
             expect(recipeTrees.every(tree => !('customName' in tree) && !('isFavorite' in tree))).toBe(true);
 
@@ -241,7 +242,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         it('lists only the cards of the changed folder in the update', () => {
 
-            const recipeTrees = RecipeCockpitService.applyTreePreferences(loadRecipe().trees, buildPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [LEAD_TREE_KEY]));
+            const recipeTrees = RecipeCockpitTreeSelectionStore.applyTreePreferences(loadRecipe().trees, buildPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [LEAD_TREE_KEY]));
 
             expect(RecipeCockpitTreecipeHost.buildTreePreferencesMessage(recipeTrees, LEAD_TREE_KEY, 9)).toEqual({
                 command: 'treePreferences',

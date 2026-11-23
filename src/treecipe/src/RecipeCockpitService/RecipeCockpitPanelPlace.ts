@@ -14,6 +14,12 @@ import type { RecipeCockpitTreeTab } from './RecipeCockpitShellConstants';
 import { RECIPE_COCKPIT_HISTORY_SORT_COLUMNS, RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from './RecipeCockpitTroubleshootingConstants';
 import type { RecipeCockpitHistorySortColumn, RecipeCockpitTroubleshootingSubTab } from './RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import type {
+    IRecipeCockpitRecordTypesFocusRequest,
+    IRecipeCockpitTreeFocus,
+    IRecipeCockpitTroubleshootingFocusRequest,
+    RecipeCockpitOpenFocusRequest
+} from './RecipeCockpitViewModel';
 
 /*
     The host half of the reader's place (#670): its shape, its bounds and the check every place read
@@ -378,6 +384,55 @@ export class RecipeCockpitPanelPlace {
         });
 
         return treePlace;
+
+    }
+
+    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
+
+        return typeof (focusRequest as IRecipeCockpitTreeFocus).treeKey === 'string';
+
+    }
+
+    static isTroubleshootingFocusRequest(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTroubleshootingFocusRequest {
+
+        return typeof (focusRequest as IRecipeCockpitTroubleshootingFocusRequest).treeFolderName === 'string';
+
+    }
+
+    /*
+        The options "treecipe.openRecipeCockpit" was run with. The command is callable by id, so only
+        { focusRecordTypes: true } asks for the Record types section, and an object name is kept only
+        if it is an api name -- it is matched against the loaded model and scrolled to, never opened.
+    */
+    static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
+
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
+            return undefined;
+        }
+
+        return SalesforceApiName.isApiName(openOptions.objectApiName) ? { objectApiName: openOptions.objectApiName } : {};
+
+    }
+
+    /*
+        The options "treecipe.openRecipeCockpit" was run with, for "Open Troubleshooting" (#375). The
+        command is callable by id, so the run and tree are kept only as plain folder NAMES and the
+        sub-tab only when it is one the tab draws; they are matched against the loaded run, never opened.
+    */
+    static readTroubleshootingFocusRequest(openOptions: unknown): IRecipeCockpitTroubleshootingFocusRequest | undefined {
+
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
+            return undefined;
+        }
+
+        const { runFolderName, treeFolderName, troubleshootingSubTab } = openOptions;
+        const isFolderName = (candidate: unknown): candidate is string => RecipeCockpitPanelPlace.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
+
+        if ( !isFolderName(runFolderName) || !isFolderName(treeFolderName) || !( RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS as readonly unknown[] ).includes(troubleshootingSubTab) ) {
+            return undefined;
+        }
+
+        return { runFolderName: runFolderName, treeFolderName: treeFolderName, troubleshootingSubTab: troubleshootingSubTab as RecipeCockpitTroubleshootingSubTab };
 
     }
 

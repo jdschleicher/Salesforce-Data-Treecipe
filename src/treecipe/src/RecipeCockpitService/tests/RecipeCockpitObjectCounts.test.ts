@@ -513,7 +513,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: 4 } }) });
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['OtherChildObject__c'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['OtherChildObject__c'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY))
                 .toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: 4 } }, { [ACCOUNT_TREE_KEY]: ['OtherChildObject__c'] }));

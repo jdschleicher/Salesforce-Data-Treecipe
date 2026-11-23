@@ -417,7 +417,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map());
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({}, { [ACCOUNT_TREE_KEY]: ['Contact'] }));
 

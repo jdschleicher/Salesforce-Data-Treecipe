@@ -112,7 +112,6 @@ export type IRecipeCockpitHubForTreecipeDataOrgs = Readonly<Pick<typeof RecipeCo
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
-    'resolveTroubleshootingFocus' |
     'toSingleLine'>>;
 
 // A FAILED INSERT'S "Open Troubleshooting" (#375) OPENS A CLOSED COCKPIT THROUGH ITS OWN COMMAND, SO THE FEATURE FLAG STILL DECIDES
@@ -1584,7 +1583,7 @@ export class RecipeCockpitTreecipeDataOrgs {
         const panelState = hub.recipeCockpitPanelState;
         const recipeDataMessage = panelState.recipeDataMessage;
         const focusTree = recipeDataMessage && recipeDataMessage.recipe.selectedRunFolderName === focusRequest.runFolderName
-            ? hub.resolveTroubleshootingFocus(recipeDataMessage.recipe, focusRequest)
+            ? RecipeCockpitDrawnModel.resolveTroubleshootingFocus(recipeDataMessage.recipe, focusRequest)
             : undefined;
 
         if ( cockpitPanel && panelState.workspaceRoot === workspaceRoot && recipeDataMessage && focusTree ) {

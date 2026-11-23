@@ -28,6 +28,7 @@ import type {
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
+import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
 
 /*
     "Customize and create new recipe" (#677), the host half: the modal's preview and its Save as new
@@ -45,14 +46,12 @@ export type IRecipeCockpitHubForCustomTreecipe = Readonly<Pick<typeof RecipeCock
     'loadRecipeIntoPanel' |
     'readCustomTreecipeDefinition' |
     'postToPanel' |
-    'readTreePreferences' |
     'readTreeSelections' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'selectedCustomTreeFolderNameByRunFolderName' |
     'toSingleLine' |
-    'writeTreePreferences' |
     'writeTreeSelections'>>;
 
 // THE PANEL COMMANDS AND ACTION KINDS THIS HOST OWNS: THE HUB HANDS EACH ONE HERE, AND NO OTHER FILE NAMES IT
@@ -453,13 +452,13 @@ export class RecipeCockpitCustomTreecipeHost {
                 treeSelections.excludedObjectApiNamesByFolderName.delete(location.folderName);
             }
             await hub.writeTreeSelections(hub.recipeCockpitWorkspaceState, treeSelections);
-            const treePreferences = hub.readTreePreferences(hub.recipeCockpitWorkspaceState);
+            const treePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(hub.recipeCockpitWorkspaceState);
             if ( customName ) {
                 treePreferences.customNamesByFolderName.set(location.folderName, customName);
             } else {
                 treePreferences.customNamesByFolderName.delete(location.folderName);
             }
-            await hub.writeTreePreferences(hub.recipeCockpitWorkspaceState, treePreferences);
+            await RecipeCockpitTreeSelectionStore.writeTreePreferences(hub.recipeCockpitWorkspaceState, treePreferences);
 
             const relativeRecipeFilePath = path.relative(workspaceRoot, customRecipeFilePath).split(path.sep).join('/');
             Promise.resolve(vscode.window.showInformationMessage(

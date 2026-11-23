@@ -53,7 +53,6 @@ export type IRecipeCockpitHubForTreecipeOrgTab = Readonly<Pick<typeof RecipeCock
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'resolveRunFakerFilteredRecipe' |
-    'resolveTroubleshootingFocus' |
     'routePanelMessage' |
     'saveRecordTypeSelection' |
     'toSingleLine'>> & IRecipeCockpitHubForDatasetsTab;

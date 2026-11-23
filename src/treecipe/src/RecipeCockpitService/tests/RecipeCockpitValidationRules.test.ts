@@ -419,7 +419,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             expect(treeSelections.validationRulesOffByFolderName).toEqual(new Map());
             expect(treeSelections).not.toHaveProperty('constraintsByFolderName');
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map());
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map());
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({}));
 
         });

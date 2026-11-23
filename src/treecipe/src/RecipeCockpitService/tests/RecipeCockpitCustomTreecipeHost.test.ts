@@ -382,9 +382,9 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 fixedValuesByFolderName: new Map(),
                 validationRulesOffByFolderName: new Map()
             } as any);
-            const stalePreferences = RecipeCockpitService.readTreePreferences(workspaceState as any);
+            const stalePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(workspaceState as any);
             stalePreferences.customNamesByFolderName.set(CUSTOM_FOLDER_NAME, 'Old name');
-            await RecipeCockpitService.writeTreePreferences(workspaceState as any, stalePreferences);
+            await RecipeCockpitTreeSelectionStore.writeTreePreferences(workspaceState as any, stalePreferences);
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
             await receivedMessageHandler({ command: 'ready' });
             const recipeDataMessage = await drawLatestModel();
@@ -398,7 +398,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             expect(treeSelections.excludedObjectApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
             expect(treeSelections.excludedFieldApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
             expect(treeSelections.objectCountsByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
-            expect(RecipeCockpitService.readTreePreferences(workspaceState as any).customNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
+            expect(RecipeCockpitTreeSelectionStore.readTreePreferences(workspaceState as any).customNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
 
         });
 

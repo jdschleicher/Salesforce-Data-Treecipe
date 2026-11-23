@@ -288,7 +288,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
     const loadModel = (): IRecipeCockpitRecipeViewModel => {
         const generatedRecipesFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes');
         const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(generatedRecipesFolderPath), workspaceRoot);
-        RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitService.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
+        RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitTreeSelectionStore.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
         return loadedRecipe.recipeViewModel;
     };
     const treeOf = (recipeViewModel: IRecipeCockpitRecipeViewModel) => recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === TREE_KEY);

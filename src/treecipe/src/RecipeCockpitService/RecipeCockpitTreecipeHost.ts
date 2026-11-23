@@ -39,6 +39,7 @@ import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceServic
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from './RecipeCockpitNavigationConstants';
 import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
+import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
 
 /*
     The Treecipe tab's recipe edits, its host half (moved out of the hub by #688, after #665's
@@ -61,14 +62,12 @@ import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 */
 export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpitService,
     'applyObjectSelections' |
-    'applyTreePreferences' |
     'buildConfirmOrg' |
     'buildLookupWiringContext' |
     'buildObjectsByApiName' |
     'buildPinnedFieldRestoreRequests' |
     'confirmInPanel' |
     'describeOccurrence' |
-    'describeTreeNameProblem' |
     'discardObjectRefreshStaging' |
     'findFixedValueLockReason' |
     'findLookupValueRefusal' |
@@ -90,7 +89,6 @@ export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpit
     'readRemovedTodoFile' |
     'readSourceApiVersion' |
     'readTreeFakerService' |
-    'readTreePreferences' |
     'readTreeSelections' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
@@ -101,7 +99,6 @@ export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpit
     'resolveTreeRunArtifactsLocation' |
     'runCancellableRetrieve' |
     'validateFixedValueInput' |
-    'writeTreePreferences' |
     'writeTreeSelections'>>;
 
 // THE PANEL COMMANDS AND ACTION KINDS THIS HOST OWNS: THE HUB HANDS EACH ONE HERE, AND NO OTHER FILE NAMES IT
@@ -896,7 +893,7 @@ export class RecipeCockpitTreecipeHost {
 
             case 'toggleFavoriteTree': {
 
-                const treePreferences = hub.readTreePreferences(hub.recipeCockpitWorkspaceState);
+                const treePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(hub.recipeCockpitWorkspaceState);
 
                 if ( treePreferences.favoriteFolderNames.has(panelAction.folderName) ) {
                     treePreferences.favoriteFolderNames.delete(panelAction.folderName);
@@ -958,7 +955,7 @@ export class RecipeCockpitTreecipeHost {
             return undefined;
         }
 
-        const namingProblem = hub.describeTreeNameProblem(trimmedName);
+        const namingProblem = RecipeCockpitTreeSelectionStore.describeTreeNameProblem(trimmedName);
 
         if ( namingProblem ) {
             return namingProblem;
@@ -1007,7 +1004,7 @@ export class RecipeCockpitTreecipeHost {
                                     renameAction: Extract<RecipeCockpitPanelAction, { kind: 'renameTree' }>) {
 
         const { treeKey, folderName, name, renderSequence } = renameAction;
-        const treePreferences = hub.readTreePreferences(hub.recipeCockpitWorkspaceState);
+        const treePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(hub.recipeCockpitWorkspaceState);
         const namingProblem = this.validateTreeName(hub, name, folderName, treePreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
 
         if ( namingProblem ) {
@@ -1040,14 +1037,14 @@ export class RecipeCockpitTreecipeHost {
                                                         folderName: string,
                                                         treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
 
-        const isWritten = await hub.writeTreePreferences(hub.recipeCockpitWorkspaceState, treePreferences);
+        const isWritten = await RecipeCockpitTreeSelectionStore.writeTreePreferences(hub.recipeCockpitWorkspaceState, treePreferences);
 
         if ( !isWritten || hub.recipeCockpitPanel !== cockpitPanel || hub.recipeCockpitPanelState !== panelState || !panelState.recipeDataMessage ) {
             return isWritten;
         }
 
         const recipeDataMessage = panelState.recipeDataMessage;
-        hub.applyTreePreferences(recipeDataMessage.recipe.trees, treePreferences);
+        RecipeCockpitTreeSelectionStore.applyTreePreferences(recipeDataMessage.recipe.trees, treePreferences);
 
         hub.postToPanel(cockpitPanel, this.buildTreePreferencesMessage(recipeDataMessage.recipe.trees, folderName, recipeDataMessage.renderSequence));
 

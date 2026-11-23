@@ -12,10 +12,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH } from '../RecipeCockpitDatasetsTabConstants';
 import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
 import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
@@ -36,6 +33,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitShell } from '../RecipeCockpitShell';
 import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
+import { RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY } from '../RecipeCockpitTreeSelectionStore';
 
 /*
     A data set's own name and favorite, and the data sets tab's Favorites only, as #235 does

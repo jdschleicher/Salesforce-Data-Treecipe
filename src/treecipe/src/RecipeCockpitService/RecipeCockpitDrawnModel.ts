@@ -30,11 +30,14 @@ import type {
     IRecipeCockpitOrgRecordLookupTarget,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
+    IRecipeCockpitRecordTypesFocusRequest,
     IRecipeCockpitRunFakerFilteredRecipe,
     IRecipeCockpitTodoViewModel,
+    IRecipeCockpitTreeFocus,
     IRecipeCockpitTreeHistoryAllowLists,
     IRecipeCockpitTreeOccurrence,
-    IRecipeCockpitTreeViewModel
+    IRecipeCockpitTreeViewModel,
+    IRecipeCockpitTroubleshootingFocusRequest
 } from './RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_UPDATER_FORMULA_REASON } from './RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
@@ -822,6 +825,39 @@ export class RecipeCockpitDrawnModel {
         });
 
         return openableSourceKeys;
+
+    }
+
+    /*
+        The first card whose Record types section lists the object, opened there and scrolled to it;
+        with no object, or one no card lists, the first card that draws the section at all.
+        Undefined when no card does.
+    */
+    static resolveRecordTypesFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitRecordTypesFocusRequest): IRecipeCockpitTreeFocus | undefined {
+
+        const objectsByApiName = RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipeViewModel);
+        const listsRecordTypeObject = (tree: IRecipeCockpitTreeViewModel, objectApiName?: string) => tree.objects.some(treeObject =>
+            ( objectApiName === undefined || treeObject.objectApiName === objectApiName )
+            && !!objectsByApiName.get(treeObject.objectApiName)?.recordTypes);
+
+        const objectTree = focusRequest.objectApiName !== undefined
+            ? recipeViewModel.trees.find(tree => listsRecordTypeObject(tree, focusRequest.objectApiName))
+            : undefined;
+        if ( objectTree ) {
+            return { treeKey: objectTree.treeKey, tab: 'treecipe', recordTypes: { objectApiName: focusRequest.objectApiName } };
+        }
+
+        const anyTree = recipeViewModel.trees.find(tree => listsRecordTypeObject(tree));
+        return anyTree ? { treeKey: anyTree.treeKey, tab: 'treecipe', recordTypes: {} } : undefined;
+
+    }
+
+    // THE CARD OF THE NAMED TREE, ON THE TROUBLESHOOTING TAB AND SUB-TAB; undefined WHEN NO CARD HAS THAT FOLDER
+    static resolveTroubleshootingFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitTroubleshootingFocusRequest): IRecipeCockpitTreeFocus | undefined {
+
+        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.folderName !== '' && candidateTree.folderName === focusRequest.treeFolderName);
+
+        return tree ? { treeKey: tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: focusRequest.troubleshootingSubTab } : undefined;
 
     }
 
