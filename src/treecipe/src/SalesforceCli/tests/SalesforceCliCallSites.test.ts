@@ -14,9 +14,11 @@ expect.extend(matchers);
 const REMAINING_SALESFORCE_CLI_CALL_SITES = [
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deployPicklistDependencyClasses',
     'PicklistDependencyCheckService/PicklistDependencyCheckService.ts#deploySourcePaths',
-    'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
+    'RecipeCockpitService/RecipeCockpitOrgRuns.ts#runCancellableCli',
     // EVERY RETRIEVE, THE ADAPTER'S INCLUDED, WITH metadataRetrieveMethod AT cli (#506)
-    'RecipeCockpitService/RecipeCockpitService.ts#runCancellableRetrieve',
+    'RecipeCockpitService/RecipeCockpitOrgRuns.ts#runCancellableRetrieve',
+    // THE HUB'S DELEGATE TO RecipeCockpitOrgRuns, WHICH THE HOSTS READ THROUGH THEIR HUB TYPES (#671)
+    'RecipeCockpitService/RecipeCockpitService.ts#runCancellableCli',
     'RecipeCockpitService/RecipeCockpitTroubleshootingRuns.ts#performMetadataDeploy',
     // "Authorize with Salesforce CLI": THE CLI SAVES AN AUTHORIZATION ITS OWN KEYCHAIN CAN READ (#630)
     'SalesforceOrgService/SalesforceOrgLogin.ts#authorizeWithSalesforceCli',

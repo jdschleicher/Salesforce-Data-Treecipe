@@ -50,6 +50,7 @@ import {
     RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitOrgRuns } from '../RecipeCockpitOrgRuns';
 import { RECIPE_COCKPIT_UPDATER_FORMULA_REASON } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
@@ -721,7 +722,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
                 await openRetrieveAndLoad();
 
-                jest.spyOn(RecipeCockpitService as any, 'runCancellableCli').mockResolvedValueOnce({ isCancelled: true, invocation: { stdout: '', stderr: '', exitCode: 0 } });
+                jest.spyOn(RecipeCockpitOrgRuns, 'runCancellableCli').mockResolvedValueOnce({ isCancelled: true, invocation: { stdout: '', stderr: '', exitCode: 0 } });
                 await prepareDirectly();
                 expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: its retrieve was cancelled. Nothing in the project changed.`);
 

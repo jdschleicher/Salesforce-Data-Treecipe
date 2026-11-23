@@ -112,8 +112,6 @@ interface ITabHost {
     loadsOtherHosts?: { fileName: string; otherHostFileName: string; reason: string }[];
 }
 
-const SHARED_RETRIEVE_RUNNER = 'runCancellableRetrieve, the one retrieve runner the Troubleshooting tab and the Treecipe Adapter share, stays in the hub';
-
 /*
     One row per tab whose host half is out of the hub (#566). A tab's panel commands and action
     kinds have a case in its host and nowhere else, so a reader looking for what a Query message does
@@ -183,33 +181,15 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitMetadataDeploy.ts',
-                importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject', 'RecipeCockpitMetadataDeploy'],
-                members: ['readApiVersion'],
-                owedBy: 'the shared retrieve runner and listTreeDeployObjects, which reads the cockpit\'s model, stay in the hub; readApiVersion is readSourceApiVersion\'s, which every retrieve reads'
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitMetadataDeployPackage.ts',
-                importedNames: ['RecipeCockpitMetadataDeployPackage'],
-                members: ['describeError'],
-                owedBy: SHARED_RETRIEVE_RUNNER
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitMetadataRetrieve.ts',
-                importedNames: ['METADATA_RETRIEVE_TIMEOUT_MILLISECONDS'],
+                importedNames: ['IMetadataDeployComponent', 'IMetadataDeployObject'],
                 members: [],
-                owedBy: SHARED_RETRIEVE_RUNNER
+                owedBy: 'listTreeDeployObjects, which reads the cockpit\'s model, stays in the hub, and the hub\'s delegate to RecipeCockpitOrgRuns\'s runCancellableRetrieve names a retrieve\'s components (#671)'
             },
             {
                 pureModuleFileName: 'RecipeCockpitMetadataRetrievePackage.ts',
-                importedNames: ['IMetadataRetrieveConnection', 'METADATA_RETRIEVE_METHOD_SETTING', 'MetadataRetrieveDestination', 'RecipeCockpitMetadataRetrievePackage'],
-                members: ['buildRetrieveRequest', 'convertToSourceFiles', 'readRetrieveMethod', 'readZip', 'readZipFile', 'runRetrieve', 'toCliShapedPayload', 'writeSourceFiles'],
-                owedBy: SHARED_RETRIEVE_RUNNER
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitPermissionSetAssign.ts',
-                importedNames: ['PERMISSION_SET_MAX_BUFFER_BYTES'],
+                importedNames: ['MetadataRetrieveDestination'],
                 members: [],
-                owedBy: 'runCancellableCli\'s default output buffer: the one CLI runner every tab shares stays in the hub'
+                owedBy: 'the hub\'s delegate to RecipeCockpitOrgRuns\'s runCancellableRetrieve, which the Troubleshooting and Adapter hub types read, names a retrieve\'s destination (#671)'
             },
             {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
