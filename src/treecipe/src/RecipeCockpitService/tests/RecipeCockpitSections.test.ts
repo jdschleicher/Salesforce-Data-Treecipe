@@ -21,6 +21,7 @@ import {
     RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
     RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
 
@@ -310,7 +311,7 @@ describe('RecipeCockpitService, the Target Org Manager and Treecipes sections (#
         it('drops isTreecipesSectionCollapsed and isOrgSectionCollapsed on the host, and the place version did not change', () => {
 
             [true, 'yes', 1].forEach(collapsedValue => {
-                const normalized = RecipeCockpitService.normalizePanelPlace(savedPlace({ isOrgSectionCollapsed: collapsedValue, isTreecipesSectionCollapsed: collapsedValue }));
+                const normalized = RecipeCockpitPanelPlace.normalize(savedPlace({ isOrgSectionCollapsed: collapsedValue, isTreecipesSectionCollapsed: collapsedValue }));
                 expect(normalized).not.toBeUndefined();
                 expect(normalized).not.toHaveProperty('isOrgSectionCollapsed');
                 expect(normalized).not.toHaveProperty('isTreecipesSectionCollapsed');

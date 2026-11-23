@@ -21,6 +21,7 @@ import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import {
     IDroppedRecordTypeTick,
     IRecordTypeTickObject,
+    RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE,
     RecipeCockpitRecordTypeRecipe,
     RecordTypeSetMode
 } from './RecipeCockpitRecordTypeRecipe';
@@ -343,14 +344,16 @@ export class RecipeCockpitTreecipeInsert {
         }
 
         // BUILT ONLY NOW, ONCE THE ORG CAN TAKE THE TREE: THE BUILD WALKS EVERY OBJECT'S METADATA
-        const deriveRecipe = (recordTypeSelection: Readonly<Record<string, string[]>>) =>
-            this.buildRecordTypeFilteredRecipe(hub, panelState, recipeDataMessage.recipe, tree, recordTypeSelection);
+        const deriveRecipe = (recordTypeSelection: Readonly<Record<string, string[]>>, progressTitle?: string) =>
+            this.buildRecordTypeFilteredRecipe(hub, panelState, recipeDataMessage.recipe, tree, recordTypeSelection, progressTitle);
         // "A data set for each record type" (#624): EVERY SET'S RECIPE IS BUILT NOW, SO THE CONFIRMATION LISTS ITS OWN TOTALS AND WARNINGS, AND NO WALK RUNS AFTER THE ANSWER
         const recordTypeSets: IRecordTypeSet<IRecipeCockpitRunFakerFilteredRecipe>[] = [];
 
         if ( recordTypePlan.isRecipeDerived ) {
 
-            const derivedRecipe = await deriveRecipe(recordTypePlan.recordTypeSelection);
+            // A LONE BUILD KEEPS ITS TITLE; WITH SETS TO FOLLOW, EACH OF THE N+1 BUILDS SAYS WHICH IT IS (#695)
+            const derivedRecipe = await deriveRecipe(recordTypePlan.recordTypeSelection,
+                recordTypePlan.recordTypeSets.length > 0 ? RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE : undefined);
             if ( derivedRecipe === 'cancelled' ) {
                 VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
                 return false;
@@ -366,7 +369,8 @@ export class RecipeCockpitTreecipeInsert {
 
             for ( const [setIndex, recordTypeSet] of recordTypePlan.recordTypeSets.entries() ) {
                 const setLabel = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLabel(recordTypeSet, setIndex);
-                const setRecipe = await deriveRecipe(recordTypeSet);
+                const setRecipe = await deriveRecipe(recordTypeSet,
+                    RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle(recordTypeSet, setIndex, recordTypePlan.recordTypeSets.length));
                 if ( setRecipe === 'cancelled' ) {
                     VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
                     return false;
@@ -562,11 +566,12 @@ export class RecipeCockpitTreecipeInsert {
                                                         panelState: IRecipeCockpitPanelState,
                                                         recipeViewModel: IRecipeCockpitRecipeViewModel,
                                                         tree: IRecipeCockpitTreeViewModel,
-                                                        recordTypeSelection: Readonly<Record<string, string[]>>):
+                                                        recordTypeSelection: Readonly<Record<string, string[]>>,
+                                                        progressTitle?: string):
         Promise<{ filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; confirmationWarnings: string[]; droppedTicks: IDroppedRecordTypeTick[] } | { refusalReason: string } | 'cancelled'> {
 
         const derivedRecipe = tree.folderName
-            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection)
+            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection, progressTitle)
             : 'treeNotBuilt';
         if ( derivedRecipe === 'cancelled' ) {
             return 'cancelled';

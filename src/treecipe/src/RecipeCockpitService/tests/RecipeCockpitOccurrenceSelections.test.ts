@@ -20,10 +20,12 @@ import {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
-    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
+} from '../RecipeCockpitTreecipeSelection';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';

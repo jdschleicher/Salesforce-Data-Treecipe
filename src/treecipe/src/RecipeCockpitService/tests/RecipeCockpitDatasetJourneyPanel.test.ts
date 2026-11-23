@@ -14,6 +14,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import {
     IRecipeCockpitDatasetJourneyMessage,
     RECIPE_COCKPIT_DATASET_JOURNEY_FILE_GONE_TEXT
@@ -498,7 +499,7 @@ describe('RecipeCockpitService, a data set\'s insert journey (#471)', () => {
 
         it('keeps an open journey in the place through normalizePanelPlace, dropping a name that is not a folder name', () => {
 
-            const normalized = RecipeCockpitService.normalizePanelPlace({
+            const normalized = RecipeCockpitPanelPlace.normalize({
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, isOrgPickerInUse: false, isFavoritesOnly: false, scrollY: 0,
                 trees: [{ treeKey: LEAD_TREE_KEY, isExpanded: true, selectedTab: 'datasets', searchQueries: {}, expandedObjectKeys: [], openPicklistKeys: [], expandedJourneyDatasetFolderNames: [LEAD_DATASETS[0], '../x', 7] }]
             });

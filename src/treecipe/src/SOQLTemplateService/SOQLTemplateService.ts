@@ -3,6 +3,8 @@ import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
+import { StandardCompoundAddressFields } from '../ObjectInfoWrapper/StandardCompoundAddressFields';
+import { CompoundComponentApiName } from '../ObjectInfoWrapper/CompoundComponentApiName';
 const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 const TEXT_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Html', 'Email', 'Phone', 'Url'];
@@ -195,10 +197,27 @@ export class SOQLTemplateService {
 
     }
 
+    /*
+        A standard compound address is never a recipe field either (#694), only its parts, yet it
+        is the one column that reads the whole address, selected after the fields. A person
+        account's is selected only when its parts are in Fields: in an org without person accounts
+        the column does not exist.
+    */
+    static getCompoundAddressFieldNames(objectName: string, objectInfo: ObjectInfo | undefined): string[] {
+
+        const fieldApiNames = new Set((objectInfo?.Fields ?? []).map(f => f.fieldName));
+        return StandardCompoundAddressFields.getAddressFields(objectName)
+            .filter(addressField => !fieldApiNames.has(addressField.fieldApiName))
+            .filter(addressField => !addressField.isWrittenOnlyWithItsFieldFile
+                || fieldApiNames.has(CompoundComponentApiName.build(addressField.fieldApiName, 'Street')))
+            .map(addressField => addressField.fieldApiName);
+
+    }
+
     static buildSelectAllQuery(objectName: string, objectInfo: ObjectInfo): string {
 
         const fieldNames = this.getWritableFields(objectInfo).map(f => f.fieldName);
-        const allFields = ['Id', ...this.getCompoundNameFieldNames(objectName, objectInfo), ...fieldNames];
+        const allFields = ['Id', ...this.getCompoundNameFieldNames(objectName, objectInfo), ...fieldNames, ...this.getCompoundAddressFieldNames(objectName, objectInfo)];
         return `SELECT ${allFields.join(',\n       ')}\nFROM ${objectName}`;
 
     }
@@ -221,7 +240,7 @@ export class SOQLTemplateService {
                 const parentFieldNames = this.getWritableFields(parentInfo)
                     .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
                     .map(f => f.fieldName);
-                parentFieldTraversals = [...this.getCompoundNameFieldNames(parentName, parentInfo), ...parentFieldNames]
+                parentFieldTraversals = [...this.getCompoundNameFieldNames(parentName, parentInfo), ...parentFieldNames, ...this.getCompoundAddressFieldNames(parentName, parentInfo)]
                     .slice(0, 5)
                     .map(parentFieldName => `${relationshipName}.${parentFieldName}`);
             }
@@ -254,7 +273,7 @@ export class SOQLTemplateService {
             const childWritableFieldNames = (childInfo ? this.getWritableFields(childInfo) : [])
                 .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
                 .map(f => f.fieldName);
-            const childFields = [...this.getCompoundNameFieldNames(childObjectName, childInfo), ...childWritableFieldNames]
+            const childFields = [...this.getCompoundNameFieldNames(childObjectName, childInfo), ...childWritableFieldNames, ...this.getCompoundAddressFieldNames(childObjectName, childInfo)]
                 .slice(0, 5);
 
             const childSelectFields = ['Id', ...childFields].join(', ');
@@ -285,7 +304,7 @@ export class SOQLTemplateService {
             .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
             .map(f => f.fieldName);
 
-        const selectFields = ['Id', ...this.getCompoundNameFieldNames(objectName, objectInfo), ...fieldNames].join(',\n       ');
+        const selectFields = ['Id', ...this.getCompoundNameFieldNames(objectName, objectInfo), ...fieldNames, ...this.getCompoundAddressFieldNames(objectName, objectInfo)].join(',\n       ');
 
         return writableDeveloperNames.map(developerName =>
             `-- Record Type: ${developerName}\n` +

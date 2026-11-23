@@ -168,6 +168,8 @@ src/
     │   ├── RecordTypesWrapper.ts            # RecordTypeWrapper, the record type ObjectInfo.RecordTypesMap holds; RecordTypeService fills it in (#575)
     │   ├── PersonNameObjects.ts             # Contact, Lead, Individual: the objects whose Name is a read-only compound (#114); imports nothing
     │   ├── ReadOnlyFields.ts                # Fields Salesforce calculates or sets itself (#685): formula, roll-up, auto number and a pinned standard list, written READ ONLY -- <reason>, locked in the cockpit, never inserted; imports nothing
+    │   ├── StandardCompoundAddressFields.ts # Each standard object's compound Address fields (#694): a typeless file is recognized, an unretrieved one still written as its parts; imports nothing
+    │   ├── CompoundComponentApiName.ts      # The api name of a compound field's part (BillingAddress → BillingStreet, Site__c → Site__Street__s); RecipeService delegates to it (#697); imports nothing
     │   ├── StandardDerivedFields.ts         # Fields Salesforce sets from another lookup (Quote.AccountId from OpportunityId, #680): written as Opportunity_NickName.AccountId, read only in the cockpit, never inserted; imports nothing
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
@@ -220,6 +222,7 @@ src/
     │   ├── RecipeCockpitDatasetsHost.ts      # The Previously Used Data Sets tab's host half (#667): router cases, actions, a row's insert, counts, journey, names and favourites
     │   ├── RecipeCockpitAdapterHost.ts       # The Treecipe Adapter tab's host half (#668): router cases and actions; RecipeCockpitAdapterMetadata.ts (retrieve, apply, add child), RecipeCockpitAdapterRecords.ts (load, generate, update, restore) and RecipeCockpitAdapterState.ts are the rest of it
     │   ├── RecipeCockpitTreecipeOrgHost.ts   # Target Org Manager and the tree insert's host half (#669 part a): router cases and actions; RecipeCockpitTreecipeInsert.ts (the insert) and RecipeCockpitTreecipeDataOrgs.ts (org list, selection, scratch org, authorize, open, readiness, notification; loads no other host) are the rest of it
+    │   ├── RecipeCockpitTreecipeHost.ts      # The Treecipe tab's recipe edits, host half (#688): router cases and actions, rename and favourite; RecipeCockpitTreecipeSelection.ts (objects, fields, counts, fixed values, picklist choices, rule toggles, reset), RecipeCockpitTreecipeObjectRefresh.ts (Get latest object detail) and RecipeCockpitTreecipeRecipeEdits.ts (friends, lookups, parents, TODOs, the shared recipe and sidecar writes; loads no other host) are the rest of it
     │   ├── RecipeCockpitRecordLinks.ts       # A preview row's record links (#556), shared by the Query and Adapter hosts; RecipeCockpitRecordLinksHost.ts opens a row's record
     │   ├── RecipeCockpitCustomTreecipeHost.ts # "Customize and create new recipe" (#677): the modal's preview and Save as new Treecipe; RecipeCockpitCustomTreecipe.ts (no vscode) holds the custom- folder and customTreecipe.json rules the hub's run loading reads too
     │   ├── RecipeCockpitValidationRuleList.ts # Validation Rules sub-tab list (#327); no vscode
@@ -227,6 +230,7 @@ src/
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode
     │   ├── RecipeCockpitRecordTypeRecipe.ts  # The record types ticked at Generate fake data and insert (#623): the in-memory recipe built for them and where a card's settings land in it
     │   ├── RecipeCockpitRecordTypeSets.ts    # "A data set for each record type" (#624): the sets inserted in turn, the confirmation's list of them and the one notification; the cockpit hands in its steps
+    │   ├── RecipeCockpitPanelPlace.ts        # The host half of the reader's place (#222, #230, #670): its shape, bounds, workspaceState key and normalize, optional fields a named list; no vscode
     │   ├── RecipeCockpitObjectSelection.ts   # Pure cascade of the Treecipe tab's tree icons (#219): what a card's direct exclusions auto-exclude, which lookups they disable; imports nothing
     │   ├── RecipeCockpitFixedValueStore.ts   # The <recipe>.fixedValues.json file (#342); imports only SalesforceApiName and the writer
     │   ├── RecipeCockpitRemovedTodoStore.ts  # The <recipe>.removedTodos.json file (#391); imports only SalesforceApiName and the writer

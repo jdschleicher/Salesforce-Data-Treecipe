@@ -56,6 +56,7 @@ import {
     RECIPE_COCKPIT_TREE_TABS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
 } from '../RecipeCockpitService';
+import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
@@ -269,7 +270,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query', 'updater']);
 
-            const place = RecipeCockpitService.normalizePanelPlace({
+            const place = RecipeCockpitPanelPlace.normalize({
                 version: 2,
                 runFolderName: 'recipe-2026-09-20T10-00-00',
                 isOrgPickerInUse: false,
@@ -281,7 +282,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(place?.trees[0]).toMatchObject({ selectedTab: 'troubleshooting' });
             expect(place?.trees[0].searchQueries).toEqual({ treecipe: '', datasets: '' });
 
-            const olderPlace = RecipeCockpitService.normalizePanelPlace({
+            const olderPlace = RecipeCockpitPanelPlace.normalize({
                 version: 2,
                 runFolderName: 'recipe-2026-09-20T10-00-00',
                 isOrgPickerInUse: false,

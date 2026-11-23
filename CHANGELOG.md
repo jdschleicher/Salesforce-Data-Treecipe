@@ -1,5 +1,83 @@
 # Change Log
 
+## [3.208.4] - Recipe Cockpit: each record type recipe build's progress notification says which one it is (#695)
+
+With **A data set for each record type** offered, **Generate fake data and insert** builds the folded recipe and then one recipe per set before the confirmation opens. With up to 10 sets that is 11 progress notifications in a row, all titled "Building the recipe for the ticked record types". Each one now says which build it is:
+
+- **The folded build** reads `Building the recipe for the ticked record types: one data set, folded`.
+- **Each set's build** reads `…: set 2 of 4 · Account · Partner`, in the same words as the set's label in the confirmation. Object and record type names are escaped, so a name shaped like a command link shows as plain text.
+- **A lone build keeps today's title.** When the ticks make only one data set, nothing changes. Cancel works as before on every one of these notifications.
+- Recipes, the palette's **Generate Treecipe** and both faker backends are unchanged.
+- **Tests:** the set title and its escaping, the titles of a two-set run in order, and a one-set run keeping its single title.
+
+## [3.208.3] - Recipe Cockpit: the host half of the reader's place is a pure module of its own, its optional fields a named list (#670, slice 6 of #566)
+
+### Under the hood (behaviour unchanged)
+
+- **`RecipeCockpitService/RecipeCockpitPanelPlace.ts`** holds what the hub did for the reader's place: the place's shape, its workspaceState key, its entry, text and size bounds, and the check every saved or posted place goes through (`normalize`, and `normalizeTreePlace` for one card). It loads no vscode and nothing from the hub.
+- **A card's optional fields are one named list**, `OPTIONAL_TREE_PLACE_FIELDS`: 17 `{ field, check, reason }` entries run in order, in place of about 20 conditional spreads in one object literal. The list's order is the order the place is saved in, so a saved place is byte-identical. The old Record types tab's upgrade to `isRecordTypesExpanded` is that field's check.
+- **Keeping the place in workspaceState stays in the hub** (read, forget, and the write at most once per 500 ms), as lifecycle work. The hub is about 200 lines shorter.
+- **Tests.** The place persistence and restore suites, and 15 other cockpit suites, are unchanged except their imports and `RecipeCockpitService.normalizePanelPlace(` becoming `RecipeCockpitPanelPlace.normalize(`. The new `RecipeCockpitPanelPlace.test.ts` holds the list to the place's optional fields in their written order, round-trips a card with every field with its key order, and checks the module loads without vscode.
+
+## [3.208.2] - A validation rule on a compound address or geolocation part names its compound field; #694 review follow-ups (#697)
+
+### Validation rules on an address or geolocation part
+
+- **A rule on a part a compound expansion wrote now says where the part comes from**, rather than that Treecipe did not read the field. For example, `### TODO -- VALIDATION RULE NOT APPLIED -- "Rule" -- QuoteToCity is written as a part of Quote's compound QuoteToAddress, which validation rules do not change`. This covers standard and configured custom addresses (`Site__City__s` → `Site__c`) and Geolocation parts (`Site_Location__Latitude__s` → `Site_Location__c`). A part the standard field map writes keeps its standard-field reason, and a Name part keeps its #114 reason. The rule is still not applied to the part's value.
+
+### Under the hood
+
+- `ObjectInfoWrapper/CompoundComponentApiName.ts` (imports nothing) holds the part naming rule `RecipeService.buildCompoundComponentApiName` used to hold, and that method delegates to it, so `SOQLTemplateService` reads the rule without loading `RecipeService`. `StandardCompoundAddressFields` builds its entries in private static methods, and freezes every list and entry.
+- **Tests.** `DirectoryProcessor.standardCompoundAddress.test.ts` covers the rule reasons in both backends: standard, case-insensitive, configured custom, Geolocation, a standard map part, a missing field, and another object's part. `StandardCompoundAddressFields.test.ts` tests the freezing, and `CompoundComponentApiName.test.ts` covers every branch and checks the file imports nothing. Generated output for a workspace with no such rule is unchanged (the golden files are untouched).
+
+## [3.208.1] - Recipe Cockpit: the "Customize and create new recipe" modal lays out only the fields near the view, so ↺ on a big tree answers at once (#693)
+
+### Customize and create new recipe
+
+- **The browser now lays out only the field lists near the view.** Each list is `content-visibility: auto`, so a list scrolled out of sight costs nothing until it comes back.
+  - With 40 objects × 300 fields all open, ↺ on the root takes about 27 ms, against about 0.5 s. ↺ on an object with 13 below it takes about 22 ms, against about 175 ms. Opening every object one by one takes about 0.46 s, against about 1 s, and the modal opens in about 28 ms, against about 43 ms. A ✕, a chain link, closing an object and the save step take as long as before.
+  - A ✕ on a field you can see still leaves the list exactly where it was, and focus still reaches a field far down a list that has not been drawn.
+- **A list not yet drawn is given a height from its field count**, rounded up to a power of 2 (8 to 1024 fields, 2.35rem a field), as a CSS class rather than an inline style. So until every list has been drawn, the scroll bar can show the modal up to about twice as long as it is.
+## [3.208.0] - Every standard compound Address field is written as its parts, on every standard object that has one, retrieved or not (#694)
+
+### Recipe generation
+
+- **Standard objects with an address now get fake address values.** Quote (`Billing`, `Shipping`, `QuoteTo`, `Additional`), Order and ServiceContract (`Billing`, `Shipping`), and WorkOrder, ServiceAppointment, Asset and User (`Address`) get `Street`, `City`, `State`, `PostalCode` and `Country` lines, such as `BillingStreet: ${{faker.location.streetAddress()}}` (faker-js) or `BillingStreet: ${{fake.street_address}}` (snowfakery).
+  - **This happens whether or not the address field file was retrieved.** An object whose `fields/` folder is in the project gets every part of every listed address.
+  - A part with its own field file (`Quote/fields/BillingCity.field-meta.xml`) is written once, from that file.
+  - Quote addresses are fresh fake values. An API insert does not copy them from the Account.
+- **A typeless standard address field file is no longer a TODO line.** A retrieve writes `ShippingAddress.field-meta.xml` with no `<type>`. Account, Contact and Lead recipes lose `ShippingAddress: ### TODO -- REVIEW THIS LINE…`, `OtherAddress: …` and `Address: …`, and their faker-js data sets lose `"ShippingAddress": null`, a compound field the Collections API does not accept. Their address parts still come from the standard field map, so nothing else changes on those objects.
+- **Person account addresses need their file.** `PersonMailingAddress` and `PersonOtherAddress` parts are written only when the Account folder has that field's file, because a business account insert, or an org without person accounts, refuses them. A project without person accounts gets the same Account recipe as before.
+- **What does not change.** An object with no standard address, such as `Widget__c`, still needs `customCompoundAddressFields` for a typeless address field and is otherwise a TODO line. A configured custom compound address still expands to its `__s` parts. State and Country stay plain, never `StateCode`/`CountryCode`.
+- **Snowfakery Contract recipes gain their Billing and Shipping parts.** Snowfakery's standard field map has no Contract entry, so before this change its Contract recipes had no address.
+
+### SOQL templates and the Query tab
+
+- **Each standard compound address is still selected**, after the object's fields, since it can be read. Account now selects `BillingAddress` and `ShippingAddress`, Contact `MailingAddress` and `OtherAddress`, Lead `Address`. A person account address is selected only when its parts are recipe fields.
+
+### Under the hood
+
+- `ObjectInfoWrapper/StandardCompoundAddressFields.ts` (imports nothing) names each standard object's compound address fields. `DirectoryProcessor.isCompoundAddressField` looks a typeless field up in it, and `buildUnretrievedStandardAddressFieldInfos` adds the addresses with no file; both expand through `buildCompoundComponentFieldInfos`. `SOQLTemplateService.getCompoundAddressFieldNames` selects them. No faker service or interface changes.
+- **Tests.** `DirectoryProcessor.standardCompoundAddress.test.ts` runs every case in both backends, over a new `mocks/StandardCompoundAddressSalesforceMetadataDirectory/` (Quote, Order, WorkOrder, a person Account, `Widget__c`). `DirectoryProcessor.generatedRecipeYaml.test.ts` loads that fixture's recipes, `StandardCompoundAddressFields.test.ts` pins the list, and `SOQLTemplateService.test.ts` covers the columns. The golden files, the Recipe Cockpit writer fixtures, the Query tab baseline and two journeys' query texts were updated for the removed TODO lines and the added columns.
+
+## [3.207.1] - The Treecipe tab's recipe edits are four host modules of their own (#688, slice 5b of #566)
+
+Nothing a user sees changes. Every journey and the rendered baselines pass with no expectation changed.
+
+- **The rest of the Treecipe tab's host code left the hub.** It is four files, which load one way: Host loads the other three, Selection and ObjectRefresh each load RecipeEdits, and RecipeEdits loads no other host.
+  - `RecipeCockpitTreecipeHost.ts`: the 22 commands and 24 action kinds, the pure router, the executor, and a card's rename and favourite.
+  - `RecipeCockpitTreecipeSelection.ts`: objects, fields, counts, fixed values, picklist choices, validation rule toggles and reset.
+  - `RecipeCockpitTreecipeObjectRefresh.ts`: Get latest object detail.
+  - `RecipeCockpitTreecipeRecipeEdits.ts`: friends, lookup wiring, parents, "Use existing … from org", TODO remove and restore, and the recipe and sidecar writes the other files share.
+  - One file would have been about 3,300 lines.
+- **What the model build also reads stays in the hub:** the lock reasons, the TODO, friend and wiring keys, the selection and fixed-value readers, and the object selection cascade. So do name preferences and the staged-field reads the Treecipe Adapter shares.
+- **`RecipeCockpitTabHosts.test.ts` has a Treecipe row.**
+  - Every owed entry that named #688 is cleared or now gives the shared hub service that keeps it.
+  - Seven cross-tab module uses are listed exactly as shared.
+- **Tests changed only to reach code where it now lives.** They import moved names from the new files, and the confirmation scan reads the four new files too.
+- **The #669 owed entries now name #688.** This came from #687's follow-up commit, which landed after that PR merged.
+- **`RecipeCockpitService.ts` went from 11,807 lines to 8,846.**
+
 ## [3.207.0] - Read-only fields stay in the recipe as READ ONLY, are locked in the Recipe Cockpit, and are never inserted (#685)
 
 Closes [#685](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/685).
@@ -87,7 +165,7 @@ Nothing a user sees changes. Every journey and the rendered baselines pass with 
   - `postInsertState`, the insert lock both inserts hold.
   - The selection checks other tabs' routers read, `changeOrgAndRestart`, `buildConfirmOrg` and `toSingleLine`.
   - The Troubleshooting focus that opening the cockpit reads.
-- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to #669 part b.
+- **The hub no longer imports `RecipeCockpitOrgAuthorize`.** What it still takes from `RecipeCockpitRecordCreation` and `RecipeCockpitRecordTypeRecipe` is listed as owed to [#688](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/688), #669's part b.
 - **The words the moved code says moved with it.** `RECIPE_COCKPIT_DATA_ORG_STATE_KEY`, the scratch org prompts, the insert confirmation's labels and `RECIPE_COCKPIT_RUN_FAKER_COMMAND` are among them, so a host never loads the hub.
 - **`RecipeCockpitTabHosts.test.ts` has a Treecipe org row.**
   - `RecipeCockpitRecordCreation`, which the Adapter's Add to data set also imports, is listed exactly as shared.

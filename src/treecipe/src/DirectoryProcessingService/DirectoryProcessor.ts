@@ -6,6 +6,7 @@ import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecip
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { PersonNameObjects } from '../ObjectInfoWrapper/PersonNameObjects';
+import { StandardCompoundAddressFields } from '../ObjectInfoWrapper/StandardCompoundAddressFields';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
@@ -65,6 +66,8 @@ export class DirectoryProcessor {
   private relationshipService: RelationshipService;
   private customRelationshipMappings: Record<string, string> | undefined;
   private customCompoundAddressFields: string[] | undefined;
+  // THE COMPOUND FIELD EACH EXPANDED PART CAME FROM, SO A RULE ON A PART CAN NAME IT (#697); A WeakMap SO NOTHING IS SERIALIZED
+  private compoundFieldApiNameByPart = new WeakMap<FieldInfo, string>();
   // THE SERVICE THAT WRITES EVERY OBJECT'S RECIPE DECIDES WHETHER THE TREE NESTS ITS CHILDREN UNDER friends: (#46)
   private isFakerJSServiceSelected: boolean;
   // THE RECORD TYPES THE USER CHOSE FOR THIS RUN (#193); UNDEFINED WRITES EVERY OBJECT'S DEFAULT, AS BEFORE
@@ -112,6 +115,11 @@ export class DirectoryProcessor {
 
     const compoundAddressFieldType = 'address';
     if ( fieldInfo?.type?.toLowerCase() === compoundAddressFieldType ) {
+      return true;
+    }
+
+    // A STANDARD ADDRESS IS RETRIEVED WITH NO <type>, SO ITS OBJECT AND NAME ARE THE SIGNAL (#694)
+    if ( fieldInfo?.fieldName && StandardCompoundAddressFields.findAddressField(associatedObjectName, fieldInfo.fieldName) ) {
       return true;
     }
 
@@ -216,9 +224,12 @@ export class DirectoryProcessor {
       compoundComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
     }
     // A TYPELESS Name HAS NO <label> EITHER, SO ITS PARTS ARE LABELLED BY THEIR OWN NAMES
-    const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldInfo.fieldLabel} `;
+    // A TYPELESS STANDARD ADDRESS HAS NO <label>, SO ITS PARTS TAKE THE LIST'S (#694)
+    const compoundFieldLabel = StandardCompoundAddressFields.findAddressField(associatedObjectName, compoundFieldInfo.fieldName)?.fieldLabel
+      ?? compoundFieldInfo.fieldLabel;
+    const componentLabelPrefix = isCompoundName ? '' : `${compoundFieldLabel} `;
 
-    return compoundComponentRecipes
+    const compoundPartFieldInfos = compoundComponentRecipes
       .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
       .filter((componentRecipe) => !alreadyProcessedFieldApiNames.has(componentRecipe.componentApiName))
       .map((componentRecipe) => FieldInfo.create(
@@ -231,6 +242,22 @@ export class DirectoryProcessor {
         null,
         componentRecipe.recipeValue
       ));
+    compoundPartFieldInfos.forEach(partFieldInfo => this.compoundFieldApiNameByPart.set(partFieldInfo, compoundFieldInfo.fieldName));
+    return compoundPartFieldInfos;
+
+  }
+
+  /*
+    A standard address whose field file was not retrieved is still on every record the object has,
+    so its parts are written anyway (#694). A person account's are not: they need their own file.
+  */
+  buildUnretrievedStandardAddressFieldInfos(associatedObjectName: string, retrievedCompoundFieldInfos: FieldInfo[]): FieldInfo[] {
+
+    const retrievedCompoundFieldApiNames = new Set(retrievedCompoundFieldInfos.map(fieldInfo => fieldInfo.fieldName));
+    return StandardCompoundAddressFields.getAddressFields(associatedObjectName)
+      .filter(addressField => !addressField.isWrittenOnlyWithItsFieldFile)
+      .filter(addressField => !retrievedCompoundFieldApiNames.has(addressField.fieldApiName))
+      .map(addressField => FieldInfo.create(associatedObjectName, addressField.fieldApiName, addressField.fieldLabel, 'Address', null, null, null, null));
 
   }
 
@@ -528,6 +555,8 @@ export class DirectoryProcessor {
 
     }
 
+    compoundFieldInfos.push(...this.buildUnretrievedStandardAddressFieldInfos(associatedObjectName, compoundFieldInfos));
+
     /*
       Expansion runs AFTER the walk so a component can be checked against every field file the object
       actually has rather than only the ones read so far -- directory order decides whether a
@@ -762,6 +791,20 @@ export class DirectoryProcessor {
   }
 
   /*
+    A part an Address or Geolocation expansion wrote has no FieldInfo carrying rule constraints, so
+    "not read from the fields folder" would be false for it, as for a Name part (#697).
+  */
+  buildCompoundPartRuleNotAppliedReason(objectName: string, fieldReference: string, fieldsInfo: FieldInfo[]): string | undefined {
+
+    const fieldKey = fieldReference.toLowerCase();
+    const expandedPart = fieldsInfo.find(fieldInfo => fieldInfo.fieldName?.toLowerCase() === fieldKey && this.compoundFieldApiNameByPart.has(fieldInfo));
+    return expandedPart === undefined
+      ? undefined
+      : `${expandedPart.fieldName} is written as a part of ${objectName}'s compound ${this.compoundFieldApiNameByPart.get(expandedPart)}, which validation rules do not change`;
+
+  }
+
+  /*
     Every rule that was not applied is one TODO line at the end of the object's first block, in rule
     file order, so the recipe says what generation did not do. A rule naming no field the walk read
     -- or matching no shape -- is recorded on the object; the rest are on their field's FieldInfo.
@@ -792,6 +835,7 @@ export class DirectoryProcessor {
       if ( fieldInfo === undefined ) {
         const reason = this.buildReadOnlyFieldRuleNotAppliedReason(analysis.constraint.fieldReference, fieldsInfo)
           ?? this.buildCompoundNameRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
+          ?? this.buildCompoundPartRuleNotAppliedReason(objectName, analysis.constraint.fieldReference, fieldsInfo)
           ?? RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
         objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
         notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));

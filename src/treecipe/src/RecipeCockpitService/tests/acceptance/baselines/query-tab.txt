@@ -38,7 +38,9 @@ tabpanel "Query"
     text "Account · Base Query"
     textbox "SOQL for Account · Base Query" = "SELECT Id,
        Rating__c,
-       Region__c
+       Region__c,
+       BillingAddress,
+       ShippingAddress
 FROM Account"
     button "Reset"
     button "Run…"
@@ -49,7 +51,7 @@ FROM Account"
     text "Children: Contact (via AccountId)"
     text "Note: Verify 'Contacts' is the correct Child Relationship Name"
     textbox "SOQL for Account · Parent-to-Child Query" = "SELECT Id,
-    (SELECT Id, Name, Title__c
+    (SELECT Id, Name, Title__c, MailingAddress, OtherAddress
      FROM Contacts)
 FROM Account"
     button "Reset"
@@ -61,7 +63,9 @@ FROM Account"
     text "Record Type: Business"
     textbox "SOQL for Account · Record Type Filtered Query" = "SELECT Id,
        Rating__c,
-       Region__c
+       Region__c,
+       BillingAddress,
+       ShippingAddress
 FROM Account
 WHERE RecordType.DeveloperName = 'Business'"
     button "Reset"
@@ -73,7 +77,9 @@ WHERE RecordType.DeveloperName = 'Business'"
     text "Record Type: Partner"
     textbox "SOQL for Account · Record Type Filtered Query" = "SELECT Id,
        Rating__c,
-       Region__c
+       Region__c,
+       BillingAddress,
+       ShippingAddress
 FROM Account
 WHERE RecordType.DeveloperName = 'Partner'"
     button "Reset"
@@ -85,7 +91,9 @@ WHERE RecordType.DeveloperName = 'Partner'"
     textbox "SOQL for Contact · Base Query" = "SELECT Id,
        Name,
        AccountId,
-       Title__c
+       Title__c,
+       MailingAddress,
+       OtherAddress
 FROM Contact"
     button "Reset"
     button "Run…"
@@ -97,7 +105,9 @@ FROM Contact"
     textbox "SOQL for Contact · Child-to-Parent Query" = "SELECT Id,
        AccountId,
        Account.Rating__c,
-       Account.Region__c
+       Account.Region__c,
+       Account.BillingAddress,
+       Account.ShippingAddress
 FROM Contact"
     button "Reset"
     button "Run…"
@@ -131,7 +141,9 @@ FROM Visit__c"
     textbox "SOQL for Visit__c · Child-to-Parent Query" = "SELECT Id,
        Contact__c,
        Contact__r.Name,
-       Contact__r.Title__c
+       Contact__r.Title__c,
+       Contact__r.MailingAddress,
+       Contact__r.OtherAddress
 FROM Visit__c"
     button "Reset"
     button "Run…"

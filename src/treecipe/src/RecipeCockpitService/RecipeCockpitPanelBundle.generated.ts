@@ -5663,9 +5663,16 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return !removedFields.has(field.fieldApiName) && !(dialog.preview && dialog.preview.cutLookupKeys.has(dialogObject.objectApiName + "\\n" + field.fieldApiName));
     }).length;
   }
+  var CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024];
+  function customTreecipeFieldListSizeClassName(fieldCount) {
+    const sizeFieldCount = CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS.find(function(candidate) {
+      return fieldCount <= candidate;
+    }) || CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS[CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS.length - 1];
+    return "fieldCountUpTo" + sizeFieldCount;
+  }
   function buildFieldList(dialog, dialogObject) {
     const objectApiName = dialogObject.objectApiName;
-    const listElement = createElement("ul", "treeFieldsBox customTreecipeFields");
+    const listElement = createElement("ul", "treeFieldsBox customTreecipeFields " + customTreecipeFieldListSizeClassName(dialogObject.fields.length));
     listElement.setAttribute("aria-label", "Fields of " + objectApiName);
     const removedFields = removedFieldsOf(dialog, objectApiName);
     const lockedFields = dialog.preview ? dialog.preview.lockedFieldsByObject.get(objectApiName) : void 0;
