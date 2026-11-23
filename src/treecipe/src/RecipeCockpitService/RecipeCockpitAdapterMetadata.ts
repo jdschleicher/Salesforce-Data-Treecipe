@@ -51,6 +51,7 @@ import type {
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     The Treecipe Adapter's metadata runs (#445, #447; moved out of the hub by #668): Retrieve latest
@@ -441,7 +442,7 @@ export class RecipeCockpitAdapterMetadata {
         const offer = this.offerAdapterChildFields(hub, stagedObject.fields, parentObjectApiName, childObjectApiName, lookupFieldApiName, tree, fakerService);
         // A RECORD THE ORG ANSWERED WITH NO Id IS NO PARENT, NEVER THE TEXT "undefined"
         const parentRecordIds = ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] )
-            .map(record => hub.readRecordFieldValue(record, 'Id'))
+            .map(record => RecipeCockpitDrawnModel.readRecordFieldValue(record, 'Id'))
             .filter((recordId): recordId is string => typeof recordId === 'string' && recordId !== '');
 
         if ( parentRecordIds.length === 0 ) {

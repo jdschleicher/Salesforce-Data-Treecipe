@@ -27,6 +27,7 @@ import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecip
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     The Recipe Cockpit's "+" on a self-lookup iteration (#197), end to end on the host: the model
@@ -126,7 +127,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipeViewModel, renderSequence: 1 };
-        panelState.pendingInsertableFriendTargets = RecipeCockpitService.collectInsertableFriendTargets(recipeViewModel);
+        panelState.pendingInsertableFriendTargets = RecipeCockpitDrawnModel.collectInsertableFriendTargets(recipeViewModel);
         panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
         return panelState;
     };
@@ -151,9 +152,9 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
 
         it('builds one host-only target per friend a drawn "+" offers, each naming the iteration\'s recipe file', () => {
 
-            expect(Array.from(RecipeCockpitService.collectInsertableFriendTargets(loadModel()))).toEqual([
-                [RecipeCockpitService.buildInsertableFriendKey(TREE_KEY, 'Account', ITERATION_NICKNAME, 'Contact'), recipeFilePath],
-                [RecipeCockpitService.buildInsertableFriendKey(TREE_KEY, 'Account', ITERATION_NICKNAME, 'Opportunity'), recipeFilePath]
+            expect(Array.from(RecipeCockpitDrawnModel.collectInsertableFriendTargets(loadModel()))).toEqual([
+                [RecipeCockpitDrawnModel.buildInsertableFriendKey(TREE_KEY, 'Account', ITERATION_NICKNAME, 'Contact'), recipeFilePath],
+                [RecipeCockpitDrawnModel.buildInsertableFriendKey(TREE_KEY, 'Account', ITERATION_NICKNAME, 'Opportunity'), recipeFilePath]
             ]);
 
         });
@@ -249,7 +250,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             const recipeViewModel = loadModel();
             recipeViewModel.trees[0].objects = recipeViewModel.trees[0].objects.filter(treeObject => treeObject.iterationNickname === undefined);
 
-            expect(RecipeCockpitService.collectInsertableFriendTargets(recipeViewModel).size).toBe(0);
+            expect(RecipeCockpitDrawnModel.collectInsertableFriendTargets(recipeViewModel).size).toBe(0);
 
             const snowfakeryRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-snowfakery--RelationshipTree_1.yml'), 'utf-8');
             expect(Array.from(RecipeCockpitModelBuild.parseRecipeSource(snowfakeryRecipeText).values()).filter(objectEntry => objectEntry.iterations)).toEqual([]);

@@ -53,6 +53,7 @@ import type {
     IRecipeCockpitWorkspaceState
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     The Previously Used Data Sets tab's host half (moved out of the hub by #667, after #665's pattern):
@@ -69,9 +70,7 @@ import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
     names and read-only, so a read after an await sees the panel and state open now.
 */
 export type IRecipeCockpitHubForDatasetsTab = Readonly<Pick<typeof RecipeCockpitService,
-    'addDatasetToAllowLists' |
     'buildConfirmOrg' |
-    'cloneTreeHistoryAllowLists' |
     'confirmInPanel' |
     'describeCustomNameProblem' |
     'isSelectionHeldByPromptOrUpdater' |
@@ -855,8 +854,8 @@ export class RecipeCockpitDatasetsHost {
             panelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.delete(datasetFolderName);
         }
 
-        panelState.pendingTreeHistoryAllowLists = hub.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
-        panelState.treeHistoryAllowLists = hub.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
+        panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
         panelState.treeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.delete(datasetFolderName);
         if ( resultsFilePath !== undefined ) {
             panelState.pendingTreeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.add(datasetFolderName);
@@ -920,8 +919,8 @@ export class RecipeCockpitDatasetsHost {
         if ( addedDataset.insertResultsFilePath !== undefined ) {
             panelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.set(datasetFolderName, addedDataset.insertResultsFilePath);
         }
-        panelState.pendingTreeHistoryAllowLists = hub.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
-        hub.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset.dataset);
+        panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
+        RecipeCockpitDrawnModel.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset.dataset);
 
         const datasetAddedMessage: IRecipeCockpitDatasetAddedMessage = {
             command: 'datasetAdded',

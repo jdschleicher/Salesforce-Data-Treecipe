@@ -38,6 +38,7 @@ import { RecipeCockpitTreecipeHost } from '../RecipeCockpitTreecipeHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitShell } from '../RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     A tree card's own name and favorite, and the Favorites only filter (#235). The host keeps both
@@ -260,7 +261,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             const recipe = loadRecipe();
             recipe.trees.push(buildUngroupedTree());
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -296,7 +297,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         it('allows every card with a folder, and not the ungrouped card', () => {
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(buildDrawnPanelState().recipeDataMessage!.recipe).nameableTreeKeys])
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(buildDrawnPanelState().recipeDataMessage!.recipe).nameableTreeKeys])
                 .toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
 
         });
@@ -312,7 +313,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             // BEFORE "rendered", AFTER "ready" OR A FAILURE TO DRAW: THE ACTIVE LIST IS EMPTY
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             expect(route(LEAD_TREE_KEY, undrawnPanelState)).toBeUndefined();
 
             const modelLessPanelState = buildDrawnPanelState();

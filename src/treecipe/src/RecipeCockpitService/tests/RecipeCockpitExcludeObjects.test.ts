@@ -38,6 +38,7 @@ import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs'
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { RecipeCockpitObjectSelection } from '../RecipeCockpitObjectSelection';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #219: a tree icon on each Treecipe-tab row includes or excludes an object, and its children follow.
@@ -178,7 +179,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const startedAt = Date.now();
 
             RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([['Object7__c-ONLY', new Set(['Object7__c'])]]));
-            const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            const allowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
 
             // A PER-CARD REBUILD OF THE NAME MAP TOOK ABOUT 30 s HERE
             expect(Date.now() - startedAt).toBeLessThan(2000);
@@ -300,13 +301,13 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipe = loadRecipe();
             recipe.trees.push(buildUngroupedTree());
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
         it('allows each object a card with a folder draws, once, and nothing else', () => {
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(buildDrawnPanelState().recipeDataMessage!.recipe).selectableObjectKeys]).toEqual([
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(buildDrawnPanelState().recipeDataMessage!.recipe).selectableObjectKeys]).toEqual([
                 `${ACCOUNT_TREE_KEY}\nAccount`,
                 `${ACCOUNT_TREE_KEY}\nContact`,
                 `${ACCOUNT_TREE_KEY}\nOtherChildObject__c`,
@@ -320,7 +321,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipe = buildDrawnPanelState().recipeDataMessage!.recipe;
             recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact')!.hasIndistinctOccurrences = true;
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(recipe).selectableObjectKeys]).not.toContain(`${ACCOUNT_TREE_KEY}\nContact`);
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe).selectableObjectKeys]).not.toContain(`${ACCOUNT_TREE_KEY}\nContact`);
 
         });
 
@@ -350,7 +351,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
         it('does nothing before "rendered", after "ready" or a failure to draw, or with no model', () => {
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             expect(RecipeCockpitService.routePanelMessage({ command: 'setObjectIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: false }, undrawnPanelState)).toBeUndefined();
 
             const modelLessPanelState = buildDrawnPanelState();

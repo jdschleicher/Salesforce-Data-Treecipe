@@ -7,14 +7,14 @@ import type {
     IRecipeCockpitOrgOpenStateMessage,
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
-    IRecipeCockpitScratchOrgStateMessage,
-    RecipeCockpitPanelAction
+    IRecipeCockpitScratchOrgStateMessage
 } from './RecipeCockpitViewModel';
 import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHost';
 import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitTreecipeInsert } from './RecipeCockpitTreecipeInsert';
 import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     Target Org Manager and a tree's insert, the Treecipe tab's org half (moved out of the hub by #669
@@ -37,8 +37,6 @@ import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 export type IRecipeCockpitHubForTreecipeOrgTab = Readonly<Pick<typeof RecipeCockpitService,
     'buildConfirmOrg' |
     'buildObjectsByApiName' |
-    'buildRunFakerFilteredRecipe' |
-    'buildSelectableRecordTypeKey' |
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
     'confirmInPanelWithRecordTypeSetModes' |
@@ -47,10 +45,7 @@ export type IRecipeCockpitHubForTreecipeOrgTab = Readonly<Pick<typeof RecipeCock
     'findOrgRecordLookup' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
-    'listExcludedFieldApiNamesByObject' |
     'listExcludedObjectApiNames' |
-    'listObjectCountsByObject' |
-    'listUnconstrainedValuesByObject' |
     'loadRecipeIntoPanel' |
     'postToPanel' |
     'readOccurrenceNickname' |
@@ -415,7 +410,7 @@ export class RecipeCockpitTreecipeOrgHost {
                     || developerNames.length === 0
                     || new Set(developerNames).size !== developerNames.length
                     || !developerNames.every(developerName => typeof developerName === 'string'
-                                                                && selectableRecordTypeKeys.has(hub.buildSelectableRecordTypeKey(objectApiName, developerName))) ) {
+                                                                && selectableRecordTypeKeys.has(RecipeCockpitDrawnModel.buildSelectableRecordTypeKey(objectApiName, developerName))) ) {
                 return undefined;
             }
 

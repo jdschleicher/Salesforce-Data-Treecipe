@@ -40,6 +40,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { RecipeCockpitShell } from '../RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #255: a count box right of each object's name sets how many records the generate button and the whole-tree
@@ -604,12 +605,12 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const accountTree = treeOf(recipe, ACCOUNT_TREE_KEY);
 
             expect(accountTree.objectCounts).toEqual([{ objectApiName: 'Account', count: 2 }, { objectApiName: 'Contact', count: 5 }]);
-            expect(RecipeCockpitService.listObjectCountsByObject(accountTree)).toEqual(new Map([['Account', 2]]));
+            expect(RecipeCockpitDrawnModel.listObjectCountsByObject(accountTree)).toEqual(new Map([['Account', 2]]));
 
             // RE-INCLUDED, ITS COUNT COMES BACK
             applyCounts(recipe, { [ACCOUNT_TREE_KEY]: { Contact: 5, Account: 2 } });
-            expect(RecipeCockpitService.listObjectCountsByObject(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(new Map([['Account', 2], ['Contact', 5]]));
-            expect(RecipeCockpitService.listObjectCountsByObject(undefined)).toEqual(new Map());
+            expect(RecipeCockpitDrawnModel.listObjectCountsByObject(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(new Map([['Account', 2], ['Contact', 5]]));
+            expect(RecipeCockpitDrawnModel.listObjectCountsByObject(undefined)).toEqual(new Map());
 
         });
 
@@ -618,7 +619,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const recipe = loadRecipe();
             applyCounts(recipe, { [ACCOUNT_TREE_KEY]: { Contact: 5 } });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
@@ -640,7 +641,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             recipe.trees.push({ treeKey: '', title: RECIPE_COCKPIT_UNGROUPED_TREE_TITLE, folderName: '', objects: [{ objectApiName: 'Lead', parentLookups: [] }], fieldCount: 2 });
             recipeChanges(recipe);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -714,7 +715,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
         it('does nothing before "rendered", after "ready" or a failure to draw, or with no model', () => {
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
 

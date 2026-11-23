@@ -55,17 +55,11 @@ import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 */
 export type IRecipeCockpitHubForAdapterTab = Readonly<Pick<typeof RecipeCockpitService,
     'buildConfirmOrg' |
-    'buildOrgOnlyFieldsResult' |
     'confirmInPanel' |
-    'findDescribedOrgOnlyFieldLockReason' |
-    'findRecipeExpression' |
-    'hasRecordTypePicklist' |
     'isApplyHeldByAnotherRun' |
     'isUsableWorkspacePath' |
-    'listDeclaredPicklistValues' |
     'offerStagedField' |
     'postToPanel' |
-    'readRecordFieldValue' |
     'readSourceApiVersion' |
     'readTreeFakerService' |
     'recipeCockpitPanel' |

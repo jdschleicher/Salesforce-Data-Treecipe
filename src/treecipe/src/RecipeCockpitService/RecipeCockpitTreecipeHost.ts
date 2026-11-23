@@ -38,6 +38,7 @@ import { RecipeCockpitTreecipeRecipeEdits } from './RecipeCockpitTreecipeRecipeE
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from './RecipeCockpitNavigationConstants';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     The Treecipe tab's recipe edits, its host half (moved out of the hub by #688, after #665's
@@ -62,21 +63,13 @@ export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpit
     'applyObjectSelections' |
     'applyTreePreferences' |
     'buildConfirmOrg' |
-    'buildInsertableFriendKey' |
     'buildLookupWiringContext' |
     'buildObjectsByApiName' |
-    'buildPicklistChoiceExpression' |
     'buildPinnedFieldRestoreRequests' |
-    'buildSelectableFieldKey' |
-    'buildSelectableObjectKey' |
-    'buildTodoActionKey' |
-    'buildWireableLookupKey' |
     'confirmInPanel' |
     'describeOccurrence' |
     'describeTreeNameProblem' |
     'discardObjectRefreshStaging' |
-    'findDrawnField' |
-    'findDrawnOccurrenceField' |
     'findFixedValueLockReason' |
     'findLookupValueRefusal' |
     'findObjectFieldSelection' |
@@ -85,18 +78,15 @@ export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpit
     'isApplyHeldByAnotherRun' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
-    'listDeclaredPicklistValues' |
     'listExcludedObjectApiNames' |
     'listRemovedTodosStillOut' |
     'listSelectableFieldApiNames' |
     'listTreeEmptyLookups' |
     'listTreeOccurrences' |
-    'listTreeTodos' |
     'loadRecipeIntoPanel' |
     'postNameEditResult' |
     'postToPanel' |
     'readFixedValueFile' |
-    'readGeneratedPicklistChoice' |
     'readRemovedTodoFile' |
     'readSourceApiVersion' |
     'readTreeFakerService' |
@@ -107,7 +97,6 @@ export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpit
     'recipeCockpitWorkspaceState' |
     'refreshDataOrgReadinessForTrees' |
     'resolveFixedValueKind' |
-    'resolvePostedOccurrence' |
     'resolveSelectedReadOrg' |
     'resolveTreeRunArtifactsLocation' |
     'runCancellableRetrieve' |
@@ -237,7 +226,7 @@ export class RecipeCockpitTreecipeHost {
                                         && typeof objectNickname === 'string'
                                         && typeof friendObjectApiName === 'string'
                                         && !!panelState.recipeDataMessage
-                    ? panelState.insertableFriendTargets.get(hub.buildInsertableFriendKey(treeKey, objectApiName, objectNickname, friendObjectApiName))
+                    ? panelState.insertableFriendTargets.get(RecipeCockpitDrawnModel.buildInsertableFriendKey(treeKey, objectApiName, objectNickname, friendObjectApiName))
                     : undefined;
 
                 if ( recipeFilePath ) {
@@ -282,10 +271,10 @@ export class RecipeCockpitTreecipeHost {
 
                 if ( panelMessage.command === 'removeTodo' ) {
                     const lineNumber = panelMessage.lineNumber as number;
-                    if ( !Number.isSafeInteger(lineNumber) || !panelState.treeHistoryAllowLists.removableTodoKeys.has(hub.buildTodoActionKey(treeKey, lineNumber)) ) {
+                    if ( !Number.isSafeInteger(lineNumber) || !panelState.treeHistoryAllowLists.removableTodoKeys.has(RecipeCockpitDrawnModel.buildTodoActionKey(treeKey, lineNumber)) ) {
                         return closeWireLookupState;
                     }
-                    const treeTodo = hub.listTreeTodos(hub.buildObjectsByApiName(recipeDataMessage.recipe), tree, recipeFilePath)
+                    const treeTodo = RecipeCockpitDrawnModel.listTreeTodos(hub.buildObjectsByApiName(recipeDataMessage.recipe), tree, recipeFilePath)
                         .find(candidateTodo => candidateTodo.todo.lineNumber === lineNumber && candidateTodo.todo.removeLock === undefined);
                     return treeTodo && treeTodo.text !== ''
                         ? { kind: 'removeTodo', treeKey: treeKey, recipeFilePath: recipeFilePath, lineNumber: lineNumber, todoText: treeTodo.text }
@@ -294,7 +283,7 @@ export class RecipeCockpitTreecipeHost {
 
                 const { removalKey } = panelMessage;
                 const removed = typeof removalKey === 'string' && /^(0|[1-9][0-9]*)$/.test(removalKey)
-                                && panelState.treeHistoryAllowLists.restorableTodoKeys.has(hub.buildTodoActionKey(treeKey, removalKey))
+                                && panelState.treeHistoryAllowLists.restorableTodoKeys.has(RecipeCockpitDrawnModel.buildTodoActionKey(treeKey, removalKey))
                     ? panelState.removedTodosByTreeKey?.get(treeKey)?.[Number(removalKey)]
                     : undefined;
 
@@ -344,7 +333,7 @@ export class RecipeCockpitTreecipeHost {
                 const target = typeof objectApiName === 'string'
                                 && ( objectNickname === undefined || typeof objectNickname === 'string' )
                                 && typeof fieldApiName === 'string'
-                    ? panelState.wireableLookupTargets.get(hub.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
+                    ? panelState.wireableLookupTargets.get(RecipeCockpitDrawnModel.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
                     : undefined;
 
                 return target
@@ -374,7 +363,7 @@ export class RecipeCockpitTreecipeHost {
                                 && typeof objectApiName === 'string'
                                 && ( objectNickname === undefined || typeof objectNickname === 'string' )
                                 && typeof fieldApiName === 'string'
-                    ? panelState.addableParentTargets.get(hub.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
+                    ? panelState.addableParentTargets.get(RecipeCockpitDrawnModel.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
                     : undefined;
 
                 return target
@@ -404,7 +393,7 @@ export class RecipeCockpitTreecipeHost {
                                 && typeof objectApiName === 'string'
                                 && ( objectNickname === undefined || typeof objectNickname === 'string' )
                                 && typeof fieldApiName === 'string'
-                    ? panelState.orgRecordLookupTargets.get(hub.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
+                    ? panelState.orgRecordLookupTargets.get(RecipeCockpitDrawnModel.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
                     : undefined;
 
                 return target
@@ -462,7 +451,7 @@ export class RecipeCockpitTreecipeHost {
                 if ( typeof treeKey !== 'string' || typeof objectApiName !== 'string' || typeof included !== 'boolean'
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(hub.buildSelectableObjectKey(treeKey, objectApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName)) ) {
                     return undefined;
                 }
 
@@ -490,12 +479,12 @@ export class RecipeCockpitTreecipeHost {
                 if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName) || typeof included !== 'boolean'
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
                 }
 
                 // THE OCCURRENCE THE ROW DRAWS (#467): ITS FIELD MUST HAVE A LINE THERE
-                const drawnField = hub.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
                 const folderName = drawnField?.tree.folderName;
 
                 return folderName
@@ -514,11 +503,11 @@ export class RecipeCockpitTreecipeHost {
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || ( fieldScope !== undefined && fieldScope !== RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE )
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(hub.buildSelectableObjectKey(treeKey, objectApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName)) ) {
                     return undefined;
                 }
 
-                const resolved = hub.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
+                const resolved = RecipeCockpitDrawnModel.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
                 const folderName = resolved?.tree.folderName;
 
                 return folderName
@@ -543,12 +532,12 @@ export class RecipeCockpitTreecipeHost {
                 if ( typeof treeKey !== 'string' || typeof objectApiName !== 'string' || !RecipeCockpitRecipeWriter.isRecordCount(count)
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(hub.buildSelectableObjectKey(treeKey, objectApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName)) ) {
                     return undefined;
                 }
 
                 // THE OCCURRENCE'S OWN "count:" (#467): A LATER ONE'S IS ITS OWN, NEVER THE FIRST'S
-                const resolved = hub.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
+                const resolved = RecipeCockpitDrawnModel.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
                 const tree = resolved?.tree;
                 if ( !resolved || resolved.occurrence.objectViewModel.recordCount === undefined
                         || !tree?.folderName || hub.listExcludedObjectApiNames(tree).includes(objectApiName) ) {
@@ -576,11 +565,11 @@ export class RecipeCockpitTreecipeHost {
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || typeof value !== 'string' || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
                 }
 
-                const drawnField = hub.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
                 if ( !drawnField || !drawnField.tree.folderName
                         || hub.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
@@ -607,12 +596,12 @@ export class RecipeCockpitTreecipeHost {
                         || !picklistValues.every(picklistValue => typeof picklistValue === 'string')
                         || new Set(picklistValues).size !== picklistValues.length
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
                 }
 
                 const declaredPicklistValues = panelState.picklistDisplayValuesByObjectApiName.get(objectApiName)?.get(fieldApiName)?.picklistValues;
-                const drawnField = hub.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
                 if ( !declaredPicklistValues || !picklistValues.every(picklistValue => declaredPicklistValues.includes(picklistValue))
                         || !drawnField || !drawnField.fieldViewModel.isPicklist || !drawnField.tree.folderName
@@ -643,11 +632,11 @@ export class RecipeCockpitTreecipeHost {
                 if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
                 }
 
-                const drawnField = hub.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
                 if ( !drawnField || !drawnField.fieldViewModel.isPicklist || !drawnField.tree.folderName
                         || hub.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
                     return undefined;
@@ -677,11 +666,11 @@ export class RecipeCockpitTreecipeHost {
                         || typeof applied !== 'boolean'
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || !panelState.recipeDataMessage
-                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
                 }
 
-                const drawnField = hub.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
                 if ( !drawnField || !drawnField.tree.folderName
                         || hub.findValidationRuleLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
@@ -724,7 +713,7 @@ export class RecipeCockpitTreecipeHost {
 
                 const recipeDataMessage = panelState.recipeDataMessage;
                 const resolved = typeof treeKey === 'string' && typeof objectApiName === 'string'
-                    ? hub.resolvePostedOccurrence(recipeDataMessage?.recipe, treeKey, objectApiName, nickname)
+                    ? RecipeCockpitDrawnModel.resolvePostedOccurrence(recipeDataMessage?.recipe, treeKey, objectApiName, nickname)
                     : undefined;
 
                 if ( !resolved

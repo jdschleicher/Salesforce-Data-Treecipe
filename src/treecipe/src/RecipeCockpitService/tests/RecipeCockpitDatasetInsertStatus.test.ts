@@ -36,6 +36,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { DatasetInsertAttemptService, IInsertAttemptSummary, INSERT_ATTEMPT_SUMMARY_SCHEMA_VERSION } from '../../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { CollectionsApiService, INSERT_RESULTS_FILE_MISSING_TEXT } from '../../CollectionsApiService/CollectionsApiService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #469: a data set row says how its newest insert ended -- succeeded, partly, failed, cancelled or
@@ -180,7 +181,7 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
 
             writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', summaryOf());
 
-            const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadRecipe().recipeViewModel);
+            const allowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadRecipe().recipeViewModel);
 
             expect([...allowLists.viewableInsertResultsDatasetFolderNames]).toEqual([LEAD_DATASETS[0]]);
 
@@ -215,7 +216,7 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             const recipeDataMessage = { command: 'recipeData' as const, recipe: recipeViewModel, renderSequence: 7 };
             panelState.recipeDataMessage = recipeDataMessage;
             panelState.treeHistoryTargets = treeHistoryTargets;
-            panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel);
+            panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel);
             panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
             const cockpitPanel = { webview: { postMessage: jest.fn() } };
 
@@ -240,7 +241,7 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 7 };
             panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
-            panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadedRecipe.recipeViewModel);
+            panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadedRecipe.recipeViewModel);
             if ( isActivated ) {
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
             }

@@ -27,6 +27,7 @@ import type {
     IRecipeCockpitTreeViewModel
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     "Customize and create new recipe" (#677), the host half: the modal's preview and its Save as new
@@ -40,9 +41,6 @@ import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 export type IRecipeCockpitHubForCustomTreecipe = Readonly<Pick<typeof RecipeCockpitService,
     'applyTreeObjectAndFieldSelection' |
     'buildObjectsByApiName' |
-    'buildRunFakerFilteredRecipe' |
-    'buildSelectableFieldKey' |
-    'buildSelectableObjectKey' |
     'listExcludedObjectApiNames' |
     'loadRecipeIntoPanel' |
     'readCustomTreecipeDefinition' |
@@ -189,7 +187,7 @@ export class RecipeCockpitCustomTreecipeHost {
 
         const { removedObjectApiNames, removedFields, outOfRunObjectApiNames } = panelMessage;
         const isDrawnObject = (objectApiName: unknown): objectApiName is string => typeof objectApiName === 'string'
-            && panelState.treeHistoryAllowLists.selectableObjectKeys.has(hub.buildSelectableObjectKey(treeKey, objectApiName));
+            && panelState.treeHistoryAllowLists.selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName));
         const isDrawnObjectList = (candidate: unknown): candidate is string[] => Array.isArray(candidate)
             && candidate.length <= RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES && candidate.every(isDrawnObject);
 
@@ -205,7 +203,7 @@ export class RecipeCockpitCustomTreecipeHost {
             }
             const { objectApiName, fieldApiName } = removedField;
             if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string'
-                    || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                 return undefined;
             }
             removedFieldApiNamesByObject.set(objectApiName, ( removedFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName));
@@ -379,7 +377,7 @@ export class RecipeCockpitCustomTreecipeHost {
                 return;
             }
 
-            const filteredRecipe = hub.buildRunFakerFilteredRecipe(recipeText, customTree, panelState.objectLevelsByApiName, recipeDataMessage.recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(recipeText, customTree, panelState.objectLevelsByApiName, recipeDataMessage.recipe);
             if ( 'refusalMessage' in filteredRecipe ) {
                 refuse(filteredRecipe.refusalMessage);
                 return;

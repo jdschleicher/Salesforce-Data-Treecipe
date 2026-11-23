@@ -49,6 +49,7 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import * as os from 'os';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #325: a checkbox at the end of a rule-constrained field's row says the field's validation rules
@@ -476,14 +477,14 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
             const recipe = loadRecipe();
 
-            expect(RecipeCockpitService.findDrawnField(recipe, GADGET_TREE_KEY, 'Gadget__c', 'Amount__c')?.fieldViewModel.fieldApiName).toBe('Amount__c');
-            expect(RecipeCockpitService.findDrawnField(undefined, GADGET_TREE_KEY, 'Gadget__c', 'Amount__c')).toBeUndefined();
-            expect(RecipeCockpitService.findDrawnField(recipe, 'Forged-Folder', 'Gadget__c', 'Amount__c')).toBeUndefined();
-            expect(RecipeCockpitService.findDrawnField(recipe, GADGET_TREE_KEY, 'Lead', 'Amount__c')).toBeUndefined();
-            expect(RecipeCockpitService.findDrawnField(recipe, GADGET_TREE_KEY, 'Gadget__c', 'Not_A_Field__c')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDrawnField(recipe, GADGET_TREE_KEY, 'Gadget__c', 'Amount__c')?.fieldViewModel.fieldApiName).toBe('Amount__c');
+            expect(RecipeCockpitDrawnModel.findDrawnField(undefined, GADGET_TREE_KEY, 'Gadget__c', 'Amount__c')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDrawnField(recipe, 'Forged-Folder', 'Gadget__c', 'Amount__c')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDrawnField(recipe, GADGET_TREE_KEY, 'Lead', 'Amount__c')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDrawnField(recipe, GADGET_TREE_KEY, 'Gadget__c', 'Not_A_Field__c')).toBeUndefined();
 
             delete fieldOf(recipe, 'Gadget__c', 'Amount__c').lineNumber;
-            expect(RecipeCockpitService.findDrawnField(recipe, GADGET_TREE_KEY, 'Gadget__c', 'Amount__c')).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.findDrawnField(recipe, GADGET_TREE_KEY, 'Gadget__c', 'Amount__c')).toBeUndefined();
 
         });
 
@@ -513,7 +514,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             ];
             delete fieldOf(recipe, 'Gadget__c', 'Quantity__c').validationRules?.unconstrainedRecipeValue;
 
-            expect(RecipeCockpitService.listUnconstrainedValuesByObject(recipe, tree)).toEqual(new Map());
+            expect(RecipeCockpitDrawnModel.listUnconstrainedValuesByObject(recipe, tree)).toEqual(new Map());
 
         });
 
@@ -535,7 +536,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             applySelections(recipe, { validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Description__c'] } } });
             const recipeText = fs.readFileSync(recipeFilePathOf(backendRun), 'utf8');
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(recipeText, treeOf(recipe), undefined, recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(recipeText, treeOf(recipe), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
@@ -562,7 +563,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             applySelections(recipe, { validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Description__c'] } } });
 
             expect(treeOf(recipe).validationRulesOff).toEqual([{ objectApiName: 'Gadget__c', fieldApiName: 'Description__c' }]);
-            expect(RecipeCockpitService.listUnconstrainedValuesByObject(recipe, treeOf(recipe))).toEqual(new Map());
+            expect(RecipeCockpitDrawnModel.listUnconstrainedValuesByObject(recipe, treeOf(recipe))).toEqual(new Map());
 
         });
 
@@ -602,7 +603,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const recipe = loadRecipe();
             applySelections(recipe, choices);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -637,7 +638,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const lockedPanelState = buildDrawnPanelState({ fixedValues: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: '7' } } }, excludedFields: { [GADGET_TREE_KEY]: { Gadget__c: ['Quantity__c'] } } });
             const excludedPanelState = buildDrawnPanelState({ excludedObjects: { [GADGET_TREE_KEY]: ['Gadget__c'] } });
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
             const payload = { treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', applied: false };
@@ -972,7 +973,7 @@ describe('what each state of the validation-rule box generates (#325)', () => {
     const buildCopy = (backendRun: BackendRun): string => {
         const recipe = loadRecipe(backendRun);
         applySelections(recipe, { validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Stage__c'] } } });
-        const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(recipeFilePathOf(backendRun), 'utf8'), treeOf(recipe), undefined, recipe);
+        const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(fs.readFileSync(recipeFilePathOf(backendRun), 'utf8'), treeOf(recipe), undefined, recipe);
         if ( 'refusalMessage' in filteredRecipe ) {
             throw new Error(filteredRecipe.refusalMessage);
         }

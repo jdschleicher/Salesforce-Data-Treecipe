@@ -87,6 +87,7 @@ import {
 } from './RecipeCockpitRecordTypeSets';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     Target Org Manager (moved out of the hub by #669 part a): the org list and its refusals, a
@@ -106,7 +107,6 @@ export type IRecipeCockpitHubForTreecipeDataOrgs = Readonly<Pick<typeof RecipeCo
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
     'isUsableWorkspacePath' |
-    'listExcludedFieldApiNamesByObject' |
     'listExcludedObjectApiNames' |
     'postToPanel' |
     'recipeCockpitPanel' |
@@ -1329,7 +1329,7 @@ export class RecipeCockpitTreecipeDataOrgs {
                 continue;
             }
 
-            const excludedFieldApiNamesByObject = hub.listExcludedFieldApiNamesByObject(tree);
+            const excludedFieldApiNamesByObject = RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(tree);
             const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
                 objectApiName: objectApiName,
                 objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName)),

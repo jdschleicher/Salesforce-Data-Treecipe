@@ -31,6 +31,7 @@ import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceServic
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     What a tree card's Treecipe tab changes about a run (moved out of the hub by #688): which objects
@@ -126,7 +127,7 @@ export class RecipeCockpitTreecipeSelection {
                                             panelState: IRecipeCockpitPanelState,
                                             panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldIncluded' }>) {
 
-        const resolved = hub.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        const resolved = RecipeCockpitDrawnModel.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
         const tree = resolved?.tree;
 
         if ( !tree || this.listFieldReadOnlyObjectApiNames(tree).includes(panelAction.objectApiName) ) {
@@ -172,7 +173,7 @@ export class RecipeCockpitTreecipeSelection {
                                                 panelState: IRecipeCockpitPanelState,
                                                 panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setAllFieldsIncluded' }>) {
 
-        const resolved = hub.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        const resolved = RecipeCockpitDrawnModel.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
         const tree = resolved?.tree;
         const objectViewModel = resolved?.occurrence.objectViewModel;
 
@@ -223,7 +224,7 @@ export class RecipeCockpitTreecipeSelection {
                                         panelState: IRecipeCockpitPanelState,
                                         panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setObjectCount' }>) {
 
-        const resolved = hub.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        const resolved = RecipeCockpitDrawnModel.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
         if ( !resolved ) {
             return;
         }
@@ -261,7 +262,7 @@ export class RecipeCockpitTreecipeSelection {
                                             edit: RecipeCockpitFieldEdit = 'fixedValue') {
 
         const drawnField = hub.recipeCockpitPanelState === panelState
-            ? hub.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
+            ? RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
             : undefined;
         if ( !drawnField || drawnField.tree.folderName !== panelAction.folderName || drawnField.fieldViewModel.lineNumber === undefined
                 || hub.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
@@ -279,7 +280,7 @@ export class RecipeCockpitTreecipeSelection {
             return;
         }
 
-        const declaredPicklistValues = hub.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
+        const declaredPicklistValues = RecipeCockpitDrawnModel.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
         const valueRefusal = panelAction.value === '' ? undefined : hub.validateFixedValueInput(panelAction.value, drawnField.fieldViewModel, declaredPicklistValues);
         if ( valueRefusal !== undefined ) {
             this.postFieldEditResult(hub, cockpitPanel, panelState, panelAction, edit, valueRefusal);
@@ -320,7 +321,7 @@ export class RecipeCockpitTreecipeSelection {
                                                 panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setPicklistValueChoice' }>) {
 
         const drawnField = hub.recipeCockpitPanelState === panelState
-            ? hub.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
+            ? RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
             : undefined;
         const declaredPicklistValues = panelState.picklistDisplayValuesByObjectApiName.get(panelAction.objectApiName)?.get(panelAction.fieldApiName)?.picklistValues;
         if ( !drawnField || !declaredPicklistValues ) {
@@ -331,7 +332,7 @@ export class RecipeCockpitTreecipeSelection {
         const hasEdit = ( drawnField.tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === panelAction.objectApiName && fixedValue.nickname === occurrenceNickname && fixedValue.fieldApiName === panelAction.fieldApiName);
         // WHAT GENERATION CHOSE FROM -- NARROWER THAN THE DECLARED VALUES WHEN A VALIDATION RULE OR A SELECTED RECORD TYPE NARROWED IT
         // A LINE THAT IS NOT A CHOICE THE BACKEND BUILDS SAYS NOTHING, SO IT IS TAKEN AS THE DECLARED VALUES, WHICH THE TILES START FROM
-        const generatedChoice = hub.readGeneratedPicklistChoice(drawnField.fieldViewModel, declaredPicklistValues) ?? declaredPicklistValues;
+        const generatedChoice = RecipeCockpitDrawnModel.readGeneratedPicklistChoice(drawnField.fieldViewModel, declaredPicklistValues) ?? declaredPicklistValues;
         const isGeneratedChoice = generatedChoice.length === panelAction.picklistValues.length
             && generatedChoice.every(generatedValue => panelAction.picklistValues.includes(generatedValue));
         let value = '';
@@ -347,7 +348,7 @@ export class RecipeCockpitTreecipeSelection {
                 this.postFieldEditResult(hub, cockpitPanel, panelState, panelAction, 'picklistValues', 'Not saved: the recipe file does not say which faker service it was written for.');
                 return;
             }
-            value = hub.buildPicklistChoiceExpression(fakerService, panelAction.picklistValues, drawnField.fieldViewModel);
+            value = RecipeCockpitDrawnModel.buildPicklistChoiceExpression(fakerService, panelAction.picklistValues, drawnField.fieldViewModel);
             const expressionRefusal = RecipeCockpitRecipeWriter.checkConstrainedExpression(value);
             if ( expressionRefusal !== undefined ) {
                 this.postFieldEditResult(hub, cockpitPanel, panelState, panelAction, 'picklistValues', `Not saved: the faker expression for the values you ticked ${expressionRefusal}`);
@@ -369,7 +370,7 @@ export class RecipeCockpitTreecipeSelection {
                                                     panelAction: Extract<RecipeCockpitPanelAction, { kind: 'resetPicklistValueChoice' }>) {
 
         const drawnField = hub.recipeCockpitPanelState === panelState
-            ? hub.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
+            ? RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
             : undefined;
         if ( !drawnField ) {
             return;
@@ -625,7 +626,7 @@ export class RecipeCockpitTreecipeSelection {
                                                         panelState: IRecipeCockpitPanelState,
                                                         panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldValidationRuleApplied' }>) {
 
-        const resolved = hub.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        const resolved = RecipeCockpitDrawnModel.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
         if ( !resolved ) {
             return;
         }

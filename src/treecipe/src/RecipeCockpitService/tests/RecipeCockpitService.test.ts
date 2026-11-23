@@ -83,6 +83,7 @@ import {
     RecipeCockpitShell,
     RECIPE_COCKPIT_PANEL_TITLE
 } from '../RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 const MOCK_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'workspace');
 const MOCK_GENERATED_RECIPES_PATH = path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes');
@@ -1118,7 +1119,7 @@ describe('RecipeCockpitService', () => {
 
                     expect(actualRecipe.objects.map(objectViewModel => objectViewModel.objectApiName)).toEqual(['Account']);
                     expect(actualRecipe.objects[0].recipeFilePath).toBe('');
-                    expect(RecipeCockpitService.collectOpenableSourceKeys(actualRecipe)).toEqual([]);
+                    expect(RecipeCockpitDrawnModel.collectOpenableSourceKeys(actualRecipe)).toEqual([]);
 
                 } finally {
                     fs.rmSync(linkedWorkspaceRoot, { recursive: true, force: true });
@@ -1365,11 +1366,11 @@ describe('RecipeCockpitService', () => {
             const objects = attachSelfLookupRecipe();
             const iteration = objects[0].iterations[0];
             const recipe = { runs: [], selectedRunFolderName: '', objects: objects, trees: [], notices: [], emptyStateMessage: '' };
-            const openableSourceKeys = RecipeCockpitService.collectOpenableSourceKeys(recipe);
+            const openableSourceKeys = RecipeCockpitDrawnModel.collectOpenableSourceKeys(recipe);
 
             expect(openableSourceKeys).toEqual(expect.arrayContaining([
-                RecipeCockpitService.buildOpenSourceKey(recipeFilePath, iteration.lineNumber),
-                ...iteration.fields.map(iterationField => RecipeCockpitService.buildOpenSourceKey(recipeFilePath, iterationField.lineNumber))
+                RecipeCockpitDrawnModel.buildOpenSourceKey(recipeFilePath, iteration.lineNumber),
+                ...iteration.fields.map(iterationField => RecipeCockpitDrawnModel.buildOpenSourceKey(recipeFilePath, iterationField.lineNumber))
             ]));
 
             const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
@@ -1406,10 +1407,10 @@ describe('RecipeCockpitService', () => {
 
             const recipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
 
-            const actualKeys = RecipeCockpitService.collectOpenableSourceKeys(recipe);
+            const actualKeys = RecipeCockpitDrawnModel.collectOpenableSourceKeys(recipe);
 
-            expect(actualKeys).toContain(RecipeCockpitService.buildOpenSourceKey(LATEST_RECIPE_FILE_PATH, 7));
-            expect(actualKeys).toContain(RecipeCockpitService.buildOpenSourceKey(LATEST_RECIPE_FILE_PATH, 11));
+            expect(actualKeys).toContain(RecipeCockpitDrawnModel.buildOpenSourceKey(LATEST_RECIPE_FILE_PATH, 7));
+            expect(actualKeys).toContain(RecipeCockpitDrawnModel.buildOpenSourceKey(LATEST_RECIPE_FILE_PATH, 11));
             // Account (1 + 4 LOCATED FIELDS) AND Contact (1 + 2) -- Legacy_Code__c HAS NO LINE
             expect(actualKeys).toHaveLength(8);
 
@@ -1427,7 +1428,7 @@ describe('RecipeCockpitService', () => {
 
         const withRenderedRecipe = () => {
             panelState.recipeDataMessage = { command: 'recipeData', recipe: buildRecipeViewModel(), renderSequence: 7 };
-            panelState.openableSourceKeys = new Set([RecipeCockpitService.buildOpenSourceKey('/workspace/recipe.yml', 12)]);
+            panelState.openableSourceKeys = new Set([RecipeCockpitDrawnModel.buildOpenSourceKey('/workspace/recipe.yml', 12)]);
             panelState.selectableRunFolderNames = new Set([LATEST_RUN_FOLDER_NAME]);
         };
 
@@ -1588,7 +1589,7 @@ describe('RecipeCockpitService', () => {
 
             it('given the panel has not confirmed drawing anything, opens nothing', () => {
 
-                panelState.pendingOpenableSourceKeys = new Set([RecipeCockpitService.buildOpenSourceKey('/workspace/recipe.yml', 12)]);
+                panelState.pendingOpenableSourceKeys = new Set([RecipeCockpitDrawnModel.buildOpenSourceKey('/workspace/recipe.yml', 12)]);
 
                 expect(RecipeCockpitService.routePanelMessage(
                     { command: 'openSource', filePath: '/workspace/recipe.yml', lineNumber: 12 },
@@ -1732,7 +1733,7 @@ describe('RecipeCockpitService', () => {
             expect(displayValuesOf('Regions__c')).toEqual({ picklistValues: [], recordTypePicklistValues: [] });
             expect(fieldOf('Sub_Rating__c').controllingField).toBe('Rating__c');
             expect(['Rating__c', 'Sub_Rating__c', 'Regions__c', 'Legacy_Code__c'].map(fieldApiName => !!fieldOf(fieldApiName).isPicklist)).toEqual([true, true, true, false]);
-            expect(RecipeCockpitService.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel)).toEqual([
+            expect(RecipeCockpitDrawnModel.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel)).toEqual([
                 'Account\nRating__c', 'Account\nSub_Rating__c', 'Account\nRegions__c', 'Lead\nStatus'
             ]);
 
@@ -1746,7 +1747,7 @@ describe('RecipeCockpitService', () => {
                 const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
                 panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 3 };
                 panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
-                panelState.pendingLoadablePicklistKeys = new Set(RecipeCockpitService.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel));
+                panelState.pendingLoadablePicklistKeys = new Set(RecipeCockpitDrawnModel.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel));
                 return panelState;
             };
 
@@ -2079,7 +2080,7 @@ describe('RecipeCockpitService', () => {
             const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: renderSequence };
             panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
-            panelState.loadablePicklistKeys = new Set(RecipeCockpitService.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel));
+            panelState.loadablePicklistKeys = new Set(RecipeCockpitDrawnModel.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel));
             const loadMessage = [...panel.postedHostMessages].reverse().find((hostMessage: any) => hostMessage.command === 'loadPicklistValues');
             const panelAction = RecipeCockpitService.routePanelMessage(loadMessage, panelState);
             if ( panelAction?.kind !== 'postPicklistValues' ) {
@@ -2205,7 +2206,7 @@ describe('RecipeCockpitService', () => {
             const openSourceMessage = panel.postedHostMessages[panel.postedHostMessages.length - 1];
             expect(openSourceMessage).toEqual({ command: 'openSource', filePath: recipe.objects[0].recipeFilePath, lineNumber: 12 });
             // THE SAME ALLOW-LIST AS THE CLASSIC LIST: THE TREE OFFERS NOTHING THE MODEL DID NOT NAME
-            expect(RecipeCockpitService.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitService.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
+            expect(RecipeCockpitDrawnModel.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitDrawnModel.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
 
         });
 
@@ -2249,7 +2250,7 @@ describe('RecipeCockpitService', () => {
             panel.findAll(treeFieldNamed(panel, iterationElement, 'ParentId'), 'treeFieldSource')[0].dispatch('click');
             const openSourceMessage = panel.postedHostMessages[panel.postedHostMessages.length - 1];
             expect(selfLookupLines[openSourceMessage.lineNumber - 1]).toBe('        ParentId: Account_NickName');
-            expect(RecipeCockpitService.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitService.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
+            expect(RecipeCockpitDrawnModel.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitDrawnModel.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
 
             const [accountElement] = panel.findAll(treeCard, 'treeObject');
             expandTreeObject(panel, accountElement);
@@ -3450,7 +3451,7 @@ describe('RecipeCockpitService', () => {
                 const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
                 panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 7 };
                 panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
-                panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadedRecipe.recipeViewModel);
+                panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadedRecipe.recipeViewModel);
                 if ( isActivated ) {
                     panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 }
@@ -3459,7 +3460,7 @@ describe('RecipeCockpitService', () => {
 
             it('builds each allow-list from the rendered histories, with only legacy data sets countable', () => {
 
-                const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadHistoryRecipe().recipeViewModel);
+                const allowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadHistoryRecipe().recipeViewModel);
 
                 expect(allowLists).not.toHaveProperty('summaryTreeKeys');
                 expect(allowLists).not.toHaveProperty('diffKeys');
@@ -3476,7 +3477,7 @@ describe('RecipeCockpitService', () => {
                 const { recipeViewModel } = loadHistoryRecipe();
                 recipeViewModel.trees.forEach(tree => { delete tree.history; });
 
-                const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel);
+                const allowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel);
 
                 expect([allowLists.openableDatasetFolderNames, allowLists.insertableDatasetFolderNames, allowLists.countableDatasetFolderNames].map(allowList => allowList.size))
                     .toEqual([0, 0, 0]);
@@ -3723,7 +3724,7 @@ describe('RecipeCockpitService', () => {
                 const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
                 panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 7 };
                 panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
-                panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadedRecipe.recipeViewModel);
+                panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadedRecipe.recipeViewModel);
                 if ( isActivated ) {
                     panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 }
@@ -3740,7 +3741,7 @@ describe('RecipeCockpitService', () => {
                 ]);
                 expect(treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(LEAD_TREE_KEY)).toBe(LEAD_RECIPE_FILE_PATH);
                 expect(JSON.stringify(recipeViewModel.trees)).not.toContain(HISTORY_WORKSPACE_ROOT);
-                expect(RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel)).not.toHaveProperty('generatableTreeKeys');
+                expect(RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipeViewModel)).not.toHaveProperty('generatableTreeKeys');
 
             });
 

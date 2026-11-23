@@ -3,7 +3,6 @@ expect.extend(matchers);
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
 
 jest.mock('vscode', () => ({
@@ -32,6 +31,7 @@ import { RecipeCockpitRecipeWriter, RecipeFilterResult } from '../../RecipeWrite
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #323: the writer's constrained-expression path -- an expression a backend built from min/max, a
@@ -269,7 +269,7 @@ describe('RecipeCockpitService -- faker bounds removed (#356)', () => {
         const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
         const recipe = loadRecipe();
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-        panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+        panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
 
         expect(RecipeCockpitService.routePanelMessage({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '2' } as any, panelState)).toBeUndefined();
         expect(RecipeCockpitService.routePanelMessage({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '${{ faker.string.alpha(3) }}' } as any, panelState)).toMatchObject({ kind: 'setFieldFixedValue' });
@@ -280,7 +280,7 @@ describe('RecipeCockpitService -- faker bounds removed (#356)', () => {
 
         const recipe = loadRecipe();
         RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
-        const filtered = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
+        const filtered = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
         expect(filtered).not.toHaveProperty('refusalMessage');
         expect(filtered).not.toHaveProperty('constraintsByObject');

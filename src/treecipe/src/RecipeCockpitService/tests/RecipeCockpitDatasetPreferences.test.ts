@@ -35,6 +35,7 @@ import {
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitShell } from '../RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     A data set's own name and favorite, and the data sets tab's Favorites only, as #235 does
@@ -201,13 +202,13 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
             const recipe = loadRecipe();
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
         it('allows every data set row the model lists', () => {
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(loadRecipe()).nameableDatasetFolderNames].sort())
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadRecipe()).nameableDatasetFolderNames].sort())
                 .toEqual([ACCOUNT_DATASET, ...LEAD_DATASETS].sort());
 
         });
@@ -248,7 +249,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(route(undefined)).toBeUndefined();
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             expect(route(ACCOUNT_DATASET, undrawnPanelState)).toBeUndefined();
 
             const modelLessPanelState = buildDrawnPanelState();
@@ -262,8 +263,8 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const panelState = buildDrawnPanelState();
             const addedDataset = { datasetFolderName: 'dataset-2026-09-22T00-00-00', generatedAtLabel: '', fakerService: 'snowfakery' as const, runFolderName: null, recordCounts: null };
 
-            panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
-            RecipeCockpitService.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset);
+            panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
+            RecipeCockpitDrawnModel.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset);
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: addedDataset.datasetFolderName, name: 'Seed', renderSequence: 4 }, panelState)).toBeUndefined();
             expect(panelState.pendingTreeHistoryAllowLists.nameableDatasetFolderNames.has(addedDataset.datasetFolderName)).toBe(true);

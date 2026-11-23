@@ -22,6 +22,7 @@ import { RecipeCockpitCustomTreecipeHost } from '../RecipeCockpitCustomTreecipeH
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 const FIXTURE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
 const RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
@@ -346,7 +347,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             });
 
             it('the filtered copy is refused', async () => {
-                jest.spyOn(RecipeCockpitService, 'buildRunFakerFilteredRecipe').mockReturnValue({ refusalMessage: 'a recipe line no longer reads back.' });
+                jest.spyOn(RecipeCockpitDrawnModel, 'buildRunFakerFilteredRecipe').mockReturnValue({ refusalMessage: 'a recipe line no longer reads back.' });
                 await saveOtherChildRemoved();
                 expect(lastWarning()).toContain('a recipe line no longer reads back.');
             });

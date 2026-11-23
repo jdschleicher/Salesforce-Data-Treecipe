@@ -35,6 +35,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #611: an object whose every field is unticked is not generated. The host leaves it out as a
@@ -108,7 +109,7 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             expect(tree.objectSelection).toMatchObject({ includedObjectCount: 1, objectCount: 3 });
             // ITS FIELDS STAY ON THE CARD, SO THE PANEL CAN TICK ONE AGAIN; NONE IS LISTED FOR GENERATION, SINCE THE OBJECT GOES WHOLE
             expect(tree.fieldSelection?.objects.find(objectFieldSelection => objectFieldSelection.objectApiName === 'Contact')).toMatchObject({ excludedFieldApiNames: CONTACT_FIELDS, isEveryFieldExcluded: true });
-            expect([...RecipeCockpitService.listExcludedFieldApiNamesByObject(tree)]).toEqual([]);
+            expect([...RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(tree)]).toEqual([]);
             expect(RecipeCockpitTreecipeSelection.listNoFieldsSelectedObjectApiNames(tree)).toEqual(['Contact']);
             expect(RecipeCockpitTreecipeSelection.listFieldReadOnlyObjectApiNames(tree)).toEqual(['OtherChildObject__c']);
 
@@ -178,7 +179,7 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
             untick(recipe, { Contact: CONTACT_FIELDS });
             const recipeText = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(recipeText, treeOf(recipe), undefined, recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(recipeText, treeOf(recipe), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
@@ -214,7 +215,7 @@ describe('RecipeCockpitService, an object with no fields selected (#611)', () =>
                 objectSelection: { exclusions: [{ objectApiName: 'Contact', kind: 'excluded' as const }], disabledLookups: [], includedObjectCount: 1, objectCount: 2 }
             } as IRecipeCockpitTreeViewModel;
 
-            expect(RecipeCockpitService.listNoFieldsSelectedIterationKeys(tree)).toEqual(['Account\nAccount_child_NickName']);
+            expect(RecipeCockpitDrawnModel.listNoFieldsSelectedIterationKeys(tree)).toEqual(['Account\nAccount_child_NickName']);
 
         });
 

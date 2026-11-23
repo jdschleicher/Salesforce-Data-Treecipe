@@ -54,6 +54,7 @@ import {
 import { RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 import { RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON } from './RecipeCockpitFieldRowsConstants';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     A tree card's "Generate fake data and insert" (moved out of the hub by #669 part a): the insert
@@ -593,7 +594,7 @@ export class RecipeCockpitTreecipeInsert {
             return { refusalReason: `the object metadata now puts ${objectsNewToTree.map(objectApiName => RecipeYamlScalar.escapeForNotification(objectApiName)).join(', ')} in this tree, which this run does not have. Run "Generate Treecipe" again, then tick the record types.` };
         }
 
-        const derivedFilteredRecipe = hub.buildRunFakerFilteredRecipe(derivedRecipe.recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel, settingPlacer);
+        const derivedFilteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(derivedRecipe.recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel, settingPlacer);
         if ( 'refusalMessage' in derivedFilteredRecipe ) {
             return { refusalReason: `${RecipeYamlScalar.escapeForNotification(derivedFilteredRecipe.refusalMessage)} The recipe built for the ticked record types could not take this card's settings.` };
         }
@@ -775,7 +776,7 @@ export class RecipeCockpitTreecipeInsert {
                                             typedLookupIds: readonly IRecipeCockpitTypedLookupId[] = []): IRecipeCockpitConfirmContent {
 
         const objectsByApiName = hub.buildObjectsByApiName(recipeViewModel);
-        const objectCountsByObject = hub.listObjectCountsByObject(tree);
+        const objectCountsByObject = RecipeCockpitDrawnModel.listObjectCountsByObject(tree);
         const totalRecordCount = [...recordTotalsByObject.values()].reduce((recordCount, objectTotal) => recordCount + objectTotal, 0);
         const requestCount = RecipeCockpitRecordCreation.countInsertRequests(recordTotalsByObject);
 
@@ -800,7 +801,7 @@ export class RecipeCockpitTreecipeInsert {
                                                                             && !typedLookupIds.some(typedLookupId => typedLookupId.objectApiName === fixedValue.objectApiName
                                                                                                                     && typedLookupId.fieldApiName === fixedValue.fieldApiName
                                                                                                                     && typedLookupId.recordId === fixedValue.value));
-        const validationRulesOff = [...hub.listUnconstrainedValuesByObject(recipeViewModel, tree)]
+        const validationRulesOff = [...RecipeCockpitDrawnModel.listUnconstrainedValuesByObject(recipeViewModel, tree)]
             .flatMap(([occurrenceKey, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`));
 
         const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, scratchOrgDetail);
