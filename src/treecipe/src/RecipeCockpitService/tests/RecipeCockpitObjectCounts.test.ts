@@ -39,6 +39,7 @@ import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTest
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 /*
     #255: a count box right of each object's name sets how many records the generate button and the whole-tree
@@ -1180,7 +1181,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
         it('draws the changed edge only on an enabled button, so a disabled one keeps the shared disabled border', () => {
 
-            const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const styleSheet = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(styleSheet).toContain('.treeRecordCountButton.changed:not(:disabled) { border-color: var(--sdt-changed); }');
             expect(styleSheet).not.toMatch(/\.treeRecordCountButton\.changed \{/);

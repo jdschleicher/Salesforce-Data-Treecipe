@@ -47,10 +47,7 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { AuthInfo, Org } from '@salesforce/core';
 import { execFile } from 'child_process';
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_VERB_BUTTON_VERBS
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_ACTION_VERB_EMOJI } from '../RecipeCockpitPanelConstants';
 import { RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
@@ -78,6 +75,7 @@ import { answerOrgConnectionPings, CONNECTED_ORG_USERNAMES } from '../../Salesfo
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { isOrgPickerDisabled } from './RecipeCockpitOrgPickerProbe';
+import { RECIPE_COCKPIT_VERB_BUTTON_VERBS } from '../RecipeCockpitShell';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');

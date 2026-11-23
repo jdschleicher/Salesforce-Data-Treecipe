@@ -34,6 +34,7 @@ import {
 } from '../RecipeCockpitDatasetsHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 /*
     A data set's own name and favorite, and the data sets tab's Favorites only, as #235 does
@@ -502,7 +503,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(rename.textContent).not.toContain('✎');
             expect(rename.attributes['aria-label']).toBe('Rename Before the fix');
             // THE ROW ALIGNS BY BASELINE AND AN SVG HAS NONE, SO THE PENCIL BUTTON IS CENTRED OR IT SITS ABOVE THE ☆
-            expect(RecipeCockpitService.buildWebviewShellHtml('testNonce')).toContain('.treeDatasetRename { align-self: center; }');
+            expect(RecipeCockpitShell.buildWebviewShellHtml('testNonce')).toContain('.treeDatasetRename { align-self: center; }');
 
         });
 

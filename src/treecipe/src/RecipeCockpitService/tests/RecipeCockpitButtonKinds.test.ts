@@ -12,13 +12,13 @@ jest.mock('vscode', () => ({
     ConfigurationTarget: { Workspace: 2 },
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }), parse: (uriValue: string) => ({ toString: () => uriValue }) }
 }), { virtual: true });
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_BUTTON_KINDS
-} from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import {
+    RECIPE_COCKPIT_BUTTON_KINDS,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     #363: the Troubleshooting tab's deploy buttons shipped as browser defaults, because a button was
@@ -31,7 +31,7 @@ const KIND_CLASSES = RECIPE_COCKPIT_BUTTON_KINDS.map(kind => 'sdtButton-' + kind
 
 type Panel = ReturnType<typeof runPanelScript>;
 
-const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
+const shellHtml = () => RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 

@@ -13,7 +13,10 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }), parse: (uriValue: string) => ({ toString: () => uriValue }) }
 }), { virtual: true });
 import * as RecipeCockpitServiceModule from '../RecipeCockpitService';
-import { RecipeCockpitService } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_CUSTOM_PROPERTIES,
+    RECIPE_COCKPIT_VERB_BUTTON_VERBS
+} from '../RecipeCockpitShell';
 import * as RecipeCockpitDatasetsTabConstants from '../RecipeCockpitDatasetsTabConstants';
 import * as RecipeCockpitRecordTypesConstants from '../RecipeCockpitRecordTypesConstants';
 import * as RecipeCockpitQueryTabConstants from '../RecipeCockpitQueryTabConstants';
@@ -37,6 +40,7 @@ import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../RecipeCockpitPanelBundle.
 import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../RecipeCockpitPanelStylesheet.generated';
 import { CockpitKitStylesheet } from '../../CockpitKit/CockpitKitStylesheet';
 import { CockpitPalette } from '../../CockpitKit/CockpitPalette';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 const { PanelBundler, PANEL_BUNDLE_FILE, STYLESHEET_FILE, REGENERATE_COMMAND } = require('../../../../../esbuild.panel.js');
 
@@ -85,11 +89,11 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     it('is the shell\'s whole <style> after :root, and :root holds the palette and the values the .css reads, nothing else (#644)', () => {
 
-        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
+        const html = RecipeCockpitShell.buildWebviewShellHtml('bundleNonce');
         const styleOpeningTag = '<style nonce="bundleNonce">';
         const styleText = html.substring(html.indexOf(styleOpeningTag) + styleOpeningTag.length, html.indexOf('</style>'));
         const rootBlock = ['    :root {', CockpitPalette.buildCustomProperties(), CockpitKitStylesheet.buildCustomProperties(),
-            CockpitKitStylesheet.buildCustomProperties(RecipeCockpitServiceModule.RECIPE_COCKPIT_CUSTOM_PROPERTIES), '        color-scheme: light;', '    }'].join('\n');
+            CockpitKitStylesheet.buildCustomProperties(RECIPE_COCKPIT_CUSTOM_PROPERTIES), '        color-scheme: light;', '    }'].join('\n');
 
         expect(html.split(styleOpeningTag)).toHaveLength(2);
         expect(styleText).toBe(`\n${rootBlock}\n${RECIPE_COCKPIT_PANEL_STYLESHEET}`);
@@ -116,7 +120,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     it('holds no template, file, address or other stylesheet in its .css, and one depth rule per level and one emoji rule per verb button (#644)', () => {
 
-        const verbButtonVerbs: Record<string, string> = RecipeCockpitServiceModule.RECIPE_COCKPIT_VERB_BUTTON_VERBS;
+        const verbButtonVerbs: Record<string, string> = RECIPE_COCKPIT_VERB_BUTTON_VERBS;
         const depthRules = RECIPE_COCKPIT_PANEL_STYLESHEET.match(/\.treeObject\.treeObjectDepth(\d+) \{ margin-left: calc\(var\(--sdt-nesting-indent\) \* \1\); \}/g) ?? [];
 
         ['${', 'url(', '@import', '<link', '</style', '<!--', '/* include:'].forEach(forbiddenText =>
@@ -124,7 +128,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
         expect(depthRules).toHaveLength(RecipeCockpitShellConstants.RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH);
         Object.entries(verbButtonVerbs).forEach(([className, verb]) =>
             expect(RECIPE_COCKPIT_PANEL_STYLESHEET).toContain(`    .sdtButton.${className}::before { content: var(--sdt-verb-emoji-${verb}) / ''; margin-right: 0.35em; }`));
-        expect(RecipeCockpitServiceModule.RECIPE_COCKPIT_CUSTOM_PROPERTIES['--sdt-verb-emoji-generateData'])
+        expect(RECIPE_COCKPIT_CUSTOM_PROPERTIES['--sdt-verb-emoji-generateData'])
             .toBe(`'${RecipeCockpitPanelConstants.RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData}'`);
 
     });
@@ -132,7 +136,7 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
     // #657: THE TEMPLATE-LITERAL SCRIPT AND ITS BRIDGE ARE GONE; THE BUNDLE STARTS THE PANEL ITSELF AND LEAVES NOTHING ON window
     it('is the shell\'s whole script, and starts the panel itself with nothing left on window (#657)', () => {
 
-        const html = RecipeCockpitService.buildWebviewShellHtml('bundleNonce');
+        const html = RecipeCockpitShell.buildWebviewShellHtml('bundleNonce');
         const scriptOpeningTag = '<script nonce="bundleNonce">';
         const scriptText = html.substring(html.indexOf(scriptOpeningTag) + scriptOpeningTag.length, html.indexOf('</script>'));
 
@@ -157,20 +161,23 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
-    it('holds no function or arrow in any template literal of the service, and no JSON.stringify in the shell\'s, so no panel logic or injected value is left in a string (#657)', () => {
+    it('holds no function or arrow in any template literal of the service or its shell, and no JSON.stringify in the shell\'s, so no panel logic or injected value is left in a string (#657, #671)', () => {
 
-        const servicePath = path.join(REPOSITORY_ROOT, 'src/treecipe/src/RecipeCockpitService/RecipeCockpitService.ts');
-        const sourceFile = ts.createSourceFile(servicePath, fs.readFileSync(servicePath, 'utf8'), ts.ScriptTarget.Latest, true);
         const templateTexts: string[] = [];
         const rawTemplateTexts: string[] = [];
-        const visit = (node: ts.Node) => {
-            if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) { rawTemplateTexts.push(node.getText(sourceFile)); }
-            // THE LITERAL TEXT ONLY: AN EXPRESSION INSIDE ${…} IS THE HOST'S OWN CHECKED CODE
-            if (ts.isNoSubstitutionTemplateLiteral(node)) { templateTexts.push(node.text); }
-            if (ts.isTemplateExpression(node)) { templateTexts.push([node.head.text, ...node.templateSpans.map(span => span.literal.text)].join('${…}')); }
-            ts.forEachChild(node, visit);
-        };
-        visit(sourceFile);
+        // THE SHELL'S DOCUMENT LIVES IN RecipeCockpitShell.ts (#671); THE HUB'S OWN TEMPLATES ARE HELD TO THE SAME RULE
+        ['RecipeCockpitService.ts', 'RecipeCockpitShell.ts'].forEach(fileName => {
+            const servicePath = path.join(REPOSITORY_ROOT, 'src/treecipe/src/RecipeCockpitService', fileName);
+            const sourceFile = ts.createSourceFile(servicePath, fs.readFileSync(servicePath, 'utf8'), ts.ScriptTarget.Latest, true);
+            const visit = (node: ts.Node) => {
+                if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) { rawTemplateTexts.push(node.getText(sourceFile)); }
+                // THE LITERAL TEXT ONLY: AN EXPRESSION INSIDE ${…} IS THE HOST'S OWN CHECKED CODE
+                if (ts.isNoSubstitutionTemplateLiteral(node)) { templateTexts.push(node.text); }
+                if (ts.isTemplateExpression(node)) { templateTexts.push([node.head.text, ...node.templateSpans.map(span => span.literal.text)].join('${…}')); }
+                ts.forEachChild(node, visit);
+            };
+            visit(sourceFile);
+        });
 
         expect(templateTexts.some(templateText => templateText.includes('<script nonce='))).toBe(true);
         expect(templateTexts.filter(templateText => /\bfunction\b[\s\w$]*\(|=>/.test(templateText))).toEqual([]);

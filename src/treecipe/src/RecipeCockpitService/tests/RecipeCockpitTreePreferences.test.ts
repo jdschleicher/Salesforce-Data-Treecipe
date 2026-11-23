@@ -37,6 +37,7 @@ import {
 import { RecipeCockpitTreecipeHost } from '../RecipeCockpitTreecipeHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 /*
     A tree card's own name and favorite, and the Favorites only filter (#235). The host keeps both
@@ -640,7 +641,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         it('builds the pencil in ONE place, and no button is labelled with a ✎ character', () => {
 
-            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             // buildPencilGlyph IS A BUNDLED PANEL MODULE (#638): DOUBLE QUOTES, AND THE CONSTANT UNDER ITS IMPORTED NAME
             expect(shellHtml.match(/setAttribute\(['"]d['"], (?:RECIPE_COCKPIT_)?FIXED_VALUE_GLYPH_PATH\)/g)).toHaveLength(1);
@@ -897,7 +898,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             it('draws the box in the panel\'s own colours, its reason in the header\'s light text', () => {
 
-                const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+                const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
                 expect(shellHtml).toMatch(/\.nameEditorInput \{[^}]*color: var\(--sdt-text\);[^}]*background-color: var\(--sdt-surface\);/);
                 expect(shellHtml).toContain('.treeNameEditor .nameEditorRefusal { font-weight: 600; color: var(--sdt-on-header); }');

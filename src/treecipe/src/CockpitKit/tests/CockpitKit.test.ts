@@ -25,14 +25,16 @@ import {
 import { COCKPIT_KIT_CUSTOM_PROPERTIES, COCKPIT_KIT_STYLESHEET_FILES, CockpitKitStylesheet } from '../CockpitKitStylesheet';
 import { COCKPIT_MOTION_CONCEAL_MILLISECONDS, COCKPIT_MOTION_REVEAL_MILLISECONDS } from '../CockpitMotion';
 import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_BUTTON_KINDS,
     RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
-    RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL,
-    RECIPE_COCKPIT_PALETTE
+    RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL
 } from '../../RecipeCockpitService/RecipeCockpitService';
 import { RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT } from '../../RecipeCockpitService/RecipeCockpitPanelBundle.generated';
 import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../../RecipeCockpitService/RecipeCockpitPanelStylesheet.generated';
+import {
+    RECIPE_COCKPIT_BUTTON_KINDS,
+    RECIPE_COCKPIT_PALETTE,
+    RecipeCockpitShell
+} from '../../RecipeCockpitService/RecipeCockpitShell';
 
 /*
     #524: the first cut of the cockpit kit. The Recipe Cockpit's document must be what it was, so
@@ -52,7 +54,7 @@ const kitCss = (fileName: string) => fs.readFileSync(path.join(KIT_PANEL_DIRECTO
 const buttonKindCss = () => ['base', 'primary', 'state', 'check'].map(piece => kitCss(`CockpitButtonKinds.${piece}.css`)).join('\n');
 const orgPickerCss = () => ['CockpitOrgPicker.refresh.css', 'CockpitOrgPicker.css', 'CockpitOrgPicker.pinnedSection.css'].map(kitCss).join('\n');
 
-const recipeShell = () => RecipeCockpitService.buildWebviewShellHtml('kitNonce');
+const recipeShell = () => RecipeCockpitShell.buildWebviewShellHtml('kitNonce');
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="kitNonce">'), html.lastIndexOf('</script>'));
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="kitNonce">'), html.indexOf('</style>'));
 const countOccurrences = (text: string, piece: string) => text.split(piece).length - 1;
@@ -133,13 +135,13 @@ describe('CockpitKit (#524)', () => {
             expect(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL).toBe(CockpitConfirmDialogModule.COCKPIT_CONFIRM_WARNINGS_LABEL);
             expect(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL).toBe(CockpitConfirmDialogModule.COCKPIT_CONFIRM_CHANGE_ORG_LABEL);
             expect(countOccurrences(recipeShell(), CockpitPalette.buildCustomProperties())).toBe(1);
-            expect(RecipeCockpitService.buildPaletteCustomProperties()).toBe(CockpitPalette.buildCustomProperties());
+            expect(RecipeCockpitShell.buildPaletteCustomProperties()).toBe(CockpitPalette.buildCustomProperties());
 
         });
 
         it('leaves the shell builder taking only a nonce', () => {
 
-            expect(RecipeCockpitService.buildWebviewShellHtml.length).toBe(1);
+            expect(RecipeCockpitShell.buildWebviewShellHtml.length).toBe(1);
 
         });
 

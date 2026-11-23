@@ -2,8 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
-
-import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT } from '../RecipeCockpitNavigationConstants';
 import {
     RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE,
@@ -17,6 +15,7 @@ import {
 } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 /*
     "Record type fields only" (#320): each card's Treecipe tab narrows its rows to the fields its
@@ -336,7 +335,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
 
         it('uses the palette\'s chip pair, already held to 4.5:1 by the contrast test, so it adds no colour pair', () => {
 
-            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
             const chipRule = shellHtml.match(/\.recordTypeChip \{[^}]*\}/)?.[0] as string;
 
             expect(chipRule).toContain('color: var(--sdt-chip-text);');
@@ -513,7 +512,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
                 ['developerName', 'impacts', 'isActive'],
                 ['developerName', 'impacts', 'isActive']
             ]);
-            expect(RecipeCockpitService.buildWebviewShellHtml('testNonce')).not.toMatch(/command: 'recordTypeFields/);
+            expect(RecipeCockpitShell.buildWebviewShellHtml('testNonce')).not.toMatch(/command: 'recordTypeFields/);
 
         });
 

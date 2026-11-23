@@ -3,11 +3,6 @@ import * as path from 'path';
 jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_ACTION_CARD_HEIGHT,
-    RECIPE_COCKPIT_ACTION_CARD_WIDTH
-} from '../RecipeCockpitService';
-import {
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
     RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI
 } from '../RecipeCockpitPanelConstants';
@@ -19,6 +14,11 @@ import {
 } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
+import {
+    RECIPE_COCKPIT_ACTION_CARD_HEIGHT,
+    RECIPE_COCKPIT_ACTION_CARD_WIDTH,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     The TODO's and Validation Rules lists draw each object group as a card (#383), on #381's card
@@ -52,7 +52,7 @@ const drawRecipe = (recipe: IRecipeCockpitRecipeViewModel): Panel => {
 };
 
 const styleSheet = () => {
-    const html = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+    const html = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
     return withCustomPropertyValues(html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>')));
 };
 const ruleFor = (selector: string) => {

@@ -17,15 +17,11 @@ jest.mock('vscode', () => ({
 import {
     RecipeCockpitService,
     RECIPE_COCKPIT_VIEW_TYPE,
-    RECIPE_COCKPIT_PANEL_TITLE,
-    RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT,
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_LOAD_PHASES,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
-    RECIPE_COCKPIT_PALETTE,
-    RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
-    RECIPE_COCKPIT_CUSTOM_PROPERTIES
+    RECIPE_COCKPIT_INSERT_DATASET_COMMAND
 } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
@@ -38,7 +34,6 @@ import {
     RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET
 } from '../RecipeCockpitNavigationConstants';
 import {
-    RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX
@@ -62,7 +57,6 @@ import {
     IRecipeCockpitRecipeViewModel,
     RecipeCockpitPaletteToken
 } from '../RecipeCockpitViewModel';
-import { RECIPE_COCKPIT_RUN_FAKER_COMMAND } from '../RecipeCockpitTreecipeInsert';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';
 import {
     RECIPE_COCKPIT_DATASET_INSERT_BUSY_REFUSAL,
@@ -76,12 +70,19 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { DatasetSourceService, DATASET_COLLECTIONS_API_FOLDER_NAME, IDatasetListing, IDatasetSourceReadResult } from '../../DatasetSourceService/DatasetSourceService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { INormalizedOrgField, INormalizedOrgObjectDescribe } from '../../SalesforceOrgService/SalesforceOrgService';
-import { SalesforceOrgService, ORG_DESCRIBE_CANCELLED_MESSAGE } from '../../SalesforceOrgService/SalesforceOrgService';
+import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../RecipeCockpitPanelStylesheet.generated';
 import { COCKPIT_KIT_CUSTOM_PROPERTIES } from '../../CockpitKit/CockpitKitStylesheet';
+import {
+    RECIPE_COCKPIT_CUSTOM_PROPERTIES,
+    RECIPE_COCKPIT_PALETTE,
+    RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT,
+    RecipeCockpitShell,
+    RECIPE_COCKPIT_PANEL_TITLE
+} from '../RecipeCockpitShell';
 
 const MOCK_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'workspace');
 const MOCK_GENERATED_RECIPES_PATH = path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes');
@@ -175,7 +176,7 @@ describe('RecipeCockpitService', () => {
 
         it('allows only the nonced inline style and script and no remote content at all', () => {
 
-            const actualContentSecurityPolicy = RecipeCockpitService.buildContentSecurityPolicy('testNonce');
+            const actualContentSecurityPolicy = RecipeCockpitShell.buildContentSecurityPolicy('testNonce');
 
             expect(actualContentSecurityPolicy).toContain(`default-src 'none'`);
             expect(actualContentSecurityPolicy).toContain(`style-src 'nonce-testNonce'`);
@@ -193,8 +194,8 @@ describe('RecipeCockpitService', () => {
 
         it('builds a distinct alphanumeric nonce on each call', () => {
 
-            const firstNonce = RecipeCockpitService.buildNonce();
-            const secondNonce = RecipeCockpitService.buildNonce();
+            const firstNonce = RecipeCockpitShell.buildNonce();
+            const secondNonce = RecipeCockpitShell.buildNonce();
 
             expect(firstNonce).toMatch(/^[A-Za-z0-9]{32}$/);
             expect(firstNonce).not.toBe(secondNonce);
@@ -207,10 +208,10 @@ describe('RecipeCockpitService', () => {
 
         it('carries the content security policy meta and nonces every inline block it emits', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(actualShellHtml).toContain(
-                `<meta http-equiv="Content-Security-Policy" content="${RecipeCockpitService.buildContentSecurityPolicy('testNonce')}">`
+                `<meta http-equiv="Content-Security-Policy" content="${RecipeCockpitShell.buildContentSecurityPolicy('testNonce')}">`
             );
             expect(actualShellHtml).toContain('<style nonce="testNonce">');
             expect(actualShellHtml).toContain('<script nonce="testNonce">');
@@ -220,7 +221,7 @@ describe('RecipeCockpitService', () => {
         // AN UN-NONCED INLINE BLOCK IS SILENTLY DEAD UNDER THE CSP, SO EVERY ONE IS COUNTED RATHER THAN SPOT CHECKED
         it('emits no inline style or script block without a nonce', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             const inlineBlockOpenings = actualShellHtml.match(/<(style|script)\b[^>]*>/g) ?? [];
 
@@ -233,7 +234,7 @@ describe('RecipeCockpitService', () => {
 
         it('references no external asset of any kind', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(actualShellHtml).not.toMatch(/\ssrc="/);
             expect(actualShellHtml).not.toMatch(/<link\b/);
@@ -250,14 +251,14 @@ describe('RecipeCockpitService', () => {
         */
         it('takes the nonce as its only parameter', () => {
 
-            expect(RecipeCockpitService.buildWebviewShellHtml.length).toBe(1);
+            expect(RecipeCockpitShell.buildWebviewShellHtml.length).toBe(1);
 
         });
 
         // WRITING THROUGH innerHTML ANYWHERE IS WHAT WOULD RE-OPEN A MARKUP CONTEXT FOR A RECIPE VALUE
         it('writes nothing through innerHTML or outerHTML', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(actualShellHtml).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
 
@@ -266,7 +267,7 @@ describe('RecipeCockpitService', () => {
         // PINS THE MARKUP THE FAKE DOM BELOW ANSWERS getElementById WITH
         it('declares the status line and the body the panel script addresses', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(actualShellHtml).toContain(`<title>${RECIPE_COCKPIT_PANEL_TITLE}</title>`);
             expect(actualShellHtml).toContain(`<div id="loadStatus" class="loadStatus">${RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT}</div>`);
@@ -330,7 +331,7 @@ describe('RecipeCockpitService', () => {
 
         it('defines every palette token as an --sdt- custom property on :root, valued from RECIPE_COCKPIT_PALETTE', () => {
 
-            const rootBlock = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).match(/:root \{[^}]*\}/)?.[0] ?? '';
+            const rootBlock = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce')).match(/:root \{[^}]*\}/)?.[0] ?? '';
 
             // #434: NAVY, SOFT WHITE, CHARCOAL AND TEAL
             expect(RECIPE_COCKPIT_PALETTE).toEqual({
@@ -354,7 +355,7 @@ describe('RecipeCockpitService', () => {
             expect(rootBlock).toContain('--sdt-chip-bg: #E3F7EF;');
             expect(rootBlock).toContain('--sdt-chip-text: #1D3557;');
             (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[]).forEach(paletteToken => {
-                expect(rootBlock).toContain(`${RecipeCockpitService.buildPaletteCustomPropertyName(paletteToken)}: ${RECIPE_COCKPIT_PALETTE[paletteToken]};`);
+                expect(rootBlock).toContain(`${RecipeCockpitShell.buildPaletteCustomPropertyName(paletteToken)}: ${RECIPE_COCKPIT_PALETTE[paletteToken]};`);
             });
 
         });
@@ -371,11 +372,11 @@ describe('RecipeCockpitService', () => {
         it('reads no --sdt- property in its .css files that the palette, the kit or the cockpit does not write into :root', () => {
 
             const paletteNames = (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[])
-                .map(paletteToken => RecipeCockpitService.buildPaletteCustomPropertyName(paletteToken));
+                .map(paletteToken => RecipeCockpitShell.buildPaletteCustomPropertyName(paletteToken));
             const valueNames = [...Object.keys(COCKPIT_KIT_CUSTOM_PROPERTIES), ...Object.keys(RECIPE_COCKPIT_CUSTOM_PROPERTIES)];
             const readPropertyNames = (RECIPE_COCKPIT_PANEL_STYLESHEET.match(/var\(--sdt-[A-Za-z-]+/g) ?? [])
                 .map(variableRead => variableRead.substring('var('.length));
-            const rootBlock = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).split(':root {')[1].split('    }')[0];
+            const rootBlock = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce')).split(':root {')[1].split('    }')[0];
 
             expect(readPropertyNames).not.toBeEmpty();
             readPropertyNames.forEach(readPropertyName => expect([...paletteNames, ...valueNames]).toContain(readPropertyName));
@@ -419,7 +420,7 @@ describe('RecipeCockpitService', () => {
 
         it('reads no VS Code theme colour, only the three editor font variables', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(findThemeColourReads(actualShellHtml)).toEqual([]);
             FONT_VARIABLES_FOLLOWING_THE_EDITOR.forEach(fontVariable => expect(actualShellHtml).toContain(`var(${fontVariable})`));
@@ -428,7 +429,7 @@ describe('RecipeCockpitService', () => {
 
         it('fails the theme check when a VS Code colour variable is read', () => {
 
-            const shellHtmlReadingTheTheme = RecipeCockpitService.buildWebviewShellHtml('testNonce')
+            const shellHtmlReadingTheTheme = RecipeCockpitShell.buildWebviewShellHtml('testNonce')
                 .replace('</style>', '    .object { background-color: var(--vscode-editor-background); }\n</style>');
 
             expect(findThemeColourReads(shellHtmlReadingTheTheme)).toEqual(['--vscode-editor-background']);
@@ -437,7 +438,7 @@ describe('RecipeCockpitService', () => {
 
         it('styles the page, native controls and scrollbars from the palette rather than the theme', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
 
             expect(styleSheet).toContain('color-scheme: light;');
             expect(styleSheet).toMatch(/html, body \{[^}]*color: var\(--sdt-text\);[^}]*background-color: var\(--sdt-page\);/);
@@ -448,7 +449,7 @@ describe('RecipeCockpitService', () => {
 
         it('draws each tree as a card, highlights rows and rings keyboard focus in the accent', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
             const treeCardRule = styleSheet.match(/\.treeCard \{[^}]*\}/)?.[0] ?? '';
 
             expect(treeCardRule).toContain('background-color: var(--sdt-surface);');
@@ -464,7 +465,7 @@ describe('RecipeCockpitService', () => {
 
         it('restyles the buttons with the accent, and styles no result line, since a run\'s result is a notification (#301)', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
 
             // #363: THE FILLED STYLE IS ONE KIND, NOT A LIST OF BUTTON CLASSES
             // #434: A FILLED BUTTON IS TEAL WITH NAVY TEXT
@@ -485,7 +486,7 @@ describe('RecipeCockpitService', () => {
         // #209: EVERY BUTTON USED TO BE A BARE LINK ONE GLYPH TALL -- ONE SHARED RULE GIVES EACH A REAL, TWICE-AS-TALL TARGET
         it('sizes every cockpit button from one shared rule with a minimum height, padding and a visible border', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
             const sharedButtonRule = styleSheet.match(/\n\s*(\.sdtButton-primary, \.sdtButton-secondary) \{([^}]*)\}/);
 
             expect(sharedButtonRule).not.toBeNull();
@@ -519,7 +520,7 @@ describe('RecipeCockpitService', () => {
         // #540: ☆ AND ✎ MOVED TO THE START OF THE ROW, SO NOTHING PUSHES THEM TO THE END
         it('draws a tree header as a tall row tile with its actions at the start', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
             const treeHeaderRule = ruleFor(styleSheet, '\\.treeHeader');
 
             expect(treeHeaderRule).toContain('min-height: 4rem;');
@@ -536,7 +537,7 @@ describe('RecipeCockpitService', () => {
         // #392: EVERY CHEVRON SHRANK TO ONE 1.6rem BOX, AND THE SECONDARY KIND'S 2.25rem MINIMUM NO LONGER HOLDS IT OPEN
         it('draws every chevron toggle as one centred 1.6rem box holding a 1.2rem glyph, the picklist button of one fixed width, and no spacer for it', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
             const toggleBoxRule = ruleFor(styleSheet, '\\.chevronToggle');
             const toggleCentringRule = ruleFor(styleSheet, '\\.chevronToggle');
             expect(ruleFor(styleSheet, '\\.treeObjectToggle')).toBe('');
@@ -579,7 +580,7 @@ describe('RecipeCockpitService', () => {
         // A DISABLED BUTTON USED TO BE THE SAME BUTTON AT 60% OPACITY, WHICH READ AS NEARLY ENABLED WHILE FAKER RAN
         it('draws every disabled cockpit button in the disabled tokens with a not-allowed cursor', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
             const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.sdtButton-primary:disabled[^{}\n]*) \{([^}]*)\}/);
 
             expect(disabledRule).not.toBeNull();
@@ -599,7 +600,7 @@ describe('RecipeCockpitService', () => {
         // THE CHIP ALSO CARRIES .muted, SO ITS COLOUR MUST NOT DEPEND ON WHICH OF THE TWO RULES COMES LAST
         it('draws a field type as a chip whose rule outranks .muted', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
 
             expect(styleSheet).toMatch(/\.treeFieldHeader \.fieldType \{[^}]*color: var\(--sdt-chip-text\);[^}]*background-color: var\(--sdt-chip-bg\);/);
 
@@ -619,7 +620,7 @@ describe('RecipeCockpitService', () => {
             expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.action, RECIPE_COCKPIT_PALETTE.surface)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
             expect(findContrastFailures({ ...RECIPE_COCKPIT_PALETTE, onAction: '#FFFFFF' })).toEqual(['onAction on action (1.89:1)', 'onAction on onHeader (1.08:1)']);
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
             expect(styleSheet).not.toMatch(/(^|[^-])color: var\(--sdt-action(-edge)?\)/);
             // A GLYPH IS DRAWN IN TEAL ONLY ON THE NAVY TITLE BAR: THE GITHUB MARK WHILE HOVERED (1.89:1 ON WHITE IS UNDER A GRAPHIC'S 3:1)
             const tealGlyphRules = (styleSheet.match(/[^{}]*\{[^}]*(fill|stroke): var\(--sdt-action(-edge)?\)[^}]*\}/g) ?? []).map(rule => rule.trim());
@@ -629,7 +630,7 @@ describe('RecipeCockpitService', () => {
 
         it('draws the title bar and each tree header in navy with soft white text, and the section headings in navy', () => {
 
-            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
 
             expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('color: var(--sdt-on-header);');
             expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('background-color: var(--sdt-header);');
@@ -723,7 +724,7 @@ describe('RecipeCockpitService', () => {
 
             it('colours the icon only from those two tokens, and lays the overlay with a class rather than inline style', () => {
 
-                const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+                const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
                 const styleSheet = styleSheetOf(shellHtml);
 
                 expect(styleSheet).toContain('.treeGlyph path { fill: none; stroke: var(--sdt-accent);');
@@ -2535,7 +2536,7 @@ describe('RecipeCockpitService', () => {
             answerLastPicklistRequest(panel, loadedRecipe);
 
             expect(textOf(panel, ratingRow, 'picklistValue')[0]).toBe(hostileValue);
-            expect(RecipeCockpitService.buildWebviewShellHtml('testNonce')).not.toContain('innerHTML');
+            expect(RecipeCockpitShell.buildWebviewShellHtml('testNonce')).not.toContain('innerHTML');
 
         });
 
@@ -3059,7 +3060,7 @@ describe('RecipeCockpitService', () => {
 
         it('lets the run selector take the rest of its row and wrap under its label in a narrow panel', () => {
 
-            const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const styleSheet = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(styleSheet).toMatch(/\.runPicker \{[^}]*flex-wrap: wrap/);
             expect(styleSheet).toMatch(/\.runSelect \{[^}]*flex: 1 1 12rem; min-width: 0; max-width: 100%/);
@@ -4940,7 +4941,7 @@ describe('RecipeCockpitService', () => {
 
         it('is not reachable from the panel document, which loads and links nothing', () => {
 
-            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const actualShellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(actualShellHtml).not.toContain(RECIPE_COCKPIT_ISSUES_URL);
             expect(actualShellHtml).not.toContain('github.com');
