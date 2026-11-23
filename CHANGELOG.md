@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.208.8] - Recipe Cockpit: a Quote's read-only AccountId row follows the Opportunity its OpportunityId holds now (#704)
+
+`Quote.AccountId` is set by Salesforce from the quote's Opportunity, so generation writes it as `<Opportunity nickname>.AccountId` (#680). In a snowfakery recipe whose Opportunity is written as several record type blocks, `OpportunityId` is still a TODO when that value is written, so it names the first block. After **Wire to…** pointed `OpportunityId` at another block, the row's `↖` link and its **set by Salesforce from OpportunityId → …** note still named the first block.
+
+- **The row follows the Quote's `OpportunityId`.** It reads a nickname there, or the block a child copy's `reference(...)` names, and links to that record and names the account it holds. Its own value is read only while `OpportunityId` is still a TODO or holds no record. The Opportunity's 🌳 list of fields pointing to it follows too.
+- **A nickname no row holds links to nothing,** rather than to the block the value was written with.
+- **Only a value that names a record counts.** A nickname counts when every line after it is a comment, and a `reference(...)` only inside `${{ }}`, so a hand-written multi-line value or a `reference(...)` in a YAML comment names no record.
+- **The recipe line is left as generated.** Nothing is ever inserted for this field, and the row now follows `OpportunityId` however it changed: Wire to…, Add friend or a hand edit. The ? help and the guide say so.
+- **One rule for both.** `StandardDerivedFields.readThroughSourceNickname` (imports nothing) is what generation's `RelationshipService.writeDerivedFieldValues` and the panel both read the lookup with. Generated recipes are unchanged: the golden files and #705's suite pass as they were.
+- **Tests:** the rule's cases in `StandardDerivedFields.test.ts`, and in `RecipeCockpitDerivedFields.test.ts` a snowfakery recipe with Enterprise and SMB blocks before and after `RecipeCockpitRecipeWriter.wireLookups` wires `OpportunityId` to SMB: the link, scrolling to it, the note, both blocks' 🌳 lists, the recipe line left as generated, a `reference()`, and a faker expression, a YAML keyword and an unknown nickname in `OpportunityId`.
+
 ## [3.208.7] - Recipe Cockpit: the hub is the panel's lifecycle, held to its size by a test (#671 part b, the last slice of #566)
 
 ### Under the hood (behaviour unchanged)

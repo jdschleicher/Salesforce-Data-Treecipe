@@ -46,13 +46,21 @@ function readReferencedNickname(recipeValue: unknown): string | null {
 
 /*
     The nickname a field's recipe value points to. A field Salesforce sets from another lookup (#680)
-    names its source as "<nickname>.<field>" (AccountId: Opportunity_NickName.AccountId), so its row
-    links to that record like any lookup; every other field points only with a bare nickname.
+    follows the record that lookup on the same row holds now (#704): its own value, written at
+    generation as "<nickname>.<field>" (AccountId: Opportunity_NickName.AccountId), names that record
+    only while the lookup is not a nickname or reference(); every other field points only with a
+    bare nickname.
 */
-function readFieldReferencedNickname(objectApiName: string, field: { fieldApiName: string; recipeValue?: unknown }): string | null {
+type ReferencingFieldState = { field: { fieldApiName: string; recipeValue?: unknown } };
+
+function readFieldReferencedNickname(objectApiName: string, fieldStates: readonly ReferencingFieldState[], field: { fieldApiName: string; recipeValue?: unknown }): string | null {
 
     const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
     if (!derivedField) { return readReferencedNickname(field.recipeValue); }
+
+    const throughFieldState = fieldStates.find(function (fieldState) { return fieldState.field.fieldApiName === derivedField.throughFieldApiName; });
+    const throughNickname = throughFieldState ? StandardDerivedFields.readThroughSourceNickname(throughFieldState.field.recipeValue) : undefined;
+    if (throughNickname !== undefined && isReferenceableNickname(throughNickname)) { return throughNickname; }
 
     const sourceNickname = StandardDerivedFields.readSourceNickname(String(field.recipeValue || '').trim(), derivedField);
     return sourceNickname !== undefined && isReferenceableNickname(sourceNickname) ? sourceNickname : null;
@@ -64,7 +72,7 @@ export function readSourceFieldNickname(sourceOwnerState: INavigationObjectState
 
     const sourceFieldState = sourceOwnerState.fieldStates.find(function (fieldState) { return fieldState.field.fieldApiName === sourceFieldApiName; });
 
-    return sourceFieldState ? readFieldReferencedNickname(sourceOwnerState.object.objectApiName, sourceFieldState.field) : null;
+    return sourceFieldState ? readFieldReferencedNickname(sourceOwnerState.object.objectApiName, sourceOwnerState.fieldStates, sourceFieldState.field) : null;
 
 }
 
@@ -107,7 +115,7 @@ export function ensureNicknameIndex(treeState: INavigationTreeState): INicknameI
 
             if (!fieldState.field.lineNumber) { return; }
 
-            const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
+            const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, treeObjectState.fieldStates, fieldState.field);
             if (nickname === null) { return; }
 
             const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
@@ -132,7 +140,7 @@ export function findReferencedOwnerState(treeObjectStateView: ITreeObjectStateVi
     const treeObjectState = asNavigationObjectState(treeObjectStateView);
     if (!treeObjectState.treeState || !fieldState.field.lineNumber) { return null; }
 
-    const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
+    const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, treeObjectState.fieldStates, fieldState.field);
     if (nickname === null) { return null; }
 
     const nicknameIndex = ensureNicknameIndex(treeObjectState.treeState);

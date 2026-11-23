@@ -1115,6 +1115,25 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     static formatRecipeValue(sourceNickname, derivedField) {
       return \`\${sourceNickname}.\${derivedField.sourceFieldApiName}\`;
     }
+    /*
+        The record a through lookup's recipe value names (#704): a bare nickname, or the one a
+        snowfakery child copy's \${{reference(<nickname>)...}} names. Only the first line counts, and
+        only when every later line is a comment (#194's record type blocks note), as for any other
+        nickname the Recipe Cockpit reads. Anything else (a TODO, an expression, an Id, a
+        reference() in a comment) names no record.
+    */
+    static readThroughSourceNickname(throughValue) {
+      if (typeof throughValue !== "string") {
+        return void 0;
+      }
+      const firstLineEnd = throughValue.indexOf("\\n");
+      const firstLine = (firstLineEnd === -1 ? throughValue : throughValue.slice(0, firstLineEnd)).trim();
+      const isFollowedOnlyByComments = firstLineEnd === -1 || throughValue.slice(firstLineEnd + 1).split("\\n").every((valueLine) => valueLine.trim().startsWith("#"));
+      if (!isFollowedOnlyByComments) {
+        return void 0;
+      }
+      return /^[A-Za-z]\\w*$/.test(firstLine) ? firstLine : /^[^#]*\\$\\{\\{\\s*reference\\(([A-Za-z]\\w*)\\)/.exec(firstLine)?.[1];
+    }
     // THE SOURCE NICKNAME OF A RECIPE VALUE formatRecipeValue WROTE, OR undefined FOR ANY OTHER VALUE
     static readSourceNickname(recipeValue, derivedField) {
       if (typeof recipeValue !== "string") {
@@ -4483,10 +4502,17 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return valueLine.trim().charAt(0) === "#";
     }) ? firstLine : null;
   }
-  function readFieldReferencedNickname(objectApiName, field) {
+  function readFieldReferencedNickname(objectApiName, fieldStates, field) {
     const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
     if (!derivedField) {
       return readReferencedNickname(field.recipeValue);
+    }
+    const throughFieldState = fieldStates.find(function(fieldState) {
+      return fieldState.field.fieldApiName === derivedField.throughFieldApiName;
+    });
+    const throughNickname = throughFieldState ? StandardDerivedFields.readThroughSourceNickname(throughFieldState.field.recipeValue) : void 0;
+    if (throughNickname !== void 0 && isReferenceableNickname(throughNickname)) {
+      return throughNickname;
     }
     const sourceNickname = StandardDerivedFields.readSourceNickname(String(field.recipeValue || "").trim(), derivedField);
     return sourceNickname !== void 0 && isReferenceableNickname(sourceNickname) ? sourceNickname : null;
@@ -4495,7 +4521,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const sourceFieldState = sourceOwnerState.fieldStates.find(function(fieldState) {
       return fieldState.field.fieldApiName === sourceFieldApiName;
     });
-    return sourceFieldState ? readFieldReferencedNickname(sourceOwnerState.object.objectApiName, sourceFieldState.field) : null;
+    return sourceFieldState ? readFieldReferencedNickname(sourceOwnerState.object.objectApiName, sourceOwnerState.fieldStates, sourceFieldState.field) : null;
   }
   function nicknameKeyOf(recipeFilePath, nickname) {
     return String(recipeFilePath || "") + "\\n" + nickname;
@@ -4530,7 +4556,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         if (!fieldState.field.lineNumber) {
           return;
         }
-        const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
+        const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, treeObjectState.fieldStates, fieldState.field);
         if (nickname === null) {
           return;
         }
@@ -4554,7 +4580,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (!treeObjectState.treeState || !fieldState.field.lineNumber) {
       return null;
     }
-    const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, fieldState.field);
+    const nickname = readFieldReferencedNickname(treeObjectState.object.objectApiName, treeObjectState.fieldStates, fieldState.field);
     if (nickname === null) {
       return null;
     }
@@ -5005,7 +5031,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "The search box between the run list and the Treecipe dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only, beside the Treecipe dropdown, narrows it to your starred cards.",
         "Each card's Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. When the reason is one the cockpit can fix, a link beside it opens the place that fixes it: an object the org lacks opens Troubleshooting, Fields at Deploy fields & dependencies…; one the org will not let you create opens Troubleshooting, Permissions at Assign permission sets to me…; an unticked field the org requires opens that field's row. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card's Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.",
         "Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it, under Click to go to a child reference, and jump to one; a field holding a nickname shows it highlighted, and clicking it lists that object under Click to go to the parent reference, one click away.",
-        "A field Salesforce sets itself from another lookup, such as a Quote's AccountId, which always comes from its Opportunity, is marked read only and its pencil is disabled. Its value names the record it comes from, such as Opportunity_NickName.AccountId, says which account that record holds, and links to that row like a nickname. It is never sent to Salesforce on insert.",
+        "A field Salesforce sets itself from another lookup, such as a Quote's AccountId, which always comes from its Opportunity, is marked read only and its pencil is disabled. It names the record its lookup holds now, such as the Opportunity in the Quote's OpportunityId, says which account that record holds, and links to that row like a nickname. While that lookup is still a TODO, it names the record in its own value, such as Opportunity_NickName.AccountId. Wiring the lookup leaves that value as generated. It is never sent to Salesforce on insert.",
         "A field Salesforce calculates or fills in itself, such as a formula, a roll-up summary, an auto number or an Opportunity's ExpectedRevenue, is written as READ ONLY with the reason and also marked read only, its pencil disabled; a formula field shows its formula. Treecipe never sends it to Salesforce, and an insert also leaves out any field the target org says Salesforce fills itself, with a warning naming them.",
         "A friend (an object nested under another's friends: in a faker-js recipe) shows a 👥 chip per parent: the parent's nickname and its place among that parent's friends, such as Account_NickName-2. Click a chip to jump to that parent. A parent with friends shows 👥 and how many after its nickname: click it to list them under Click to go to a friend, and jump to one.",
         "Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick Click to show fields with open TODOs, in the tile under a card's Treecipe search, to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO's list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out. The same tile holds Click to show record type impacted fields only, for the picklist fields a record type restricts, and Manage record types, which opens the record types the tree is generated with.",

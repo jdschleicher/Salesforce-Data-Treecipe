@@ -89,6 +89,41 @@ describe('StandardDerivedFields (#680)', () => {
 
     });
 
+    describe('the record a through lookup names (#704)', () => {
+
+        test.each([
+            ['a bare nickname', 'Opportunity_SMB_NickName', 'Opportunity_SMB_NickName'],
+            ['a snowfakery child copy\'s reference()', 'Opportunity_Reference_${{reference(Opportunity_SMB_NickName).id}}', 'Opportunity_SMB_NickName'],
+            ['a nickname with spaces around it', '  Opportunity_NickName  ', 'Opportunity_NickName'],
+            ['a nickname with the record type blocks comment under it', 'Opportunity_SMB_NickName\n### TODO -- RECORD TYPE BLOCKS -- note', 'Opportunity_SMB_NickName'],
+            ['a reference() with spaces inside the template', 'Opportunity_Reference_${{ reference(Opportunity_SMB_NickName).id }}', 'Opportunity_SMB_NickName']
+        ])('reads the source nickname from %s', (unusedCase, throughValue, expectedSourceNickname) => {
+
+            expect(StandardDerivedFields.readThroughSourceNickname(throughValue)).toBe(expectedSourceNickname);
+
+        });
+
+        test.each([
+            ['the REFERENCE ID TODO', '### TODO -- REFERENCE ID REQUIRED'],
+            ['a faker expression', '${{ faker.string.uuid() }}'],
+            ['an org record Id', '"0065g00000AbCdEAAV"'],
+            ['a nickname written on the second line only', '\nOpportunity_NickName'],
+            ['a dotted value', 'Opportunity_NickName.AccountId'],
+            ['a multi-line value whose next line is not a comment', 'Opportunity_A_NickName\n  Opportunity_B_NickName'],
+            ['a reference() in a YAML comment after an expression', '${{fake.uuid4}} # was reference(Opportunity_B_NickName)'],
+            ['a reference() in a YAML comment alone', '# reference(Opportunity_B_NickName)'],
+            ['a reference() outside a template', 'reference(Opportunity_B_NickName)'],
+            ['empty', ''],
+            ['a number', 5],
+            ['nothing', null]
+        ])('reads no source nickname from %s', (unusedCase, throughValue) => {
+
+            expect(StandardDerivedFields.readThroughSourceNickname(throughValue)).toBeUndefined();
+
+        });
+
+    });
+
     test('imports nothing, so the panel bundle can read it', () => {
 
         const source = fs.readFileSync(path.join(__dirname, '..', 'StandardDerivedFields.ts'), 'utf-8');
