@@ -50,6 +50,7 @@ import {
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
@@ -80,8 +81,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const loadRequest = (renderSequence: number) => ({
@@ -178,8 +179,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
         it('generates with faker-js from every multi-line value the real pipeline writes: validation-rule lines, a block scalar, a quoted and an unquoted expression', async () => {
 
             const workspaceRoot = path.join(__dirname, 'mocks', 'validationRuleWorkspace');
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes'));
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, workspaceRoot, 'recipe-fakerjs-2026-10-01T09-00-00').recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes'));
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, workspaceRoot, 'recipe-fakerjs-2026-10-01T09-00-00').recipeViewModel;
             const gadget = recipe.objects.find((object: any) => object.objectApiName === 'Gadget__c')!;
             const fieldNames = ['Amount__c', 'Score__c', 'Stage__c', 'Quantity__c', 'Notes__c', 'Code__c'];
 

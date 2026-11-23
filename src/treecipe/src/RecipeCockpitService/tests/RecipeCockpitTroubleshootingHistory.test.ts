@@ -12,6 +12,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -38,8 +39,8 @@ const RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const QA_USERNAME = 'qa@example.com';
 
-const loadRecipe = (workspaceRoot: string = TREE_WORKSPACE_ROOT): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (workspaceRoot: string = TREE_WORKSPACE_ROOT): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
     workspaceRoot,
     RUN_FOLDER_NAME
 ).recipeViewModel;

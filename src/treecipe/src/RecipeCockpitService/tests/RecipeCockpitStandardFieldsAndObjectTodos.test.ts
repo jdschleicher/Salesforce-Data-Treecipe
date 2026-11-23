@@ -19,6 +19,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_STANDARD_FIELDS_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
@@ -55,8 +56,8 @@ const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_STANDARD_FIELDS = ['Name', 'ParentId', 'OwnerId'];
 const ACCOUNT_CUSTOM_FIELDS = ['Legacy_Code__c', 'Annual_Budget__c', 'Rating__c', 'Sub_Rating__c', 'Regions__c'];
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

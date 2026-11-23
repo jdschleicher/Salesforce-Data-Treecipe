@@ -20,6 +20,7 @@ import {
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -50,8 +51,8 @@ const ACCOUNT_DATASET = 'dataset-2026-09-21T00-00-00-2';
 const LEAD_DATASETS = ['dataset-2026-09-21T00-00-00', 'dataset-2026-09-15T00-00-00', 'dataset-2026-09-02T00-00-00'];
 const DATASETS_TAB_LABEL = 'Previously Used Data Sets';
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;

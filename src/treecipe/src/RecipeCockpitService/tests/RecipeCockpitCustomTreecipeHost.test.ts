@@ -15,6 +15,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { RecipeCockpitCustomTreecipe } from '../RecipeCockpitCustomTreecipe';
 import { RecipeCockpitCustomTreecipeHost } from '../RecipeCockpitCustomTreecipeHost';
@@ -481,7 +482,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 originalTreeFolderName: SOURCE_TREE_KEY, removedObjectApiNames: [], removedFields: [], outOfRunObjectApiNames: [], savedAt: '2026-11-20T22:24:09.000Z'
             }).replace('{', '{' + ' '.repeat(65 * 1024)));
 
-            expect(RecipeCockpitService.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
+            expect(RecipeCockpitModelBuild.readCustomTreecipeDefinition(treeFolderPath)).toBeUndefined();
 
         });
 

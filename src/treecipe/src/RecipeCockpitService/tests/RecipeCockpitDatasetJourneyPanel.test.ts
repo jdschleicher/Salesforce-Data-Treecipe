@@ -12,6 +12,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -39,8 +40,8 @@ const LEAD_DATASETS = ['dataset-2026-09-21T00-00-00', 'dataset-2026-09-15T00-00-
 const DATASETS_TAB_LABEL = 'Previously Used Data Sets';
 const QA_USERNAME = 'qa@example.com.sandbox';
 
-const loadRecipe = (workspaceRoot: string) => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (workspaceRoot: string) => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
     workspaceRoot,
     CURRENT_RUN_FOLDER_NAME
 );

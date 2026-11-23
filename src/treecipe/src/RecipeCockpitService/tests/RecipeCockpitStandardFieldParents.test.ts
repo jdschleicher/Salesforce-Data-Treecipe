@@ -47,6 +47,7 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { ILookupWiringContext, IRecipeFilterLookup, RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
 const STANDARD_FIELD_PARENT_OBJECTS_PATH = path.join(__dirname, '..', '..', 'DirectoryProcessingService', 'tests', 'mocks', 'StandardFieldParentSalesforceMetadataDirectory', 'objects');
@@ -74,7 +75,7 @@ function buildWiringContext(objectInfoWrapper: ObjectInfoWrapper): ILookupWiring
     const levelsByObjectApiName = new Map<string, number>();
 
     Object.entries(wrapperObjects).forEach(([objectApiName, wrapperObject]) => {
-        parentLookupsByObjectApiName.set(objectApiName, RecipeCockpitService.readParentLookups(wrapperObject.RelationshipDetail));
+        parentLookupsByObjectApiName.set(objectApiName, RecipeCockpitModelBuild.readParentLookups(wrapperObject.RelationshipDetail));
         if ( typeof wrapperObject.RelationshipDetail?.level === 'number' ) {
             levelsByObjectApiName.set(objectApiName, wrapperObject.RelationshipDetail.level);
         }
@@ -154,7 +155,7 @@ describe.each([
 
     test('Add parent offers Contact for Case.ContactId, whose parent the recipe does not write', () => {
 
-        const templateObjectApiNames = new Set(Object.keys(RecipeCockpitService.getParentObjectTemplates(isNestingBackend ? 'faker-js' : 'snowfakery')));
+        const templateObjectApiNames = new Set(Object.keys(RecipeCockpitModelBuild.getParentObjectTemplates(isNestingBackend ? 'faker-js' : 'snowfakery')));
         const additions = RecipeCockpitRecipeWriter.listAddableParentObjects(accountTreeRecipe, wiringContext, templateObjectApiNames);
 
         // A faker-js Case IS WRITTEN TWICE (ITS SELF-LOOKUP ITERATION), AND EACH OCCURRENCE IS OFFERED BY ITS NICKNAME, AS FOR ANY LOOKUP

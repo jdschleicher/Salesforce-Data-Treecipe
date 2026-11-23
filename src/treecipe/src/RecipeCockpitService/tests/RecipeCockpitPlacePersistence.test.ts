@@ -19,6 +19,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
     RECIPE_COCKPIT_REMOVED_TREE_TABS
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitWorkspaceState } from '../RecipeCockpitViewModel';
 import {
     IRecipeCockpitPanelPlace,
@@ -322,7 +323,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         const buildDrawnPanelState = () => {
             const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME).recipeViewModel;
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
             panelState.selectableRunFolderNames = new Set(recipe.runs.map(run => run.runFolderName));
             return panelState;
@@ -754,7 +755,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         it('given a document with its own getState, prefers it over the place the host kept', () => {
 
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
             const ownPlace = buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME, selectedTreeKey: LEAD_TREE_KEY, trees: [{ ...buildPlace().trees[0], treeKey: LEAD_TREE_KEY, expandedObjectKeys: [] }] });
             const hostPlace = buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME });
 
@@ -772,7 +773,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         it('given a host place in another shape, draws the default view', () => {
 
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, restorePlace: { ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }), version: 99 } });
@@ -785,7 +786,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         it('posts every place it saves to the host, so the host can keep it past the panel', () => {
 
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });

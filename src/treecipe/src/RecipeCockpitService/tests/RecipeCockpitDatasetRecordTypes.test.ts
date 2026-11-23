@@ -17,6 +17,7 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_DATASET_RECORD_TYPES_LABEL_PREFIX
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { IRecipeCockpitTreeDatasetViewModel } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -25,8 +26,8 @@ const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace')
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const TAGGED_DATASET_FOLDER_NAME = 'dataset-2026-09-21T00-00-00';
 
-const loadRecipe = (workspaceRoot: string): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
+const loadRecipe = (workspaceRoot: string): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')),
     workspaceRoot,
     TREE_RUN_FOLDER_NAME
 ).recipeViewModel;

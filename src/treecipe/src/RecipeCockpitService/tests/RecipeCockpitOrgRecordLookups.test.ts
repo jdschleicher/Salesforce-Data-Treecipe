@@ -19,6 +19,7 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitPanelState,
@@ -287,7 +288,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
     // THE MODEL AS THE PANEL'S LOAD POSTS IT: THE PINS THE FIXED-VALUES FILE HOLDS APPLIED TO THE CARDS
     const loadModel = (): IRecipeCockpitRecipeViewModel => {
         const generatedRecipesFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes');
-        const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(generatedRecipesFolderPath), workspaceRoot);
+        const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(generatedRecipesFolderPath), workspaceRoot);
         RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitService.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
         return loadedRecipe.recipeViewModel;
     };
@@ -322,7 +323,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             expect([...RecipeCockpitService.collectOrgRecordLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]])).keys()])
                 .toEqual([`${TREE_KEY}\nContact\n\nAccountId`, `${TREE_KEY}\nContact\n\nReportsToId`, `${TREE_KEY}\nContact\n\nOwner__c`]);
             expect(RecipeCockpitService.collectOrgRecordLookupTargets(recipeViewModel, new Map()).size).toBe(0);
-            expect(RecipeCockpitService.listTreeEmptyLookups(path.join(workspaceRoot, 'missing.yml'), treeOf(recipeViewModel), undefined)).toEqual([]);
+            expect(RecipeCockpitModelBuild.listTreeEmptyLookups(path.join(workspaceRoot, 'missing.yml'), treeOf(recipeViewModel), undefined)).toEqual([]);
 
         });
 

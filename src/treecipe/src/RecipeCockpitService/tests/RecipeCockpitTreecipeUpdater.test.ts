@@ -61,6 +61,7 @@ import {
     RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
@@ -72,8 +73,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 type Panel = ReturnType<typeof runPanelScript>;
 
 const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
 };
 
 const drawRecipe = (recipe: any, panelScriptOptions: IPanelScriptOptions = {}) => {

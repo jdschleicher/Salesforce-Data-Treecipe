@@ -18,9 +18,10 @@ import {
     RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
     RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH,
-    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
+    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
@@ -52,8 +53,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, CURRENT_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
 
-const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
@@ -96,8 +97,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         it('marks an object written twice with no nickname to tell the occurrences apart, and not one told apart by nickname', () => {
 
-            const indistinct = RecipeCockpitService.parseRecipeSource('- object: Account\n  fields:\n    Name: a\n- object: Account\n  fields:\n    Name: b\n');
-            const distinct = RecipeCockpitService.parseRecipeSource([
+            const indistinct = RecipeCockpitModelBuild.parseRecipeSource('- object: Account\n  fields:\n    Name: a\n- object: Account\n  fields:\n    Name: b\n');
+            const distinct = RecipeCockpitModelBuild.parseRecipeSource([
                 '- object: Account', '  nickname: Account_NickName', '  fields:', '    Name: a', '  friends:',
                 '    - object: Account', '      nickname: Account_child_NickName', '      fields:', '        ParentId: Account_NickName', ''
             ].join('\n'));

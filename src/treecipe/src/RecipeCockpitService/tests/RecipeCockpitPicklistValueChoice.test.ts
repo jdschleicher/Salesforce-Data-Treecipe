@@ -22,6 +22,7 @@ import {
     RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
     RECIPE_COCKPIT_PICKLIST_RESET_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitFieldViewModel,
@@ -70,8 +71,8 @@ const BACKENDS: Array<['faker-js' | 'snowfakery', () => IRecipeFakerService]> = 
 
 const picklistField = (fieldType = 'Picklist'): IRecipeCockpitFieldViewModel => ({ fieldApiName: 'Status', fieldType: fieldType } as IRecipeCockpitFieldViewModel);
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );

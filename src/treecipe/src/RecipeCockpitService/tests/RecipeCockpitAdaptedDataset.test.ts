@@ -78,6 +78,7 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_DATASET_ADAPTED_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -791,7 +792,7 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
                 fs.writeFileSync(path.join(temporaryFolderPath, 'recipe--Tree-adapted-20261025-143005.yml'), '');
                 fs.writeFileSync(path.join(temporaryFolderPath, 'recipe--Tree-adapted-20261025-143005-2.yml'), '');
                 expect(RecipeCockpitTreeHistory.findTreeRecipeFilePath(temporaryFolderPath)).toBe(path.join(temporaryFolderPath, 'recipe--Tree.yml'));
-                expect(RecipeCockpitService.collectRecipeFilePaths(temporaryFolderPath)).toEqual([path.join(temporaryFolderPath, 'recipe--Tree.yml')]);
+                expect(RecipeCockpitModelBuild.collectRecipeFilePaths(temporaryFolderPath)).toEqual([path.join(temporaryFolderPath, 'recipe--Tree.yml')]);
             } finally {
                 fs.rmSync(temporaryFolderPath, { recursive: true, force: true });
             }
@@ -805,7 +806,7 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
                 fs.writeFileSync(path.join(treeFolderPath, 'RunArtifacts', 'recipe--Planted.yml'), '');
                 fs.writeFileSync(path.join(treeFolderPath, 'RunArtifacts', 'OrgOperations', 'recipe--Planted.yml'), '');
                 expect(RecipeCockpitTreeHistory.findTreeRecipeFilePath(treeFolderPath)).toBe(path.join(treeFolderPath, 'recipe--Tree.yml'));
-                expect(RecipeCockpitService.collectRecipeFilePaths(runFolderPath)).toEqual([path.join(treeFolderPath, 'recipe--Tree.yml')]);
+                expect(RecipeCockpitModelBuild.collectRecipeFilePaths(runFolderPath)).toEqual([path.join(treeFolderPath, 'recipe--Tree.yml')]);
             } finally {
                 fs.rmSync(runFolderPath, { recursive: true, force: true });
             }
@@ -821,8 +822,8 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         it('labels an adapted data set\'s row "adapted" in text, and no other row', () => {
 
-            const recipe: IRecipeCockpitRecipeViewModel = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+            const recipe: IRecipeCockpitRecipeViewModel = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
                 HISTORY_WORKSPACE_ROOT,
                 TREE_RUN_FOLDER_NAME
             ).recipeViewModel;

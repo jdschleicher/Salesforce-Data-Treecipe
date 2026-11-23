@@ -18,6 +18,7 @@ import {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -81,7 +82,7 @@ describe('RecipeCockpitService, a field Salesforce sets from another lookup (#68
         if ( workspaceRoot ) { fs.rmSync(workspaceRoot, { recursive: true, force: true }); }
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const renderModel = (recipeViewModel: IRecipeCockpitRecipeViewModel) => {
         const panel = runPanelScript();

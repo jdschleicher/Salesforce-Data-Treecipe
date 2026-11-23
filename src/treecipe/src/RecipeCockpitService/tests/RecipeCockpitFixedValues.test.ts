@@ -25,9 +25,10 @@ import {
     RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
-    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
+    RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
@@ -142,8 +143,8 @@ async function generateWithFakerJs(recipeText: string): Promise<Array<{ object: 
     }
 }
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );

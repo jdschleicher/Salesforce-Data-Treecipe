@@ -15,9 +15,10 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
+    RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
@@ -60,8 +61,8 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, CURRENT_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );
@@ -272,7 +273,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
         it('marks an object with a record-type section, as read from its recipe', () => {
 
-            const parsed = RecipeCockpitService.parseRecipeSource([
+            const parsed = RecipeCockpitModelBuild.parseRecipeSource([
                 '- object: Thing__c',
                 '  fields:',
                 '    RecordTypeId: Thing__c.One',
@@ -285,7 +286,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             ].join('\n'));
 
             expect(parsed.get('Thing__c')?.hasRecordTypeSections).toBeTrue();
-            expect(RecipeCockpitService.parseRecipeSource('- object: Thing__c\n  fields:\n    Name: x\n').get('Thing__c')?.hasRecordTypeSections).toBeUndefined();
+            expect(RecipeCockpitModelBuild.parseRecipeSource('- object: Thing__c\n  fields:\n    Name: x\n').get('Thing__c')?.hasRecordTypeSections).toBeUndefined();
 
         });
 

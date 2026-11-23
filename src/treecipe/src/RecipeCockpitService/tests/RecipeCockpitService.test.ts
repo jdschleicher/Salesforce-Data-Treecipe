@@ -19,11 +19,8 @@ import {
     RECIPE_COCKPIT_VIEW_TYPE,
     RECIPE_COCKPIT_PANEL_TITLE,
     RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT,
-    RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_NO_RUN_MESSAGE,
     RECIPE_COCKPIT_RUN_PICKER_LABEL,
     RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL,
     RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL,
@@ -44,6 +41,12 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_CUSTOM_PROPERTIES
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE,
+    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
+    RECIPE_COCKPIT_NO_RUN_MESSAGE
+} from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitLoadedRecipe,
@@ -765,7 +768,7 @@ describe('RecipeCockpitService', () => {
         */
         it('lists every run carrying an objects wrapper, newest first by its timestamp rather than its name', () => {
 
-            const actualRuns = RecipeCockpitService.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
+            const actualRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
 
             expect(actualRuns.map(run => run.runFolderName)).toEqual([LATEST_RUN_FOLDER_NAME, FAKER_JS_RUN_FOLDER_NAME]);
             expect(actualRuns[0].generatedAtTimestamp).toBe('2026-09-04T11:22:07Z');
@@ -778,7 +781,7 @@ describe('RecipeCockpitService', () => {
         // THE 2026-09-10 FOLDER IS THE NEWEST ON DISK AND HAS NO WRAPPER; "notARun" HAS NO TIMESTAMP
         it('skips a folder with no objects wrapper and a folder that is not a run', () => {
 
-            const actualRunFolderNames = RecipeCockpitService.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH).map(run => run.runFolderName);
+            const actualRunFolderNames = RecipeCockpitModelBuild.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH).map(run => run.runFolderName);
 
             expect(actualRunFolderNames).not.toContain('recipe-2026-09-10T00-00-00');
             expect(actualRunFolderNames).not.toContain('notARun');
@@ -787,7 +790,7 @@ describe('RecipeCockpitService', () => {
 
         it('given no GeneratedRecipes folder, lists no runs', () => {
 
-            expect(RecipeCockpitService.findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist'))).toEqual([]);
+            expect(RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist'))).toEqual([]);
 
         });
 
@@ -797,10 +800,10 @@ describe('RecipeCockpitService', () => {
 
         it('names when the run was generated, in UTC, and which faker backend wrote it', () => {
 
-            const [latestRun, fakerJsRun] = RecipeCockpitService.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
+            const [latestRun, fakerJsRun] = RecipeCockpitModelBuild.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
 
-            expect(RecipeCockpitService.buildRunLabel(latestRun, true)).toBe('2026-09-04 11:22:07 UTC · snowfakery · latest');
-            expect(RecipeCockpitService.buildRunLabel(fakerJsRun, false)).toBe('2026-09-01 08:00:00 UTC · faker-js');
+            expect(RecipeCockpitModelBuild.buildRunLabel(latestRun, true)).toBe('2026-09-04 11:22:07 UTC · snowfakery · latest');
+            expect(RecipeCockpitModelBuild.buildRunLabel(fakerJsRun, false)).toBe('2026-09-01 08:00:00 UTC · faker-js');
 
         });
 
@@ -810,7 +813,7 @@ describe('RecipeCockpitService', () => {
 
         it('given a generated run exists, loads the latest one and lists its objects in recipe order', () => {
 
-            const actualRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
+            const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
 
             expect(actualRecipe.selectedRunFolderName).toBe(LATEST_RUN_FOLDER_NAME);
             expect(actualRecipe.runs.map(run => run.runFolderName)).toEqual([LATEST_RUN_FOLDER_NAME, FAKER_JS_RUN_FOLDER_NAME]);
@@ -826,7 +829,7 @@ describe('RecipeCockpitService', () => {
 
         it('gives each object the recipe file and line it is written at', () => {
 
-            const [accountObject, contactObject] = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
+            const [accountObject, contactObject] = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
 
             expect(accountObject.recipeFilePath).toBe(LATEST_RECIPE_FILE_PATH);
             expect(accountObject.lineNumber).toBe(7);
@@ -840,7 +843,7 @@ describe('RecipeCockpitService', () => {
         */
         it('orders fields as the file does, adds the ones only the file carries, and keeps the unlocated ones last', () => {
 
-            const [accountObject] = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
+            const [accountObject] = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
 
             expect(accountObject.fields.map(field => [field.fieldApiName, field.lineNumber])).toEqual([
                 ['Name', 11],
@@ -859,7 +862,7 @@ describe('RecipeCockpitService', () => {
 
         it('carries each wrapper field\'s type, label, controlling field and faker expression', () => {
 
-            const [accountObject] = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
+            const [accountObject] = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
             const industryGroupField = accountObject.fields.find(field => field.fieldApiName === 'Industry_Group__c');
             const numberOfContactsField = accountObject.fields.find(field => field.fieldApiName === 'Number_of_Contacts__c');
 
@@ -881,7 +884,7 @@ describe('RecipeCockpitService', () => {
 
         it('counts a wrapper field entry with no api name in a notice rather than rendering it', () => {
 
-            const actualRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
+            const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
             const contactObject = actualRecipe.objects[1];
 
             expect(contactObject.fields.map(field => field.fieldApiName)).toEqual(['LastName', 'AccountId']);
@@ -891,7 +894,7 @@ describe('RecipeCockpitService', () => {
 
         it('given a run is requested, loads that run instead of the latest', () => {
 
-            const actualRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME);
+            const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME);
 
             expect(actualRecipe.selectedRunFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
             expect(actualRecipe.objects.map(objectViewModel => objectViewModel.objectApiName)).toEqual(['Lead']);
@@ -902,7 +905,7 @@ describe('RecipeCockpitService', () => {
         // A RUN DELETED BETWEEN THE RENDER AND THE CHOICE IS NOT A REASON TO SHOW NOTHING
         it('given a requested run is no longer on disk, loads the latest', () => {
 
-            const actualRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT, 'recipe-1999-01-01T00-00-00');
+            const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT, 'recipe-1999-01-01T00-00-00');
 
             expect(actualRecipe.selectedRunFolderName).toBe(LATEST_RUN_FOLDER_NAME);
             expect(actualRecipe.notices[0]).toBe('The run "recipe-1999-01-01T00-00-00" is no longer on disk, so the latest run is shown instead.');
@@ -911,7 +914,7 @@ describe('RecipeCockpitService', () => {
 
         it('given no generated run exists, answers with the empty state that names Generate Treecipe', () => {
 
-            const actualRecipe = RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist'));
+            const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist'));
 
             expect(actualRecipe).toEqual({ runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE });
             expect(RECIPE_COCKPIT_NO_RUN_MESSAGE).toContain('Generate Treecipe');
@@ -941,7 +944,7 @@ describe('RecipeCockpitService', () => {
 
                 writeObjectsWrapper('{ not json');
 
-                const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
+                const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot);
 
                 expect(actualRecipe.runs).toHaveLength(1);
                 expect(actualRecipe.objects).toEqual([]);
@@ -953,7 +956,7 @@ describe('RecipeCockpitService', () => {
 
                 writeObjectsWrapper('[1, 2, 3]');
 
-                expect(RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot).emptyStateMessage).toContain('is not a Treecipe objects wrapper');
+                expect(RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot).emptyStateMessage).toContain('is not a Treecipe objects wrapper');
 
             });
 
@@ -961,7 +964,7 @@ describe('RecipeCockpitService', () => {
 
                 writeObjectsWrapper('{ "ObjectToObjectInfoMap": {} }');
 
-                expect(RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot).emptyStateMessage).toContain('lists no objects');
+                expect(RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot).emptyStateMessage).toContain('lists no objects');
 
             });
 
@@ -974,7 +977,7 @@ describe('RecipeCockpitService', () => {
                     }
                 }));
 
-                const [accountObject] = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot).objects;
+                const [accountObject] = RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot).objects;
 
                 expect(accountObject.fields[0]).toMatchObject({ fieldApiName: 'Industry', fieldType: '', recipeValue: '', controllingField: '' });
 
@@ -991,7 +994,7 @@ describe('RecipeCockpitService', () => {
                     RecipeFiles: [null, { objects: 'Account' }, { objects: [42, 'Contact', 'Account', 'Account'] }]
                 }));
 
-                const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
+                const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot);
 
                 // Contact HAS NO Fields AND NO RECIPE FILE CARRIES IT, SO IT IS A LOOKUP TARGET; Lead IS IN NEITHER LIST
                 expect(actualRecipe.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel.fields.length])).toEqual([
@@ -1006,7 +1009,7 @@ describe('RecipeCockpitService', () => {
                 fs.writeFileSync(path.join(runFolderPath, 'recipe.yml'), '- object: Contact\n  fields:\n    LastName: x\n');
                 writeObjectsWrapper(JSON.stringify({ ObjectToObjectInfoMap: { Contact: {} }, RecipeFiles: [{ objects: ['Contact'] }] }));
 
-                const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
+                const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot);
 
                 expect(actualRecipe.objects.map(objectViewModel => objectViewModel.objectApiName)).toEqual(['Contact']);
                 expect(actualRecipe.objects[0].fields[0]).toMatchObject({ fieldApiName: 'LastName', isOnlyInRecipeFile: true });
@@ -1019,7 +1022,7 @@ describe('RecipeCockpitService', () => {
                     ObjectToObjectInfoMap: { Account: { Fields: [{ fieldName: 'Industry' }] } }
                 }));
 
-                const [actualRun] = RecipeCockpitService.findGeneratedRecipeRuns(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes'));
+                const [actualRun] = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes'));
 
                 expect(path.basename(actualRun.objectsWrapperFilePath)).toBe('treecipeObjectsWrapper-renamed.json');
 
@@ -1033,7 +1036,7 @@ describe('RecipeCockpitService', () => {
                 fs.writeFileSync(path.join(fakerJsRunFolderPath, 'treecipeObjectsWrapper-2026-01-01T00-00-00.json'), '{}');
                 writeObjectsWrapper('{}');
 
-                const actualRunFolderNames = RecipeCockpitService.findGeneratedRecipeRuns(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes'))
+                const actualRunFolderNames = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes'))
                     .map(run => run.runFolderName);
 
                 expect(actualRunFolderNames).toEqual(['recipe-2026-01-01T00-00-00', 'recipe-fakerjs-2026-01-01T00-00-00']);
@@ -1045,7 +1048,7 @@ describe('RecipeCockpitService', () => {
                 fs.writeFileSync(path.join(runFolderPath, 'recipe.yml'), '- object: Account\n  fields:\n    Industry: x\n');
                 writeObjectsWrapper(JSON.stringify({ ObjectToObjectInfoMap: { Account: { Fields: [{ fieldName: 'Industry' }] } } }));
 
-                const [accountObject] = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot).objects;
+                const [accountObject] = RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot).objects;
 
                 expect(accountObject.recipeFilePath).toBe(path.join(runFolderPath, 'recipe.yml'));
                 expect(accountObject.fields[0].lineNumber).toBe(3);
@@ -1069,7 +1072,7 @@ describe('RecipeCockpitService', () => {
                     return readFileSync(filePath, options);
                 }) as typeof fs.readFileSync);
 
-                const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
+                const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(temporaryWorkspaceRoot);
 
                 expect(actualRecipe.objects[0].recipeFilePath).toBe('');
                 expect(actualRecipe.notices).toEqual([
@@ -1102,7 +1105,7 @@ describe('RecipeCockpitService', () => {
                     );
                     fs.symlinkSync(outsideDirectoryPath, path.join(linkedWorkspaceRoot, 'treecipe'));
 
-                    const actualRecipe = RecipeCockpitService.buildRecipeViewModel(linkedWorkspaceRoot);
+                    const actualRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(linkedWorkspaceRoot);
 
                     expect(actualRecipe.objects.map(objectViewModel => objectViewModel.objectApiName)).toEqual(['Account']);
                     expect(actualRecipe.objects[0].recipeFilePath).toBe('');
@@ -1123,7 +1126,7 @@ describe('RecipeCockpitService', () => {
 
         it('locates each object header and each field line, and collects a field\'s continuation lines', () => {
 
-            const actualEntries = RecipeCockpitService.parseRecipeSource(fs.readFileSync(LATEST_RECIPE_FILE_PATH, 'utf-8'));
+            const actualEntries = RecipeCockpitModelBuild.parseRecipeSource(fs.readFileSync(LATEST_RECIPE_FILE_PATH, 'utf-8'));
 
             expect(Array.from(actualEntries.keys())).toEqual(['Account', 'Contact']);
 
@@ -1148,7 +1151,7 @@ describe('RecipeCockpitService', () => {
                 '    Stray: y'
             ].join('\n');
 
-            const accountEntry = RecipeCockpitService.parseRecipeSource(recipeContent).get('Account');
+            const accountEntry = RecipeCockpitModelBuild.parseRecipeSource(recipeContent).get('Account');
 
             expect(Array.from(accountEntry.fieldEntries.keys())).toEqual(['Industry']);
             expect(accountEntry.fieldEntries.get('Industry').valueText).toBe('x');
@@ -1171,7 +1174,7 @@ describe('RecipeCockpitService', () => {
                 '        stray deeper line'
             ].join('\n');
 
-            const accountEntry = RecipeCockpitService.parseRecipeSource(recipeContent).get('Account');
+            const accountEntry = RecipeCockpitModelBuild.parseRecipeSource(recipeContent).get('Account');
 
             expect(Array.from(accountEntry.fieldEntries.keys())).toEqual(['Industry', 'Phone']);
             expect(accountEntry.fieldEntries.get('Industry').valueText).toBe('x');
@@ -1192,7 +1195,7 @@ describe('RecipeCockpitService', () => {
                 '    Rating: ignored'
             ].join('\r\n');
 
-            const actualEntries = RecipeCockpitService.parseRecipeSource(recipeContent);
+            const actualEntries = RecipeCockpitModelBuild.parseRecipeSource(recipeContent);
             const accountEntry = actualEntries.get('Account');
 
             expect(accountEntry.lineNumber).toBe(1);
@@ -1215,14 +1218,14 @@ describe('RecipeCockpitService', () => {
         const buildObject = (objectApiName: string, fieldApiNames: string[]) => ({
             objectApiName: objectApiName, recipeFilePath: '', fields: fieldApiNames.map(buildField)
         });
-        const attachSelfLookupRecipe = () => RecipeCockpitService.attachRecipeSources(
+        const attachSelfLookupRecipe = () => RecipeCockpitModelBuild.attachRecipeSources(
             [buildObject('Account', ['Name', 'ParentId']), buildObject('Contact', ['Name', 'AccountId'])],
-            [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
+            [{ filePath: recipeFilePath, objectEntries: RecipeCockpitModelBuild.parseRecipeSource(selfLookupRecipeText) }]
         );
 
         it('the reader keeps the first occurrence under the api name and the nested one as an iteration, with its own lines', () => {
 
-            const objectEntries = RecipeCockpitService.parseRecipeSource(selfLookupRecipeText);
+            const objectEntries = RecipeCockpitModelBuild.parseRecipeSource(selfLookupRecipeText);
             const accountEntry = objectEntries.get('Account');
 
             expect(Array.from(objectEntries.keys())).toEqual(['Account', 'Contact']);
@@ -1246,7 +1249,7 @@ describe('RecipeCockpitService', () => {
             ['the first occurrence has no nickname', (recipeText: string) => recipeText.replace('  nickname: Account_NickName\n', '')]
         ])('given %s, the reader cannot tell them apart and the first occurrence wins, as before', (_caseName, editRecipe) => {
 
-            const accountEntry = RecipeCockpitService.parseRecipeSource(editRecipe(selfLookupRecipeText)).get('Account');
+            const accountEntry = RecipeCockpitModelBuild.parseRecipeSource(editRecipe(selfLookupRecipeText)).get('Account');
 
             expect(accountEntry.iterations).toBeUndefined();
             expect(selfLookupLines[accountEntry.lineNumber - 1]).toBe('- object: Account');
@@ -1270,7 +1273,7 @@ describe('RecipeCockpitService', () => {
                 '        Name: y'
             ].join('\n');
 
-            const [iteration] = RecipeCockpitService.parseRecipeSource(recipeText).get('Account').iterations;
+            const [iteration] = RecipeCockpitModelBuild.parseRecipeSource(recipeText).get('Account').iterations;
 
             expect(iteration).toEqual({ nickname: 'Account_Held_NickName', lineNumber: 9, parentObjectApiName: 'Holder__c', fieldEntries: new Map([['Name', { lineNumber: 12, valueText: 'y' }]]) });
 
@@ -1285,7 +1288,7 @@ describe('RecipeCockpitService', () => {
                 `    Name: ${label}`
             ].join('\n')).join('\n');
 
-            const [accountObject] = RecipeCockpitService.attachRecipeSources([buildObject('Account', ['Name'])], [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(recipeText) }]);
+            const [accountObject] = RecipeCockpitModelBuild.attachRecipeSources([buildObject('Account', ['Name'])], [{ filePath: recipeFilePath, objectEntries: RecipeCockpitModelBuild.parseRecipeSource(recipeText) }]);
 
             expect(accountObject.nickname).toBe('Account_First_NickName');
             expect(accountObject.iterations).toEqual([
@@ -1328,7 +1331,7 @@ describe('RecipeCockpitService', () => {
                 ['Contact', [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]]
             ]);
 
-            const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+            const treeBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels(
                 { recipeTrees: [{ objectApiNames: ['Account', 'Contact'] }], parentLookupsByObjectApiName: parentLookupsByObjectApiName }, objects, [], 'run'
             );
 
@@ -1339,8 +1342,8 @@ describe('RecipeCockpitService', () => {
             ]);
             expect(treeBuild.trees[0].fieldCount).toBe(4);
 
-            const fallbackBuild = RecipeCockpitService.buildRecipeTreeViewModels(
-                { recipeTrees: [], parentLookupsByObjectApiName: new Map() }, objects, [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }], 'run'
+            const fallbackBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels(
+                { recipeTrees: [], parentLookupsByObjectApiName: new Map() }, objects, [{ filePath: recipeFilePath, objectEntries: RecipeCockpitModelBuild.parseRecipeSource(selfLookupRecipeText) }], 'run'
             );
             expect(fallbackBuild.trees[0].objects.map(treeObject => [treeObject.objectApiName, treeObject.iterationNickname])).toEqual([
                 ['Account', undefined], ['Account', 'Account_child_NickName'], ['Contact', undefined]
@@ -1382,7 +1385,7 @@ describe('RecipeCockpitService', () => {
             ['a leading value with continuation lines', [' ### TODO: pick one', '                    Account.Retail', '                    Account.Bank'], '### TODO: pick one\nAccount.Retail\nAccount.Bank']
         ])('given %s, keeps only the structure a reader needs', (unusedDescription, expressionLines, expectedExpression) => {
 
-            expect(RecipeCockpitService.buildDisplayExpression(expressionLines)).toBe(expectedExpression);
+            expect(RecipeCockpitModelBuild.buildDisplayExpression(expressionLines)).toBe(expectedExpression);
 
         });
 
@@ -1392,7 +1395,7 @@ describe('RecipeCockpitService', () => {
 
         it('names every object and field line the model offers to open, and nothing it does not', () => {
 
-            const recipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
+            const recipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
 
             const actualKeys = RecipeCockpitService.collectOpenableSourceKeys(recipe);
 
@@ -1637,7 +1640,7 @@ describe('RecipeCockpitService', () => {
             ['', { length: 50 }, '']
         ])('formats %s with %j as %s', (fieldType, fieldSize, expectedTypeWithSize) => {
 
-            expect(RecipeCockpitService.formatFieldTypeWithSize(fieldType, fieldSize)).toBe(expectedTypeWithSize);
+            expect(RecipeCockpitModelBuild.formatFieldTypeWithSize(fieldType, fieldSize)).toBe(expectedTypeWithSize);
 
         });
 
@@ -1645,7 +1648,7 @@ describe('RecipeCockpitService', () => {
 
     describe('relationship trees', () => {
 
-        const loadTreeRun = (runFolderName = TREE_RUN_FOLDER_NAME) => RecipeCockpitService.buildRecipeViewModel(TREE_WORKSPACE_ROOT, runFolderName);
+        const loadTreeRun = (runFolderName = TREE_RUN_FOLDER_NAME) => RecipeCockpitModelBuild.buildRecipeViewModel(TREE_WORKSPACE_ROOT, runFolderName);
 
         it('builds one card per RecipeFiles entry, in RecipeFiles order, keyed and subtitled by the folder the tree was written to', () => {
 
@@ -1704,8 +1707,8 @@ describe('RecipeCockpitService', () => {
 
         it('keeps a picklist\'s active values beside the model, grouped per record type, and marks only picklist rows', () => {
 
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
             const [accountObject] = loadedRecipe.recipeViewModel.objects;
             const fieldOf = (fieldApiName: string) => accountObject.fields.find(fieldViewModel => fieldViewModel.fieldApiName === fieldApiName);
             const displayValuesOf = (fieldApiName: string) => loadedRecipe.picklistDisplayValuesByObjectApiName.get('Account')?.get(fieldApiName);
@@ -1729,8 +1732,8 @@ describe('RecipeCockpitService', () => {
         describe('loadPicklistValues, routed', () => {
 
             const buildPicklistPanelState = (): IRecipeCockpitPanelState => {
-                const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-                const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
+                const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+                const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
                 const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
                 panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 3 };
                 panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
@@ -1844,13 +1847,13 @@ describe('RecipeCockpitService', () => {
 
             it('given an empty RecipeFiles list, falls back the same as a missing one', () => {
 
-                const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper({
+                const normalizedWrapper = RecipeCockpitModelBuild.normalizeObjectsWrapper({
                     ObjectToObjectInfoMap: { Lead: { Fields: [{ fieldName: 'Company' }] } },
                     RecipeFiles: []
                 });
                 const recipeSourceFile = { filePath: path.join('run', 'Lead-ONLY', 'recipe.yml'), objectEntries: new Map([['Lead', { lineNumber: 1, fieldEntries: new Map() }]]) };
 
-                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(normalizedWrapper, [buildObject('Lead')], [recipeSourceFile], 'run');
+                const treeBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels(normalizedWrapper, [buildObject('Lead')], [recipeSourceFile], 'run');
 
                 expect(treeBuild.trees.map(tree => tree.folderName)).toEqual(['Lead-ONLY']);
                 expect(treeBuild.notices).toEqual([RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE]);
@@ -1860,10 +1863,10 @@ describe('RecipeCockpitService', () => {
             it('given a nested faker-js recipe and no RecipeFiles, the card lists every object at every friends: depth in file order (#46)', () => {
 
                 const nestedRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-nested--RelationshipTree_1.yml'), 'utf-8');
-                const recipeSourceFile = { filePath: path.join('run', 'Account-thru-MasterDetailMadness__c', 'recipe.yml'), objectEntries: RecipeCockpitService.parseRecipeSource(nestedRecipeText) };
+                const recipeSourceFile = { filePath: path.join('run', 'Account-thru-MasterDetailMadness__c', 'recipe.yml'), objectEntries: RecipeCockpitModelBuild.parseRecipeSource(nestedRecipeText) };
                 const objectApiNamesInFileOrder = [...nestedRecipeText.matchAll(/^ *- object: (\S+)$/gm)].map(([, objectApiName]) => objectApiName);
 
-                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+                const treeBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels(
                     { recipeTrees: [], parentLookupsByObjectApiName: new Map() },
                     objectApiNamesInFileOrder.map(objectApiName => buildObject(objectApiName)),
                     [recipeSourceFile],
@@ -1881,9 +1884,9 @@ describe('RecipeCockpitService', () => {
 
                 const nestedRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-nested--RelationshipTree_1.yml'), 'utf-8');
                 const nestedLines = nestedRecipeText.split('\n');
-                const recipeSourceFile = { filePath: path.join('run', 'tree', 'recipe.yml'), objectEntries: RecipeCockpitService.parseRecipeSource(nestedRecipeText) };
+                const recipeSourceFile = { filePath: path.join('run', 'tree', 'recipe.yml'), objectEntries: RecipeCockpitModelBuild.parseRecipeSource(nestedRecipeText) };
 
-                const [masterDetailObject] = RecipeCockpitService.attachRecipeSources([{
+                const [masterDetailObject] = RecipeCockpitModelBuild.attachRecipeSources([{
                     ...buildObject('MasterDetailMadness__c'),
                     fields: [{ fieldApiName: 'LU_Contact__c', fieldLabel: '', fieldType: 'Lookup', fieldTypeWithSize: 'Lookup', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
                 }], [recipeSourceFile]);
@@ -1899,7 +1902,7 @@ describe('RecipeCockpitService', () => {
 
                 const recipeSourceFile = { filePath: path.join('run', 'recipe.yml'), objectEntries: new Map([['Lead', { lineNumber: 1, fieldEntries: new Map() }]]) };
 
-                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+                const treeBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels(
                     { recipeTrees: [], parentLookupsByObjectApiName: new Map() }, [buildObject('Lead')], [recipeSourceFile], 'run'
                 );
 
@@ -1909,7 +1912,7 @@ describe('RecipeCockpitService', () => {
 
             it('drops a lookup to a parent outside the tree, and gives an object no tree claimed a card of its own', () => {
 
-                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels({
+                const treeBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels({
                     recipeTrees: [{ objectApiNames: ['Contact'] }],
                     parentLookupsByObjectApiName: new Map([['Contact', [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]]])
                 }, [buildObject('Contact', 2), buildObject('Stray__c', 3)], [], 'run');
@@ -1924,7 +1927,7 @@ describe('RecipeCockpitService', () => {
 
             it('keeps two cards distinct when a hand-edited wrapper repeats a folder, and lists an object in its first tree only', () => {
 
-                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels({
+                const treeBuild = RecipeCockpitModelBuild.buildRecipeTreeViewModels({
                     recipeTrees: [{ objectApiNames: ['Lead'] }, { objectApiNames: ['Lead'] }],
                     parentLookupsByObjectApiName: new Map()
                 }, [buildObject('Lead')], [], 'run');
@@ -1938,17 +1941,17 @@ describe('RecipeCockpitService', () => {
 
             it('reads lookups and record type sections defensively, dropping whatever is not the expected type', () => {
 
-                expect(RecipeCockpitService.readParentLookups({ parentObjectToFieldReferences: { Account: ['AccountId', 7, ''], User: 'OwnerId' } }))
+                expect(RecipeCockpitModelBuild.readParentLookups({ parentObjectToFieldReferences: { Account: ['AccountId', 7, ''], User: 'OwnerId' } }))
                     .toEqual([{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]);
-                expect(RecipeCockpitService.readParentLookups(undefined)).toEqual([]);
+                expect(RecipeCockpitModelBuild.readParentLookups(undefined)).toEqual([]);
 
-                const [recordTypeSection] = RecipeCockpitService.readRecordTypePicklistSections({
+                const [recordTypeSection] = RecipeCockpitModelBuild.readRecordTypePicklistSections({
                     Business: { PicklistFieldSectionsToPicklistDetail: { Rating__c: ['Hot', 3], Broken__c: 'Hot', constructor: ['Value'] } }
                 });
                 expect(recordTypeSection.recordTypeDeveloperName).toBe('Business');
                 expect({ ...recordTypeSection.picklistValuesByFieldApiName }).toEqual({ Rating__c: ['Hot'], constructor: ['Value'] });
-                expect(RecipeCockpitService.readRecordTypePicklistSections(['not', 'a', 'map'])).toEqual([]);
-                expect(RecipeCockpitService.readRecordTypePicklistSections({ Bare: { DeveloperName: 'Bare' } }).map(section => ({ ...section.picklistValuesByFieldApiName })))
+                expect(RecipeCockpitModelBuild.readRecordTypePicklistSections(['not', 'a', 'map'])).toEqual([]);
+                expect(RecipeCockpitModelBuild.readRecordTypePicklistSections({ Bare: { DeveloperName: 'Bare' } }).map(section => ({ ...section.picklistValuesByFieldApiName })))
                     .toEqual([{}]);
 
             });
@@ -1961,10 +1964,10 @@ describe('RecipeCockpitService', () => {
 
         it('answers the posted model and the picklist values the panel asks for one row at a time, and no diff copy of them (#266)', () => {
 
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
-            const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, MOCK_WORKSPACE_ROOT);
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
+            const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, MOCK_WORKSPACE_ROOT);
 
-            expect(loadedRecipe.recipeViewModel).toEqual(RecipeCockpitService.buildRecipeViewModelByRuns(recipeRuns, MOCK_WORKSPACE_ROOT));
+            expect(loadedRecipe.recipeViewModel).toEqual(RecipeCockpitModelBuild.buildRecipeViewModelByRuns(recipeRuns, MOCK_WORKSPACE_ROOT));
             expect(loadedRecipe.picklistDisplayValuesByObjectApiName).toBeInstanceOf(Map);
             expect(loadedRecipe).not.toHaveProperty('recipePicklistValuesByObjectApiName');
 
@@ -1972,7 +1975,7 @@ describe('RecipeCockpitService', () => {
 
         it('given no run, answers no picklist values', () => {
 
-            expect(RecipeCockpitService.loadRecipeRunByRuns([], MOCK_WORKSPACE_ROOT).picklistDisplayValuesByObjectApiName.size).toBe(0);
+            expect(RecipeCockpitModelBuild.loadRecipeRunByRuns([], MOCK_WORKSPACE_ROOT).picklistDisplayValuesByObjectApiName.size).toBe(0);
 
         });
 
@@ -2004,7 +2007,7 @@ describe('RecipeCockpitService', () => {
 
         const buildNoRunPanelState = (): IRecipeCockpitPanelState => ({
             ...RecipeCockpitService.buildInitialPanelState(MOCK_WORKSPACE_ROOT),
-            recipeDataMessage: { command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')), renderSequence: 3 },
+            recipeDataMessage: { command: 'recipeData', recipe: RecipeCockpitModelBuild.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')), renderSequence: 3 },
             pendingIsGenerateTreecipeOffered: true,
             isGenerateTreecipeOffered: true
         });
@@ -2051,8 +2054,8 @@ describe('RecipeCockpitService', () => {
 
         const renderTreeRecipe = (runFolderName = TREE_RUN_FOLDER_NAME) => {
             const panel = runPanelScript();
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, runFolderName);
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, runFolderName);
             const recipe = loadedRecipe.recipeViewModel;
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
             return { panel, recipe, loadedRecipe };
@@ -2207,11 +2210,11 @@ describe('RecipeCockpitService', () => {
                 recipeFilePath: '',
                 fields: fieldApiNames.map(fieldApiName => ({ fieldApiName: fieldApiName, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }))
             });
-            const objects = RecipeCockpitService.attachRecipeSources(
+            const objects = RecipeCockpitModelBuild.attachRecipeSources(
                 [buildObject('Account', ['Name', 'ParentId']), buildObject('Contact', ['Name', 'AccountId'])],
-                [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
+                [{ filePath: recipeFilePath, objectEntries: RecipeCockpitModelBuild.parseRecipeSource(selfLookupRecipeText) }]
             );
-            const { trees } = RecipeCockpitService.buildRecipeTreeViewModels({
+            const { trees } = RecipeCockpitModelBuild.buildRecipeTreeViewModels({
                 recipeTrees: [{ objectApiNames: ['Account', 'Contact'] }],
                 parentLookupsByObjectApiName: new Map([['Account', [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }]]])
             }, objects, [], TREE_WORKSPACE_ROOT);
@@ -2250,9 +2253,9 @@ describe('RecipeCockpitService', () => {
 
             const selfLookupRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8');
             const recipeFilePath = path.join(TREE_WORKSPACE_ROOT, 'recipe.yml');
-            const [accountObject] = RecipeCockpitService.attachRecipeSources(
+            const [accountObject] = RecipeCockpitModelBuild.attachRecipeSources(
                 [{ objectApiName: 'Account', recipeFilePath: '', fields: [] }],
-                [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
+                [{ filePath: recipeFilePath, objectEntries: RecipeCockpitModelBuild.parseRecipeSource(selfLookupRecipeText) }]
             );
             accountObject.iterations[0].fields.push({ fieldApiName: 'Iteration_Only__c', lineNumber: 99, recipeValue: 'branch' });
             // A SECOND TOP-LEVEL OCCURRENCE, AS A HAND EDIT WRITES ONE, NAMES NO PARENT AND IS NOT LABELLED NESTED
@@ -2446,8 +2449,8 @@ describe('RecipeCockpitService', () => {
         it('still draws Edit values, under the header, for a picklist with no faker value line (#398)', () => {
 
             const panel = runPanelScript();
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
             const ratingField = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account')?.fields.find(field => field.fieldApiName === 'Rating__c');
             expect(ratingField?.isPicklist).toBe(true);
             delete ratingField?.recipeValue;
@@ -2720,8 +2723,8 @@ describe('RecipeCockpitService', () => {
         it('given a reload focused on a card\'s Treecipe tab, opens that card on Treecipe and asks for the orgs after the ack', () => {
 
             const panel = runPanelScript();
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'treecipe' } });
 
             const [firstTreeCard, leadTreeCard] = treeCardsOf(panel);
@@ -2740,8 +2743,8 @@ describe('RecipeCockpitService', () => {
         it('given a reload focused on a card\'s removed Compare tab, opens that card on Treecipe', () => {
 
             const panel = runPanelScript();
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'compare' } });
 
             const [, leadTreeCard] = treeCardsOf(panel);
@@ -2770,7 +2773,7 @@ describe('RecipeCockpitService', () => {
 
         const renderFixtureRecipe = () => {
             const panel = runPanelScript();
-            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
             return panel;
         };
 
@@ -3073,7 +3076,7 @@ describe('RecipeCockpitService', () => {
 
             const panel = runPanelScript();
 
-            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitModelBuild.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
 
             expect(panel.findAll(panel.cockpitBodyElement, 'emptyState')[0].textContent).toBe(RECIPE_COCKPIT_NO_RUN_MESSAGE);
             expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput')).toEqual([]);
@@ -3086,7 +3089,7 @@ describe('RecipeCockpitService', () => {
 
             const panel = runPanelScript();
 
-            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitModelBuild.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
 
             const [generateButton] = panel.findAll(panel.cockpitBodyElement, 'generateTreecipe');
             expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
@@ -3098,7 +3101,7 @@ describe('RecipeCockpitService', () => {
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'generateTreecipe')).toEqual([{ command: 'generateTreecipe' }]);
 
             // THE HOST'S RELOAD REDRAWS THE BODY, AND WITH STILL NO RUN THE BUTTON COMES BACK PRESSABLE
-            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitModelBuild.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
 
             const [redrawnButton] = panel.findAll(panel.cockpitBodyElement, 'generateTreecipe');
             expect(redrawnButton.disabled).toBeFalsy();
@@ -3208,8 +3211,8 @@ describe('RecipeCockpitService', () => {
         const LEAD_TREE_KEY = 'Lead-ONLY';
         const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
-        const loadHistoryRecipe = (runFolderName?: string) => RecipeCockpitService.loadRecipeRunByRuns(
-            RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+        const loadHistoryRecipe = (runFolderName?: string) => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+            RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
             HISTORY_WORKSPACE_ROOT,
             runFolderName
         );
@@ -3789,9 +3792,9 @@ describe('RecipeCockpitService', () => {
                 const accountTree = loadedRecipe.recipeViewModel.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
                 const recipeFilePath = loadedRecipe.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(ACCOUNT_TREE_KEY);
 
-                expect(RecipeCockpitService.listTreeLookupWirings(recipeFilePath, accountTree, undefined))
-                    .toEqual(RecipeCockpitService.listTreeLookupWirings(recipeFilePath, accountTree, undefined, fs.readFileSync(recipeFilePath, 'utf-8')));
-                expect(RecipeCockpitService.listTreeLookupWirings(path.join(HISTORY_WORKSPACE_ROOT, 'no-such-recipe.yml'), accountTree, undefined)).toEqual([]);
+                expect(RecipeCockpitModelBuild.listTreeLookupWirings(recipeFilePath, accountTree, undefined))
+                    .toEqual(RecipeCockpitModelBuild.listTreeLookupWirings(recipeFilePath, accountTree, undefined, fs.readFileSync(recipeFilePath, 'utf-8')));
+                expect(RecipeCockpitModelBuild.listTreeLookupWirings(path.join(HISTORY_WORKSPACE_ROOT, 'no-such-recipe.yml'), accountTree, undefined)).toEqual([]);
 
             });
 
@@ -4225,7 +4228,7 @@ describe('RecipeCockpitService', () => {
 
             await receivedMessageHandler({ command: 'ready' });
 
-            const expectedRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
+            const expectedRecipe = RecipeCockpitModelBuild.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
             RecipeCockpitTreeSelectionStore.applyObjectSelections(expectedRecipe, new Map());
             expect(postedPanelMessages).toEqual([{
                 command: 'recipeData',
@@ -4376,7 +4379,7 @@ describe('RecipeCockpitService', () => {
         */
         it('given the load throws, shows the failure in the panel and rethrows it to the command', async () => {
 
-            jest.spyOn(RecipeCockpitService, 'findGeneratedRecipeRuns').mockImplementation(() => {
+            jest.spyOn(RecipeCockpitModelBuild, 'findGeneratedRecipeRuns').mockImplementation(() => {
                 throw new Error('EACCES');
             });
 
@@ -4397,7 +4400,7 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'ready' });
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
 
-            jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation(() => {
+            jest.spyOn(RecipeCockpitModelBuild, 'loadRecipeRunByRuns').mockImplementation(() => {
                 throw new Error('EIO');
             });
             await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
@@ -4440,8 +4443,8 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             postedPanelMessages.length = 0;
 
-            const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
-            jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
+            const loadRecipeRunByRuns = RecipeCockpitModelBuild.loadRecipeRunByRuns.bind(RecipeCockpitModelBuild);
+            jest.spyOn(RecipeCockpitModelBuild, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
                 if ( requestedRunFolderName === FAKER_JS_RUN_FOLDER_NAME ) {
                     throw new Error('EIO');
                 }
@@ -4458,7 +4461,7 @@ describe('RecipeCockpitService', () => {
             const secondSelection = receivedMessageHandler({ command: 'selectRun', runFolderName: LATEST_RUN_FOLDER_NAME });
             await Promise.all([firstSelection, secondSelection]);
 
-            expect(RecipeCockpitService.loadRecipeRunByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME, expect.any(Map));
+            expect(RecipeCockpitModelBuild.loadRecipeRunByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME, expect.any(Map));
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
             expect(postedPanelMessages.map(hostMessage => hostMessage.command)).not.toContain('loadFailed');
 
@@ -4478,7 +4481,7 @@ describe('RecipeCockpitService', () => {
         it('given the load throws something that is not an Error, still says what it was', async () => {
 
             const nonErrorThrowable: unknown = 'EACCES';
-            jest.spyOn(RecipeCockpitService, 'findGeneratedRecipeRuns').mockImplementation(() => {
+            jest.spyOn(RecipeCockpitModelBuild, 'findGeneratedRecipeRuns').mockImplementation(() => {
                 throw nonErrorThrowable;
             });
 
@@ -4782,11 +4785,11 @@ describe('RecipeCockpitService', () => {
 
             it('runs Generate Treecipe without its toast, then loads the run it wrote', async () => {
 
-                const findGeneratedRecipeRuns = RecipeCockpitService.findGeneratedRecipeRuns.bind(RecipeCockpitService);
+                const findGeneratedRecipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns.bind(RecipeCockpitModelBuild);
                 let hasGenerated = false;
                 (vscode.commands.executeCommand as jest.Mock).mockImplementation(async () => { hasGenerated = true; });
                 // THE RUN "WRITTEN" IS THE FIXTURE WORKSPACE'S, FOUND ONLY ONCE GENERATION HAS FINISHED
-                jest.spyOn(RecipeCockpitService, 'findGeneratedRecipeRuns').mockImplementation(generatedRecipesFolderPath => (
+                jest.spyOn(RecipeCockpitModelBuild, 'findGeneratedRecipeRuns').mockImplementation(generatedRecipesFolderPath => (
                     hasGenerated
                         ? findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, path.relative(EMPTY_WORKSPACE_ROOT, generatedRecipesFolderPath)))
                         : []
@@ -4874,8 +4877,8 @@ describe('RecipeCockpitService', () => {
 
                 await openRenderedEmptyCockpit();
 
-                (RecipeCockpitService as any).renderRecipeModel(createdWebviewPanel, RecipeCockpitService.loadRecipeRunByRuns(
-                    RecipeCockpitService.findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+                (RecipeCockpitService as any).renderRecipeModel(createdWebviewPanel, RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                    RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
                     MOCK_WORKSPACE_ROOT
                 ));
                 expect(lastRecipe().runs.length).toBeGreaterThan(0);

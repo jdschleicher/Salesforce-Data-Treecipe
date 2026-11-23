@@ -9,6 +9,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import { RecipeCockpitService, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -118,8 +119,8 @@ describe('Recipe Cockpit partial updates (#226)', () => {
         };
 
         const loadHistoryRecipe = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH);
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, HISTORY_WORKSPACE_ROOT, HISTORY_CURRENT_RUN).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH);
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, HISTORY_WORKSPACE_ROOT, HISTORY_CURRENT_RUN).recipeViewModel;
         };
 
         // EVERY TAB OF EVERY CARD BUILT AND AN ORG SELECTED: THE MOST A datasetAdded COULD DISTURB

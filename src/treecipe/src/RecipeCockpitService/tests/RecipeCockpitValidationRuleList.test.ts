@@ -51,6 +51,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -536,8 +537,8 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
 
     describe('the panel script', () => {
 
-        const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-            RecipeCockpitService.findGeneratedRecipeRuns(path.join(VALIDATION_RULE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+        const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+            RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(VALIDATION_RULE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
             VALIDATION_RULE_WORKSPACE_ROOT,
             FAKERJS_RUN_FOLDER_NAME
         ).recipeViewModel;

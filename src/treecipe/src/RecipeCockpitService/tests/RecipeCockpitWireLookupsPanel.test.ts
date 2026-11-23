@@ -16,6 +16,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel
@@ -129,7 +130,7 @@ describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => 
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
@@ -176,10 +177,10 @@ describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => 
 
             const tree = loadModel().trees[0];
 
-            expect(RecipeCockpitService.buildLookupWiringContext(tree, undefined)).toEqual({
+            expect(RecipeCockpitModelBuild.buildLookupWiringContext(tree, undefined)).toEqual({
                 parentLookupsByObjectApiName: new Map(tree.objects.map(treeObject => [treeObject.objectApiName, treeObject.parentLookups]))
             });
-            expect(RecipeCockpitService.buildLookupWiringContext(tree, new Map([['Account', 0]])).levelsByObjectApiName).toEqual(new Map([['Account', 0]]));
+            expect(RecipeCockpitModelBuild.buildLookupWiringContext(tree, new Map([['Account', 0]])).levelsByObjectApiName).toEqual(new Map([['Account', 0]]));
 
         });
 

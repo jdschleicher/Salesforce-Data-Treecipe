@@ -214,14 +214,14 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitValidationRuleList.ts',
                 importedNames: ['RecipeCockpitValidationRuleList'],
-                members: ['buildRuleSourceKey', 'resolveRuleSourceFilePaths'],
-                owedBy: 'the hub builds the model\'s rule links and promotes their allow-list, which only the hub does'
+                members: ['buildRuleSourceKey'],
+                owedBy: 'the hub collects the model\'s rule links into their allow-list and promotes it, which only the hub does'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRemovedTodoStore.ts',
-                importedNames: ['IRemovedTodoFileRead', 'RecipeCockpitRemovedTodoStore'],
-                members: ['buildFilePath', 'parse'],
-                owedBy: 'the model reads each recipe\'s removed TODOs, and only the hub builds the model'
+                importedNames: ['IRemovedTodoFileRead'],
+                members: [],
+                owedBy: 'the hub\'s delegate to RecipeCockpitModelBuild\'s readRemovedTodoFile, which the Treecipe tab\'s hub type reads, names it in its signature (#671)'
             }
         ],
         sharedWithHosts: [
@@ -285,8 +285,8 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitTreeHistory.ts',
                 importedNames: ['IRecipeCockpitTreeDatasetViewModel', 'RecipeCockpitTreeHistory'],
-                members: ['buildEmptyTargets', 'buildTreeHistories', 'buildUnmatchedDatasetsNotice'],
-                owedBy: 'the hub builds the model, its data set rows and the allow-lists they are drawn from'
+                members: ['buildEmptyTargets'],
+                owedBy: 'the hub builds the panel state\'s empty allow-lists and adds a data set row\'s entries to them'
             }
         ]
     },
@@ -324,12 +324,6 @@ const TAB_HOSTS: ITabHost[] = [
                 importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
                 members: ['toOutputDirectoryArgument'],
                 owedBy: 'offerStagedField, which the Adapter and Get latest object detail both read, and the staging an open dialog leaves when the panel reloads stay in the hub'
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitAdaptedDataset.ts',
-                importedNames: ['RecipeCockpitAdaptedDataset'],
-                members: ['isAdaptedRecipeFileName'],
-                owedBy: 'the hub lists a run\'s recipes when it loads the model, and leaves an adapted recipe out'
             }
         ],
         sharedWithHosts: [
@@ -370,9 +364,9 @@ const TAB_HOSTS: ITabHost[] = [
         hubUsesStillOwed: [
             {
                 pureModuleFileName: 'RecipeCockpitCustomTreecipe.ts',
-                importedNames: ['ICustomTreecipeDefinition', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_FILE_NAME', 'RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_FILE_BYTES', 'RecipeCockpitCustomTreecipe'],
-                members: ['isCustomTreeFolderName', 'isTreeFolderName', 'readDefinition', 'resolveOriginalTreeFolderName'],
-                owedBy: '#677, #684: a run loads its custom- trees in the hub, where every run loads, reads each one\'s customTreecipe.json there, and lists each as its own run picker entry'
+                importedNames: ['ICustomTreecipeDefinition'],
+                members: [],
+                owedBy: 'the hub\'s delegate to RecipeCockpitModelBuild\'s readCustomTreecipeDefinition, which the custom treecipe host\'s hub type reads, names it in its signature (#671)'
             }
         ]
     },

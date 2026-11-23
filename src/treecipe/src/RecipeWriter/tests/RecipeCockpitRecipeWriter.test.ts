@@ -8,6 +8,7 @@ import * as yaml from 'js-yaml';
 jest.mock('vscode', () => ({}), { virtual: true });
 
 import { RecipeCockpitService } from '../../RecipeCockpitService/RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../../RecipeCockpitService/RecipeCockpitModelBuild';
 import { RecipeCockpitRecipeWriter, RecipeWriterResult, IRecipeWriterEdit, RecipeWriterRefusalReason } from '../RecipeCockpitRecipeWriter';
 
 /*
@@ -58,7 +59,7 @@ type ObjectOccurrence = { occurrenceKey: string; objectApiName: string; objectNi
 
 function collectObjectOccurrences(recipeText: string): ObjectOccurrence[] {
     const occurrences: ObjectOccurrence[] = [];
-    RecipeCockpitService.parseRecipeSource(recipeText).forEach((objectEntry, objectApiName) => {
+    RecipeCockpitModelBuild.parseRecipeSource(recipeText).forEach((objectEntry, objectApiName) => {
         occurrences.push({ occurrenceKey: `${objectApiName}#0`, objectApiName: objectApiName, objectNickname: objectEntry.iterations ? objectEntry.nickname : undefined, objectEntry: objectEntry });
         ( objectEntry.iterations ?? [] ).forEach((iteration, iterationIndex) => {
             occurrences.push({ occurrenceKey: `${objectApiName}#${iterationIndex + 1}`, objectApiName: objectApiName, objectNickname: iteration.nickname, objectEntry: iteration });
@@ -412,7 +413,7 @@ describe('RecipeCockpitRecipeWriter', () => {
         test.each(RECIPE_FIXTURES)('the cockpit reader lists the %s fixture\'s RecordTypeId with the chosen record type as its value', (unusedBackend, fileName) => {
 
             const recipeLines = readFixture(fileName).split('\n');
-            const recordTypeIdEntry = RecipeCockpitService.parseRecipeSource(recipeLines.join('\n')).get('Example_Everything__c').fieldEntries.get('RecordTypeId');
+            const recordTypeIdEntry = RecipeCockpitModelBuild.parseRecipeSource(recipeLines.join('\n')).get('Example_Everything__c').fieldEntries.get('RecordTypeId');
 
             expect(recipeLines[recordTypeIdEntry.lineNumber - 1]).toBe('    RecordTypeId: Example_Everything__c.OneRecType');
             expect(recordTypeIdEntry.valueText.split('\n')).toEqual([
@@ -984,7 +985,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         test('the reader finds every object at every depth, each at its header line, and the same fields as the flat recipe', () => {
 
-            const nestedEntries = RecipeCockpitService.parseRecipeSource(nestedRecipeText);
+            const nestedEntries = RecipeCockpitModelBuild.parseRecipeSource(nestedRecipeText);
             const nestedLines = nestedRecipeText.split('\n');
             const headerObjectApiNames = [...nestedRecipeText.matchAll(/^ *- object: (\S+)$/gm)].map(([, objectApiName]) => objectApiName);
 
@@ -1006,7 +1007,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         test('the reader shows a wired lookup as the ancestor nickname it holds', () => {
 
-            const nestedEntries = RecipeCockpitService.parseRecipeSource(nestedRecipeText);
+            const nestedEntries = RecipeCockpitModelBuild.parseRecipeSource(nestedRecipeText);
 
             expect(nestedEntries.get('Contact').fieldEntries.get('AccountId').valueText).toBe('Account_NickName');
             expect(nestedEntries.get('MasterDetailMadness__c').fieldEntries.get('LU_Contact__c').valueText).toBe('Contact_NickName');
@@ -1032,7 +1033,7 @@ describe('RecipeCockpitRecipeWriter', () => {
                 '            Cockpit_Inserted__c: |',
                 '                        ${{fake.word}}'
             ]);
-            expect(RecipeCockpitService.parseRecipeSource(patchedRecipeText).get('MasterDetailMadness__c').fieldEntries.get('Cockpit_Inserted__c').valueText).toBe('${{fake.word}}');
+            expect(RecipeCockpitModelBuild.parseRecipeSource(patchedRecipeText).get('MasterDetailMadness__c').fieldEntries.get('Cockpit_Inserted__c').valueText).toBe('${{fake.word}}');
 
         });
 
@@ -1249,7 +1250,7 @@ describe('RecipeCockpitRecipeWriter', () => {
             ].join('\n');
 
             expectRefused(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Contact', 'LastName', 'x'), 'duplicate-field');
-            expect(RecipeCockpitService.parseRecipeSource(recipeText).get('Contact').fieldEntries.get('LastName')).toEqual({ lineNumber: 7, valueText: 'first' });
+            expect(RecipeCockpitModelBuild.parseRecipeSource(recipeText).get('Contact').fieldEntries.get('LastName')).toEqual({ lineNumber: 7, valueText: 'first' });
 
         });
 
@@ -1266,7 +1267,7 @@ describe('RecipeCockpitRecipeWriter', () => {
             ].join('\n');
 
             expectRefused(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Name', 'x'), 'duplicate-object');
-            expect(RecipeCockpitService.parseRecipeSource(recipeText).get('Account').fieldEntries.get('Name')).toEqual({ lineNumber: 3, valueText: 'top' });
+            expect(RecipeCockpitModelBuild.parseRecipeSource(recipeText).get('Account').fieldEntries.get('Name')).toEqual({ lineNumber: 3, valueText: 'top' });
 
         });
 
@@ -1605,7 +1606,7 @@ describe('RecipeCockpitRecipeWriter', () => {
                 fields: { LastName: '${{ faker.person.lastName() }}', AccountId: ITERATION_NICKNAME, ReportsToId: null }
             }]);
 
-            const contactEntry = RecipeCockpitService.parseRecipeSource(patchedRecipeText).get('Contact');
+            const contactEntry = RecipeCockpitModelBuild.parseRecipeSource(patchedRecipeText).get('Contact');
             expect(contactEntry.nickname).toBe('Contact_NickName');
             expect(contactEntry.iterations).toEqual([expect.objectContaining({
                 nickname: 'Contact_child_NickName',

@@ -63,6 +63,7 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {
     RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
@@ -2450,8 +2451,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             it('finds the card by its folder, and no card for a folder no card has', () => {
 
-                const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-                const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+                const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+                const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
 
                 expect(RecipeCockpitService.resolveTroubleshootingFocus(recipe, { runFolderName: SNOWFAKERY_RUN, treeFolderName: LEAD_TREE_KEY, troubleshootingSubTab: 'globalValueSets' }))
                     .toEqual({ treeKey: LEAD_TREE_KEY, tab: 'troubleshooting', troubleshootingSubTab: 'globalValueSets' });
@@ -2480,8 +2481,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
     describe('the model\'s insertable trees and objects', () => {
 
         const loadSnowfakeryModel = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
         };
 
         it('offers the insert on every card that can generate', () => {
@@ -2518,9 +2519,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
     describe('buildInsertConfirmationContent', () => {
 
-        const recipeRuns = () => RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+        const recipeRuns = () => RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
         const contentOf = (recordTotals: Array<[string, number]>, outsideParents: string[] = []) => {
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
             return RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 'qa (qa@example.com.qa)', SANDBOX_TYPE, accountTree, recipe, new Map(recordTotals), outsideParents, 'snowfakery', 'recipe.yml');
         };
@@ -2560,7 +2561,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         it('names a scratch org, and when it expires, from its local authorization (#458, #499)', () => {
 
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
             const typeFor = (scratchOrgDetail?: { isScratchOrg: boolean; expirationDate?: string }) => {
                 const content = RecipeCockpitTreecipeInsert.buildInsertConfirmationContent(RecipeCockpitService, 
@@ -2578,7 +2579,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         it('lists each typed Id under its own warning, says a polymorphic one is not checked, and leaves both out of the edited fields', () => {
 
-            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const recipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = { ...recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY), fixedValues: [
                 { objectApiName: 'Contact', fieldApiName: 'Region__c', value: 'a05000000000001AAA', kind: 'text' },
                 { objectApiName: 'Contact', fieldApiName: 'OwnerId', value: '005000000000001AAA', kind: 'text' },
@@ -2740,8 +2741,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
     describe('the panel script, the tree insert', () => {
 
         const loadModel = () => {
-            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-            return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
         };
 
         const renderPanel = () => {

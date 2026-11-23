@@ -19,6 +19,7 @@ import {
     RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
     RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -80,7 +81,7 @@ describe('RecipeCockpitService, a field Salesforce calculates or sets itself (#6
         if ( workspaceRoot ) { fs.rmSync(workspaceRoot, { recursive: true, force: true }); }
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const renderModel = (recipeViewModel: IRecipeCockpitRecipeViewModel) => {
         const panel = runPanelScript();

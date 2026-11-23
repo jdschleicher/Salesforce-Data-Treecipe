@@ -19,10 +19,11 @@ import {
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
@@ -256,8 +257,8 @@ describe.each(BACKEND_RUNS)('RecipeCockpitRecipeWriter.buildFilteredRecipe with 
 
 });
 
-const loadRecipe = (backendRun: BackendRun = BACKEND_RUNS[0]): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(VALIDATION_RULE_GENERATED_RECIPES_PATH),
+const loadRecipe = (backendRun: BackendRun = BACKEND_RUNS[0]): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(VALIDATION_RULE_GENERATED_RECIPES_PATH),
     VALIDATION_RULE_WORKSPACE_ROOT,
     backendRun.runFolderName
 ).recipeViewModel;
@@ -324,7 +325,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 notAppliedRules: [],
                 recipeValue: amount.recipeValue,
                 unconstrainedRecipeValue: amount.unconstrainedRecipeValue,
-                unconstrainedExpression: RecipeCockpitService.buildDisplayExpression(( amount.unconstrainedRecipeValue as string ).split('\n'))
+                unconstrainedExpression: RecipeCockpitModelBuild.buildDisplayExpression(( amount.unconstrainedRecipeValue as string ).split('\n'))
             });
             expect(fieldOf(recipe, 'Gadget__c', 'Score__c').validationRules).toEqual({
                 appliedRuleNames: [],
@@ -340,8 +341,8 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         it('carries nothing for a wrapper with no rules, so it posts as it did before', () => {
 
-            const historyRecipe = RecipeCockpitService.loadRecipeRunByRuns(
-                RecipeCockpitService.findGeneratedRecipeRuns(path.join(__dirname, 'mocks', 'historyWorkspace', 'treecipe', 'GeneratedRecipes')),
+            const historyRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(
+                RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(__dirname, 'mocks', 'historyWorkspace', 'treecipe', 'GeneratedRecipes')),
                 path.join(__dirname, 'mocks', 'historyWorkspace'),
                 'recipe-2026-09-20T10-00-00'
             ).recipeViewModel;
@@ -358,7 +359,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             ['a rule not applied with no reason', { validationRuleConstraints: [{ ruleName: 'R', applied: false }] }, { appliedRuleNames: [], notAppliedRules: [{ ruleName: 'R', reason: '' }] }]
         ])('reads %s', (_caseName, wrapperFieldRecord, expected) => {
 
-            expect(RecipeCockpitService.readFieldValidationRules(wrapperFieldRecord as Record<string, unknown>)).toEqual(expected);
+            expect(RecipeCockpitModelBuild.readFieldValidationRules(wrapperFieldRecord as Record<string, unknown>)).toEqual(expected);
 
         });
 

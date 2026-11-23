@@ -17,6 +17,7 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_FRIEND_EMOJI
 } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -76,7 +77,7 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
         if ( workspaceRoot ) { fs.rmSync(workspaceRoot, { recursive: true, force: true }); }
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const renderModel = (recipeViewModel: IRecipeCockpitRecipeViewModel) => {
         const panel = runPanelScript();

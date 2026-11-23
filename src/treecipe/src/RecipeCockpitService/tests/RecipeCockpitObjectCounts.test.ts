@@ -16,9 +16,10 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
@@ -119,8 +120,8 @@ function writeTemporaryRecipe(recipeText: string): string {
     return recipeFilePath;
 }
 
-const loadRecipeRun = () => RecipeCockpitService.loadRecipeRunByRuns(
-    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+const loadRecipeRun = () => RecipeCockpitModelBuild.loadRecipeRunByRuns(
+    RecipeCockpitModelBuild.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
     HISTORY_WORKSPACE_ROOT,
     CURRENT_RUN_FOLDER_NAME
 );
@@ -525,7 +526,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
         it('carries each object\'s own count, and the parent a nested friend\'s count is per', () => {
 
-            const recipeEntries = RecipeCockpitService.parseRecipeSource(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE));
+            const recipeEntries = RecipeCockpitModelBuild.parseRecipeSource(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE));
 
             expect(recipeEntries.get('Account')).toMatchObject({ recordCount: 2 });
             expect(recipeEntries.get('Account')?.countParentObjectApiName).toBeUndefined();

@@ -16,6 +16,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {
     IRecipeCockpitPanelState,
@@ -129,7 +130,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
     });
 
-    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.buildRecipeViewModel(workspaceRoot);
+    const loadModel = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.buildRecipeViewModel(workspaceRoot);
 
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
@@ -163,8 +164,8 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
             const tree = loadModel().trees.find(candidateTree => candidateTree.treeKey === TREE_KEY);
             const levels = new Map([['Account', 0], ['Contact', 1]]);
 
-            expect(RecipeCockpitService.listTreeAddableParents(recipeFilePath, tree, levels)).toEqual([ACCOUNT_ADDITION]);
-            expect(RecipeCockpitService.listTreeAddableParents(path.join(workspaceRoot, 'missing.yml'), tree, levels)).toEqual([]);
+            expect(RecipeCockpitModelBuild.listTreeAddableParents(recipeFilePath, tree, levels)).toEqual([ACCOUNT_ADDITION]);
+            expect(RecipeCockpitModelBuild.listTreeAddableParents(path.join(workspaceRoot, 'missing.yml'), tree, levels)).toEqual([]);
 
         });
 
@@ -417,7 +418,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
         it('given a backend template with no entry for the parent, says so before asking anything', async () => {
 
             await openRenderedCockpit();
-            jest.spyOn(RecipeCockpitService, 'getParentObjectTemplates').mockReturnValue({});
+            jest.spyOn(RecipeCockpitModelBuild, 'getParentObjectTemplates').mockReturnValue({});
             await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
 
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
@@ -430,7 +431,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(topLevelLabel);
 
             await openRenderedCockpit();
-            jest.spyOn(RecipeCockpitService, 'getParentObjectTemplates').mockReturnValue({ Account: {} });
+            jest.spyOn(RecipeCockpitModelBuild, 'getParentObjectTemplates').mockReturnValue({ Account: {} });
             await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
 
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail).toContain(`The ${backendName} template has no required field for Account, so its block has a count only.`);
@@ -530,8 +531,8 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
                     }), 'Contact.LastName has a value set in the Recipe Cockpit'],
                     ['a TODO removed in the Recipe Cockpit', () => {
                         const removedTodo = { objectApiName: 'Contact', lineNumber: 5, todoText: '### TODO -- mine', originalLine: '  ### TODO -- mine', kind: 'line' as const };
-                        jest.spyOn(RecipeCockpitService, 'readRemovedTodoFile').mockReturnValue({ entries: [removedTodo], isUnreadable: false });
-                        jest.spyOn(RecipeCockpitService, 'listRemovedTodosStillOut').mockReturnValue([removedTodo]);
+                        jest.spyOn(RecipeCockpitModelBuild, 'readRemovedTodoFile').mockReturnValue({ entries: [removedTodo], isUnreadable: false });
+                        jest.spyOn(RecipeCockpitModelBuild, 'listRemovedTodosStillOut').mockReturnValue([removedTodo]);
                     }, 'TODO comments of Contact were removed in the Recipe Cockpit'],
                     ['a fixed-values file that cannot be read', () => fs.writeFileSync(recipeFilePath.replace(/\.yml$/, '.fixedValues.json'), 'not json'), 'cannot be read']
                 ])('given %s in the moved block, offers only the top-level block and says why', async (_description, arrange, reason) => {
