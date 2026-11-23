@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.208.6] - Tests: Quote.AccountId names its own Opportunity record type block in every tree writer (#705)
+
+### Under the hood (behaviour unchanged)
+
+#680 writes `Quote.AccountId` as `<Opportunity block nickname>.AccountId`. Unit tests covered each place that nickname is read from, but no test ran the real pipeline with Opportunity written as several record type blocks. One now does, and no recipe changes.
+
+- **The fixture** `DirectoryProcessingService/tests/mocks/QuoteOpportunityRecordTypesSalesforceMetadataDirectory` holds Account, an Opportunity with the `Enterprise` and `SMB` record types, and a Quote. Quote's standard `OpportunityId` and `AccountId` field files have no `<referenceTo>`.
+- **`DirectoryProcessor.standardFieldParentQuoteRecordTypes.test.ts`** runs Generate Treecipe's pipeline with both record types ticked, in four writers: faker-js nested and flat snowfakery, each with `RecordTypeSelection`'s `isChildTreeCopiedPerRecordTypeBlock` off and on. It pins every Quote's nickname, the Opportunity block it is nested under, its `OpportunityId` and its `AccountId`:
+  - **faker-js nested:** the Quote under `Opportunity_Enterprise_NickName` names that block. With copies on, the copy under SMB names `Opportunity_SMB_NickName`.
+  - **flat snowfakery:** the one Quote names the first block, `Opportunity_Enterprise_NickName`. Its `OpportunityId` stays the REFERENCE ID TODO, with the comment listing both blocks.
+  - **flat with copies:** each copy names the block its own `reference(...)` names.
+  - **Every file loads** with js-yaml, and with PyYAML as snowfakery reads it (gated as the other PyYAML suites are).
+  - **With no Opportunity folder,** `AccountId` is `Opportunity_NickName.AccountId` and generation does not fail.
+- **Checked by a mutation.** Making `RelationshipService.writeDerivedFieldValues` ignore the through lookup fails the two copies writers in both loaders.
+
 ## [3.208.5] - Recipe Cockpit: the hub keeps the panel's lifecycle; the view model, model build, tree selections and org runs are modules of their own (#671 part a, slice 7a of #566)
 
 ### Under the hood (behaviour unchanged)
