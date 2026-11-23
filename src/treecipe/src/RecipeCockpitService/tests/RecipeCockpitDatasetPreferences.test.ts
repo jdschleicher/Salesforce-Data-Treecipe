@@ -14,12 +14,12 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
-    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL
+    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH } from '../RecipeCockpitDatasetsTabConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from '../RecipeCockpitNavigationConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,

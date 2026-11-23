@@ -1,3 +1,9 @@
+/*
+    The org runs every tab shares (#671): one CLI run and one retrieve behind a cancellable progress,
+    and the org a read-only action runs against. It loads the hub's types only; the org prompt reads
+    the hub through IRecipeCockpitHubForOrgRuns, handed in as hosts are.
+*/
+
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Connection } from '@salesforce/core';

@@ -13,12 +13,14 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_ORG_SECTION_TITLE,
     RECIPE_COCKPIT_PALETTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
-    RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
+    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ORG_SECTION_TITLE,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
+} from '../RecipeCockpitShellConstants';
 import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';

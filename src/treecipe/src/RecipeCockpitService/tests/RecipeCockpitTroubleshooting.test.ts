@@ -46,15 +46,19 @@ import { execFile } from 'child_process';
 
 import {
     RecipeCockpitService,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
+} from '../RecipeCockpitPanelConstants';
+import {
     RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
-    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
-    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
-    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_TREE_TABS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_TREE_TABS } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';

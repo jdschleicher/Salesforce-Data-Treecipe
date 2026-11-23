@@ -1,7 +1,7 @@
 /*
     What the Treecipe tab's Record types section and its "Record type fields only" and "TODOs only"
     checks draw with (#652). It imports nothing, so the panel bundle can import it;
-    RecipeCockpitService.ts re-exports every name.
+    every importer reads its names here (#671).
 */
 
 // WHAT A RECORD TYPE RESTRICTS ON A FIELD (#321): THE ONE COPY THE HOST'S MODEL AND THE PANEL'S ROWS BOTH READ

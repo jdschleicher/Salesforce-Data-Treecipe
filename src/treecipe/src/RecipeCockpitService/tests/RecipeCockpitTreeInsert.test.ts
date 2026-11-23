@@ -55,14 +55,16 @@ jest.mock('child_process', () => ({
 
 import {
     RecipeCockpitService,
+    RECIPE_COCKPIT_INSERT_DATASET_COMMAND
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
-    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
-    RECIPE_COCKPIT_INSERT_DATASET_COMMAND
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
+} from '../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON } from '../RecipeCockpitDatasetsTabConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {

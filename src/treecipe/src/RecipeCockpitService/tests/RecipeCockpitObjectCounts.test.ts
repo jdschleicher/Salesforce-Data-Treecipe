@@ -14,10 +14,8 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
 import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {

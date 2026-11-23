@@ -14,11 +14,13 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY,
+    RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
     RECIPE_COCKPIT_REMOVED_TREE_TABS
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitWorkspaceState } from '../RecipeCockpitViewModel';
 import {

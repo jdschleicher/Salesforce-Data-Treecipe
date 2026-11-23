@@ -45,10 +45,8 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { execFile } from 'child_process';
 import { Org } from '@salesforce/core';
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_OPEN_ORG_LABEL
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_OPEN_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';

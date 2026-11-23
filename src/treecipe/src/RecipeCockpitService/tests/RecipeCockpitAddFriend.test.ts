@@ -14,11 +14,9 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
-    RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL } from '../RecipeCockpitTreecipeFieldEditorConstants';
+import { RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,

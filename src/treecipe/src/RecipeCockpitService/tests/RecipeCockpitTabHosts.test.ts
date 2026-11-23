@@ -288,12 +288,6 @@ const TAB_HOSTS: ITabHost[] = [
         ],
         hubUsesStillOwed: [
             {
-                pureModuleFileName: 'RecipeCockpitTreeUpdaterQuery.ts',
-                importedNames: ['RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH'],
-                members: [],
-                owedBy: '#670: the reader\'s place keeps a card\'s WHERE text to the same limit'
-            },
-            {
                 pureModuleFileName: 'RecipeCockpitRecordUpdate.ts',
                 importedNames: ['IUpdateSnapshotObject'],
                 members: [],
@@ -303,7 +297,7 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitOrgChangeDetection.ts',
                 importedNames: ['IOrgNewFieldDetail', 'RecipeCockpitOrgChangeDetection'],
                 members: ['toOutputDirectoryArgument'],
-                owedBy: 'offerStagedField, which the Adapter and Get latest object detail both read, and the staging an open dialog leaves when the panel reloads stay in the hub'
+                owedBy: 'the hub\'s delegate to RecipeCockpitModelBuild\'s offerStagedField, which the Adapter and Get latest object detail both read, names a staged field, and the staging an open dialog leaves when the panel reloads stays in the hub (#671)'
             }
         ],
         sharedWithHosts: [

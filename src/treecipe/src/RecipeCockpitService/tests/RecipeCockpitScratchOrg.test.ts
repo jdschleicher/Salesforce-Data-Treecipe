@@ -48,9 +48,9 @@ import { execFile } from 'child_process';
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {

@@ -13,12 +13,12 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI,
     RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT,
     RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitNavigationConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

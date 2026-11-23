@@ -11,13 +11,13 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON,
     RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL,
-    RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE
+} from '../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import {

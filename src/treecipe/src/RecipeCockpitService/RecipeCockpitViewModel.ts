@@ -1,3 +1,9 @@
+/*
+    What the Recipe Cockpit's hub, hosts and tests share as types (#671): the run and tree view
+    model, every message between the host and the panel, a panel action and the panel state. Types
+    only, each import type-only, so a file that imports it loads nothing.
+*/
+
 import type { CockpitButtonKind } from '../CockpitKit/CockpitButtonKinds';
 import type { CockpitPaletteToken } from '../CockpitKit/CockpitPalette';
 import type {

@@ -27,6 +27,7 @@ import * as RecipeCockpitHelpConstants from '../RecipeCockpitHelpConstants';
 import * as RecipeCockpitShellConstants from '../RecipeCockpitShellConstants';
 import * as RecipeCockpitObjectRefreshConstants from '../RecipeCockpitObjectRefreshConstants';
 import * as RecipeCockpitObjectRefreshModule from '../RecipeCockpitObjectRefresh';
+import { RECIPE_COCKPIT_ACTION_VERB_EMOJI } from '../RecipeCockpitPanelConstants';
 import { YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { REFERENCE_ID_REQUIRED_TODO } from '../../RelationshipService/ReferenceIdRequiredTodo';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
@@ -119,11 +120,11 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
         ['${', 'url(', '@import', '<link', '</style', '<!--', '/* include:'].forEach(forbiddenText =>
             expect({ forbiddenText, isHeld: RECIPE_COCKPIT_PANEL_STYLESHEET.includes(forbiddenText) }).toEqual({ forbiddenText, isHeld: false }));
-        expect(depthRules).toHaveLength(RecipeCockpitServiceModule.RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH);
+        expect(depthRules).toHaveLength(RecipeCockpitShellConstants.RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH);
         Object.entries(verbButtonVerbs).forEach(([className, verb]) =>
             expect(RECIPE_COCKPIT_PANEL_STYLESHEET).toContain(`    .sdtButton.${className}::before { content: var(--sdt-verb-emoji-${verb}) / ''; margin-right: 0.35em; }`));
         expect(RecipeCockpitServiceModule.RECIPE_COCKPIT_CUSTOM_PROPERTIES['--sdt-verb-emoji-generateData'])
-            .toBe(`'${RecipeCockpitServiceModule.RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData}'`);
+            .toBe(`'${RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData}'`);
 
     });
 
@@ -179,8 +180,8 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
 
     });
 
-    // CALLERS AND TESTS STILL IMPORT A TAB'S PANEL CONSTANTS FROM THE SERVICE (#639, #640, #641, #642, #652, #653, #654, #655, #656)
-    it('re-exports from the service every constant the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows, navigation, help and the frame, as the same value (#639, #640, #641, #642, #652, #653, #654, #655, #656, #657)', () => {
+    // CALLERS AND TESTS IMPORT A TAB'S PANEL CONSTANTS FROM THE FILE THAT HOLDS THEM, NEVER THROUGH THE SERVICE (#671)
+    it('re-exports from the service none of the constants the panel modules import for the Troubleshooting, Query, Treecipe Adapter and Data Sets tabs, the Record types section, the field editor, Target Org Manager, the field rows, navigation, help and the frame (#671)', () => {
 
         const tabConstants: Record<string, unknown> = { ...RecipeCockpitTroubleshootingConstants, ...RecipeCockpitQueryTabConstants, ...RecipeCockpitAdapterConstants, ...RecipeCockpitDatasetsTabConstants, ...RecipeCockpitTreecipeFieldEditorConstants, ...RecipeCockpitRecordTypesConstants, ...RecipeCockpitDataOrgConstants, ...RecipeCockpitFieldRowsConstants, ...RecipeCockpitNavigationConstants, ...RecipeCockpitHelpConstants, ...RecipeCockpitShellConstants };
         const constantNames = Object.keys(tabConstants);
@@ -195,21 +196,18 @@ describe('RecipeCockpitPanelBundle (#637)', () => {
             'RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON', 'RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES', 'RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL', 'RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX',
             'RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET', 'RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL', 'RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER', 'RECIPE_COCKPIT_FRIENDS_MENU_HINT',
             'RECIPE_COCKPIT_QUERY_MAX_LENGTH', 'RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH', 'RECIPE_COCKPIT_HELP_SECTIONS', 'RECIPE_COCKPIT_PANEL_PLACE_VERSION', 'RECIPE_COCKPIT_TREE_TABS', 'RECIPE_COCKPIT_NO_FAVORITES_MESSAGE', 'RECIPE_COCKPIT_RESET_SELECTION_LABEL']));
-        constantNames.forEach(constantName =>
-            expect({ constantName, isSameValue: serviceExports[constantName] === tabConstants[constantName] })
-                .toEqual({ constantName, isSameValue: true }));
+        expect(constantNames.filter(constantName => constantName in serviceExports)).toEqual([]);
 
     });
 
-    // THE OBJECT REFRESH DIALOG'S WORDS ARE THE PANEL'S TOO (#657); THE HOST AND ITS TESTS KEEP READING THEM WHERE THEY DID
-    it('gives the Object refresh words from the service and RecipeCockpitObjectRefresh as the same values the panel draws (#657)', () => {
+    // THE OBJECT REFRESH DIALOG'S WORDS ARE THE PANEL'S TOO (#657); RecipeCockpitObjectRefresh GIVES ITS KINDS, AND THE SERVICE NONE OF THEM (#671)
+    it('gives the Object refresh kinds from RecipeCockpitObjectRefresh as the same values the panel draws, and none of its words from the service (#657, #671)', () => {
 
         const serviceExports: Record<string, unknown> = RecipeCockpitServiceModule;
         const objectRefreshExports: Record<string, unknown> = RecipeCockpitObjectRefreshModule;
         const objectRefreshConstants: Record<string, unknown> = RecipeCockpitObjectRefreshConstants;
 
-        ['RECIPE_COCKPIT_OBJECT_REFRESH_LABEL', 'RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH'].forEach(constantName =>
-            expect({ constantName, isSameValue: serviceExports[constantName] === objectRefreshConstants[constantName] }).toEqual({ constantName, isSameValue: true }));
+        expect(Object.keys(objectRefreshConstants).filter(constantName => constantName in serviceExports)).toEqual([]);
         ['OBJECT_REFRESH_KINDS', 'OBJECT_REFRESH_KIND_LABELS'].forEach(constantName =>
             expect({ constantName, isSameValue: objectRefreshExports[constantName] === objectRefreshConstants[constantName] }).toEqual({ constantName, isSameValue: true }));
 

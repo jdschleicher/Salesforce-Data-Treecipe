@@ -45,10 +45,12 @@ import { execFile } from 'child_process';
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL,
-    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL,
+    RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL
+} from '../RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';

@@ -43,11 +43,11 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import { execFile } from 'child_process';
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_QUERY_TAB_LABEL,
     RECIPE_COCKPIT_TREE_TABS
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';

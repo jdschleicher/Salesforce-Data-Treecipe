@@ -74,10 +74,8 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { IAdaptedRunRequest, RecipeCockpitAdaptedDataset } from '../RecipeCockpitAdaptedDataset';
 import { IAdaptedRecipeField, RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_DATASET_ADAPTED_LABEL
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_DATASET_ADAPTED_LABEL } from '../RecipeCockpitDatasetsTabConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';

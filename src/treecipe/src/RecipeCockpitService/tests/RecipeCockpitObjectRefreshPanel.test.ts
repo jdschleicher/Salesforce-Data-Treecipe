@@ -43,11 +43,13 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 
 import {
     RECIPE_COCKPIT_OBJECT_REFRESH_APPLY_RUNNING_REFUSAL,
-    RECIPE_COCKPIT_OBJECT_REFRESH_LABEL,
-    RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH,
-    RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX,
     RecipeCockpitService
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_OBJECT_REFRESH_LABEL,
+    RECIPE_COCKPIT_OBJECT_REFRESH_GLYPH_PATH
+} from '../RecipeCockpitObjectRefreshConstants';
+import { RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX } from '../RecipeCockpitPanelConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {

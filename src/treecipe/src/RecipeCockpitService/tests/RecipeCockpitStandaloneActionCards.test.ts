@@ -14,13 +14,15 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
-    RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL,
-    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
-    RECIPE_COCKPIT_STANDALONE_ACTION_CARDS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
     RECIPE_COCKPIT_VERB_BUTTON_VERBS
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_STANDALONE_ACTION_CARDS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS
+} from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL } from '../RecipeCockpitShellConstants';
+import { RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
 import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { runPanelScript } from './RecipeCockpitPanelHarness';

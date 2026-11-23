@@ -4,14 +4,14 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_DATASET_JOURNEY_FIRST_TIME_NOTE,
     RECIPE_COCKPIT_DATASET_JOURNEY_LOADING_NOTE,
     RECIPE_COCKPIT_DATASET_JOURNEY_NO_INSERTS_NOTE,
-    RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RecipeCockpitService
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_DATASET_JOURNEY_STATUS_DISPLAY
+} from '../RecipeCockpitDatasetsTabConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitPanelState,

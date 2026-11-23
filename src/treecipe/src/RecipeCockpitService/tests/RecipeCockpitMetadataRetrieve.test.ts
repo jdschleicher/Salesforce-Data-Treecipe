@@ -49,13 +49,15 @@ import JSZip = require('jszip');
 import {
     RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
+} from '../RecipeCockpitService';
+import {
     RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
     RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND,
     RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE,
-    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
-    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL
+} from '../RecipeCockpitTroubleshootingConstants';
+import { RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS } from '../RecipeCockpitPanelConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs';

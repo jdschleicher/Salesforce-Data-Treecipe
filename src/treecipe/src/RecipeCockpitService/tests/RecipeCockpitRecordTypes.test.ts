@@ -12,13 +12,15 @@ jest.mock('vscode', () => ({
 import {
     RecipeCockpitService,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE
+} from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
+import {
     RECIPE_COCKPIT_RECORD_TYPES_INTRO,
     RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY,
     RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL,
-    RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitRecordTypesConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitObjectViewModel,

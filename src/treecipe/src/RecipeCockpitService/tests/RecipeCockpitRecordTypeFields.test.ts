@@ -3,13 +3,13 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT } from '../RecipeCockpitNavigationConstants';
 import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE,
-    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitRecordTypesConstants';
+import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitObjectViewModel,

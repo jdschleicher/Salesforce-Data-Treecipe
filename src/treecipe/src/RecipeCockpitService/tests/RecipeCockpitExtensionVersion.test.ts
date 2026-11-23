@@ -42,12 +42,14 @@ jest.mock('@salesforce/core', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_CHANGELOG_LINK_LABEL,
     RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE,
-    RECIPE_COCKPIT_CHANGELOG_URL,
+    RECIPE_COCKPIT_CHANGELOG_URL
+} from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_CHANGELOG_LINK_LABEL,
     RECIPE_COCKPIT_GITHUB_GLYPH_PATH,
     RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitShellConstants';
 import { RECIPE_COCKPIT_NO_RUN_MESSAGE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelMessage } from '../RecipeCockpitViewModel';

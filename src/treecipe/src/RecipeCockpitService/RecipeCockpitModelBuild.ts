@@ -1,3 +1,9 @@
+/*
+    The Recipe Cockpit's model, built from a generated recipe run on disk (#671): the runs found, the
+    objects wrapper normalized and checked, the recipe files parsed and attached, the cards and their
+    iterations. It never loads the hub, which posts what is built and keeps the allow-lists.
+*/
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';

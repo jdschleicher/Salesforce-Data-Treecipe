@@ -5,11 +5,13 @@ jest.mock('vscode', () => ({}), { virtual: true });
 import {
     RecipeCockpitService,
     RECIPE_COCKPIT_ACTION_CARD_HEIGHT,
-    RECIPE_COCKPIT_ACTION_CARD_WIDTH,
-    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
-    RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE,
-    RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI
+    RECIPE_COCKPIT_ACTION_CARD_WIDTH
 } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI
+} from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE } from '../RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {
     IRecipeCockpitObjectViewModel,

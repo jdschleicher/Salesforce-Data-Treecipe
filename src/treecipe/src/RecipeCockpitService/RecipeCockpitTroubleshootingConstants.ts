@@ -4,7 +4,7 @@ import type { RecipeCockpitTroubleshootingAction } from './RecipeCockpitPanelCon
     What the Troubleshooting tab's panel modules draw with (#639): its sub-tabs, deploy and retrieve
     actions, TODO lists, validation rules and History. Its imports are type-only and from files that
     import nothing, so a panel module can import it and the bundle pulls in no host code.
-    RecipeCockpitService.ts re-exports every name; the deploy, retrieve and run history modules
+    Every importer reads its names here (#671); the deploy, retrieve and run history modules
     import their kind and status unions from here.
 */
 

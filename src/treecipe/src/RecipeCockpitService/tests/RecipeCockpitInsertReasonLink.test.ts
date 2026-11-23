@@ -2,14 +2,14 @@ import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_CANNOT_INSERT_PREFIX,
     RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_INSERT_REASON_TREECIPE_LINK_PREFIX,
-    RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS,
-    RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_INSERT_REASON_TROUBLESHOOTING_LINKS
+} from '../RecipeCockpitDataOrgConstants';
+import { RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from '../RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';

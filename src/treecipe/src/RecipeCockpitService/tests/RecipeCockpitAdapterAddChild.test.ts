@@ -42,14 +42,14 @@ jest.mock('@salesforce/core', () => ({
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL,
     RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
-    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_TAB_LABEL
-} from '../RecipeCockpitService';
+    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX
+} from '../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitOrgRuns } from '../RecipeCockpitOrgRuns';
 import { RECIPE_COCKPIT_UPDATER_FORMULA_REASON } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';

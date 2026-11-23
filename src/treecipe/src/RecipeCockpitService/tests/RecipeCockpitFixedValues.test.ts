@@ -14,19 +14,21 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
-    RecipeCockpitService,
     RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
+    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
+    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER
+} from '../RecipeCockpitTreecipeFieldEditorConstants';
+import {
     RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
-    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
-    RECIPE_COCKPIT_LOOKUP_ID_EDIT_HINT,
-    RECIPE_COCKPIT_LOOKUP_ID_PLACEHOLDER,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON
-} from '../RecipeCockpitService';
+} from '../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
 import { RECIPE_COCKPIT_UNGROUPED_TREE_TITLE } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import {

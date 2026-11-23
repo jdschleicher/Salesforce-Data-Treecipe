@@ -1,3 +1,9 @@
+/*
+    A card's object and field selection, counts and fixed values (#219, #220, #342), kept in
+    workspaceState and the fixed-values file, and the checks a fixed value is held to (#671). It never
+    loads the hub; a host reads it through the hub's delegates.
+*/
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';

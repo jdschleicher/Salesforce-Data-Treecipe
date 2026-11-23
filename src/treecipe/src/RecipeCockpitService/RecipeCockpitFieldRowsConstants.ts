@@ -2,7 +2,7 @@
     What the Treecipe tab's field rows and the object/field selection cascade draw (#655): a field
     box's reasons, the object's "All fields", "Standard fields" and "Hide unselected" boxes, a
     field's fixed-value badge and pencil reasons, and its validation-rule box. It imports nothing,
-    so the panel bundle can import it; RecipeCockpitService.ts re-exports every name, and the host
+    so the panel bundle can import it; every importer reads its names here (#671), and the host
     gives the same reasons when it re-derives a lock before it writes.
 */
 

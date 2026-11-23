@@ -49,10 +49,10 @@ import { execFile } from 'child_process';
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
-    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL,
     RECIPE_COCKPIT_VERB_BUTTON_VERBS
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_ACTION_VERB_EMOJI } from '../RecipeCockpitPanelConstants';
+import { RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL } from '../RecipeCockpitDataOrgConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import {

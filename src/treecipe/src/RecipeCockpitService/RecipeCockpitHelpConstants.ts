@@ -1,6 +1,6 @@
 /*
     The Recipe Cockpit's help section (#332) and its ? toggle (#350), as words the panel draws (#657).
-    Imports nothing, so the panel's help module imports it; RecipeCockpitService re-exports every name.
+    Imports nothing, so the panel's help module imports it; every importer reads its names here (#671).
 */
 
 /*
