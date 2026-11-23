@@ -74,6 +74,7 @@ import type {
     RecipeCockpitPanelAction
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     The Treecipe Adapter's record runs (#416, #418, #419; moved out of the hub by #668): load records
@@ -364,7 +365,7 @@ export class RecipeCockpitAdapterRecords {
                         columns: [],
                         rows: [],
                         hiddenColumnCount: 0,
-                        failureMessage: hub.describeThrown(queryError)
+                        failureMessage: RecipeCockpitUntrustedValue.describeThrown(queryError)
                     });
                 }
 
@@ -1828,7 +1829,7 @@ export class RecipeCockpitAdapterRecords {
 
             return { records: generatedRecords as Record<string, unknown>[] };
         } catch (generationError) {
-            return { refusal: `${fakerService} could not generate the values of ${objectApiName}: ${hub.describeThrown(generationError)}` };
+            return { refusal: `${fakerService} could not generate the values of ${objectApiName}: ${RecipeCockpitUntrustedValue.describeThrown(generationError)}` };
         } finally {
             if ( temporaryFolderPath ) {
                 fs.rmSync(temporaryFolderPath, { recursive: true, force: true });

@@ -73,7 +73,6 @@ export type IRecipeCockpitHubForTreecipeTab = Readonly<Pick<typeof RecipeCockpit
     'buildWireableLookupKey' |
     'confirmInPanel' |
     'describeOccurrence' |
-    'describeThrown' |
     'describeTreeNameProblem' |
     'discardObjectRefreshStaging' |
     'findDrawnField' |

@@ -57,7 +57,6 @@ export type IRecipeCockpitHubForAdapterTab = Readonly<Pick<typeof RecipeCockpitS
     'buildConfirmOrg' |
     'buildOrgOnlyFieldsResult' |
     'confirmInPanel' |
-    'describeThrown' |
     'findDescribedOrgOnlyFieldLockReason' |
     'findRecipeExpression' |
     'hasRecordTypePicklist' |

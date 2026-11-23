@@ -26,6 +26,7 @@ import type {
     IRecipeCockpitTreeObjectSelectionViewModel,
     IRecipeCockpitTreeViewModel
 } from './RecipeCockpitViewModel';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     "Customize and create new recipe" (#677), the host half: the modal's preview and its Save as new
@@ -42,7 +43,6 @@ export type IRecipeCockpitHubForCustomTreecipe = Readonly<Pick<typeof RecipeCock
     'buildRunFakerFilteredRecipe' |
     'buildSelectableFieldKey' |
     'buildSelectableObjectKey' |
-    'describeThrown' |
     'listExcludedObjectApiNames' |
     'loadRecipeIntoPanel' |
     'readCustomTreecipeDefinition' |
@@ -200,7 +200,7 @@ export class RecipeCockpitCustomTreecipeHost {
 
         const removedFieldApiNamesByObject = new Map<string, Set<string>>();
         for ( const removedField of removedFields as unknown[] ) {
-            if ( !this.isPlainRecord(removedField) ) {
+            if ( !RecipeCockpitUntrustedValue.isPlainRecord(removedField) ) {
                 return undefined;
             }
             const { objectApiName, fieldApiName } = removedField;
@@ -435,7 +435,7 @@ export class RecipeCockpitCustomTreecipeHost {
                         // NOT EMPTY: LEFT AS IT IS
                     }
                 }
-                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)}: ${hub.describeThrown(writeError)}. Nothing was left behind.`);
+                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)}: ${RecipeCockpitUntrustedValue.describeThrown(writeError)}. Nothing was left behind.`);
                 return;
             }
 
@@ -484,8 +484,5 @@ export class RecipeCockpitCustomTreecipeHost {
 
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-    }
 
 }

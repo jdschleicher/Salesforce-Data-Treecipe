@@ -14,6 +14,7 @@ import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHos
 import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitTreecipeInsert } from './RecipeCockpitTreecipeInsert';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     Target Org Manager and a tree's insert, the Treecipe tab's org half (moved out of the hub by #669
@@ -44,7 +45,6 @@ export type IRecipeCockpitHubForTreecipeOrgTab = Readonly<Pick<typeof RecipeCock
     'describeOccurrence' |
     'describeSelectionHoldingRun' |
     'findOrgRecordLookup' |
-    'isPlainRecord' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
     'listExcludedFieldApiNamesByObject' |
@@ -401,7 +401,7 @@ export class RecipeCockpitTreecipeOrgHost {
     */
     static readPostedRecordTypeSelection(hub: IRecipeCockpitHubForTreecipeOrgTab, postedSelection: unknown, selectableRecordTypeKeys: Set<string>): Record<string, string[]> | undefined {
 
-        if ( !hub.isPlainRecord(postedSelection) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(postedSelection) ) {
             return undefined;
         }
 

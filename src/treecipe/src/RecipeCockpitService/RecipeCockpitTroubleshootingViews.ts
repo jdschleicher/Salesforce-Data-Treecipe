@@ -29,6 +29,7 @@ import type {
     IRecipeCockpitValidationRuleSourceViewModel
 } from './RecipeCockpitTroubleshootingHost';
 import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     What the Troubleshooting tab reads and shows (#326, #327, #485; moved out of the hub by #666):
@@ -132,7 +133,7 @@ export class RecipeCockpitTroubleshootingViews {
 
         } catch (projectError) {
 
-            summaryMessage.failureMessage = `Nothing can be deployed: ${hub.describeThrown(projectError)}`;
+            summaryMessage.failureMessage = `Nothing can be deployed: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`;
 
         }
 
@@ -219,7 +220,7 @@ export class RecipeCockpitTroubleshootingViews {
         try {
             objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
         } catch (configurationError) {
-            rulesMessage.failureMessage = `The project's validation rules could not be read: ${hub.describeThrown(configurationError)}`;
+            rulesMessage.failureMessage = `The project's validation rules could not be read: ${RecipeCockpitUntrustedValue.describeThrown(configurationError)}`;
             return rulesMessage;
         }
 
@@ -231,7 +232,7 @@ export class RecipeCockpitTroubleshootingViews {
                     runRulesByObject: RecipeCockpitValidationRuleList.readRunValidationRulesByObject(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')))
                 };
             } catch (readError) {
-                rulesMessage.failureMessage = `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${hub.describeThrown(readError)} Run "Generate Treecipe" again.`;
+                rulesMessage.failureMessage = `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${RecipeCockpitUntrustedValue.describeThrown(readError)} Run "Generate Treecipe" again.`;
                 return rulesMessage;
             }
         }

@@ -41,7 +41,7 @@ import {
 } from './RecipeCockpitObjectSelection';
 import {
     RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH
+    RecipeCockpitPanelPlace
 } from './RecipeCockpitPanelPlace';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
@@ -67,6 +67,7 @@ import type {
     IRecipeCockpitTreeViewModel,
     IRecipeCockpitWorkspaceState
 } from './RecipeCockpitViewModel';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     What each tree folder's Structure tab excluded directly (#219) and the fields it unticked (#220);
@@ -90,29 +91,8 @@ export const RECIPE_COCKPIT_LOOKUP_VALUE_REFUSAL_SUFFIX = 'is a lookup, so it ta
 
 export class RecipeCockpitTreeSelectionStore {
 
-    static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
 
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
 
-    }
-
-    static isBoundedText(candidate: unknown): candidate is string {
-
-        return typeof candidate === 'string' && candidate.length <= RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH;
-
-    }
-
-    static normalizePlaceNames(candidateNames: unknown): string[] {
-
-        if ( !Array.isArray(candidateNames) ) {
-            return [];
-        }
-
-        return candidateNames
-            .slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES)
-            .filter((candidateName: unknown): candidateName is string => this.isBoundedText(candidateName) && candidateName !== '');
-
-    }
 
     /*
         Each tree folder's DIRECT exclusions (#219) and unticked fields (#220), as workspaceState kept
@@ -139,17 +119,17 @@ export class RecipeCockpitTreeSelectionStore {
         }
 
         const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITH_CONSTRAINTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
-        if ( !this.isPlainRecord(storedSelections)
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedSelections)
                 || !readableVersions.includes(storedSelections.version)
-                || !this.isPlainRecord(storedSelections.excludedObjectApiNamesByFolderName) ) {
+                || !RecipeCockpitUntrustedValue.isPlainRecord(storedSelections.excludedObjectApiNamesByFolderName) ) {
             return treeSelections;
         }
 
         const storedByFolderName = storedSelections.excludedObjectApiNamesByFolderName;
-        const isUsableFolderName = (folderName: string) => this.isBoundedText(folderName) && folderName !== '';
+        const isUsableFolderName = (folderName: string) => RecipeCockpitPanelPlace.isBoundedText(folderName) && folderName !== '';
 
         Object.keys(storedByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
-            const excludedObjectApiNames = this.normalizePlaceNames(storedByFolderName[folderName]).filter(objectApiName => SalesforceApiName.isApiName(objectApiName));
+            const excludedObjectApiNames = RecipeCockpitPanelPlace.normalizePlaceNames(storedByFolderName[folderName]).filter(objectApiName => SalesforceApiName.isApiName(objectApiName));
             if ( isUsableFolderName(folderName) && excludedObjectApiNames.length > 0 ) {
                 treeSelections.excludedObjectApiNamesByFolderName.set(folderName, new Set(excludedObjectApiNames));
             }
@@ -164,17 +144,17 @@ export class RecipeCockpitTreeSelectionStore {
 
         // THE SAME SHAPE AS THE UNTICKED FIELDS, READ THE SAME WAY (#325)
         const readFieldNamesByFolderName = (storedByFolder: unknown, readInto: Map<string, Map<string, Set<string>>>) => {
-            if ( !this.isPlainRecord(storedByFolder) ) {
+            if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedByFolder) ) {
                 return;
             }
             Object.keys(storedByFolder).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
                 const storedByObject = storedByFolder[folderName];
-                if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
+                if ( !isUsableFolderName(folderName) || !RecipeCockpitUntrustedValue.isPlainRecord(storedByObject) ) {
                     return;
                 }
                 const fieldNamesByObject = new Map<string, Set<string>>();
                 Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
-                    const fieldApiNames = this.normalizePlaceNames(storedByObject[objectApiName]).filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName));
+                    const fieldApiNames = RecipeCockpitPanelPlace.normalizePlaceNames(storedByObject[objectApiName]).filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName));
                     // AN OBJECT'S KEY, OR ONE OCCURRENCE'S "<Object>\n<Nickname>" (#467)
                     if ( SalesforceApiName.isOccurrenceKey(objectApiName) && fieldApiNames.length > 0 ) {
                         fieldNamesByObject.set(objectApiName, new Set(fieldApiNames));
@@ -188,10 +168,10 @@ export class RecipeCockpitTreeSelectionStore {
 
         readFieldNamesByFolderName(storedValidationRulesOffByFolderName, treeSelections.validationRulesOffByFolderName);
 
-        if ( this.isPlainRecord(storedCountsByFolderName) ) {
+        if ( RecipeCockpitUntrustedValue.isPlainRecord(storedCountsByFolderName) ) {
             Object.keys(storedCountsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
                 const storedByObject = storedCountsByFolderName[folderName];
-                if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
+                if ( !isUsableFolderName(folderName) || !RecipeCockpitUntrustedValue.isPlainRecord(storedByObject) ) {
                     return;
                 }
                 const countsByObject = new Map<string, number>();

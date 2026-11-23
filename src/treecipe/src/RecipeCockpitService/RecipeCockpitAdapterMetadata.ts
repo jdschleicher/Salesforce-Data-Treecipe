@@ -50,6 +50,7 @@ import type {
     RecipeCockpitPanelAction
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     The Treecipe Adapter's metadata runs (#445, #447; moved out of the hub by #668): Retrieve latest
@@ -192,7 +193,7 @@ export class RecipeCockpitAdapterMetadata {
         try {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
         } catch (projectError) {
-            warn(`Nothing was retrieved: ${hub.describeThrown(projectError)}`);
+            warn(`Nothing was retrieved: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`);
             return;
         }
 
@@ -240,7 +241,7 @@ export class RecipeCockpitAdapterMetadata {
                 orgUsername
             );
         } catch (argumentError) {
-            warn(`Nothing was retrieved: ${hub.describeThrown(argumentError)}`);
+            warn(`Nothing was retrieved: ${RecipeCockpitUntrustedValue.describeThrown(argumentError)}`);
             return;
         }
 
@@ -372,7 +373,7 @@ export class RecipeCockpitAdapterMetadata {
         try {
             SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
         } catch (projectError) {
-            refuse(hub.describeThrown(projectError));
+            refuse(RecipeCockpitUntrustedValue.describeThrown(projectError));
             return;
         }
 
@@ -398,7 +399,7 @@ export class RecipeCockpitAdapterMetadata {
                 orgUsername
             );
         } catch (argumentError) {
-            refuse(hub.describeThrown(argumentError));
+            refuse(RecipeCockpitUntrustedValue.describeThrown(argumentError));
             return;
         }
 
@@ -819,7 +820,7 @@ export class RecipeCockpitAdapterMetadata {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
             defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            warn(`Nothing was applied: ${hub.describeThrown(projectError)}`);
+            warn(`Nothing was applied: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`);
             return;
         }
 

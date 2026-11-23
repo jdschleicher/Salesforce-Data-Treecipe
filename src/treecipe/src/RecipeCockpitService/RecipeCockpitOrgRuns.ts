@@ -44,6 +44,7 @@ import type {
     IRecipeCockpitPanelCancellation,
     IRecipeCockpitPanelState
 } from './RecipeCockpitViewModel';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 // WHAT resolveSelectedReadOrg READS OF THE HUB: THE PANEL IT WAS CLICKED IN, THE SELECTION'S HOLDERS, AND WHAT THE ORG PROMPT READS
 export type IRecipeCockpitHubForOrgRuns = Readonly<Pick<typeof RecipeCockpitService,
@@ -122,11 +123,6 @@ export class RecipeCockpitOrgRuns {
 
     }
 
-    static describeThrown(thrownValue: unknown): string {
-
-        return String(( thrownValue as Error | undefined )?.message ?? thrownValue);
-
-    }
 
     /*
         A retrieve, the CLI's or jsforce's as the metadataRetrieveMethod setting says (#506), behind a
@@ -167,7 +163,7 @@ export class RecipeCockpitOrgRuns {
             try {
                 retrieveRequest = RecipeCockpitMetadataRetrievePackage.buildRetrieveRequest(jsforceRetrieve.components, this.readSourceApiVersion(workspaceRoot) ?? retrieveConnection.getApiVersion());
             } catch (requestError) {
-                return answered({ status: 1, message: this.describeThrown(requestError) });
+                return answered({ status: 1, message: RecipeCockpitUntrustedValue.describeThrown(requestError) });
             }
 
             const metadataConnection: IMetadataRetrieveConnection = {
@@ -206,7 +202,7 @@ export class RecipeCockpitOrgRuns {
                 const fileResponses = await RecipeCockpitMetadataRetrievePackage.writeSourceFiles(workspaceRoot, jsforceRetrieve.destination, sourceFiles);
                 return answered(RecipeCockpitMetadataRetrievePackage.toCliShapedPayload(retrieveId, result, fileResponses, jsforceRetrieve.components));
             } catch (convertError) {
-                return answered({ status: 1, message: this.describeThrown(convertError), retrieveId: retrieveId });
+                return answered({ status: 1, message: RecipeCockpitUntrustedValue.describeThrown(convertError), retrieveId: retrieveId });
             }
 
         });

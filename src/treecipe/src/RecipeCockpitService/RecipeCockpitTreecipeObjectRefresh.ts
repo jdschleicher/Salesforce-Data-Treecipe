@@ -35,6 +35,7 @@ import { RecipeService } from '../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { RecipeCockpitTreecipeRecipeEdits } from './RecipeCockpitTreecipeRecipeEdits';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     "Get latest object detail from target org" (#612, moved out of the hub by #688): one object
@@ -170,7 +171,7 @@ export class RecipeCockpitTreecipeObjectRefresh {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
             defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            warn(`Nothing was retrieved for ${objectLabel}: ${hub.describeThrown(projectError)}`);
+            warn(`Nothing was retrieved for ${objectLabel}: ${RecipeCockpitUntrustedValue.describeThrown(projectError)}`);
             this.closeObjectRefresh(hub, cockpitPanel, panelState, session, false);
             return;
         }
@@ -214,7 +215,7 @@ export class RecipeCockpitTreecipeObjectRefresh {
                 orgDetail.username
             );
         } catch (argumentError) {
-            warn(`Nothing was retrieved for ${objectLabel}: ${hub.describeThrown(argumentError)}`);
+            warn(`Nothing was retrieved for ${objectLabel}: ${RecipeCockpitUntrustedValue.describeThrown(argumentError)}`);
             this.closeObjectRefresh(hub, cockpitPanel, panelState, session, false);
             return;
         }

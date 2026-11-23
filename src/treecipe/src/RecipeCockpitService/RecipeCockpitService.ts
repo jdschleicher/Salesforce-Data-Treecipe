@@ -205,6 +205,7 @@ import {
 } from './RecipeCockpitModelBuild';
 import { RecipeCockpitOrgRuns } from './RecipeCockpitOrgRuns';
 import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -449,9 +450,6 @@ export class RecipeCockpitService {
     private static panelPlacePersistTimer: ReturnType<typeof setTimeout> | undefined;
 
     // WHAT A HOST READS OF THE TREE SELECTIONS AND FIXED VALUES THROUGH ITS HUB TYPE: RecipeCockpitTreeSelectionStore OWNS IT (#671)
-    static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-        return RecipeCockpitTreeSelectionStore.isPlainRecord(candidate);
-    }
 
     static readTreeSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreeSelections {
         return RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState);
@@ -646,21 +644,21 @@ export class RecipeCockpitService {
             return namePreferences;
         }
 
-        if ( !RecipeCockpitTreeSelectionStore.isPlainRecord(storedPreferences) || storedPreferences.version !== stateVersion ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedPreferences) || storedPreferences.version !== stateVersion ) {
             return namePreferences;
         }
 
-        const storedCustomNames = RecipeCockpitTreeSelectionStore.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
+        const storedCustomNames = RecipeCockpitUntrustedValue.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
 
         Object.keys(storedCustomNames).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
             const customName = storedCustomNames[folderName];
-            if ( RecipeCockpitTreeSelectionStore.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
+            if ( RecipeCockpitPanelPlace.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
                     && customName !== '' && customName === customName.trim() && describeNameProblem(customName) === undefined ) {
                 namePreferences.customNamesByFolderName.set(folderName, customName);
             }
         });
 
-        RecipeCockpitTreeSelectionStore.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => namePreferences.favoriteFolderNames.add(folderName));
+        RecipeCockpitPanelPlace.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => namePreferences.favoriteFolderNames.add(folderName));
 
         return namePreferences;
 
@@ -1328,7 +1326,7 @@ export class RecipeCockpitService {
     */
     static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
 
-        if ( !RecipeCockpitTreeSelectionStore.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
             return undefined;
         }
 
@@ -2759,9 +2757,6 @@ export class RecipeCockpitService {
         return RecipeCockpitOrgRuns.readSourceApiVersion(workspaceRoot);
     }
 
-    static describeThrown(thrownValue: unknown): string {
-        return RecipeCockpitOrgRuns.describeThrown(thrownValue);
-    }
 
     static async runCancellableRetrieve(progressTitle: string, cliArguments: string[], workspaceRoot: string, jsforceRetrieve: { orgUsername: string; components: IMetadataDeployComponent[]; destination: MetadataRetrieveDestination }, panelCancellation?: IRecipeCockpitPanelCancellation): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean; isNothingWritten?: boolean; payload: Record<string, unknown> | undefined }> {
         return RecipeCockpitOrgRuns.runCancellableRetrieve(progressTitle, cliArguments, workspaceRoot, jsforceRetrieve, panelCancellation);
@@ -3166,12 +3161,12 @@ export class RecipeCockpitService {
     */
     static readTroubleshootingFocusRequest(openOptions: unknown): IRecipeCockpitTroubleshootingFocusRequest | undefined {
 
-        if ( !RecipeCockpitTreeSelectionStore.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
             return undefined;
         }
 
         const { runFolderName, treeFolderName, troubleshootingSubTab } = openOptions;
-        const isFolderName = (candidate: unknown): candidate is string => RecipeCockpitTreeSelectionStore.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
+        const isFolderName = (candidate: unknown): candidate is string => RecipeCockpitPanelPlace.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
 
         if ( !isFolderName(runFolderName) || !isFolderName(treeFolderName) || !( RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS as readonly unknown[] ).includes(troubleshootingSubTab) ) {
             return undefined;
@@ -3247,7 +3242,7 @@ export class RecipeCockpitService {
             case 'savePlace': {
 
                 const drawnRunFolderName = panelState.recipeDataMessage?.recipe.selectedRunFolderName;
-                const postedRunFolderName = RecipeCockpitTreeSelectionStore.isPlainRecord(panelMessage.place) ? panelMessage.place.runFolderName : undefined;
+                const postedRunFolderName = RecipeCockpitUntrustedValue.isPlainRecord(panelMessage.place) ? panelMessage.place.runFolderName : undefined;
 
                 // THE CHEAP CHECKS FIRST: A PLACE OF ANOTHER RUN IS REFUSED WITHOUT BEING NORMALIZED
                 if ( !drawnRunFolderName || postedRunFolderName !== drawnRunFolderName || !panelState.selectableRunFolderNames.has(drawnRunFolderName) ) {

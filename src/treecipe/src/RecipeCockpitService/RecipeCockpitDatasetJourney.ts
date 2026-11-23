@@ -6,6 +6,7 @@ import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceServi
 import { ALL_OR_NONE_ROLLED_BACK_STATUS_CODE } from '../InsertFailureTriage/RecipeCockpitInsertFailureTriage';
 import { IRecipeCockpitRunArtifactsLocation } from '../RunArtifacts/RecipeCockpitRunArtifacts';
 import { IRunHistoryRow, RecipeCockpitRunHistory, RunHistoryRowStatus, RunHistoryStep } from './RecipeCockpitRunHistory';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     A data set's insert journey (#471): every insert attempt of the data set and every Troubleshooting
@@ -229,7 +230,7 @@ export class RecipeCockpitDatasetJourney {
 
         const failureResults = ( parsedResults as Record<string, unknown> | null )?.FailureResults;
 
-        if ( !this.isPlainRecord(failureResults) || !Object.values(failureResults).every(recordResults => Array.isArray(recordResults)) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(failureResults) || !Object.values(failureResults).every(recordResults => Array.isArray(recordResults)) ) {
             return unreadable;
         }
 
@@ -298,14 +299,14 @@ export class RecipeCockpitDatasetJourney {
 
     private static readFirstRecordError(recordResult: unknown): { statusCode: string; message?: string; fields: string[] } | undefined {
 
-        const resultErrors = this.isPlainRecord(recordResult) ? recordResult.errors : undefined;
+        const resultErrors = RecipeCockpitUntrustedValue.isPlainRecord(recordResult) ? recordResult.errors : undefined;
 
         if ( !Array.isArray(resultErrors) ) {
             return undefined;
         }
 
         const recordErrors = resultErrors
-            .filter((resultError): resultError is Record<string, unknown> => this.isPlainRecord(resultError) && typeof resultError.statusCode === 'string' && resultError.statusCode !== '')
+            .filter((resultError): resultError is Record<string, unknown> => RecipeCockpitUntrustedValue.isPlainRecord(resultError) && typeof resultError.statusCode === 'string' && resultError.statusCode !== '')
             .map(resultError => ({
                 statusCode: resultError.statusCode as string,
                 ...( typeof resultError.message === 'string' && resultError.message !== '' ? { message: resultError.message } : {} ),
@@ -354,11 +355,6 @@ export class RecipeCockpitDatasetJourney {
 
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-
-    }
 
     private static pluralize(count: number, singular: string, plural: string): string {
 
