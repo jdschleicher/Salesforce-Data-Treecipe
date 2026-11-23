@@ -26,6 +26,9 @@ import type {
     IRecipeCockpitTreeObjectSelectionViewModel,
     IRecipeCockpitTreeViewModel
 } from './RecipeCockpitViewModel';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
+import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
 
 /*
     "Customize and create new recipe" (#677), the host half: the modal's preview and its Save as new
@@ -39,22 +42,16 @@ import type {
 export type IRecipeCockpitHubForCustomTreecipe = Readonly<Pick<typeof RecipeCockpitService,
     'applyTreeObjectAndFieldSelection' |
     'buildObjectsByApiName' |
-    'buildRunFakerFilteredRecipe' |
-    'buildSelectableFieldKey' |
-    'buildSelectableObjectKey' |
-    'describeThrown' |
     'listExcludedObjectApiNames' |
     'loadRecipeIntoPanel' |
     'readCustomTreecipeDefinition' |
     'postToPanel' |
-    'readTreePreferences' |
     'readTreeSelections' |
     'recipeCockpitPanel' |
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'selectedCustomTreeFolderNameByRunFolderName' |
     'toSingleLine' |
-    'writeTreePreferences' |
     'writeTreeSelections'>>;
 
 // THE PANEL COMMANDS AND ACTION KINDS THIS HOST OWNS: THE HUB HANDS EACH ONE HERE, AND NO OTHER FILE NAMES IT
@@ -189,7 +186,7 @@ export class RecipeCockpitCustomTreecipeHost {
 
         const { removedObjectApiNames, removedFields, outOfRunObjectApiNames } = panelMessage;
         const isDrawnObject = (objectApiName: unknown): objectApiName is string => typeof objectApiName === 'string'
-            && panelState.treeHistoryAllowLists.selectableObjectKeys.has(hub.buildSelectableObjectKey(treeKey, objectApiName));
+            && panelState.treeHistoryAllowLists.selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName));
         const isDrawnObjectList = (candidate: unknown): candidate is string[] => Array.isArray(candidate)
             && candidate.length <= RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES && candidate.every(isDrawnObject);
 
@@ -200,12 +197,12 @@ export class RecipeCockpitCustomTreecipeHost {
 
         const removedFieldApiNamesByObject = new Map<string, Set<string>>();
         for ( const removedField of removedFields as unknown[] ) {
-            if ( !this.isPlainRecord(removedField) ) {
+            if ( !RecipeCockpitUntrustedValue.isPlainRecord(removedField) ) {
                 return undefined;
             }
             const { objectApiName, fieldApiName } = removedField;
             if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string'
-                    || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(hub.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                 return undefined;
             }
             removedFieldApiNamesByObject.set(objectApiName, ( removedFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName));
@@ -379,7 +376,7 @@ export class RecipeCockpitCustomTreecipeHost {
                 return;
             }
 
-            const filteredRecipe = hub.buildRunFakerFilteredRecipe(recipeText, customTree, panelState.objectLevelsByApiName, recipeDataMessage.recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(recipeText, customTree, panelState.objectLevelsByApiName, recipeDataMessage.recipe);
             if ( 'refusalMessage' in filteredRecipe ) {
                 refuse(filteredRecipe.refusalMessage);
                 return;
@@ -435,7 +432,7 @@ export class RecipeCockpitCustomTreecipeHost {
                         // NOT EMPTY: LEFT AS IT IS
                     }
                 }
-                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)}: ${hub.describeThrown(writeError)}. Nothing was left behind.`);
+                refuse(`${location.folderName} could not be written in ${path.basename(location.runFolderPath)}: ${RecipeCockpitUntrustedValue.describeThrown(writeError)}. Nothing was left behind.`);
                 return;
             }
 
@@ -455,13 +452,13 @@ export class RecipeCockpitCustomTreecipeHost {
                 treeSelections.excludedObjectApiNamesByFolderName.delete(location.folderName);
             }
             await hub.writeTreeSelections(hub.recipeCockpitWorkspaceState, treeSelections);
-            const treePreferences = hub.readTreePreferences(hub.recipeCockpitWorkspaceState);
+            const treePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(hub.recipeCockpitWorkspaceState);
             if ( customName ) {
                 treePreferences.customNamesByFolderName.set(location.folderName, customName);
             } else {
                 treePreferences.customNamesByFolderName.delete(location.folderName);
             }
-            await hub.writeTreePreferences(hub.recipeCockpitWorkspaceState, treePreferences);
+            await RecipeCockpitTreeSelectionStore.writeTreePreferences(hub.recipeCockpitWorkspaceState, treePreferences);
 
             const relativeRecipeFilePath = path.relative(workspaceRoot, customRecipeFilePath).split(path.sep).join('/');
             Promise.resolve(vscode.window.showInformationMessage(
@@ -484,8 +481,5 @@ export class RecipeCockpitCustomTreecipeHost {
 
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-    }
 
 }

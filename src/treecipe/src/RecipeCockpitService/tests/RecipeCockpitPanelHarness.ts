@@ -1,4 +1,7 @@
-import { RecipeCockpitService, RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT } from '../RecipeCockpitService';
+import {
+    RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     Runs the panel's ACTUAL script against a fake DOM. Shared by every suite that drives the panel.
@@ -191,7 +194,7 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             setState: (nextState: any) => { savedState = JSON.parse(JSON.stringify(nextState)); setStateCalls.push(savedState); return nextState; }
         });
 
-    const shellHtml = panelScriptOptions.shellHtml ?? RecipeCockpitService.buildWebviewShellHtml('testNonce');
+    const shellHtml = panelScriptOptions.shellHtml ?? RecipeCockpitShell.buildWebviewShellHtml('testNonce');
     const scriptOpeningTag = /<script nonce="[^"]+">/.exec(shellHtml);
     if ( !scriptOpeningTag ) {
         throw new Error('The panel document has no nonced <script>: the webview would run nothing.');

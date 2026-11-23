@@ -12,10 +12,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY
-} from '../RecipeCockpitService';
+import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH } from '../RecipeCockpitDatasetsTabConstants';
 import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
 import { RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
@@ -34,6 +31,9 @@ import {
 } from '../RecipeCockpitDatasetsHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
+import { RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY } from '../RecipeCockpitTreeSelectionStore';
 
 /*
     A data set's own name and favorite, and the data sets tab's Favorites only, as #235 does
@@ -200,13 +200,13 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
             const recipe = loadRecipe();
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
         it('allows every data set row the model lists', () => {
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(loadRecipe()).nameableDatasetFolderNames].sort())
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadRecipe()).nameableDatasetFolderNames].sort())
                 .toEqual([ACCOUNT_DATASET, ...LEAD_DATASETS].sort());
 
         });
@@ -247,7 +247,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(route(undefined)).toBeUndefined();
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             expect(route(ACCOUNT_DATASET, undrawnPanelState)).toBeUndefined();
 
             const modelLessPanelState = buildDrawnPanelState();
@@ -261,8 +261,8 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             const panelState = buildDrawnPanelState();
             const addedDataset = { datasetFolderName: 'dataset-2026-09-22T00-00-00', generatedAtLabel: '', fakerService: 'snowfakery' as const, runFolderName: null, recordCounts: null };
 
-            panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
-            RecipeCockpitService.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset);
+            panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
+            RecipeCockpitDrawnModel.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset);
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: addedDataset.datasetFolderName, name: 'Seed', renderSequence: 4 }, panelState)).toBeUndefined();
             expect(panelState.pendingTreeHistoryAllowLists.nameableDatasetFolderNames.has(addedDataset.datasetFolderName)).toBe(true);
@@ -502,7 +502,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
             expect(rename.textContent).not.toContain('✎');
             expect(rename.attributes['aria-label']).toBe('Rename Before the fix');
             // THE ROW ALIGNS BY BASELINE AND AN SVG HAS NONE, SO THE PENCIL BUTTON IS CENTRED OR IT SITS ABOVE THE ☆
-            expect(RecipeCockpitService.buildWebviewShellHtml('testNonce')).toContain('.treeDatasetRename { align-self: center; }');
+            expect(RecipeCockpitShell.buildWebviewShellHtml('testNonce')).toContain('.treeDatasetRename { align-self: center; }');
 
         });
 

@@ -38,6 +38,7 @@ import { RecipeCockpitTreecipeDataOrgs } from '../RecipeCockpitTreecipeDataOrgs'
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { RecipeCockpitObjectSelection } from '../RecipeCockpitObjectSelection';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #219: a tree icon on each Treecipe-tab row includes or excludes an object, and its children follow.
@@ -178,7 +179,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const startedAt = Date.now();
 
             RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map([['Object7__c-ONLY', new Set(['Object7__c'])]]));
-            const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            const allowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
 
             // A PER-CARD REBUILD OF THE NAME MAP TOOK ABOUT 30 s HERE
             expect(Date.now() - startedAt).toBeLessThan(2000);
@@ -221,10 +222,10 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const workspaceState = buildWorkspaceState();
             const selections = new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])], ['__proto__', new Set(['Lead'])]]);
 
-            await expect(RecipeCockpitService.writeObjectSelections(workspaceState, selections)).resolves.toBeTrue();
+            await expect(RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, selections)).resolves.toBeTrue();
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'], ['__proto__']: ['Lead'] }));
-            expect(RecipeCockpitService.readObjectSelections(workspaceState)).toEqual(selections);
+            expect(RecipeCockpitTreeSelectionStore.readObjectSelections(workspaceState)).toEqual(selections);
 
         });
 
@@ -232,7 +233,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             const workspaceState = buildWorkspaceState();
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set<string>()], [LEAD_TREE_KEY, new Set(['Lead'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set<string>()], [LEAD_TREE_KEY, new Set(['Lead'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({ [LEAD_TREE_KEY]: ['Lead'] }));
 
@@ -240,12 +241,12 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         it('reads nothing from another shape or version, and drops every entry that is not a folder of object api names', () => {
 
-            const read = (storedValue: unknown) => RecipeCockpitService.readObjectSelections(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedValue }));
+            const read = (storedValue: unknown) => RecipeCockpitTreeSelectionStore.readObjectSelections(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedValue }));
 
             expect(read(undefined).size).toBe(0);
             expect(read('Contact').size).toBe(0);
             expect(read({ ...storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'] }), version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION + 1 }).size).toBe(0);
-            expect(RecipeCockpitService.readObjectSelections({ get: () => { throw new Error('no state'); }, update: jest.fn() } as any).size).toBe(0);
+            expect(RecipeCockpitTreeSelectionStore.readObjectSelections({ get: () => { throw new Error('no state'); }, update: jest.fn() } as any).size).toBe(0);
 
             expect(read(storedSelections({
                 [ACCOUNT_TREE_KEY]: ['Contact', 'Bad\nName', 7, ''],
@@ -265,11 +266,11 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
                 objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } }
             } });
 
-            expect(RecipeCockpitService.readObjectSelections(workspaceState)).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            expect(RecipeCockpitTreeSelectionStore.readObjectSelections(workspaceState)).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
             expect(RecipeCockpitTreeSelectionStore.readTreeSelections(workspaceState).objectCountsByFolderName.size).toBe(0);
 
             workspaceState.storedValues.set(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY, { ...storedSelections({}), objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } } });
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual({
                 ...storedSelections({ [LEAD_TREE_KEY]: ['Lead'] }),
@@ -283,8 +284,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
             const failingState = { get: jest.fn(), update: jest.fn(() => Promise.reject(new Error('[disk](command:x) full'))) };
 
-            await expect(RecipeCockpitService.writeObjectSelections(undefined, new Map())).resolves.toBeFalse();
-            await expect(RecipeCockpitService.writeObjectSelections(failingState as any, new Map())).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeObjectSelections(undefined, new Map())).resolves.toBeFalse();
+            await expect(RecipeCockpitTreeSelectionStore.writeObjectSelections(failingState as any, new Map())).resolves.toBeFalse();
 
             expect(warningSpy).toHaveBeenCalledTimes(2);
             expect(warningSpy.mock.calls[1][0]).not.toContain('[disk](command:x)');
@@ -300,13 +301,13 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipe = loadRecipe();
             recipe.trees.push(buildUngroupedTree());
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
         it('allows each object a card with a folder draws, once, and nothing else', () => {
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(buildDrawnPanelState().recipeDataMessage!.recipe).selectableObjectKeys]).toEqual([
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(buildDrawnPanelState().recipeDataMessage!.recipe).selectableObjectKeys]).toEqual([
                 `${ACCOUNT_TREE_KEY}\nAccount`,
                 `${ACCOUNT_TREE_KEY}\nContact`,
                 `${ACCOUNT_TREE_KEY}\nOtherChildObject__c`,
@@ -320,7 +321,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipe = buildDrawnPanelState().recipeDataMessage!.recipe;
             recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact')!.hasIndistinctOccurrences = true;
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(recipe).selectableObjectKeys]).not.toContain(`${ACCOUNT_TREE_KEY}\nContact`);
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe).selectableObjectKeys]).not.toContain(`${ACCOUNT_TREE_KEY}\nContact`);
 
         });
 
@@ -350,7 +351,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
         it('does nothing before "rendered", after "ready" or a failure to draw, or with no model', () => {
 
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             expect(RecipeCockpitService.routePanelMessage({ command: 'setObjectIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: false }, undrawnPanelState)).toBeUndefined();
 
             const modelLessPanelState = buildDrawnPanelState();

@@ -1,13 +1,12 @@
 import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
-
-import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { IRecipeCockpitDatasetJourneyMessage } from '../RecipeCockpitDatasetsHost';
 import { IRecipeCockpitTroubleshootingHistoryMessage } from '../RecipeCockpitTroubleshootingHost';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 /*
     #558: the cockpit's row presentation standard. A column table is built ONLY by buildRowTable and
@@ -23,7 +22,7 @@ const DATASETS_TAB_LABEL = 'Previously Used Data Sets';
 
 type Panel = ReturnType<typeof runPanelScript>;
 
-const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
+const shellHtml = () => RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 const styleSheetOf = (html: string) => html.substring(html.indexOf('<style nonce="testNonce">'), html.indexOf('</style>'));
 const panelScriptOf = (html: string) => html.substring(html.lastIndexOf('<script nonce="testNonce">'), html.lastIndexOf('</script>'));
 

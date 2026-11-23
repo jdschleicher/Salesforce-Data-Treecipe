@@ -1,5 +1,5 @@
 import { COCKPIT_KIT_CUSTOM_PROPERTIES } from '../../CockpitKit/CockpitKitStylesheet';
-import { RECIPE_COCKPIT_CUSTOM_PROPERTIES } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_CUSTOM_PROPERTIES } from '../RecipeCockpitShell';
 
 /*
     The stylesheet as a browser applies it (#644): every value the shell writes into :root beside the

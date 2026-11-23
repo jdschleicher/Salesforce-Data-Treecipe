@@ -35,6 +35,7 @@ import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #467, end to end on the host and in the panel: every occurrence of an object written more than
@@ -148,7 +149,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
         it('gives the iteration its own lines, the field line it writes and none it does not', () => {
 
             const recipe = loadModel();
-            const iteration = RecipeCockpitService.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
+            const iteration = RecipeCockpitDrawnModel.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
             const lines = fixtureText.split('\n');
 
             expect(iteration.objectViewModel.fields.map(field => [field.fieldApiName, field.lineNumber && lines[field.lineNumber - 1].trim()])).toEqual([
@@ -182,9 +183,9 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
                 [ITERATION_NICKNAME, ['ParentId']]
             ]);
             expect(treeOf(recipe).objectCounts).toEqual([{ objectApiName: 'Account', nickname: ITERATION_NICKNAME, count: 5 }]);
-            expect([...RecipeCockpitService.listExcludedFieldApiNamesByOccurrence(treeOf(recipe))]).toEqual([[FIRST_KEY, ['Name']], [ITERATION_KEY, ['ParentId']]]);
+            expect([...RecipeCockpitDrawnModel.listExcludedFieldApiNamesByOccurrence(treeOf(recipe))]).toEqual([[FIRST_KEY, ['Name']], [ITERATION_KEY, ['ParentId']]]);
             // THE INSERT'S READINESS REFUSES AN UNTICKED FIELD THE ORG REQUIRES WHEREVER IT IS UNTICKED
-            expect(RecipeCockpitService.listExcludedFieldApiNamesByObject(treeOf(recipe)).get('Account')).toEqual(['Name', 'ParentId']);
+            expect(RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(treeOf(recipe)).get('Account')).toEqual(['Name', 'ParentId']);
 
         });
 
@@ -196,7 +197,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             RecipeCockpitTreeSelectionStore.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
 
             expect(treeOf(recipe).validationRulesOff).toEqual([{ objectApiName: 'Account', nickname: ITERATION_NICKNAME, fieldApiName: 'Name' }]);
-            expect([...RecipeCockpitService.listUnconstrainedValuesByObject(recipe, treeOf(recipe)).keys()]).toEqual([ITERATION_KEY]);
+            expect([...RecipeCockpitDrawnModel.listUnconstrainedValuesByObject(recipe, treeOf(recipe)).keys()]).toEqual([ITERATION_KEY]);
 
         });
 
@@ -205,7 +206,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const recipe = loadModel();
             const accountObject = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account');
             accountObject.iterations[0].fields.push({ fieldApiName: 'Description', lineNumber: 99, recipeValue: 'x' });
-            const iteration = RecipeCockpitService.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
+            const iteration = RecipeCockpitDrawnModel.findTreeOccurrence(RecipeCockpitTreeSelectionStore.buildObjectsByApiName(recipe), treeOf(recipe), 'Account', ITERATION_NICKNAME);
 
             expect(iteration.objectViewModel.fields.find(field => field.fieldApiName === 'Description')).toMatchObject({ isOnlyInRecipeFile: true, lineNumber: 99, recipeValue: 'x' });
             expect(RecipeCockpitTreeSelectionStore.listSelectableFieldApiNames(iteration.objectViewModel)).toEqual(['Name', 'ParentId', 'Description']);
@@ -254,7 +255,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const recipe = loadModel();
             const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 1 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -282,9 +283,9 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
                 }
                 const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
                 panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 1 };
-                panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+                panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
                 panelState.picklistDisplayValuesByObjectApiName = new Map([['Account', new Map([['Name', { picklistValues: ['Acme', 'Globex'], recordTypePicklistValues: [] }]])]]);
-                panelState.loadablePicklistKeys = new Set([RecipeCockpitService.buildPicklistKey('Account', 'Name')]);
+                panelState.loadablePicklistKeys = new Set([RecipeCockpitDrawnModel.buildPicklistKey('Account', 'Name')]);
                 return panelState;
             };
 
@@ -303,7 +304,7 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
 
             it('ticks the tiles from the occurrence\'s own edit, and answers with its nickname', () => {
 
-                const panelState = buildPicklistPanelState([{ nickname: ITERATION_NICKNAME, value: RecipeCockpitService.buildPicklistChoiceExpression('faker-js', ['Globex'], { fieldType: 'Picklist' } as any) }]);
+                const panelState = buildPicklistPanelState([{ nickname: ITERATION_NICKNAME, value: RecipeCockpitDrawnModel.buildPicklistChoiceExpression('faker-js', ['Globex'], { fieldType: 'Picklist' } as any) }]);
                 const loadFor = (nickname: string) => RecipeCockpitService.routePanelMessage({ command: 'loadPicklistValues', treeKey: TREE_KEY, objectApiName: 'Account', nickname: nickname, fieldApiName: 'Name' }, panelState) as any;
 
                 expect(loadFor(ITERATION_NICKNAME).hostMessage).toMatchObject({ nickname: ITERATION_NICKNAME, chosenPicklistValues: ['Globex'] });

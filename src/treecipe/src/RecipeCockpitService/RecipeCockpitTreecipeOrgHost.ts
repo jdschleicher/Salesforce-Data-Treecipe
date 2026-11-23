@@ -7,13 +7,14 @@ import type {
     IRecipeCockpitOrgOpenStateMessage,
     IRecipeCockpitPanelMessage,
     IRecipeCockpitPanelState,
-    IRecipeCockpitScratchOrgStateMessage,
-    RecipeCockpitPanelAction
+    IRecipeCockpitScratchOrgStateMessage
 } from './RecipeCockpitViewModel';
 import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHost';
 import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import { RecipeCockpitTreecipeInsert } from './RecipeCockpitTreecipeInsert';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     Target Org Manager and a tree's insert, the Treecipe tab's org half (moved out of the hub by #669
@@ -36,21 +37,15 @@ import { RecipeCockpitTreecipeInsert } from './RecipeCockpitTreecipeInsert';
 export type IRecipeCockpitHubForTreecipeOrgTab = Readonly<Pick<typeof RecipeCockpitService,
     'buildConfirmOrg' |
     'buildObjectsByApiName' |
-    'buildRunFakerFilteredRecipe' |
-    'buildSelectableRecordTypeKey' |
     'confirmInPanel' |
     'confirmInPanelWithCheckbox' |
     'confirmInPanelWithRecordTypeSetModes' |
     'describeOccurrence' |
     'describeSelectionHoldingRun' |
     'findOrgRecordLookup' |
-    'isPlainRecord' |
     'isSelectionHeldByPromptOrUpdater' |
     'isUsableWorkspacePath' |
-    'listExcludedFieldApiNamesByObject' |
     'listExcludedObjectApiNames' |
-    'listObjectCountsByObject' |
-    'listUnconstrainedValuesByObject' |
     'loadRecipeIntoPanel' |
     'postToPanel' |
     'readOccurrenceNickname' |
@@ -58,7 +53,6 @@ export type IRecipeCockpitHubForTreecipeOrgTab = Readonly<Pick<typeof RecipeCock
     'recipeCockpitPanelState' |
     'recipeCockpitWorkspaceState' |
     'resolveRunFakerFilteredRecipe' |
-    'resolveTroubleshootingFocus' |
     'routePanelMessage' |
     'saveRecordTypeSelection' |
     'toSingleLine'>> & IRecipeCockpitHubForDatasetsTab;
@@ -401,7 +395,7 @@ export class RecipeCockpitTreecipeOrgHost {
     */
     static readPostedRecordTypeSelection(hub: IRecipeCockpitHubForTreecipeOrgTab, postedSelection: unknown, selectableRecordTypeKeys: Set<string>): Record<string, string[]> | undefined {
 
-        if ( !hub.isPlainRecord(postedSelection) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(postedSelection) ) {
             return undefined;
         }
 
@@ -415,7 +409,7 @@ export class RecipeCockpitTreecipeOrgHost {
                     || developerNames.length === 0
                     || new Set(developerNames).size !== developerNames.length
                     || !developerNames.every(developerName => typeof developerName === 'string'
-                                                                && selectableRecordTypeKeys.has(hub.buildSelectableRecordTypeKey(objectApiName, developerName))) ) {
+                                                                && selectableRecordTypeKeys.has(RecipeCockpitDrawnModel.buildSelectableRecordTypeKey(objectApiName, developerName))) ) {
                 return undefined;
             }
 

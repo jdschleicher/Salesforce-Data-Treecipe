@@ -22,6 +22,7 @@ import { RecipeCockpitCustomTreecipeHost } from '../RecipeCockpitCustomTreecipeH
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 const FIXTURE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
 const RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
@@ -346,7 +347,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             });
 
             it('the filtered copy is refused', async () => {
-                jest.spyOn(RecipeCockpitService, 'buildRunFakerFilteredRecipe').mockReturnValue({ refusalMessage: 'a recipe line no longer reads back.' });
+                jest.spyOn(RecipeCockpitDrawnModel, 'buildRunFakerFilteredRecipe').mockReturnValue({ refusalMessage: 'a recipe line no longer reads back.' });
                 await saveOtherChildRemoved();
                 expect(lastWarning()).toContain('a recipe line no longer reads back.');
             });
@@ -381,9 +382,9 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
                 fixedValuesByFolderName: new Map(),
                 validationRulesOffByFolderName: new Map()
             } as any);
-            const stalePreferences = RecipeCockpitService.readTreePreferences(workspaceState as any);
+            const stalePreferences = RecipeCockpitTreeSelectionStore.readTreePreferences(workspaceState as any);
             stalePreferences.customNamesByFolderName.set(CUSTOM_FOLDER_NAME, 'Old name');
-            await RecipeCockpitService.writeTreePreferences(workspaceState as any, stalePreferences);
+            await RecipeCockpitTreeSelectionStore.writeTreePreferences(workspaceState as any, stalePreferences);
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
             await receivedMessageHandler({ command: 'ready' });
             const recipeDataMessage = await drawLatestModel();
@@ -397,7 +398,7 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
             expect(treeSelections.excludedObjectApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
             expect(treeSelections.excludedFieldApiNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
             expect(treeSelections.objectCountsByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
-            expect(RecipeCockpitService.readTreePreferences(workspaceState as any).customNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
+            expect(RecipeCockpitTreeSelectionStore.readTreePreferences(workspaceState as any).customNamesByFolderName.has(CUSTOM_FOLDER_NAME)).toBeFalse();
 
         });
 

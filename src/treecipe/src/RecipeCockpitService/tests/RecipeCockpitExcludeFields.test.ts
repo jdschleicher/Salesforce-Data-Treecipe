@@ -45,6 +45,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     #220: a checkbox on each Treecipe-tab field row leaves that field out of generation. The HOST keeps
@@ -234,7 +235,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             const recipe = loadRecipe();
             untick(recipe, { Account: ['Legacy_Code__c'], OtherChildObject__c: ['Score__c'] }, ['Contact']);
 
-            expect([...RecipeCockpitService.listExcludedFieldApiNamesByObject(treeOf(recipe, ACCOUNT_TREE_KEY))]).toEqual([['Account', ['Legacy_Code__c']]]);
+            expect([...RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(treeOf(recipe, ACCOUNT_TREE_KEY))]).toEqual([['Account', ['Legacy_Code__c']]]);
 
         });
 
@@ -256,7 +257,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                     { fieldApiName: 'Contact__c', reason: RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON }
                 ]
             });
-            expect(RecipeCockpitService.listExcludedFieldApiNamesByObject(undefined).size).toBe(0);
+            expect(RecipeCockpitDrawnModel.listExcludedFieldApiNamesByObject(undefined).size).toBe(0);
 
         });
 
@@ -338,7 +339,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({}, { [ACCOUNT_TREE_KEY]: { Account: ['Legacy_Code__c'] } }) });
 
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            await RecipeCockpitTreeSelectionStore.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
 
             expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY))
                 .toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'] }, { [ACCOUNT_TREE_KEY]: { Account: ['Legacy_Code__c'] } }));
@@ -401,7 +402,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             const recipe = loadRecipe();
             recipe.trees.push({ treeKey: '', title: RECIPE_COCKPIT_UNGROUPED_TREE_TITLE, folderName: '', objects: [{ objectApiName: 'Lead', parentLookups: [] }], fieldCount: 2 });
             panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
             return panelState;
         };
 
@@ -443,7 +444,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             const fieldMessage = { command: 'setFieldIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', included: false };
             const undrawnPanelState = buildDrawnPanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
 
@@ -486,7 +487,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             untick(recipe, { Account: ['Legacy_Code__c', 'Sub_Rating__c'] });
             const recipeText = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(recipeText, treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(recipeText, treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);

@@ -11,6 +11,7 @@ import { RECIPE_COCKPIT_RUN_PICKER_LABEL } from '../../RecipeCockpitShellConstan
 import { RECIPE_COCKPIT_TREECIPE_PICKER_LABEL } from '../../RecipeCockpitNavigationConstants';
 import { JOURNEY_FIXTURES_ROOT, RecipeCockpitJourney } from './RecipeCockpitJourney';
 import { FIRST_JOURNEY_FIXTURE, runFirstJourney } from './FirstJourney';
+import { RecipeCockpitShell } from '../../RecipeCockpitShell';
 
 /*
     A journey is worth only the breakage it catches (#577): each test breaks the cockpit the way a
@@ -39,10 +40,10 @@ describe('the first journey catches a broken cockpit (#577)', () => {
 
     test('fails naming the Treecipes dropdown and the step when the dropdown no longer listens for a change', async () => {
 
-        const buildShellHtml = RecipeCockpitService.buildWebviewShellHtml.bind(RecipeCockpitService);
+        const buildShellHtml = RecipeCockpitShell.buildWebviewShellHtml.bind(RecipeCockpitShell);
         // THE LISTENER IS IN THE BUNDLED NAVIGATION MODULE (#656), PRINTED AS esbuild WRITES IT
         const changeListener = 'treePickerSelectElement.addEventListener("change", function() {';
-        jest.spyOn(RecipeCockpitService, 'buildWebviewShellHtml').mockImplementation((nonce: string) => {
+        jest.spyOn(RecipeCockpitShell, 'buildWebviewShellHtml').mockImplementation((nonce: string) => {
             const shellHtml = buildShellHtml(nonce);
             // THE BREAKAGE MUST REALLY BE MADE: A SHELL THAT NO LONGER HOLDS THIS LINE NEEDS THIS TEST UPDATED, NOT A PASS
             expect(shellHtml).toContain(changeListener);
@@ -82,7 +83,7 @@ describe('the first journey catches a broken cockpit (#577)', () => {
 
     test('the page runs the document the host assigns, so a host that assigns none fails to open, and cleans up', async () => {
 
-        jest.spyOn(RecipeCockpitService, 'buildWebviewShellHtml').mockReturnValue('<!DOCTYPE html><html><body></body></html>');
+        jest.spyOn(RecipeCockpitShell, 'buildWebviewShellHtml').mockReturnValue('<!DOCTYPE html><html><body></body></html>');
         const unopenedJourney = new RecipeCockpitJourney();
 
         await expect(unopenedJourney.open(FIRST_JOURNEY_FIXTURE)).rejects.toThrow('The panel document has no nonced <script>: the webview would run nothing.');

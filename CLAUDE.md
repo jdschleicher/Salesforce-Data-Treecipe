@@ -175,11 +175,14 @@ src/
     │   ├── FieldInfo.ts
     │   └── tests/
     ├── RecipeCockpitService/
-    │   ├── RecipeCockpitService.ts           # The hub (#671): the panel's lifecycle, render and replay, its state and allow-lists, the message router and executor, run locks and confirmations
+    │   ├── RecipeCockpitService.ts           # The hub (#671): the panel's lifecycle, render and replay, its state and allow-lists, the message router and executor, run locks and confirmations; tests/RecipeCockpitHubBounds.test.ts holds its size and imports
     │   ├── RecipeCockpitViewModel.ts         # Every view model, message, panel action and panel state type the hub and hosts share (#671); type-only imports, loads nothing
     │   ├── RecipeCockpitModelBuild.ts        # The model built from a run on disk (#671): runs found, objects wrapper normalized, recipe sources parsed and attached, cards and iterations
-    │   ├── RecipeCockpitTreeSelectionStore.ts # A card's object and field selection, counts and fixed values in workspaceState and the fixed-values file, and a fixed value's checks (#671)
+    │   ├── RecipeCockpitTreeSelectionStore.ts # A card's object and field selection, counts, fixed values and tree and name preferences in workspaceState and the fixed-values file, and a fixed value's checks (#671)
     │   ├── RecipeCockpitOrgRuns.ts           # The org runs every tab shares (#671): runCancellableCli, runCancellableRetrieve, resolveSelectedReadOrg; the hub delegates to them
+    │   ├── RecipeCockpitShell.ts             # The webview's document (#671): buildWebviewShellHtml(nonce), its CSP and nonce, the values written into :root
+    │   ├── RecipeCockpitDrawnModel.ts        # Pure reads of the rendered model (#671): occurrences and fields, picklist choice, Run Faker's filtered recipe, focus, every allow-list key
+    │   ├── RecipeCockpitUntrustedValue.ts    # isPlainRecord and describeThrown, the one copy every cockpit file calls (#671); imports nothing
     │   ├── panel/                            # Panel code as checked modules (#565, #637): browser-only, tsconfig.panel.json, imports only panel/ and host-free files; RecipeCockpitPanelHost.ts starts it and routes host messages (#657); RecipeCockpitPanel.css is the stylesheet (#644)
     │   │   ├── shell/                        # The model on screen and its failure path, the reader's place, help and the CHANGELOG button (#657)
     │   │   ├── adapter/                      # The Treecipe Adapter tab: steps, field editor, load and update, retrieve, add child (#641)
@@ -234,10 +237,10 @@ src/
     │   ├── RecipeCockpitMetadataRetrievePackage.ts # Retrieves without the CLI (#506): jsforce retrieve, zip read, source-format write; no vscode
     │   ├── RecipeCockpitRecordTypeRecipe.ts  # The record types ticked at Generate fake data and insert (#623): the in-memory recipe built for them and where a card's settings land in it
     │   ├── RecipeCockpitRecordTypeSets.ts    # "A data set for each record type" (#624): the sets inserted in turn, the confirmation's list of them and the one notification; the cockpit hands in its steps
-    │   ├── RecipeCockpitPanelPlace.ts        # The host half of the reader's place (#222, #230, #670): its shape, bounds, workspaceState key and normalize, optional fields a named list; no vscode
+    │   ├── RecipeCockpitPanelPlace.ts        # The host half of the reader's place (#222, #230, #670): its shape, bounds, workspaceState key and normalize, optional fields a named list, the open command's focus readers (#671); no vscode
     │   ├── RecipeCockpitObjectSelection.ts   # Pure cascade of the Treecipe tab's tree icons (#219): what a card's direct exclusions auto-exclude, which lookups they disable; imports nothing
-    │   ├── RecipeCockpitFixedValueStore.ts   # The <recipe>.fixedValues.json file (#342); imports only SalesforceApiName and the writer
-    │   ├── RecipeCockpitRemovedTodoStore.ts  # The <recipe>.removedTodos.json file (#391); imports only SalesforceApiName and the writer
+    │   ├── RecipeCockpitFixedValueStore.ts   # The <recipe>.fixedValues.json file (#342); imports only SalesforceApiName, the writer and RecipeCockpitUntrustedValue
+    │   ├── RecipeCockpitRemovedTodoStore.ts  # The <recipe>.removedTodos.json file (#391); imports only SalesforceApiName, the writer and RecipeCockpitUntrustedValue
     │   ├── RecipeCockpitConfirmContent.ts    # What an in-panel confirmation says (#457); imports nothing
     │   ├── RecipeCockpitRecordCreation.ts    # Pure rules of the tree insert; imports nothing
     │   ├── RecipeCockpitTreeHistory.ts       # A tree card's Previously Used Data Sets

@@ -26,6 +26,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     "Wire to…" and "Wire TODO lookups" (#151), end to end on the host and in the panel: the model
@@ -135,7 +136,7 @@ describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => 
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipeViewModel, renderSequence: 1 };
-        panelState.pendingWireableLookupTargets = RecipeCockpitService.collectWireableLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
+        panelState.pendingWireableLookupTargets = RecipeCockpitDrawnModel.collectWireableLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
         panelState.wireableLookupTargets = panelState.pendingWireableLookupTargets;
         return panelState;
     };
@@ -186,7 +187,7 @@ describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => 
 
         it('maps each drawn "Wire to…" to the card\'s recipe file, host-only', () => {
 
-            const targets = RecipeCockpitService.collectWireableLookupTargets(loadModel(), new Map([[TREE_KEY, recipeFilePath]]));
+            const targets = RecipeCockpitDrawnModel.collectWireableLookupTargets(loadModel(), new Map([[TREE_KEY, recipeFilePath]]));
 
             expect([...targets.keys()]).toEqual([
                 `${TREE_KEY}\nContact\n\nAccountId`,

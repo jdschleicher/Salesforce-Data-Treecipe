@@ -10,21 +10,20 @@ jest.mock('vscode', () => ({
     ProgressLocation: { Notification: 15 },
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
-
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM,
-    RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM,
-    RECIPE_COCKPIT_TREE_HEADER_GAP_REM,
-    RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM,
-    RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM,
-    RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM,
-    RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT
-} from '../RecipeCockpitService';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
+import {
+    RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT,
+    RECIPE_COCKPIT_TREE_FIELD_BOX_PADDING_REM,
+    RECIPE_COCKPIT_TREE_FIELD_ROW_INSET_REM,
+    RECIPE_COCKPIT_TREE_HEADER_GAP_REM,
+    RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM,
+    RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM,
+    RECIPE_COCKPIT_TREE_OBJECT_TOGGLE_OFFSET_REM,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     #494: an expanded object's controls row and its field rows are each a bordered, padded box, and
@@ -42,7 +41,7 @@ const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitModelBuild.
     CURRENT_RUN_FOLDER_NAME
 ).recipeViewModel;
 
-const shellHtml = () => withCustomPropertyValues(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+const shellHtml = () => withCustomPropertyValues(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
 
 // EVERY RULE WRITTEN FOR EXACTLY THIS SELECTOR, JOINED
 const ruleBody = (selector: string): string => {

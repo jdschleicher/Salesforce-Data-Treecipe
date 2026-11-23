@@ -39,6 +39,7 @@ import { RelationshipService } from '../../RelationshipService/RelationshipServi
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     An empty lookup's two decisions (#421): "Create <Parent> in recipe" (#294's addition) and "Use
@@ -287,7 +288,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
     const loadModel = (): IRecipeCockpitRecipeViewModel => {
         const generatedRecipesFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes');
         const loadedRecipe = RecipeCockpitModelBuild.loadRecipeRunByRuns(RecipeCockpitModelBuild.findGeneratedRecipeRuns(generatedRecipesFolderPath), workspaceRoot);
-        RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitService.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
+        RecipeCockpitService.applyTreeSelections(loadedRecipe.recipeViewModel, RecipeCockpitTreeSelectionStore.withPinnedFixedValues(RecipeCockpitTreeSelectionStore.readTreeSelections(undefined), loadedRecipe.pinnedFixedValuesByFolderName));
         return loadedRecipe.recipeViewModel;
     };
     const treeOf = (recipeViewModel: IRecipeCockpitRecipeViewModel) => recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === TREE_KEY);
@@ -295,7 +296,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
     const buildActivePanelState = (recipeViewModel = loadModel()): IRecipeCockpitPanelState => {
         const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
         panelState.recipeDataMessage = { command: 'recipeData', recipe: recipeViewModel, renderSequence: 1 };
-        panelState.pendingOrgRecordLookupTargets = RecipeCockpitService.collectOrgRecordLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
+        panelState.pendingOrgRecordLookupTargets = RecipeCockpitDrawnModel.collectOrgRecordLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]]));
         panelState.orgRecordLookupTargets = panelState.pendingOrgRecordLookupTargets;
         return panelState;
     };
@@ -318,9 +319,9 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
             expect(treeOf(recipeViewModel).emptyLookups.map(emptyLookup => [emptyLookup.fieldApiName, emptyLookup.parentObjectApiName, !!emptyLookup.createRefusalReason]))
                 .toEqual([['AccountId', 'Account', false], ['ReportsToId', 'Contact', true], ['Owner__c', 'User', true]]);
-            expect([...RecipeCockpitService.collectOrgRecordLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]])).keys()])
+            expect([...RecipeCockpitDrawnModel.collectOrgRecordLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]])).keys()])
                 .toEqual([`${TREE_KEY}\nContact\n\nAccountId`, `${TREE_KEY}\nContact\n\nReportsToId`, `${TREE_KEY}\nContact\n\nOwner__c`]);
-            expect(RecipeCockpitService.collectOrgRecordLookupTargets(recipeViewModel, new Map()).size).toBe(0);
+            expect(RecipeCockpitDrawnModel.collectOrgRecordLookupTargets(recipeViewModel, new Map()).size).toBe(0);
             expect(RecipeCockpitModelBuild.listTreeEmptyLookups(path.join(workspaceRoot, 'missing.yml'), treeOf(recipeViewModel), undefined)).toEqual([]);
 
         });
@@ -436,7 +437,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
             writeOrgRecordPin();
             const panelState = buildActivePanelState();
-            panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(panelState.recipeDataMessage.recipe, new Map([[TREE_KEY, recipeFilePath]]));
+            panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(panelState.recipeDataMessage.recipe, new Map([[TREE_KEY, recipeFilePath]]));
             const clearMessage = { command: 'setFieldFixedValue', treeKey: TREE_KEY, objectApiName: 'Contact', fieldApiName: 'AccountId', value: '' };
 
             expect(RecipeCockpitService.routePanelMessage(clearMessage, panelState)).toMatchObject({ kind: 'setFieldFixedValue', value: '' });

@@ -11,7 +11,6 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
     RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE
 } from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_PANEL_PLACE_VERSION } from '../RecipeCockpitShellConstants';
@@ -38,6 +37,7 @@ import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection
 import { RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { RecordTypeSelectionConfiguration } from '../../RecordTypeSelectionService/RecordTypeSelectionConfiguration';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
+import { RecipeCockpitDrawnModel } from '../RecipeCockpitDrawnModel';
 
 /*
     The Record types tab (#195): each tree card lists the objects it draws that have two or more
@@ -65,7 +65,7 @@ const buildDrawnPanelState = (): IRecipeCockpitPanelState => {
     const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
     const recipe = loadRecipe();
     panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
-    panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+    panelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe);
     return panelState;
 };
 
@@ -291,7 +291,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('offers every record type of every object a card draws', () => {
 
-            const treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadRecipe());
+            const treeHistoryAllowLists = RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(loadRecipe());
 
             expect([...treeHistoryAllowLists.selectableRecordTypeKeys].sort()).toEqual(['Account\nBusiness', 'Account\nPartner']);
 
@@ -317,7 +317,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             const recipe = loadRecipe();
             recipe.trees[0].objects.push({ objectApiName: 'Missing__c', parentLookups: [] });
 
-            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(recipe).selectableRecordTypeKeys].sort()).toEqual(['Account\nBusiness', 'Account\nPartner']);
+            expect([...RecipeCockpitDrawnModel.collectTreeHistoryAllowLists(recipe).selectableRecordTypeKeys].sort()).toEqual(['Account\nBusiness', 'Account\nPartner']);
 
         });
 
@@ -387,7 +387,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         it('refuses ticks once the model is no longer the one drawn', () => {
 
             const undrawnPanelState = buildInsertablePanelState();
-            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists();
 
             expect(route({ recordTypeSelection: { Account: ['Partner'] } }, undrawnPanelState)).toEqual(REFUSED);
 
@@ -546,7 +546,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             tree.fieldSelection = { objects: [{ objectApiName: 'Account', excludedFieldApiNames: ['RecordTypeId', 'Name'] }] } as any;
             const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(DERIVED_RECIPE, new Map(), { Account: ['Business', 'Partner'] });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(DERIVED_RECIPE, tree, undefined, recipe, settingPlacer);
+            const filteredRecipe = RecipeCockpitDrawnModel.buildRunFakerFilteredRecipe(DERIVED_RECIPE, tree, undefined, recipe, settingPlacer);
 
             if ( 'refusalMessage' in filteredRecipe ) { throw new Error(filteredRecipe.refusalMessage); }
             expect(filteredRecipe.recipeText.split('\n').filter(recipeLine => /^\s+(RecordTypeId|Name): /.test(recipeLine)).map(recipeLine => recipeLine.trim()))
@@ -678,26 +678,26 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         it('reads only the exact option, and keeps an object name only when it is an api name', () => {
 
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 'Account' })).toEqual({ objectApiName: 'Account' });
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: '../Account' })).toEqual({});
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 7 })).toEqual({});
-            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: 'true' })).toBeUndefined();
-            expect(RecipeCockpitService.readRecordTypesFocusRequest(undefined)).toBeUndefined();
-            expect(RecipeCockpitService.readRecordTypesFocusRequest([true])).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 'Account' })).toEqual({ objectApiName: 'Account' });
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: '../Account' })).toEqual({});
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 7 })).toEqual({});
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest({ focusRecordTypes: 'true' })).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest(undefined)).toBeUndefined();
+            expect(RecipeCockpitPanelPlace.readRecordTypesFocusRequest([true])).toBeUndefined();
 
         });
 
         it('focuses the card listing the object, its search set to the object', () => {
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Account' }))
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Account' }))
                 .toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Account' } });
 
         });
 
         it('focuses the first card with the tab, with no search, for no object or one no tab lists', () => {
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
 
         });
 
@@ -706,7 +706,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             const recipe = loadRecipe();
             delete accountOf(recipe).recordTypes;
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(recipe, { objectApiName: 'Account' })).toBeUndefined();
+            expect(RecipeCockpitDrawnModel.resolveRecordTypesFocus(recipe, { objectApiName: 'Account' })).toBeUndefined();
 
         });
 

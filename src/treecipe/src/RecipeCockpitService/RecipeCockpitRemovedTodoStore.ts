@@ -1,5 +1,6 @@
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { RecipeCockpitRecipeWriter, IRemovedTodoComment } from '../RecipeWriter/RecipeCockpitRecipeWriter';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
 
 /*
     The removed-TODOs file (#391): <recipe>.removedTodos.json beside a recipe the Recipe Cockpit
@@ -44,7 +45,7 @@ export class RecipeCockpitRemovedTodoStore {
             return { entries: [], isUnreadable: true };
         }
 
-        if ( !this.isPlainRecord(parsed) || parsed.version !== RECIPE_COCKPIT_REMOVED_TODO_FILE_VERSION || !Array.isArray(parsed.todos) ) {
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(parsed) || parsed.version !== RECIPE_COCKPIT_REMOVED_TODO_FILE_VERSION || !Array.isArray(parsed.todos) ) {
             return { entries: [], isUnreadable: true };
         }
 
@@ -103,7 +104,7 @@ export class RecipeCockpitRemovedTodoStore {
 
     private static readEntry(storedEntry: unknown): IRemovedTodoComment | undefined {
 
-        if ( !this.isPlainRecord(storedEntry)
+        if ( !RecipeCockpitUntrustedValue.isPlainRecord(storedEntry)
                 || !SalesforceApiName.isApiName(storedEntry.objectApiName)
                 || ( storedEntry.objectNickname !== undefined && !this.isOneLineText(storedEntry.objectNickname) )
                 || ( storedEntry.fieldApiName !== undefined && !SalesforceApiName.isApiName(storedEntry.fieldApiName) )
@@ -163,9 +164,6 @@ export class RecipeCockpitRemovedTodoStore {
         return JSON.stringify(this.toStoredEntry(entry));
     }
 
-    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
-        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
-    }
 
     private static isOneLineText(candidate: unknown): candidate is string {
         return typeof candidate === 'string' && candidate !== '' && candidate.length <= MAX_TEXT_LENGTH && !LINE_BREAK_PATTERN.test(candidate);

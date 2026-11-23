@@ -10,19 +10,18 @@ jest.mock('vscode', () => ({
     ProgressLocation: { Notification: 15 },
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
-
-import {
-    RecipeCockpitService,
-    RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS,
-    RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS,
-    RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS,
-    RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS,
-    RECIPE_COCKPIT_PALETTE
-} from '../RecipeCockpitService';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript, IPanelScriptOptions } from './RecipeCockpitPanelHarness';
 import { withCustomPropertyValues } from './RecipeCockpitStylesheetValues';
+import {
+    RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS,
+    RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS,
+    RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS,
+    RECIPE_COCKPIT_PALETTE,
+    RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS,
+    RecipeCockpitShell
+} from '../RecipeCockpitShell';
 
 /*
     Motion (#227): what the stylesheet animates, and what the panel script marks for animation. The
@@ -53,7 +52,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
     describe('the stylesheet', () => {
 
-        const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+        const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
         // EVERYTHING BEFORE THE REDUCED-MOTION BLOCK, WHICH IS LAST, SO A RULE AFTER IT COULD NOT OUTVOTE IT
         const motionStyleSheet = styleSheet.substring(0, styleSheet.indexOf('@media (prefers-reduced-motion: reduce) {'));
 

@@ -74,6 +74,8 @@ import type {
     RecipeCockpitPanelAction
 } from './RecipeCockpitViewModel';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
+import { RecipeCockpitUntrustedValue } from './RecipeCockpitUntrustedValue';
+import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 
 /*
     The Treecipe Adapter's record runs (#416, #418, #419; moved out of the hub by #668): load records
@@ -317,7 +319,7 @@ export class RecipeCockpitAdapterRecords {
                         }
 
                         const newRecords = queryResult.records.filter(record => {
-                            const recordId = hub.readRecordFieldValue(record, 'Id');
+                            const recordId = RecipeCockpitDrawnModel.readRecordFieldValue(record, 'Id');
                             if ( typeof recordId !== 'string' ) { return true; }
                             if ( recordIds.has(recordId) ) { return false; }
                             recordIds.add(recordId);
@@ -364,7 +366,7 @@ export class RecipeCockpitAdapterRecords {
                         columns: [],
                         rows: [],
                         hiddenColumnCount: 0,
-                        failureMessage: hub.describeThrown(queryError)
+                        failureMessage: RecipeCockpitUntrustedValue.describeThrown(queryError)
                     });
                 }
 
@@ -590,7 +592,7 @@ export class RecipeCockpitAdapterRecords {
                                          recipeValueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: recipeFileEdit.value, kind: recipeFileEdit.kind }) });
                     continue;
                 }
-                const expression = recipeFileEdit ? recipeFileEdit.value : hub.findRecipeExpression(fieldViewModel.recipeValue);
+                const expression = recipeFileEdit ? recipeFileEdit.value : RecipeCockpitDrawnModel.findRecipeExpression(fieldViewModel.recipeValue);
                 if ( expression === undefined ) {
                     refuse(`${fieldLabel}: ${RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON}.`);
                     return;
@@ -608,7 +610,7 @@ export class RecipeCockpitAdapterRecords {
 
             const declaredPicklistValues = orgOnlyField
                 ? ( orgOnlyField.picklistValues.length > 0 ? orgOnlyField.picklistValues : undefined )
-                : hub.listDeclaredPicklistValues(panelState, fieldRequest.objectApiName, fieldRequest.fieldApiName);
+                : RecipeCockpitDrawnModel.listDeclaredPicklistValues(panelState, fieldRequest.objectApiName, fieldRequest.fieldApiName);
             const valueRefusal = hub.validateFixedValueInput(fieldRequest.value, fieldViewModel, declaredPicklistValues);
             if ( valueRefusal !== undefined ) {
                 refuse(`${fieldLabel}: ${valueRefusal}`);
@@ -784,7 +786,7 @@ export class RecipeCockpitAdapterRecords {
             const previewRecords = recordValues.slice(0, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT).map((recordValue, recordIndex) => {
                 const previewRecord: Record<string, unknown> = { Id: recordValue.recordId };
                 fieldApiNames.forEach(fieldApiName => {
-                    previewRecord[`${fieldApiName} (current)`] = hub.readRecordFieldValue(records[recordIndex], fieldApiName) ?? null;
+                    previewRecord[`${fieldApiName} (current)`] = RecipeCockpitDrawnModel.readRecordFieldValue(records[recordIndex], fieldApiName) ?? null;
                     previewRecord[`${fieldApiName} (new)`] = recordValue.fieldValues[fieldApiName];
                 });
                 return previewRecord;
@@ -961,7 +963,7 @@ export class RecipeCockpitAdapterRecords {
         }
 
         // A PICKLIST ON AN OBJECT WITH RECORD TYPES GETS THE FIELD'S OWN VALUES, WHICH A RECORD TYPE CAN NARROW: THE ORG DECIDES, AND SAYS SO PER RECORD
-        const hasRecordTypePicklist = hub.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, plannedObjects, describeOutcomes);
+        const hasRecordTypePicklist = RecipeCockpitDrawnModel.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, plannedObjects, describeOutcomes);
 
         const answer = await hub.confirmInPanel(
             `Update ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
@@ -1037,7 +1039,7 @@ export class RecipeCockpitAdapterRecords {
             updatedRecordCount: sendResult.updatedRecordCount,
             failedRecordCount: sendResult.failedRecordCount,
             ...( sendResult.putBack ? { putBack: sendResult.putBack } : {} ),
-            ...hub.buildOrgOnlyFieldsResult(snapshotObjects),
+            ...RecipeCockpitDrawnModel.buildOrgOnlyFieldsResult(snapshotObjects),
             objects: sendResult.objectResults
         });
 
@@ -1331,7 +1333,7 @@ export class RecipeCockpitAdapterRecords {
                     continue;
                 }
                 const describedField = describeOutcome?.describe?.fields.find(field => field.fieldApiName.toLowerCase() === orgOnlyFieldApiName.toLowerCase());
-                const lockReason = hub.findDescribedOrgOnlyFieldLockReason(orgOnlyFieldApiName, describedField);
+                const lockReason = RecipeCockpitDrawnModel.findDescribedOrgOnlyFieldLockReason(orgOnlyFieldApiName, describedField);
                 if ( lockReason ) {
                     return refuse(`Nothing was restored: ${snapshotName} names ${snapshotObject.objectApiName}.${orgOnlyFieldApiName}, which the Treecipe Adapter does not write: ${lockReason}.`);
                 }
@@ -1373,7 +1375,7 @@ export class RecipeCockpitAdapterRecords {
         const restoreWarnings = [
             ...( missingRecordTotal > 0 ? [`${describeRecords(missingRecordTotal)} of the snapshot ${missingRecordTotal === 1 ? 'is' : 'are'} no longer in the org, or not visible to this user, and will not be restored.`] : [] ),
             // AS THE UPDATE SAYS (#418): A RECORD WHOSE RECORD TYPE NO LONGER ALLOWS ITS OLD PICKLIST VALUE IS REJECTED BY THE ORG
-            ...( hub.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, restoredObjects, describeOutcomes) ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [] )
+            ...( RecipeCockpitDrawnModel.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, restoredObjects, describeOutcomes) ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [] )
         ];
 
         const answer = await hub.confirmInPanel(
@@ -1449,7 +1451,7 @@ export class RecipeCockpitAdapterRecords {
             failedRecordCount: sendResult.failedRecordCount,
             missingRecordCount: missingRecordTotal,
             ...( sendResult.putBack ? { putBack: sendResult.putBack } : {} ),
-            ...hub.buildOrgOnlyFieldsResult(currentSnapshotObjects),
+            ...RecipeCockpitDrawnModel.buildOrgOnlyFieldsResult(currentSnapshotObjects),
             objects: sendResult.objectResults
         });
 
@@ -1828,7 +1830,7 @@ export class RecipeCockpitAdapterRecords {
 
             return { records: generatedRecords as Record<string, unknown>[] };
         } catch (generationError) {
-            return { refusal: `${fakerService} could not generate the values of ${objectApiName}: ${hub.describeThrown(generationError)}` };
+            return { refusal: `${fakerService} could not generate the values of ${objectApiName}: ${RecipeCockpitUntrustedValue.describeThrown(generationError)}` };
         } finally {
             if ( temporaryFolderPath ) {
                 fs.rmSync(temporaryFolderPath, { recursive: true, force: true });

@@ -75,6 +75,7 @@ import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { isOrgPickerDisabled } from './RecipeCockpitOrgPickerProbe';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const PROJECT_WORKSPACE_ROOT = path.join(__dirname, '..', '..', 'ScratchOrgService', 'tests', 'mocks', 'projectWorkspace');
@@ -1408,8 +1409,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('builds the shell from the nonce alone, so every new line reaches the panel through postMessage', () => {
 
-            expect(RecipeCockpitService.buildWebviewShellHtml.length).toBe(1);
-            expect(RecipeCockpitService.buildWebviewShellHtml('n')).not.toContain('Creating scratch org…');
+            expect(RecipeCockpitShell.buildWebviewShellHtml.length).toBe(1);
+            expect(RecipeCockpitShell.buildWebviewShellHtml('n')).not.toContain('Creating scratch org…');
             expect(ScratchOrgService.buildCliRequiredMessage()).toContain('Salesforce CLI');
 
         });

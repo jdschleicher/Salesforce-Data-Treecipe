@@ -1,13 +1,12 @@
 import * as path from 'path';
 
 jest.mock('vscode', () => ({}), { virtual: true });
-
-import { RecipeCockpitService } from '../RecipeCockpitService';
 import { RECIPE_COCKPIT_SEARCH_GLYPH_PATH } from '../RecipeCockpitPanelConstants';
 import { RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS } from '../RecipeCockpitTroubleshootingConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 /*
     The selected tab and its content as one outline, and a magnifier in every search box (#373).
@@ -42,7 +41,7 @@ const drawRecipe = (recipe: IRecipeCockpitRecipeViewModel): Panel => {
 };
 
 const styleSheet = (() => {
-    const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+    const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
     return shellHtml.substring(shellHtml.indexOf('<style'), shellHtml.indexOf('</style>'));
 })();
 

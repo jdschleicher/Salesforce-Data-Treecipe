@@ -16,8 +16,7 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
-    RECIPE_COCKPIT_HELP_GUIDE_URL,
-    RECIPE_COCKPIT_HELP_SECTION_HEADINGS
+    RECIPE_COCKPIT_HELP_GUIDE_URL
 } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_HELP_BACKEND_NOTE,
@@ -43,6 +42,9 @@ import {
 import { RecipeCockpitPanelPlace } from '../RecipeCockpitPanelPlace';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
+
+const RECIPE_COCKPIT_HELP_SECTION_HEADINGS: readonly string[] = RECIPE_COCKPIT_HELP_SECTIONS.map(helpSection => helpSection.heading);
 
 /*
     #332: a "?" in the toolbar opens a section that says where the recipes come from, what the
@@ -188,7 +190,7 @@ describe('RecipeCockpitService help section (#332)', () => {
 
         it('draws "?" pressed only while the help is open, by CSS on aria-expanded, never colour alone (#487)', () => {
 
-            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
             const pressedRule = shellHtml.match(/\.cockpitMeta \.helpToggle\[aria-expanded="true"\] \{[^}]*\}/)?.[0] ?? '';
 
             expect(pressedRule).toContain('color: var(--sdt-on-action);');
@@ -463,7 +465,7 @@ describe('RecipeCockpitService help section (#332)', () => {
 
         it('keeps the url out of the shell', () => {
 
-            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+            const shellHtml = RecipeCockpitShell.buildWebviewShellHtml('testNonce');
 
             expect(shellHtml).not.toContain(RECIPE_COCKPIT_HELP_GUIDE_URL);
             expect(shellHtml).not.toContain('RECIPE-COCKPIT-GUIDE');

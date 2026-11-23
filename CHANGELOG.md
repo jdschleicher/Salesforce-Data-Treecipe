@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.208.7] - Recipe Cockpit: a Quote's read-only AccountId row follows the Opportunity its OpportunityId holds now (#704)
+## [3.208.8] - Recipe Cockpit: a Quote's read-only AccountId row follows the Opportunity its OpportunityId holds now (#704)
 
 `Quote.AccountId` is set by Salesforce from the quote's Opportunity, so generation writes it as `<Opportunity nickname>.AccountId` (#680). In a snowfakery recipe whose Opportunity is written as several record type blocks, `OpportunityId` is still a TODO when that value is written, so it names the first block. After **Wire to…** pointed `OpportunityId` at another block, the row's `↖` link and its **set by Salesforce from OpportunityId → …** note still named the first block.
 
@@ -10,6 +10,31 @@
 - **The recipe line is left as generated.** Nothing is ever inserted for this field, and the row now follows `OpportunityId` however it changed: Wire to…, Add friend or a hand edit. The ? help and the guide say so.
 - **One rule for both.** `StandardDerivedFields.readThroughSourceNickname` (imports nothing) is what generation's `RelationshipService.writeDerivedFieldValues` and the panel both read the lookup with. Generated recipes are unchanged: the golden files and #705's suite pass as they were.
 - **Tests:** the rule's cases in `StandardDerivedFields.test.ts`, and in `RecipeCockpitDerivedFields.test.ts` a snowfakery recipe with Enterprise and SMB blocks before and after `RecipeCockpitRecipeWriter.wireLookups` wires `OpportunityId` to SMB: the link, scrolling to it, the note, both blocks' 🌳 lists, the recipe line left as generated, a `reference()`, and a faker expression, a YAML keyword and an unknown nickname in `OpportunityId`.
+
+## [3.208.7] - Recipe Cockpit: the hub is the panel's lifecycle, held to its size by a test (#671 part b, the last slice of #566)
+
+### Under the hood (behaviour unchanged)
+
+- **`RecipeCockpitService.ts` went from 3,899 lines and 67 import statements to 2,618 and 45.** `tests/RecipeCockpitHubBounds.test.ts` fails if it passes 5,000 lines or 45 import statements, or if any host-side cockpit file passes 5,000 lines.
+  - #671 asked for about 15 imports. The router and executor stay in the hub, as #671 asks, and they alone load the 8 tab hosts and 3 of their files, so the limit is the count measured now. The reason is in `RecipeCockpitService/DESIGN.md`.
+- **`RecipeCockpitShell.ts`** is the webview's document: `buildWebviewShellHtml(nonce)`, its CSP and nonce, and the values written into `:root`.
+- **`RecipeCockpitDrawnModel.ts`** holds the pure reads of a rendered model:
+  - a tree's occurrences and fields
+  - a picklist field's value choice
+  - the recipe Run Faker filters to
+  - the focus a run opens to
+  - every allow-list key
+- **`RecipeCockpitUntrustedValue.ts`** holds `isPlainRecord` and `describeThrown`, which nine cockpit files had each copied.
+- **The tree and name preferences** joined the selection store. **The open command's focus readers** joined `RecipeCockpitPanelPlace.ts`.
+- **The three compile-time union checks** are now in `RecipeCockpitViewModel.ts`, as types only.
+- **The code moved verbatim.** The hub, the hosts and the tests call the drawn model, the preferences and the helpers in their own modules, so those names left the hub types.
+- **Tests.**
+  - New: the bounds test, `RecipeCockpitUntrustedValue.test.ts` (each check, and that the file imports nothing) and `RecipeCockpitDrawnModel.test.ts` (an insertable friend, and none for an iteration its object does not have).
+  - `RecipeCockpitPanelBundle.test.ts` reads the shell beside the hub for its template-literal rule.
+  - `RecipeCockpitTabHosts.test.ts` counts the shell and the drawn model as the hub's side.
+  - The help test builds its own list of headings.
+  - Otherwise, tests changed only their imports and the module they call or spy on.
+  - The golden files, the rendered baselines and the panel bundle are unchanged.
 
 ## [3.208.6] - Tests: Quote.AccountId names its own Opportunity record type block in every tree writer (#705)
 

@@ -55,6 +55,7 @@ import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelMessage } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeCockpitShell } from '../RecipeCockpitShell';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 
@@ -255,7 +256,7 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
 
     describe('the shell', () => {
 
-        const shellHtml = () => RecipeCockpitService.buildWebviewShellHtml('testNonce');
+        const shellHtml = () => RecipeCockpitShell.buildWebviewShellHtml('testNonce');
         const styleSheet = () => shellHtml().substring(shellHtml().indexOf('<style nonce="testNonce">'), shellHtml().indexOf('</style>'));
 
         it('puts the title and the top-right slot in one row, outside the body every render replaces', () => {
