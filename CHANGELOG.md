@@ -18,7 +18,7 @@
 - **The three compile-time union checks** are now in `RecipeCockpitViewModel.ts`, as types only.
 - **The code moved verbatim.** The hub, the hosts and the tests call the drawn model, the preferences and the helpers in their own modules, so those names left the hub types.
 - **Tests.**
-  - New: the bounds test, plus `RecipeCockpitUntrustedValue.test.ts` (each check, and that the file imports nothing).
+  - New: the bounds test, `RecipeCockpitUntrustedValue.test.ts` (each check, and that the file imports nothing) and `RecipeCockpitDrawnModel.test.ts` (an insertable friend, and none for an iteration its object does not have).
   - `RecipeCockpitPanelBundle.test.ts` reads the shell beside the hub for its template-literal rule.
   - `RecipeCockpitTabHosts.test.ts` counts the shell and the drawn model as the hub's side.
   - The help test builds its own list of headings.
