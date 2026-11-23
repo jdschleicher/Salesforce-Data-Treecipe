@@ -18,7 +18,8 @@ import type {
 import type { IRecipeCockpitHubForTreecipeTab } from './RecipeCockpitTreecipeHost';
 import {
     RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX,
-    RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE
+    RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE,
+    RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX
 } from './RecipeCockpitFieldRowsConstants';
 import { RecipeCockpitTreecipeRecipeEdits } from './RecipeCockpitTreecipeRecipeEdits';
 import {
@@ -40,8 +41,6 @@ import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
     value or a picklist choice is a recipe write, through RecipeCockpitTreecipeRecipeEdits. The hub
     checked the click against the drawn model before routing it here.
 */
-
-export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
 
 // WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
 // A PIN WRITES THE RECIPE FILE (#342): HOW AN INLINE EDIT ENDS WHEN THAT WRITE DOES NOT HAPPEN
