@@ -112,7 +112,9 @@ describe.each([
 
         test('the flat Quote\'s OpportunityId stays a REFERENCE ID TODO that lists both blocks', async () => {
 
-            const [quoteRecipeContent] = (await generateRecipeContents(OBJECTS_PATH)).filter(recipeContent => recipeContent.includes('object: Quote'));
+            const quoteRecipeContents = (await generateRecipeContents(OBJECTS_PATH)).filter(recipeContent => recipeContent.includes('object: Quote'));
+            expect(quoteRecipeContents).toHaveLength(1);
+            const [quoteRecipeContent] = quoteRecipeContents;
 
             expect(quoteRecipeContent).toMatch(new RegExp(`^ +OpportunityId: ${RelationshipService.referenceIdRequiredTodo}$`, 'm'));
             expect(quoteRecipeContent).toContain(`OpportunityId can reference any record type block of Opportunity: ${ENTERPRISE}, ${SMB}`);
