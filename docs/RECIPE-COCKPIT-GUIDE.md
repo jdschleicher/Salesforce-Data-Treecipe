@@ -29,7 +29,8 @@ To generate without inserting, use **Run Faker by Recipe** from the command pale
 Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card.
 Click it to list the fields that point to it, under *Click to go to a child reference*, and jump to one; a field holding a nickname shows it highlighted (**↖ Account_NickName**), and clicking it lists that object under *Click to go to the parent reference*, one click away.
 A field Salesforce sets itself from another lookup, such as a Quote's `AccountId`, which always comes from its Opportunity, is marked **read only** and its pencil is disabled.
-Its value names the record it comes from (**Opportunity_NickName.AccountId**), says which account that record holds (**set by Salesforce from OpportunityId → Account_NickName**), and links to that row like a nickname.
+It names the record its lookup holds now, such as the Opportunity in the Quote's `OpportunityId`, says which account that record holds (**set by Salesforce from OpportunityId → Account_NickName**), and links to that row like a nickname.
+While that lookup is still a TODO, it names the record in its own value (**Opportunity_NickName.AccountId**). Wiring the lookup leaves that value as generated.
 It is never sent to Salesforce on insert.
 A field Salesforce calculates or fills in itself, such as a formula, a roll-up summary, an auto number or an Opportunity's `ExpectedRevenue`, is written as **READ ONLY -- formula** (or its reason) and also marked **read only**, its pencil disabled; a formula field shows its formula (**formula: Price__c * Quantity__c**).
 Treecipe never sends it to Salesforce, and an insert also leaves out any field the target org says Salesforce fills itself, with a warning naming them.

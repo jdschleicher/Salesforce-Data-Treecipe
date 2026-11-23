@@ -56,6 +56,24 @@ export class StandardDerivedFields {
 
     }
 
+    /*
+        The record a through lookup's recipe value names (#704): a bare nickname, or the one a
+        snowfakery child copy's reference(<nickname>) names. Only the first line counts, since
+        #194's record type blocks note can follow it. Anything else (a TODO, an expression, an Id)
+        names no record.
+    */
+    static readThroughSourceNickname(throughValue: unknown): string | undefined {
+
+        if ( typeof throughValue !== 'string' ) {
+            return undefined;
+        }
+
+        const firstLine = throughValue.split('\n')[0].trim();
+
+        return /^[A-Za-z]\w*$/.test(firstLine) ? firstLine : /\breference\(([A-Za-z]\w*)\)/.exec(firstLine)?.[1];
+
+    }
+
     // THE SOURCE NICKNAME OF A RECIPE VALUE formatRecipeValue WROTE, OR undefined FOR ANY OTHER VALUE
     static readSourceNickname(recipeValue: unknown, derivedField: IStandardDerivedField): string | undefined {
 
