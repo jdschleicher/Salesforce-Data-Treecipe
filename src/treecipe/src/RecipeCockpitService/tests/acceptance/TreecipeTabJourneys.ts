@@ -31,8 +31,8 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
 
             await journey.step('Contact reads excluded and Visit__c auto-excluded, and the card counts the objects left', () => {
                 const screen = journey.screen();
-                screen.get('text', 'Contact (Account_NickName-1) (excluded)');
-                screen.get('text', 'Visit__c (Contact_NickName-1) (auto-excluded)');
+                screen.get('text', 'Contact (Account_NickName) (excluded)');
+                screen.get('text', 'Visit__c (Contact_NickName) (auto-excluded)');
                 screen.get('button', 'Contact: Excluded — click to include');
                 const visitToggle = screen.get('button', 'Visit__c: Excluded because parent Contact is excluded');
                 expectEqual(visitToggle.states.includes('disabled'), true, 'Visit__c\'s include button is disabled');
@@ -68,9 +68,10 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
                 screen.get('text', 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED');
                 const contactLink = screen.get('button', 'Contact: No fields selected, so no records will be generated. Tick a field to include it');
                 expectEqual(contactLink.states.includes('disabled'), true, 'Contact\'s chain link is disabled');
-                screen.get('text', 'Contact (Account_NickName-1) (no fields selected)');
+                screen.get('text', 'Contact (Account_NickName) (no fields selected)');
                 const screenNames = screen.all().map(node => node.name);
-                expectEqual(screenNames.filter(name => /^Contact_NickName(?!-)|Account_NickName-1, friend|^Create \d+ Contact record/.test(name)), [], 'Contact\'s nickname, friend chip and record count');
+                // VISIT__C'S CHIP STILL NAMES CONTACT; CONTACT'S OWN NICKNAME AND ITS CHIP TO ACCOUNT ARE GONE
+                expectEqual(screenNames.filter(name => /^Contact_NickName(?!, friend \d+ of Contact_NickName: go to Contact$)|^Account_NickName, friend|^Create \d+ Contact record/.test(name)), [], 'Contact\'s nickname, friend chip and record count');
                 screen.get('text', 'auto-excluded — parent Contact has no fields selected');
                 screen.get('button', 'Visit__c: Excluded because parent Contact has no fields selected');
                 screen.get('text', '1 of 3 objects · 51 fields');
