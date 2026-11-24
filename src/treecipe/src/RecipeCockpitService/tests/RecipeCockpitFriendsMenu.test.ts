@@ -124,7 +124,7 @@ describe('RecipeCockpitService, a parent row\'s friends list (#492)', () => {
 
         });
 
-        it('opens a list led by its hint, then every friend in recipe order, labelled as its chip reads', () => {
+        it('opens a list led by its hint, then every friend in recipe order, labelled by the chip it draws and its number', () => {
 
             const panel = renderModel(loadModel());
             const accountButton = friendsButtonOf(panel, 'Account_NickName');
@@ -145,11 +145,12 @@ describe('RecipeCockpitService, a parent row\'s friends list (#492)', () => {
             expect(accountButton.attributes['aria-expanded']).toBe('true');
             expect(panel.activeElement()).toBe(friendItemsOf(panel, 'Account_NickName')[0]);
 
-            // EACH LABEL STARTS WITH THE CHIP ITS FRIEND DRAWS FOR THIS PARENT
-            friendItemsOf(panel, 'Account_NickName').forEach((itemElement: any) => {
-                const chipLabel = itemElement.textContent.split(':')[0];
-                const chipLabels = panel.findAll(panel.cockpitBodyElement, 'treeFriendLabel').map((labelElement: any) => labelElement.textContent);
+            // EACH LABEL IS THE CHIP ITS FRIEND DRAWS FOR THIS PARENT, THEN ITS NUMBER: THE CHIP ITSELF READS THE SAME ON EVERY FRIEND (#716)
+            const chipLabels = panel.findAll(panel.cockpitBodyElement, 'treeFriendLabel').map((labelElement: any) => labelElement.textContent);
+            friendItemsOf(panel, 'Account_NickName').forEach((itemElement: any, friendIndex: number) => {
+                const [chipLabel, friendNumber] = itemElement.textContent.split(':')[0].split('-');
                 expect(chipLabels).toContain(chipLabel);
+                expect(friendNumber).toBe(String(friendIndex + 1));
             });
 
         });

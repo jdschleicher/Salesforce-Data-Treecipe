@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.208.13] - Recipe Cockpit: a friend's chip reads its parent's nickname, the same on every friend, never `<Object>-<n>` (#716)
+
+A friend row's 👥 chip read the parent's nickname and the friend's place among that parent's friends (`Account_NickName-2`). When no single row held the parent's nickname, it fell back to the object, so 34 friends of one Campaign read `Campaign-1` … `Campaign-34`, and friends of one parent looked like different things.
+
+### Treecipe tab
+
+- **A chip reads the parent's nickname alone**, the same on every friend of it: `Account_NickName`. Click it to go to that parent, as before.
+- **A parent no one row holds is named by its nickname**, as muted text with no row to open. Only a parent with no nickname at all falls back to its object, now with no number: `Account`.
+- **The friend's number is still said.** The chip's spoken name and its tooltip keep it (“Account_NickName, friend 2 of Account_NickName: go to Account”), and the parent's **👥 N** list keeps its numbered labels (`Account_NickName-2: Case`).
+- **Search** finds every friend of a parent by its nickname (`account_nickname`); a number such as `account_nickname-3` no longer matches a chip. The object list under the Treecipes dropdown names each object's chips the same way: `Case (Contact_NickName, Account_NickName)`.
+- **What does not change.** Which chips a friend row draws and in what order, the 👥 N list, snowfakery cards (no friend rows), and generation.
+
+### Under the hood
+
+- `Friends.ts` `ensureFriendIndex` gives a chip its parent's label alone, and an unheld nesting parent its nickname before its object. The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and `RecipeCockpitService/DESIGN.md` say the same.
+- **Tests.** `RecipeCockpitFriendChips.test.ts` holds the new labels, the number in the spoken name, a Campaign with 34 friends whose chips all read `Campaign_NickName`, and a muted chip naming an unheld nickname. `RecipeCockpitFriendsMenu.test.ts` checks that each 👥 N label is its friend's chip and then its number.
+- No screenshot shows a friend chip, so none is re-taken.
+
 ## [3.208.12] - faker-js standard-field values all run and end in `}}`: Campaign, Opportunity, Asset and Pricebook2 (#717)
 
 Some faker-js values for standard fields that Generate Treecipe writes from its built-in list were broken.

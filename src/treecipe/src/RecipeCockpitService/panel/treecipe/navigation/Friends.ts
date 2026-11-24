@@ -9,7 +9,7 @@ import { navigationState } from './NavigationState';
 
 /*
     Friend rows (#411, #492): the chips naming the parents a friend row is nested under or points
-    to, numbered the same on every row, and a parent row's 👥 N list of its friends. The open list
+    to, by nickname, the same on every row, and a parent row's 👥 N list of its friends. The open list
     is navigationState's, shared with the nickname lists; this module only reads it.
 */
 
@@ -69,10 +69,11 @@ function openFriendsMenuOf(treeObjectState: INavigationObjectState): void {
     The parents each FRIEND row names (#411): the occurrence its friends: block nests it under,
     then every other row a field of it points to by nickname (#380's index), in field order, each
     once. A parent is the ONE row holding its nickname; a nesting parent no row holds that way is
-    named by its object, with no row to open. A parent's friends are the friend rows naming it,
-    in recipe line order, and a chip's number is the row's place among them -- so one parent is
-    numbered the same on every row, and an excluded friend keeps its number. Built once per card,
-    with no prototype, since a hand-edited recipe can name anything.
+    named by its nickname, else its object, with no row to open. A chip reads the parent's name
+    alone, so every friend of one parent reads the same (#716). A parent's friends are the friend
+    rows naming it, in recipe line order, and a friend's number -- its place among them, said in
+    the chip's name and on the 👥 N list -- never depends on exclusions. Built once per card, with
+    no prototype, since a hand-edited recipe can name anything.
 */
 function ensureFriendIndex(treeState: INavigationTreeState): IFriendIndex {
 
@@ -115,7 +116,7 @@ function ensureFriendIndex(treeState: INavigationTreeState): IFriendIndex {
 
         addParent(nestingOwnerState
             ? { parentKey: 'nickname\n' + nestingNicknameKey, label: nestingParent.nickname, ownerState: nestingOwnerState }
-            : { parentKey: 'object\n' + String(recipeFilePath || '') + '\n' + nestingParent.objectApiName, label: nestingParent.objectApiName, ownerState: null });
+            : { parentKey: 'object\n' + String(recipeFilePath || '') + '\n' + nestingParent.objectApiName, label: nestingParent.nickname || nestingParent.objectApiName, ownerState: null });
 
         treeObjectState.fieldStates.forEach(function (fieldState) {
             const ownerState = findReferencedOwnerState(treeObjectState, fieldState);
@@ -151,7 +152,7 @@ function ensureFriendIndex(treeState: INavigationTreeState): IFriendIndex {
     parentsByObjectState.forEach(function (parents, treeObjectState) {
         chipsByObjectState.set(treeObjectState, parents.map(function (parent) {
             const friendNumber = friendNumbersByParentKey[parent.parentKey].get(treeObjectState) as number;
-            return { label: parent.label + '-' + friendNumber, parentLabel: parent.label, friendNumber: friendNumber, ownerState: parent.ownerState };
+            return { label: parent.label, parentLabel: parent.label, friendNumber: friendNumber, ownerState: parent.ownerState };
         }));
     });
 
