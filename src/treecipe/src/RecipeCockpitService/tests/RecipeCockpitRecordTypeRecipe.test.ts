@@ -2,7 +2,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
+import { IRecordTypeTickObject, RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS, RECORD_TYPE_RECIPE_FOLDED_PROGRESS_MESSAGE, RecipeCockpitRecordTypeRecipe } from '../RecipeCockpitRecordTypeRecipe';
 import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 
@@ -138,20 +138,20 @@ describe('RecipeCockpitRecordTypeRecipe (#623)', () => {
 
         });
 
-        it('numbers each set\'s recipe build among all of them, in the words of its label (#695)', () => {
+        it('numbers each set\'s recipe build among all of them, in the words of its label (#695, #702)', () => {
 
-            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle({ Account: ['Partner'], Opportunity: ['New'] }, 2, 4))
-                .toBe('Building the recipe for the ticked record types: set 3 of 4 · Account · Partner, Opportunity · New');
-            expect(RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE).toBe('Building the recipe for the ticked record types: one data set, folded');
+            expect(RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressMessage({ Account: ['Partner'], Opportunity: ['New'] }, 2, 4))
+                .toBe('set 3 of 4 · Account · Partner, Opportunity · New');
+            expect(RECORD_TYPE_RECIPE_FOLDED_PROGRESS_MESSAGE).toBe('one data set, folded');
 
         });
 
-        it('escapes a record type name that would read as a command link in the progress title (#695)', () => {
+        it('escapes a record type name that would read as a command link in the progress message (#695)', () => {
 
-            const progressTitle = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle({ Account: ['[x](command:workbench.action.quit)'] }, 0, 2);
+            const progressMessage = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressMessage({ Account: ['[x](command:workbench.action.quit)'] }, 0, 2);
 
-            expect(progressTitle).toBe(`Building the recipe for the ticked record types: set 1 of 2 · Account · ${RecipeYamlScalar.escapeForNotification('[x](command:workbench.action.quit)')}`);
-            expect(progressTitle).not.toContain('[x](command:');
+            expect(progressMessage).toBe(`set 1 of 2 · Account · ${RecipeYamlScalar.escapeForNotification('[x](command:workbench.action.quit)')}`);
+            expect(progressMessage).not.toContain('[x](command:');
 
         });
 

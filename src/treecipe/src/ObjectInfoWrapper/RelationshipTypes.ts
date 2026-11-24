@@ -22,7 +22,7 @@ export interface RelationshipTree {
 // Main structure that holds all ordered recipes across all relationship trees
 export interface OrderedRecipeStructure {
   relationshipTrees: OrderedRelationshipTree[];  // Array of separate relationship trees
-  totalObjects: number;                          // Total count of all objects across all trees
+  totalObjects: number;                          // Total count of the objects in the trees built: every tree, or the one a tree folder name names (#702)
 }
 
 // Represents one relationship tree with its objects ordered by dependency level

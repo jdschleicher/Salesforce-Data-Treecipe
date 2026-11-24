@@ -109,7 +109,7 @@ describe('the journey fakes (#577)', () => {
 
     });
 
-    test('withProgress runs its task with a token never cancelled, and records the title', async () => {
+    test('withProgress runs its task with a token never cancelled, and records the title and each message under it (#702)', async () => {
 
         const answer = await journeyVscodeModule.window.withProgress({ title: 'Loading' }, async (progress: any, cancellationToken: any) => {
             progress.report({ message: 'half' });
@@ -119,7 +119,10 @@ describe('the journey fakes (#577)', () => {
         });
 
         expect(answer).toBe('done');
-        expect(recordedCalls).toEqual([{ call: 'window.withProgress', args: ['Loading'] }]);
+        expect(recordedCalls).toEqual([
+            { call: 'window.withProgress', args: ['Loading'] },
+            { call: 'window.withProgress.report', args: ['Loading', 'half'] }
+        ]);
 
     });
 

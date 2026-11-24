@@ -209,7 +209,9 @@ export const journeyVscodeModule = {
             journeyHost().showPrompt({ kind: 'inputBox', title: options.title, prompt: options.prompt, placeholder: options.placeHolder, value: options.value, offeredLabels: [], isWaiting: true }),
         withProgress: async (options: { title?: string }, progressTask: (progress: unknown, cancellationToken: unknown) => unknown) => {
             journeyHost().recordCall('window.withProgress', [options.title]);
-            return progressTask({ report: () => undefined }, { isCancellationRequested: false, onCancellationRequested: () => disposable() });
+            // EACH MESSAGE IS RECORDED UNDER ITS NOTIFICATION'S TITLE, SO A JOURNEY READS WHAT ONE NOTIFICATION STEPPED THROUGH (#702)
+            const report = (progressValue?: { message?: string }) => journeyHost().recordCall('window.withProgress.report', [options.title, progressValue?.message]);
+            return progressTask({ report }, { isCancellationRequested: false, onCancellationRequested: () => disposable() });
         },
         createStatusBarItem: () => ({ text: '', tooltip: '', command: undefined, show: () => undefined, hide: () => undefined, dispose: () => undefined }),
         createOutputChannel: (channelName: string) => ({

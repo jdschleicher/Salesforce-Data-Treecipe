@@ -26,6 +26,7 @@ import { StandardFieldParentReferenceMap } from '../RelationshipService/Standard
 import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
 import { SalesforceApiName } from '../SalesforceApiName/SalesforceApiName';
 import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, IValidationRuleNotApplied, ValidationRuleAnalyzerService, VALIDATION_RULES_DIRECTORY_NAME } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
+import { ObjectMetadataSnapshot } from './ObjectMetadataSnapshot';
 
 const STANDARD_PARENT_REFERENCE_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
@@ -72,7 +73,8 @@ export class DirectoryProcessor {
   private isFakerJSServiceSelected: boolean;
   // THE RECORD TYPES THE USER CHOSE FOR THIS RUN (#193); UNDEFINED WRITES EVERY OBJECT'S DEFAULT, AS BEFORE
   private recordTypeSelection: RecordTypeSelection | undefined;
-  constructor() {
+  // UNDEFINED READS EVERY FILE AGAIN ON EACH WALK, AS GENERATE TREECIPE DOES; ONE CLICK'S RECIPE BUILDS SHARE ONE (#702)
+  constructor(private readonly metadataSnapshot?: ObjectMetadataSnapshot) {
     const selectedDataFakerService = RecipeFakerServiceFactory.getFakerImplementationByExtensionConfigSelection();
     this.isFakerJSServiceSelected = selectedDataFakerService instanceof FakerJSRecipeFakerService;
     this.recipeService = new RecipeService(selectedDataFakerService);
@@ -293,7 +295,7 @@ export class DirectoryProcessor {
     DirectoryProcessor.throwIfCancellationRequested(generationProgress);
 
     const isTopLevelOfScan = generationProgress !== undefined && scanCount === undefined;
-    const entries = await DirectoryProcessor.readDirectoryInNameOrder(directoryPathUri);
+    const entries = await this.listDirectoryInNameOrder(directoryPathUri);
     if (entries === undefined || entries.length === 0) {
       // base case for recursion -- prevents empty directories causing null reference errors
       vscode.window.showWarningMessage('No entries found in directory: ' + directoryPathUri.fsPath);
@@ -353,7 +355,7 @@ export class DirectoryProcessor {
               generationProgress.report(`Scanning ${DirectoryProcessor.escapeForNotification(objectName)} (${scanCount.scanned} of ${scanCount.total})`);
             }
   
-            const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
+            const recordTypeApiToRecordTypeWrapperMap = await this.readRecordTypes(fullPath);
             const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
             const { writableRecordTypeApiToRecordTypeWrapperMap } = RecipeService.partitionRecordTypesByWritableDeveloperName(recordTypeApiToRecordTypeWrapperMap);
             const objectRecordTypeSelection = RecordTypeSelection.resolveForObject(this.recordTypeSelection, objectName, writableRecordTypeApiToRecordTypeWrapperMap);
@@ -519,7 +521,7 @@ export class DirectoryProcessor {
       - the variable names are intended to convey and support at-a-glance understanding w/out having to click through
       - for additional details like what brought this detailed breakdown about and performance advantages see chatgpt discussion here: https://chatgpt.com/share/6772ab2f-76c8-800a-a60a-893985a8d264
     */
-    const vsCodeDirectoryTuples = await DirectoryProcessor.readDirectoryInNameOrder(directoryPathUri);
+    const vsCodeDirectoryTuples = await this.listDirectoryInNameOrder(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
     let compoundFieldInfos: FieldInfo[] = [];
@@ -528,16 +530,14 @@ export class DirectoryProcessor {
       if ( XmlFileProcessor.isSalesforceFieldMetadataFile(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
-        const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
-        const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
+        const fieldXMLDetail = await this.readFieldXmlDetail(fieldUri, fileName);
 
-        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, 
-                                                              associatedObjectName, 
-                                                              recordTypeApiToRecordTypeWrapperMap,
-                                                              fileName,
-                                                              selectedRecordTypeApiName,
-                                                              ruleConstraintsByField
-                                                            );
+        let fieldInfo = this.buildFieldInfoByXMLDetail(fieldXMLDetail,
+                                                        associatedObjectName,
+                                                        recordTypeApiToRecordTypeWrapperMap,
+                                                        selectedRecordTypeApiName,
+                                                        ruleConstraintsByField
+                                                      );
 
         if ( this.isCompoundAddressField(fieldInfo, associatedObjectName)
               || this.isCompoundGeolocationField(fieldInfo)
@@ -643,13 +643,54 @@ export class DirectoryProcessor {
                                     ruleConstraintsByField?: ReadonlyMap<string, IValidationRuleFieldConstraint[]>
                                   ):Promise<FieldInfo> {
 
-    let fieldXMLDetail: XMLFieldDetail;
+    const fieldXMLDetail = await DirectoryProcessor.parseFieldXmlContent(xmlContent, xmlFieldFileName);
+    return this.buildFieldInfoByXMLDetail(fieldXMLDetail, associatedObjectName, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName, ruleConstraintsByField);
+
+  }
+
+  static async parseFieldXmlContent(xmlContent: string, xmlFieldFileName: string): Promise<XMLFieldDetail> {
+
     try {
-      fieldXMLDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
+      return await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
     } catch (fieldXmlError) {
       ErrorHandlingService.createGenerateRecipeErrorCaptureFile(fieldXmlError, XmlFileProcessor.processXmlFieldContentCommandName);
       throw fieldXmlError;
     }
+
+  }
+
+  // A FIELD FILE READ AND PARSED, ONCE PER CLICK WHEN THE WALK HAS A SNAPSHOT (#702)
+  async readFieldXmlDetail(fieldUri: vscode.Uri, xmlFieldFileName: string): Promise<XMLFieldDetail> {
+
+    const readAndParse = async () => DirectoryProcessor.parseFieldXmlContent(
+      Buffer.from(await vscode.workspace.fs.readFile(fieldUri)).toString('utf8'),
+      xmlFieldFileName
+    );
+    return this.metadataSnapshot ? this.metadataSnapshot.readFieldXmlDetail(fieldUri.fsPath, readAndParse) : readAndParse();
+
+  }
+
+  private listDirectoryInNameOrder(directoryUri: vscode.Uri): Promise<[string, vscode.FileType][]> {
+
+    const read = () => DirectoryProcessor.readDirectoryInNameOrder(directoryUri);
+    return this.metadataSnapshot ? this.metadataSnapshot.readDirectoryEntries(directoryUri.fsPath, read) : read();
+
+  }
+
+  private readRecordTypes(fieldsDirectoryUri: vscode.Uri): Promise<Record<string, RecordTypeWrapper>> {
+
+    const read = () => RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fieldsDirectoryUri.path);
+    return this.metadataSnapshot ? this.metadataSnapshot.readRecordTypes(fieldsDirectoryUri.path, read) : read();
+
+  }
+
+  buildFieldInfoByXMLDetail(fieldXMLDetail: XMLFieldDetail,
+                            associatedObjectName: string,
+                            recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                            selectedRecordTypeApiName?: string,
+                            ruleConstraintsByField?: ReadonlyMap<string, IValidationRuleFieldConstraint[]>
+                          ): FieldInfo {
+
     this.applyStandardFieldParentReference(fieldXMLDetail, associatedObjectName);
     this.applyStandardReadOnlyField(fieldXMLDetail, associatedObjectName);
     const unconstrainedRecipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);
@@ -747,6 +788,13 @@ export class DirectoryProcessor {
     validationRules folder. A file that cannot be read is a rule that was not applied.
   */
   async readValidationRuleAnalyses(objectDirectoryUri: vscode.Uri, objectDirectoryEntries: [string, vscode.FileType][]): Promise<IValidationRuleAnalysis[]> {
+
+    const read = () => this.analyzeValidationRuleFiles(objectDirectoryUri, objectDirectoryEntries);
+    return this.metadataSnapshot ? this.metadataSnapshot.readValidationRuleAnalyses(objectDirectoryUri.fsPath, read) : read();
+
+  }
+
+  private async analyzeValidationRuleFiles(objectDirectoryUri: vscode.Uri, objectDirectoryEntries: [string, vscode.FileType][]): Promise<IValidationRuleAnalysis[]> {
 
     const hasValidationRulesDirectory = objectDirectoryEntries.some(
       ([entryName, entryType]) => entryType === vscode.FileType.Directory && entryName === VALIDATION_RULES_DIRECTORY_NAME
@@ -889,9 +937,11 @@ export class DirectoryProcessor {
 
   }
 
+  // A treeFolderName BUILDS THAT TREE'S RECIPE ALONE (#702); THE OBJECTS AND RELATIONSHIP TREES ARE ALL BUILT EITHER WAY
   async processAllObjectsAndRelationships(directoryPathUri: vscode.Uri,
                                             generationProgress?: IRecipeGenerationProgress,
-                                            recordTypeSelection?: RecordTypeSelection): Promise<ObjectInfoWrapper> {
+                                            recordTypeSelection?: RecordTypeSelection,
+                                            treeFolderName?: string): Promise<ObjectInfoWrapper> {
     
     const objectInfoWrapper = new ObjectInfoWrapper(); 
     this.recordTypeSelection = recordTypeSelection;
@@ -909,7 +959,8 @@ export class DirectoryProcessor {
     const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(
       objectInfoWrapper,
       this.isFakerJSServiceSelected,
-      this.recordTypeSelection?.isChildTreeCopiedPerRecordTypeBlock === true
+      this.recordTypeSelection?.isChildTreeCopiedPerRecordTypeBlock === true,
+      treeFolderName
     );
     
     objectInfoWrapper.RecipeFiles = recipeFiles;
