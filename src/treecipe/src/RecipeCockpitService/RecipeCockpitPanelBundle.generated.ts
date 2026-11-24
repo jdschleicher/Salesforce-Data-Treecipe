@@ -5289,7 +5289,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORED_ALONG_PREFIX = "Also restored, to link it to the tree: ";
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/customTreecipe/CustomTreecipeFieldRestore.ts
-  var NO_FIELDS_SELECTED_KIND = "noFieldsSelected";
   function restoreFieldWithPath(objects, removalState, hostCascade, objectApiName, fieldApiName) {
     const insertPositionByObject = new Map(objects.map(function(restorableObject, insertPosition) {
       return [restorableObject.objectApiName, insertPosition];
@@ -5316,12 +5315,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
       const pathLookup = choosePathLookup(pathObject, insertPositionByObject, isRemoved);
       const keptFieldApiNames = pathLookup ? fieldsToKeep.concat([pathLookup.fieldApiName]) : fieldsToKeep;
-      const wasRemovedByReader = removalState.removedObjects.has(pathObjectApiName) || hostCascade.removalKindByObject.get(pathObjectApiName) === NO_FIELDS_SELECTED_KIND;
+      const lockedFields = hostCascade.lockedFieldsByObject.get(pathObjectApiName);
+      const wasRemovedByReader = removalState.removedObjects.has(pathObjectApiName) || isEveryFieldRemoved(removalState, pathObject, lockedFields);
       const removedFieldsBefore = removalState.removedFields.get(pathObjectApiName);
       const wasPathLookupGone = !!pathLookup && (removalState.removedObjects.has(pathObjectApiName) || !!removedFieldsBefore && removedFieldsBefore.has(pathLookup.fieldApiName));
       if (wasRemovedByReader) {
         removalState.removedObjects.delete(pathObjectApiName);
-        keepOnlyFields(removalState, pathObject, keptFieldApiNames, hostCascade.lockedFieldsByObject.get(pathObjectApiName));
+        keepOnlyFields(removalState, pathObject, keptFieldApiNames, lockedFields);
       } else {
         keepFields(removalState, pathObjectApiName, keptFieldApiNames);
       }
@@ -5336,6 +5336,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       fieldsToKeep = [];
     }
     return restoredAlong;
+  }
+  function isEveryFieldRemoved(removalState, restorableObject, lockedFields) {
+    const removedFields = removalState.removedFields.get(restorableObject.objectApiName);
+    return !!removedFields && removedFields.size > 0 && restorableObject.fieldApiNames.every(function(fieldApiName) {
+      return removedFields.has(fieldApiName) || !!(lockedFields && lockedFields.has(fieldApiName));
+    });
   }
   function choosePathLookup(pathObject, insertPositionByObject, isRemoved) {
     const ownPosition = insertPositionByObject.get(pathObject.objectApiName);

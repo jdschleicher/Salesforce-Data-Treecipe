@@ -152,6 +152,23 @@ describe('restoreFieldWithPath (#715)', () => {
 
     });
 
+    it('keeps the first ↺\'s field when a second ↺ lands before the host answers, reading the removal as it is now, not the last preview', () => {
+
+        const removalState = everyFieldRemoved();
+        const stalePreview = cascadeOf({ Account: 'noFieldsSelected', Contact: 'noFieldsSelected', Case: 'noFieldsSelected' });
+
+        restoreFieldWithPath(TREE, removalState, stalePreview, 'Contact', 'Email');
+        const restoredAlong = restoreFieldWithPath(TREE, removalState, stalePreview, 'Contact', 'LastName');
+
+        expect(restoredAlong).toEqual([]);
+        expect(removedFieldsOf(removalState)).toEqual({
+            Account: ['Industry', 'RecordTypeId'],
+            Contact: ['ReportsToId'],
+            Case: ['Subject', 'ContactId', 'AccountId']
+        });
+
+    });
+
     it('restores nothing for an object the modal does not hold', () => {
 
         const removalState = everyFieldRemoved();

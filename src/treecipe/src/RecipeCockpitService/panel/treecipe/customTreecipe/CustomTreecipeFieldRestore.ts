@@ -9,7 +9,7 @@
     whose parent is already kept is chosen first, so the fewest objects come back; otherwise the first
     by `<`, the lookup the host names in removedLookupFieldApiName.
 
-    An object the reader removed -- by its own ✕, or by removing every field -- comes back with only
+    An object the reader removed -- by its own ✕, or by removing every field it can -- comes back with only
     what the path needs and its locked fields: the reader is building it up field by field. An object
     only the cascade took keeps its own fields as they were. The top of the path keeps at least one
     field, its first in recipe order, because the host removes an object with no field and every object
@@ -49,8 +49,6 @@ export interface IRestoredAlongField {
     reason: RestoredAlongReason;
 }
 
-const NO_FIELDS_SELECTED_KIND = 'noFieldsSelected';
-
 export function restoreFieldWithPath(objects: readonly IRestorableObject[], removalState: IRemovalState, hostCascade: IHostCascade,
                                      objectApiName: string, fieldApiName: string): IRestoredAlongField[] {
 
@@ -78,13 +76,14 @@ export function restoreFieldWithPath(objects: readonly IRestorableObject[], remo
 
         const pathLookup = choosePathLookup(pathObject, insertPositionByObject, isRemoved);
         const keptFieldApiNames = pathLookup ? fieldsToKeep.concat([pathLookup.fieldApiName]) : fieldsToKeep;
-        const wasRemovedByReader = removalState.removedObjects.has(pathObjectApiName) || hostCascade.removalKindByObject.get(pathObjectApiName) === NO_FIELDS_SELECTED_KIND;
+        const lockedFields = hostCascade.lockedFieldsByObject.get(pathObjectApiName);
+        const wasRemovedByReader = removalState.removedObjects.has(pathObjectApiName) || isEveryFieldRemoved(removalState, pathObject, lockedFields);
         const removedFieldsBefore = removalState.removedFields.get(pathObjectApiName);
         const wasPathLookupGone = !!pathLookup && (removalState.removedObjects.has(pathObjectApiName) || (!!removedFieldsBefore && removedFieldsBefore.has(pathLookup.fieldApiName)));
 
         if (wasRemovedByReader) {
             removalState.removedObjects.delete(pathObjectApiName);
-            keepOnlyFields(removalState, pathObject, keptFieldApiNames, hostCascade.lockedFieldsByObject.get(pathObjectApiName));
+            keepOnlyFields(removalState, pathObject, keptFieldApiNames, lockedFields);
         } else {
             keepFields(removalState, pathObjectApiName, keptFieldApiNames);
         }
@@ -100,6 +99,14 @@ export function restoreFieldWithPath(objects: readonly IRestorableObject[], remo
 
     return restoredAlong;
 
+}
+
+// READ FROM THE REMOVAL AS IT IS NOW, NEVER THE LAST PREVIEW: A SECOND ↺ BEFORE THE HOST ANSWERS WOULD OTHERWISE EMPTY THE OBJECT AGAIN
+function isEveryFieldRemoved(removalState: IRemovalState, restorableObject: IRestorableObject, lockedFields: ReadonlyMap<string, string> | undefined): boolean {
+    const removedFields = removalState.removedFields.get(restorableObject.objectApiName);
+    return !!removedFields && removedFields.size > 0 && restorableObject.fieldApiNames.every(function (fieldApiName) {
+        return removedFields.has(fieldApiName) || !!(lockedFields && lockedFields.has(fieldApiName));
+    });
 }
 
 function choosePathLookup(pathObject: IRestorableObject, insertPositionByObject: ReadonlyMap<string, number>, isRemoved: (objectApiName: string) => boolean): IRestorableLookup | undefined {
