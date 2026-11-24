@@ -30,7 +30,7 @@ describe.each([
         expect(loadedObjectRecipe.object).toBe(objectApiName);
         expect(Object.keys(loadedObjectRecipe.fields)).toEqual(Object.keys(standardFieldValuesByObject[objectApiName]));
         Object.values(loadedObjectRecipe.fields).forEach(loadedFieldValue => {
-            expect(String(loadedFieldValue).trim()).toMatch(/^\$\{\{.*\}\}/s);
+            expect(String(loadedFieldValue).trim()).toMatch(/^\$\{\{[\s\S]*\}\}/);
         });
 
     });
