@@ -1,5 +1,24 @@
 # Change Log
 
+## [3.208.12] - Recipe Cockpit: a removed object in the Customize modal opens, and ↺ on one of its fields brings back what links it to the tree (#715)
+
+### Customize and create new recipe
+
+- **A removed object opens.** Its › is on, whatever removed it: its own ✕, every field removed (for example after **Deselect all fields**), its lookup removed, or the cascade from its parent. Each field shows why it is out: **Removed**, **Removed with the object**, **Removed with <Parent>** or **Removed with <Object.Lookup>**. Each field also has its own ↺.
+- **↺ on one field brings back that field, its object and the path to the tree.** On each removed object up the path, the lookup to an earlier object in insert order comes back: one whose parent is still kept first, otherwise the first by name. The walk stops at the first object that is still kept.
+  - An object you removed (by ✕, or by removing every field) comes back with only that field or lookup and its locked fields, so you can build it up field by field.
+  - An object only the cascade took keeps its own fields as they were.
+  - If the top of the path would be left with no field, its first field in recipe order comes back too, since an object with no field is removed with every object under it.
+  - The status line names every field that came back along with the one you restored ("Also restored, to link it to the tree: …").
+- **A removal still closes an object's list**, so ✕ on the root still rebuilds no field list (#684). A list you open on a removed object stays open once the object comes back.
+- **The ? help and the guide** say that a removed object opens and that one field's ↺ brings back what links it to the tree.
+- **What does not change.** **Restore every field of <object>**, the object ↺, **Restore all**, both Deselect buttons, the root's question and the chain link work as before. The host still decides the cascade and the locks from the removal the panel posts, and the same removals save the same files.
+
+### Under the hood
+
+- `panel/treecipe/customTreecipe/CustomTreecipeFieldRestore.ts` (imports nothing) holds the rule as `restoreFieldWithPath`. `CustomTreecipeDialog.ts` draws a removed object's fields with it, keeps `openedRemovedObjects` apart from `expandedObjects`, and puts the object's removal into the field list's signature. The new words are in `RecipeCockpitCustomTreecipeConstants.ts`.
+- **Tests.** `CustomTreecipeFieldRestore.test.ts` covers each removal kind, which lookup is chosen, stopping at a kept object, the root's first field, locked fields and an object the modal does not hold. `RecipeCockpitCustomTreecipeDialog.test.ts` covers the › on each removal kind, the ↺ labels and states, the posted removal and focus. `RecipeCockpitCustomTreecipeHost.test.ts` previews the restored path as kept. A journey in `CustomTreecipeJourneys.ts` deselects every field, opens Visit__c, restores one field and saves a recipe linked from Visit__c up to Account.
+
 ## [3.208.11] - Recipe Cockpit: a long formula on a read-only row is clamped, with the whole formula one click away (#706)
 
 A formula field's read-only row shows `formula: <formula>` (#685), and a formula can run to 3,900 characters. A long one made its row many lines tall and pushed the rest of the object's fields down.
