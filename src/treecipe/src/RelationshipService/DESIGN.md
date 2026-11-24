@@ -15,3 +15,5 @@ What CLAUDE.md's Project Structure said about these files before #563 trimmed it
 ```
     │   ├── RelationshipService.ts           # Builds object relationship hierarchy for Treecipe grouping; writes a faker-js tree with children nested under friends: and ancestor lookups wired, and an object's later record type blocks after its first (#194)
 ```
+
+- **One card's build combines its tree alone** (#702) — `getOrderedObjectsForRecipes` and `generateSeparateRecipeFiles` take an optional tree folder name (`buildRecipeTreeFolderName` of the tree's ordered objects). Every relationship tree is still built and ordered, and keeps its `RelationshipTree_N` number from its place among all of them, so the named tree's recipe and file name are what a full run writes. Only the combine is skipped for the others: no tree's combine reads or changes another's. The Recipe Cockpit's builds for ticked record types pass it; Generate Treecipe never does. `tests/RelationshipService.treeFilter.test.ts`.

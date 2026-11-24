@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.208.10] - Recipe Cockpit: "A data set for each record type" reads the object metadata once, not once per set (#702)
+
+Before the confirmation opens, **Generate fake data and insert** builds the folded recipe and then every set's recipe. Each build used to read and parse every object's XML and the global value sets again, and build every tree's recipe only to keep the card's. N sets read the metadata N+1 times (11 at the cap of 10), and each read was a cancellable notification of its own.
+
+- **One read per click.** The global value sets are read once. `DirectoryProcessor` built with an `ObjectMetadataSnapshot` keeps each directory listing, parsed field file, record type map and validation rule analysis the first walk read, and every later walk builds from memory. It lives for one click only, so a recipe always matches the metadata as it is when you click. Generate Treecipe is unchanged and reads every file.
+- **Only the card's tree is built.** `processAllObjectsAndRelationships` takes the card's folder name, and `RelationshipService.getOrderedObjectsForRecipes` combines that tree's recipe alone. Its file name and content are what a full run writes.
+- **One cancellable notification**, "Building the recipe for the ticked record types". Each build's messages say which build it is: "one data set, folded · Scanning objects…", "set 1 of 2 · Account · Business · …" (#695). Cancel stops every build, as before.
+- **The same recipes.** Every recipe, set total and data set is what a separate walk wrote, in both backends. A ticked record type that left the metadata is still dropped whole and named in the confirmation. A tree the metadata no longer builds is still refused once, at the folded build, before any set is built. The refusal for metadata that changed between walks is gone, since every build reads the same metadata.
+- **Tests:** `RelationshipService.treeFilter.test.ts` checks, in all four recipe layouts, that a named tree is written alone, byte for byte, under its full-run file name, and that a name no tree has writes nothing. `DirectoryProcessingService/tests/ObjectMetadataSnapshot.test.ts` checks, in both backends, that walks sharing a snapshot match fresh walks, read and parse each file once, get their own copy of each field detail, and build a named tree byte for byte. `RecipeCockpitRecordTypeRecipeBuild.test.ts` compares each recipe of a click with how it was built before, in both backends, for a two-set case and a two-object case (Account × Contact, 4 sets). It also checks that the global value sets are read once and each field file parsed once behind one notification, the numbered messages, the lone build, Cancel and the tree refusal before any set. The golden generation suite passes unchanged.
+
 ## [3.208.9] - Recipe Cockpit: the "Customize and create new recipe" modal can search, deselect every object or field, and restore all (#711)
 
 ### Customize and create new recipe

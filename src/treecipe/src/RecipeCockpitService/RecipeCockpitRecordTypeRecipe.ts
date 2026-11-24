@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor, IRecipeGenerationProgress, RecipeGenerationCancelledError } from '../DirectoryProcessingService/DirectoryProcessor';
+import { ObjectMetadataSnapshot } from '../DirectoryProcessingService/ObjectMetadataSnapshot';
 import { GlobalValueSetSingleton } from '../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { IObjectRecordTypeSelection, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
@@ -28,7 +29,7 @@ export const RECIPE_COCKPIT_MAX_RECORD_TYPE_SETS = 10;
 export const RECORD_TYPE_SET_MODE_LEGEND = 'Record types ticked under Manage record types';
 export const RECORD_TYPE_RECIPE_PROGRESS_TITLE = 'Building the recipe for the ticked record types';
 // WITH "A data set for each record type" OFFERED, THE FOLDED BUILD IS THE FIRST OF SEVERAL, SO IT SAYS WHICH ONE IT IS (#695)
-export const RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE = `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: one data set, folded`;
+export const RECORD_TYPE_RECIPE_FOLDED_PROGRESS_MESSAGE = 'one data set, folded';
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 
 // WHAT THE PLAN READS OF AN OBJECT WITH RECORD TYPES: ITS DEFAULT, AND WHAT THE RUN'S RECIPE ALREADY WRITES
@@ -67,6 +68,9 @@ export interface IDerivedTreeRecipe {
 
 // WHY THERE IS NO DERIVED RECIPE: THE READER CANCELLED THE WALK, OR THE METADATA NO LONGER BUILDS THE CARD'S TREE
 export type DerivedTreeRecipeRefusal = 'cancelled' | 'treeNotBuilt';
+
+// ONE RECIPE OF A CLICK'S BUILDS (#702), FROM THE METADATA THE FIRST BUILD READ; THE MESSAGE SAYS WHICH BUILD IT IS
+export type DerivedTreeRecipeBuild = (recordTypeSelection: Readonly<Record<string, string[]>>, progressMessage?: string) => Promise<IDerivedTreeRecipe | 'treeNotBuilt'>;
 
 /*
     The ticked selection as generation reads it. A tick naming a record type the metadata no longer
@@ -208,13 +212,13 @@ export class RecipeCockpitRecordTypeRecipe {
 
     /*
         One set's recipe build, numbered among all of them (#695): the builds before the confirmation
-        are N+1 cancellable notifications in a row, and an unnumbered title says neither how far along
-        they are nor what Cancel stops. A VS Code notification renders [label](command:...) as a link
+        share one notification (#702), and an unnumbered message says neither how far along they are
+        nor which build Cancel stops. A VS Code notification renders [label](command:...) as a link
         that runs it, so the metadata names are escaped.
     */
-    static buildRecordTypeSetProgressTitle(recordTypeSet: Readonly<Record<string, string[]>>, setIndex: number, setCount: number): string {
+    static buildRecordTypeSetProgressMessage(recordTypeSet: Readonly<Record<string, string[]>>, setIndex: number, setCount: number): string {
 
-        return `${RECORD_TYPE_RECIPE_PROGRESS_TITLE}: set ${setIndex + 1} of ${setCount} · ${RecipeYamlScalar.escapeForNotification(RecipeCockpitRecordTypeRecipe.describeRecordTypeSet(recordTypeSet))}`;
+        return `set ${setIndex + 1} of ${setCount} · ${RecipeYamlScalar.escapeForNotification(RecipeCockpitRecordTypeRecipe.describeRecordTypeSet(recordTypeSet))}`;
 
     }
 
@@ -226,52 +230,60 @@ export class RecipeCockpitRecordTypeRecipe {
     }
 
     /*
-        The tree's recipe as Generate Treecipe would write it for these record types, built in memory:
-        the same walk of the object metadata, with every record type block carrying its own copy of
-        the children (#622). Nothing is written. The walk reads every field file of the project, so
-        it runs behind the cancellable progress notification Generate Treecipe shows. The card's
-        tree is the recipe file Generate Treecipe would put in the folder of the same name; when the
-        metadata no longer builds that tree, there is no recipe to hand back.
+        The tree's recipes as Generate Treecipe would write them for some record type selections,
+        built in memory: the same walk of the object metadata, with every record type block carrying
+        its own copy of the children (#622). Nothing is written. The first walk reads and parses
+        every field file of the project and the global value sets; every later one builds from what
+        it read (#702), so one click reads the metadata once, behind one cancellable notification,
+        and each build combines the card's tree alone. The card's tree is the recipe file Generate
+        Treecipe would put in the folder of the same name; when the metadata no longer builds that
+        tree, a build hands back 'treeNotBuilt'. Cancel ends every build: the answer is 'cancelled'.
     */
-    static async buildDerivedTreeRecipe(workspaceRoot: string,
-                                        treeFolderName: string,
-                                        recordTypeSelection: Readonly<Record<string, string[]>>,
-                                        progressTitle: string = RECORD_TYPE_RECIPE_PROGRESS_TITLE): Promise<IDerivedTreeRecipe | DerivedTreeRecipeRefusal> {
+    static async buildDerivedTreeRecipes<T>(workspaceRoot: string,
+                                            treeFolderName: string,
+                                            buildRecipes: (buildTreeRecipe: DerivedTreeRecipeBuild) => Promise<T>): Promise<T | 'cancelled'> {
 
         const objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
         const isMissingGlobalValueSetsDirectoryWarningShown = false;
         const isChildTreeCopiedPerRecordTypeBlock = true;
-        const tickedSelection = new TickedRecordTypeSelection(Object.keys(recordTypeSelection)
-            .map((objectApiName): [string, string[]] => [objectApiName, recordTypeSelection[objectApiName]]), isChildTreeCopiedPerRecordTypeBlock);
+        const directoryProcessor = new DirectoryProcessor(new ObjectMetadataSnapshot());
 
         try {
 
             return await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: progressTitle,
+                title: RECORD_TYPE_RECIPE_PROGRESS_TITLE,
                 cancellable: true
             }, async (progress, cancellationToken) => {
 
-                const generationProgress: IRecipeGenerationProgress = {
-                    report: (message: string) => progress.report({ message }),
+                const buildProgress = (progressMessage?: string): IRecipeGenerationProgress => ({
+                    report: (walkMessage: string) => progress.report({ message: progressMessage ? `${progressMessage} · ${walkMessage}` : walkMessage }),
                     isCancellationRequested: () => cancellationToken.isCancellationRequested
-                };
+                });
 
-                // AWAITED BEFORE THE WALK, WHICH READS THESE SETS, AS GENERATE TREECIPE DOES
-                generationProgress.report('Reading global value sets…');
+                // AWAITED BEFORE THE FIRST WALK, WHICH READS THESE SETS, AS GENERATE TREECIPE DOES
+                const readProgress = buildProgress();
+                readProgress.report('Reading global value sets…');
                 await GlobalValueSetSingleton.getInstance().initialize(
                     ConfigurationService.resolveSalesforceMetadataParentPath(objectsDirectoryPath, workspaceRoot),
                     isMissingGlobalValueSetsDirectoryWarningShown
                 );
-                DirectoryProcessor.throwIfCancellationRequested(generationProgress);
+                DirectoryProcessor.throwIfCancellationRequested(readProgress);
 
-                const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(objectsDirectoryPath), generationProgress, tickedSelection);
-                const treeRecipeFile = ( objectInfoWrapper.RecipeFiles ?? [] )
-                    .find(recipeFile => RelationshipService.buildRecipeTreeFolderName(recipeFile.objects) === treeFolderName);
+                return buildRecipes(async (recordTypeSelection, progressMessage) => {
 
-                return treeRecipeFile
-                    ? { recipeText: treeRecipeFile.content, droppedTicks: tickedSelection.droppedTicks }
-                    : 'treeNotBuilt';
+                    const tickedSelection = new TickedRecordTypeSelection(Object.keys(recordTypeSelection)
+                        .map((objectApiName): [string, string[]] => [objectApiName, recordTypeSelection[objectApiName]]), isChildTreeCopiedPerRecordTypeBlock);
+                    const objectInfoWrapper = await directoryProcessor.processAllObjectsAndRelationships(
+                        vscode.Uri.file(objectsDirectoryPath), buildProgress(progressMessage), tickedSelection, treeFolderName);
+                    const treeRecipeFile = ( objectInfoWrapper.RecipeFiles ?? [] )
+                        .find(recipeFile => RelationshipService.buildRecipeTreeFolderName(recipeFile.objects) === treeFolderName);
+
+                    return treeRecipeFile
+                        ? { recipeText: treeRecipeFile.content, droppedTicks: tickedSelection.droppedTicks }
+                        : 'treeNotBuilt';
+
+                });
 
             });
 

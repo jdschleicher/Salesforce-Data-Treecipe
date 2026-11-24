@@ -19,9 +19,11 @@ import type {
 import { RecipeCockpitDatasetsHost } from './RecipeCockpitDatasetsHost';
 import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 import {
+    DerivedTreeRecipeBuild,
     IDroppedRecordTypeTick,
+    IRecordTypeGenerationPlan,
     IRecordTypeTickObject,
-    RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE,
+    RECORD_TYPE_RECIPE_FOLDED_PROGRESS_MESSAGE,
     RecipeCockpitRecordTypeRecipe,
     RecordTypeSetMode
 } from './RecipeCockpitRecordTypeRecipe';
@@ -74,6 +76,8 @@ export const RECIPE_COCKPIT_INSERT_RECORD_TYPES_SECTION_TITLE = 'Record types, o
 export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
 
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
+
+const TREE_NOT_BUILT_REFUSAL_REASON = 'the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.';
 
 export class RecipeCockpitTreecipeInsert {
 
@@ -345,51 +349,24 @@ export class RecipeCockpitTreecipeInsert {
         }
 
         // BUILT ONLY NOW, ONCE THE ORG CAN TAKE THE TREE: THE BUILD WALKS EVERY OBJECT'S METADATA
-        const deriveRecipe = (recordTypeSelection: Readonly<Record<string, string[]>>, progressTitle?: string) =>
-            this.buildRecordTypeFilteredRecipe(hub, panelState, recipeDataMessage.recipe, tree, recordTypeSelection, progressTitle);
         // "A data set for each record type" (#624): EVERY SET'S RECIPE IS BUILT NOW, SO THE CONFIRMATION LISTS ITS OWN TOTALS AND WARNINGS, AND NO WALK RUNS AFTER THE ANSWER
         const recordTypeSets: IRecordTypeSet<IRecipeCockpitRunFakerFilteredRecipe>[] = [];
 
         if ( recordTypePlan.isRecipeDerived ) {
 
-            // A LONE BUILD KEEPS ITS TITLE; WITH SETS TO FOLLOW, EACH OF THE N+1 BUILDS SAYS WHICH IT IS (#695)
-            const derivedRecipe = await deriveRecipe(recordTypePlan.recordTypeSelection,
-                recordTypePlan.recordTypeSets.length > 0 ? RECORD_TYPE_RECIPE_FOLDED_PROGRESS_TITLE : undefined);
-            if ( derivedRecipe === 'cancelled' ) {
+            const recordTypeRecipes = await this.buildRecordTypeRecipes(hub, panelState, recipeDataMessage.recipe, tree, recordTypePlan);
+            if ( recordTypeRecipes === 'cancelled' ) {
                 VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
                 return false;
             }
-            if ( 'refusalReason' in derivedRecipe ) {
-                return refuse(`Nothing was generated or inserted for ${treeLabel}: ${derivedRecipe.refusalReason}`);
+            if ( 'refusalReason' in recordTypeRecipes ) {
+                return refuse(`Nothing was generated or inserted for ${treeLabel}: ${recordTypeRecipes.refusalReason}`);
             }
 
-            filteredRecipe = derivedRecipe.filteredRecipe;
-            recordTypeWarnings = derivedRecipe.confirmationWarnings;
-            // A SET IS NEVER BUILT FOR A RECORD TYPE THE METADATA NO LONGER HAS: IT WOULD BE THE DEFAULT, UNDER A NAME THAT SAYS OTHERWISE
-            recordTypePlan = RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(recordTypePlan, derivedRecipe.droppedTicks);
-
-            for ( const [setIndex, recordTypeSet] of recordTypePlan.recordTypeSets.entries() ) {
-                const setLabel = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLabel(recordTypeSet, setIndex);
-                const setRecipe = await deriveRecipe(recordTypeSet,
-                    RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressTitle(recordTypeSet, setIndex, recordTypePlan.recordTypeSets.length));
-                if ( setRecipe === 'cancelled' ) {
-                    VSCodeWorkspaceService.showInformationMessage(`Nothing was generated or inserted for ${treeLabel}: building its recipe for the ticked record types was cancelled.`);
-                    return false;
-                }
-                if ( 'refusalReason' in setRecipe ) {
-                    return refuse(`Nothing was generated or inserted for ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(setLabel)}: ${setRecipe.refusalReason}`);
-                }
-                // THE FOLDED BUILD ALREADY DROPPED STALE TICKS: ONE DROPPED NOW IS METADATA CHANGED BETWEEN WALKS, AND THE SET WOULD CARRY A NAME IT DOES NOT INSERT
-                if ( setRecipe.droppedTicks.length > 0 ) {
-                    return refuse(`Nothing was generated or inserted for ${treeLabel}: the object metadata changed while the recipes for the ticked record types were built (${RecipeYamlScalar.escapeForNotification(setLabel)} no longer has its record types). Choose "${RECIPE_COCKPIT_INSERT_ACTION_LABEL}" again.`);
-                }
-                recordTypeSets.push({
-                    setLabel: setLabel,
-                    recipe: setRecipe.filteredRecipe,
-                    recordTotalsByObject: RecipeCockpitRecipeWriter.countRecipeRecordsByObject(setRecipe.filteredRecipe.recipeText),
-                    warnings: setRecipe.confirmationWarnings
-                });
-            }
+            filteredRecipe = recordTypeRecipes.foldedRecipe.filteredRecipe;
+            recordTypeWarnings = recordTypeRecipes.foldedRecipe.confirmationWarnings;
+            recordTypePlan = recordTypeRecipes.recordTypePlan;
+            recordTypeSets.push(...recordTypeRecipes.recordTypeSets);
 
         }
 
@@ -559,6 +536,60 @@ export class RecipeCockpitTreecipeInsert {
     }
 
     /*
+        The folded recipe and every set's (#624), from one read of the metadata (#702). The folded
+        build comes first: it drops stale ticks, so no set is built for a record type the metadata
+        no longer has, and a tree the metadata no longer builds is refused before any set is built.
+        Every build reads the same metadata, so a set cannot drop a tick the folded build kept.
+    */
+    private static async buildRecordTypeRecipes(hub: IRecipeCockpitHubForTreecipeOrgTab,
+                                                panelState: IRecipeCockpitPanelState,
+                                                recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                                tree: IRecipeCockpitTreeViewModel,
+                                                recordTypePlan: IRecordTypeGenerationPlan):
+        Promise<{ foldedRecipe: { filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; confirmationWarnings: string[] }; recordTypePlan: IRecordTypeGenerationPlan; recordTypeSets: IRecordTypeSet<IRecipeCockpitRunFakerFilteredRecipe>[] } | { refusalReason: string } | 'cancelled'> {
+
+        if ( !tree.folderName ) {
+            return { refusalReason: TREE_NOT_BUILT_REFUSAL_REASON };
+        }
+
+        return RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipes(panelState.workspaceRoot, tree.folderName, async buildTreeRecipe => {
+
+            const deriveRecipe = (recordTypeSelection: Readonly<Record<string, string[]>>, progressMessage?: string) =>
+                this.buildRecordTypeFilteredRecipe(hub, panelState, recipeViewModel, tree, buildTreeRecipe, recordTypeSelection, progressMessage);
+
+            // A LONE BUILD SAYS ONLY WHAT THE WALK DOES; WITH SETS TO FOLLOW, EACH BUILD SAYS WHICH IT IS (#695)
+            const foldedRecipe = await deriveRecipe(recordTypePlan.recordTypeSelection,
+                recordTypePlan.recordTypeSets.length > 0 ? RECORD_TYPE_RECIPE_FOLDED_PROGRESS_MESSAGE : undefined);
+            if ( 'refusalReason' in foldedRecipe ) {
+                return foldedRecipe;
+            }
+
+            // A SET IS NEVER BUILT FOR A RECORD TYPE THE METADATA NO LONGER HAS: IT WOULD BE THE DEFAULT, UNDER A NAME THAT SAYS OTHERWISE
+            const setPlan = RecipeCockpitRecordTypeRecipe.withoutDroppedTicks(recordTypePlan, foldedRecipe.droppedTicks);
+            const recordTypeSets: IRecordTypeSet<IRecipeCockpitRunFakerFilteredRecipe>[] = [];
+
+            for ( const [setIndex, recordTypeSet] of setPlan.recordTypeSets.entries() ) {
+                const setLabel = RecipeCockpitRecordTypeRecipe.buildRecordTypeSetLabel(recordTypeSet, setIndex);
+                const setRecipe = await deriveRecipe(recordTypeSet,
+                    RecipeCockpitRecordTypeRecipe.buildRecordTypeSetProgressMessage(recordTypeSet, setIndex, setPlan.recordTypeSets.length));
+                if ( 'refusalReason' in setRecipe ) {
+                    return { refusalReason: `${RecipeYamlScalar.escapeForNotification(setLabel)}: ${setRecipe.refusalReason}` };
+                }
+                recordTypeSets.push({
+                    setLabel: setLabel,
+                    recipe: setRecipe.filteredRecipe,
+                    recordTotalsByObject: RecipeCockpitRecipeWriter.countRecipeRecordsByObject(setRecipe.filteredRecipe.recipeText),
+                    warnings: setRecipe.confirmationWarnings
+                });
+            }
+
+            return { foldedRecipe: foldedRecipe, recordTypePlan: setPlan, recordTypeSets: recordTypeSets };
+
+        });
+
+    }
+
+    /*
         The tree's recipe for some record types (#623), built in memory with the card's settings
         applied: the confirmation's warnings and the ticks the build dropped with it, or why it
         cannot be built -- the part of a notification after the tree's name, escaped -- or 'cancelled'.
@@ -567,18 +598,14 @@ export class RecipeCockpitTreecipeInsert {
                                                         panelState: IRecipeCockpitPanelState,
                                                         recipeViewModel: IRecipeCockpitRecipeViewModel,
                                                         tree: IRecipeCockpitTreeViewModel,
+                                                        buildTreeRecipe: DerivedTreeRecipeBuild,
                                                         recordTypeSelection: Readonly<Record<string, string[]>>,
-                                                        progressTitle?: string):
-        Promise<{ filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; confirmationWarnings: string[]; droppedTicks: IDroppedRecordTypeTick[] } | { refusalReason: string } | 'cancelled'> {
+                                                        progressMessage?: string):
+        Promise<{ filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe; confirmationWarnings: string[]; droppedTicks: IDroppedRecordTypeTick[] } | { refusalReason: string }> {
 
-        const derivedRecipe = tree.folderName
-            ? await RecipeCockpitRecordTypeRecipe.buildDerivedTreeRecipe(panelState.workspaceRoot, tree.folderName, recordTypeSelection, progressTitle)
-            : 'treeNotBuilt';
-        if ( derivedRecipe === 'cancelled' ) {
-            return 'cancelled';
-        }
+        const derivedRecipe = await buildTreeRecipe(recordTypeSelection, progressMessage);
         if ( derivedRecipe === 'treeNotBuilt' ) {
-            return { refusalReason: 'the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.' };
+            return { refusalReason: TREE_NOT_BUILT_REFUSAL_REASON };
         }
 
         const settingPlacer = RecipeCockpitRecordTypeRecipe.buildOccurrenceSettingPlacer(
