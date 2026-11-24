@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.208.12] - faker-js standard-field values all run and end in `}}`: Campaign, Opportunity, Asset and Pricebook2 (#717)
+
+Some faker-js values for standard fields that Generate Treecipe writes from its built-in list were broken.
+
+- **Campaign generates.** `Campaign.Name` called `faker.company.bs()`, which faker-js 9.7.0 no longer has, so Run Faker by Recipe stopped at every faker-js Campaign. It is now `faker.company.catchPhrase()`.
+- **Pricebook2 gets its values, with no stray `"`.** The entry was keyed `PriceBook2`, which matches no Salesforce object, so a Pricebook2 got TODO lines in place of the values meant for it, and its `Name`, `${{ (faker.company.bs()) Price Book }} "`, held a misplaced `}}`, a stray quote and the same missing function. It is keyed `Pricebook2` and writes `Name: ${{ faker.company.name() + ' Price Book' }}`, `Description` and `IsActive`, as snowfakery already did.
+- **Currency and percent values are one expression.** `Campaign.BudgetedCost`, `ActualCost`, `ExpectedRevenue`, `ExpectedResponse`, `Opportunity.Amount`, `Opportunity.Probability` and `Asset.Price` were written as `${{ (faker.string.numeric(5)) }}.00`, with text after the `}}` that the Recipe Cockpit's field editor refused as "not one `${{ ... }}` expression". Each is now a `|` block holding `${{ faker.finance.amount({min: 0, max: 99999, dec: 2}) }}`, the form every precision and scale field already takes, so the value keeps its fixed decimals (`"86863.00"`).
+- **What does not change.** Every other standard-field value, and every snowfakery recipe. A recipe generated before this keeps its old lines until it is generated again.
+
+### Under the hood
+
+- `FakerJSRecipeFakerService.getOOTBObjectApiNameToFieldApiNameMap` holds the nine values and the corrected key.
+- **Tests.** `FakerJSRecipeFakerService.test.ts` now checks that every built-in standard-field value ends with its last `}}`, has no quote or brace outside an expression, and evaluates with the installed faker-js, so a value that stops working when faker-js is upgraded fails here. It also checks each currency and percent field's decimals, the `Pricebook2` key and `Campaign.Name`. `DirectoryProcessor.compoundName.test.ts` now expects a mapped faker-js Pricebook2 `Name`.
+- **Golden files.** The faker-js Pricebook2 tree now writes values in place of three TODO lines. Its SOQL template, like every mapped standard object's, no longer lists the mapped fields. In the Account tree, Opportunity's `Amount` and `Probability` become `|` blocks, and since `faker.finance.amount` draws a different number of random values, every seeded value generated after them differs. The Recipe Cockpit's nested writer fixture is updated to match.
+
 ## [3.208.11] - Recipe Cockpit: a long formula on a read-only row is clamped, with the whole formula one click away (#706)
 
 A formula field's read-only row shows `formula: <formula>` (#685), and a formula can run to 3,900 characters. A long one made its row many lines tall and pushed the rest of the object's fields down.

@@ -378,7 +378,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
                 'Task',
                 'Event',
                 'Product2',
-                'PriceBook2',
+                'Pricebook2',
                 'Asset',
                 'Contract'
             ];
@@ -1021,6 +1021,70 @@ describe('FakerJSRecipeFakerService built-in standard-field values are all expre
 
         expect(dollarOpenerCount).toBe(expressionOpenerCount);
         expect(recipeValue.trimStart().startsWith('"')).toBe(false);
+
+    });
+
+    // TEXT AFTER THE LAST "}}" IS REFUSED BY THE COCKPIT'S checkConstrainedExpression, AND A STRAY QUOTE REACHES THE ORG (#717)
+    test.each(standardFieldValues)('%s ends with its last expression\'s }} and holds no quote outside an expression', (unusedObjectField, recipeValue) => {
+
+        const textOutsideExpressions = recipeValue.replace(/\$\{\{.*?\}\}/g, '');
+
+        expect(recipeValue.trimEnd().endsWith('}}')).toBe(true);
+        expect(recipeValue).toBe(recipeValue.trimEnd());
+        expect(textOutsideExpressions).not.toMatch(/["'{}]/);
+
+    });
+
+    // THE SAME new Function CALL FakerJSRecipeProcessor.getFakerJSExpressionEvaluation MAKES, AGAINST THE PINNED faker-js (#717)
+    test.each(standardFieldValues)('%s evaluates every expression with the installed faker-js', (unusedObjectField, recipeValue) => {
+
+        const fakerJSCodes = [...recipeValue.matchAll(/\$\{\{(.*?)\}\}/g)].map(expressionMatch => expressionMatch[1].trim());
+
+        expect(fakerJSCodes.length).toBeGreaterThan(0);
+        fakerJSCodes.forEach(fakerJSCode => {
+            expect(() => new Function('faker', `return (${fakerJSCode})`)(faker)).not.toThrow();
+        });
+
+    });
+
+});
+
+describe('FakerJSRecipeFakerService standard-field values for currency, percent and named objects (#717)', () => {
+
+    const standardFieldValues = new FakerJSRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap();
+    const evaluate = (recipeValue: string): string => {
+        const fakerJSCode = /^(?:\|\n\s*)?\$\{\{(.*)\}\}$/.exec(recipeValue)[1];
+        return String(new Function('faker', `return (${fakerJSCode})`)(faker));
+    };
+
+    test.each([
+        ['Campaign', 'BudgetedCost', /^\d{1,5}\.\d{2}$/],
+        ['Campaign', 'ActualCost', /^\d{1,5}\.\d{2}$/],
+        ['Campaign', 'ExpectedRevenue', /^\d{1,6}\.\d{2}$/],
+        ['Campaign', 'ExpectedResponse', /^\d{1,2}\.\d$/],
+        ['Opportunity', 'Amount', /^\d{1,6}\.\d{2}$/],
+        ['Opportunity', 'Probability', /^\d{1,2}\.\d$/],
+        ['Asset', 'Price', /^\d{1,5}\.\d{2}$/]
+    ])('%s.%s is one expression in a | block, as every numeric value is, whose value keeps its fixed decimals', (objectApiName, fieldApiName, expectedValuePattern) => {
+
+        const recipeValue = standardFieldValues[objectApiName][fieldApiName];
+
+        // A PLAIN SCALAR WOULD END AT THE ": " IN {min: 0, ...}
+        expect(recipeValue).toMatch(/^\|\n\s*\$\{\{.*\}\}$/);
+        expect(evaluate(recipeValue)).toMatch(expectedValuePattern);
+
+    });
+
+    test('Pricebook2 is keyed by its api name, and its Name ends in " Price Book"', () => {
+
+        expect(standardFieldValues).not.toHaveProperty('PriceBook2');
+        expect(evaluate(standardFieldValues.Pricebook2.Name)).toMatch(/\S Price Book$/);
+
+    });
+
+    test('Campaign.Name generates a non-empty name', () => {
+
+        expect(evaluate(standardFieldValues.Campaign.Name).trim()).not.toBe('');
 
     });
 
