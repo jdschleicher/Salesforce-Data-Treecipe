@@ -1155,6 +1155,7 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     .customTreecipeAsk, .customTreecipeSaveForm { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.75rem; border: 1px solid var(--sdt-border); border-radius: 6px; background-color: var(--sdt-page); color: var(--sdt-text); }
     .customTreecipeAskTitle { font-weight: 600; }
     .customTreecipeAsk .customTreecipeAskTitle { color: var(--sdt-removed); }
+    .customTreecipeAskWarning { font-weight: 600; color: var(--sdt-removed); }
     .customTreecipeAskActions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .customTreecipeSaveDetails { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.3rem 0.8rem; margin: 0; }
     .customTreecipeSaveDetails dd { margin: 0; overflow-wrap: anywhere; }

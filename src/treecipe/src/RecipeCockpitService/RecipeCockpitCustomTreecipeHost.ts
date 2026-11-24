@@ -212,10 +212,11 @@ export class RecipeCockpitCustomTreecipeHost {
             removedFieldApiNamesByObject.set(objectApiName, ( removedFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName));
         }
 
+        const removedObjectApiNameSet = new Set(removedObjectApiNames);
         return {
-            removedObjectApiNames: [...new Set(removedObjectApiNames)],
+            removedObjectApiNames: [...removedObjectApiNameSet],
             removedFieldApiNamesByObject: removedFieldApiNamesByObject,
-            outOfRunObjectApiNames: [...new Set(outOfRunObjectApiNames)].filter(objectApiName => !removedObjectApiNames.includes(objectApiName))
+            outOfRunObjectApiNames: [...new Set(outOfRunObjectApiNames)].filter(objectApiName => !removedObjectApiNameSet.has(objectApiName))
         };
 
     }

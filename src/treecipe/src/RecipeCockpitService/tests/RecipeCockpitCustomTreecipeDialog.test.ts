@@ -632,6 +632,161 @@ describe('the "Customize and create new recipe" modal (#677)', () => {
 
         });
 
+        describe('after review (#712)', () => {
+
+            const openTheQuestion = (panel: Panel) => toolbarControl(panel, 'customTreecipeDeselectFields').dispatch('click');
+            const questionLines = (panel: Panel) => panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAsk')[0].children.map((childElement: any) => childElement.textContent);
+
+            it('turns the toolbar off on the save step, so typing there never reaches the name box', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                buttonLabelled(panel, 'Remove OtherChildObject__c from the new recipe').dispatch('click');
+                answerLatestPreview(panel, { keptObjectCount: 2, objectSelection: { exclusions: [{ objectApiName: 'OtherChildObject__c', kind: 'excluded' }], disabledLookups: [] } });
+
+                panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeSave')[0].dispatch('click');
+
+                ['customTreecipeSearch', 'customTreecipeDeselectObjects', 'customTreecipeDeselectFields', 'customTreecipeRestoreAll']
+                    .forEach(className => expect(toolbarControl(panel, className).disabled).toBe(true));
+
+                panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeBack')[0].dispatch('click');
+
+                expect(toolbarControl(panel, 'customTreecipeSearch').disabled).toBe(false);
+
+            });
+
+            it('puts focus on the question when it opens, so a reader scrolled down sees it', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                toolbarControl(panel, 'customTreecipeDeselectFields').focus();
+
+                openTheQuestion(panel);
+
+                expect(panel.activeElement()).toBe(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeKeepFields')[0]);
+
+            });
+
+            it('says when the removal empties the root, and with it the whole tree', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                openTheQuestion(panel);
+
+                expect(questionLines(panel)[0]).toBe('Remove every field you can?');
+                expect(questionLines(panel)).toContain('Account, the root of this tree, is left with no field, so it goes with every object under it and nothing is left to save.');
+
+            });
+
+            it('says nothing of the root when a locked field keeps it, or a search leaves it out', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel, { fieldSelection: { objects: [{ objectApiName: 'Account', lockedFields: [{ fieldApiName: 'Rating__c', reason: 'controls Sub_Rating__c' }] }] } });
+
+                openTheQuestion(panel);
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAskWarning')).toEqual([]);
+
+                panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeKeepFields')[0].dispatch('click');
+                answerLatestPreview(panel);
+                search(panel, 'score');
+                openTheQuestion(panel);
+
+                expect(questionLines(panel)[0]).toBe('Remove every shown field you can?');
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAskWarning')).toEqual([]);
+
+            });
+
+            it('turns Remove fields off when nothing shown is left to remove', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                search(panel, 'lastname');
+                openTheQuestion(panel);
+
+                controlOf(panel, 'Contact', 'customTreecipeRemoveEveryField').dispatch('click');
+
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeRemoveFields')[0].disabled).toBe(true);
+
+            });
+
+            it('empties a search with Escape and keeps the modal open, then closes it with a second Escape', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                buttonLabelled(panel, 'Remove Contact.LastName from the new recipe').dispatch('click');
+                search(panel, 'rating');
+
+                toolbarControl(panel, 'customTreecipeSearch').dispatch('keydown', { key: 'Escape' });
+
+                expect(toolbarControl(panel, 'customTreecipeSearch').value).toBe('');
+                expect(shownObjectNames(panel)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+                expect(buttonLabelled(panel, 'Restore Contact.LastName')).toBeDefined();
+
+                toolbarControl(panel, 'customTreecipeSearch').dispatch('keydown', { key: 'Escape' });
+
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeDialog')).toEqual([]);
+
+            });
+
+            it('keeps the bulk field buttons off until the host says which fields are locked', () => {
+
+                const panel = openModal();
+
+                expect(toolbarControl(panel, 'customTreecipeDeselectFields').disabled).toBe(true);
+                expect(controlOf(panel, 'Contact', 'customTreecipeRemoveEveryField').disabled).toBe(true);
+
+                answerLatestPreview(panel);
+
+                expect(toolbarControl(panel, 'customTreecipeDeselectFields').disabled).toBe(false);
+                expect(controlOf(panel, 'Contact', 'customTreecipeRemoveEveryField').disabled).toBe(false);
+
+            });
+
+            it('skips a locked field in a row\'s Remove every field', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel, { fieldSelection: { objects: [{ objectApiName: 'Contact', lockedFields: [{ fieldApiName: 'LastName', reason: 'a required field' }] }] } });
+
+                controlOf(panel, 'Contact', 'customTreecipeRemoveEveryField').dispatch('click');
+
+                expect(lastPreviewRequest(panel).removedFields).toEqual([{ objectApiName: 'Contact', fieldApiName: 'AccountId' }]);
+
+            });
+
+            it('puts the full field list back as the same element when a search that filtered it is cleared', () => {
+
+                const panel = openModalWithEveryObjectOpen();
+                const accountFieldsBefore = fieldListOf(panel, 'Account');
+
+                search(panel, 'rating');
+                expect(fieldListOf(panel, 'Account')).not.toBe(accountFieldsBefore);
+                search(panel, '');
+
+                expect(fieldListOf(panel, 'Account')).toBe(accountFieldsBefore);
+
+            });
+
+            it('opens a closed object with its chevron during a search, and closes it again when the search is cleared', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'contact');
+                controlOf(panel, 'Contact', 'customTreecipeChevron').dispatch('click');
+                expect(fieldListOf(panel, 'Contact')).toBeUndefined();
+                search(panel, 'o');
+                controlOf(panel, 'Account', 'customTreecipeChevron').dispatch('click');
+                expect(fieldListOf(panel, 'Account')).toBeDefined();
+                search(panel, '');
+
+                expect(fieldListOf(panel, 'Account')).toBeUndefined();
+                expect(fieldListOf(panel, 'Contact')).toBeDefined();
+
+            });
+
+        });
+
         it('puts the toolbar in tab order after the close ✕ and before the rows', () => {
 
             const panel = openModal();
