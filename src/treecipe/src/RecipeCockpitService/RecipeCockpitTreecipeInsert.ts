@@ -77,7 +77,6 @@ export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
 
 export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
 
-
 const TREE_NOT_BUILT_REFUSAL_REASON = 'the object metadata no longer builds this tree, so its recipe could not be built for the ticked record types. Run "Generate Treecipe" again, then tick the record types.';
 
 export class RecipeCockpitTreecipeInsert {
