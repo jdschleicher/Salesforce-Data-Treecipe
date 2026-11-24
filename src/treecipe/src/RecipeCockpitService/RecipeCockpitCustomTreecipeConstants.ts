@@ -26,5 +26,23 @@ export const RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_PREFIX = 'Removed with 
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_OUT_OF_RUN_TEXT = 'Left out of a run, kept in the recipe';
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_OUT_OF_RUN_WITH_PREFIX = 'Left out of a run with ';
 
-// THE MOST NAMES ONE MODAL CAN POST: MORE THAN ANY GENERATED TREE HOLDS, FEW ENOUGH THAT A FORGED MESSAGE COSTS NOTHING TO REFUSE
+// THE FLOOR OF HOW MANY NAMES ONE MODAL CAN POST: THE HOST ALSO ACCEPTS AS MANY AS THE PANEL HAS DRAWN KEYS FOR (#711)
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES = 5000;
+
+// THE MODAL'S TOOLBAR (#711): A SEARCH OVER OBJECT AND FIELD API NAMES, AND BULK ✕ AND ↺ OVER WHAT IT SHOWS
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_SEARCH_LABEL = 'Search objects and fields';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_SEARCH_PLACEHOLDER = 'Search objects and fields by API name';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_NO_MATCH_PREFIX = 'No object or field matches ';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_OBJECTS_LABEL = 'Deselect all objects';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_OBJECTS_LABEL = 'Deselect shown objects';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_LABEL = 'Deselect all fields';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_FIELDS_LABEL = 'Deselect shown fields';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORE_ALL_LABEL = 'Restore all';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVE_EVERY_FIELD_PREFIX = 'Remove every field of ';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVE_SHOWN_FIELDS_PREFIX = 'Remove shown fields of ';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_TITLE = 'Remove every field you can?';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_FIELDS_ASK_TITLE = 'Remove every shown field you can?';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_EMPTIES_ROOT_SUFFIX = ', the root of this tree, is left with no field, so it goes with every object under it and nothing is left to save.';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_NOTE = 'An object with no locked field is removed with its fields, since an object with every field removed is left out. ↺ brings each back.';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_KEEP_LABEL = 'Keep fields';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_CONFIRM_LABEL = 'Remove fields';

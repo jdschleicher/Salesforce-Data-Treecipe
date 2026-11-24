@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.208.9] - Recipe Cockpit: "A data set for each record type" reads the object metadata once, not once per set (#702)
+## [3.208.10] - Recipe Cockpit: "A data set for each record type" reads the object metadata once, not once per set (#702)
 
 Before the confirmation opens, **Generate fake data and insert** builds the folded recipe and then every set's recipe. Each build used to read and parse every object's XML and the global value sets again, and build every tree's recipe only to keep the card's. N sets read the metadata N+1 times (11 at the cap of 10), and each read was a cancellable notification of its own.
 
@@ -9,6 +9,30 @@ Before the confirmation opens, **Generate fake data and insert** builds the fold
 - **One cancellable notification**, "Building the recipe for the ticked record types". Each build's messages say which build it is: "one data set, folded · Scanning objects…", "set 1 of 2 · Account · Business · …" (#695). Cancel stops every build, as before.
 - **The same recipes.** Every recipe, set total and data set is what a separate walk wrote, in both backends. A ticked record type that left the metadata is still dropped whole and named in the confirmation. A tree the metadata no longer builds is still refused once, at the folded build, before any set is built. The refusal for metadata that changed between walks is gone, since every build reads the same metadata.
 - **Tests:** `RelationshipService.treeFilter.test.ts` checks, in all four recipe layouts, that a named tree is written alone, byte for byte, under its full-run file name, and that a name no tree has writes nothing. `DirectoryProcessingService/tests/ObjectMetadataSnapshot.test.ts` checks, in both backends, that walks sharing a snapshot match fresh walks, read and parse each file once, get their own copy of each field detail, and build a named tree byte for byte. `RecipeCockpitRecordTypeRecipeBuild.test.ts` compares each recipe of a click with how it was built before, in both backends, for a two-set case and a two-object case (Account × Contact, 4 sets). It also checks that the global value sets are read once and each field file parsed once behind one notification, the numbered messages, the lone build, Cancel and the tree refusal before any set. The golden generation suite passes unchanged.
+
+## [3.208.9] - Recipe Cockpit: the "Customize and create new recipe" modal can search, deselect every object or field, and restore all (#711)
+
+### Customize and create new recipe
+
+- **A search box above the objects.** It shows only the objects and fields whose API name holds what you type, ignoring case.
+  - An object whose name matches shows every field. One shown only for its fields is opened, listing just those fields.
+  - Clearing the box puts every object back, open or closed as it was before. When nothing matches, the modal says what it searched for. Searching changes only what is shown, and posts nothing.
+- **Deselect all objects** removes every object but the root, so you can build a recipe back up from it with ↺. An object the cascade already took stays the cascade's, so ↺ on its parent still brings it back.
+- **Deselect all fields** asks first, in the modal, then removes every field whose ✕ is on. Locked fields and lookups cut with their parent stay. An object left with no field is removed, as one with every field removed always is.
+- **Remove every field of <object>**, last on an open object's row, does the same for that object alone, with no question.
+- **Restore all** clears every object and field removal. An object left out of a run with its chain link stays left out. It is off while nothing is removed.
+- **While you search, the bulk buttons act only on what is shown,** and say so: **Deselect shown objects**, **Deselect shown fields**, **Remove shown fields of <object>**.
+- **The toolbar sits between the close ✕ and the rows in tab order.** A button that turns itself off, and the question's buttons, hand focus to the search box. The question takes focus when it opens, so a reader scrolled down the list still sees it.
+- **The question says when it would empty the root.** If the root has no locked field, removing all its fields takes it, and every object under it, out of the recipe. The question then says nothing is left to save, as the root's own ✕ does. While searching it asks "Remove every shown field you can?", and **Remove fields** turns off when nothing shown is left to remove.
+- **Escape empties a search before it closes the modal,** so clearing the box never loses your removals. The toolbar is off on the save step, and the bulk field buttons stay off until the cockpit knows which fields are locked.
+- **The host reads as many names as the panel draws keys for.** It used to refuse a removal of more than 5,000 names, which **Deselect all fields** passes on a big tree (40 objects × 300 fields). Now the limit is the larger of 5,000 and the panel's drawn object or field keys, so a forged list still costs no more than what is on screen.
+- **What does not change.** The host still decides the cascade and the locks, a bulk action posts the same removal ✕ and ↺ do, and Save plans again. The same removals write the same recipe and `customTreecipe.json`. The root's own ✕ still asks first. The ? help and the guide describe the toolbar.
+
+### Under the hood
+
+- `CustomTreecipeDialog.ts` gains `buildToolbar`, `listShownObjects` and the bulk rules (`listDeselectableObjectApiNames`, `isFieldRemovable`). An object row and its field list are drawn from what the search shows, and their signatures include it, so a list is reused only when it shows the same fields. A filtered list is cached apart from the full one (`filteredFieldListsByObject`), so clearing a search puts every full list back as the same element: about 0.4 s → a reuse at 40 × 300. The words are in `RecipeCockpitCustomTreecipeConstants.ts`.
+- `readCustomTreecipeRemoval` checks the out-of-run names against a `Set` of the removed ones rather than the posted list.
+- **Tests.** `RecipeCockpitCustomTreecipeDialog.test.ts` covers the search, each bulk button with and without a search, locked and cut fields, the question, focus and tab order. `RecipeCockpitCustomTreecipeHost.test.ts` covers the limit at, over and past the floor. `RecipeCockpitRowPresentation.test.ts` now expects an open object's row to end with its button. A journey in `CustomTreecipeJourneys.ts` deselects every object, finds Contact with the search, restores it and saves the copy one ✕ on Visit__c makes. Generated recipes are unchanged.
 
 ## [3.208.8] - Recipe Cockpit: a Quote's read-only AccountId row follows the Opportunity its OpportunityId holds now (#704)
 
