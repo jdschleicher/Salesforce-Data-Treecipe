@@ -127,6 +127,46 @@ export const CUSTOM_TREECIPE_JOURNEYS: Array<{ name: string; run(journey: Recipe
     },
 
     {
+        name: 'deselect every object but the root, find one with the search box, restore it, and save the same Treecipe ✕ would have made (#711)',
+        run: async journey => {
+
+            await journey.click('button', 'Customize and create new recipe');
+            await journey.click('button', 'Deselect all objects');
+
+            await journey.step('every object but Account, the root, is removed, and Restore all is on', () => {
+                const screen = journey.screen();
+                screen.get('button', 'Restore Contact');
+                screen.get('button', 'Restore Visit__c');
+                screen.get('button', 'Remove Account from the new recipe');
+                expectEqual(screen.get('button', 'Restore all').states.includes('disabled'), false, 'Restore all is enabled');
+            });
+
+            await journey.type('Search objects and fields', 'contact');
+
+            await journey.step('the search shows Contact and leaves Account, which has no field matching contact, out of view', () => {
+                const screen = journey.screen();
+                screen.get('button', 'Restore Contact');
+                expectEqual(screen.findAll('button', 'Remove Account from the new recipe').length, 0, 'Account rows while searching for contact');
+            });
+
+            await journey.click('button', 'Restore Contact');
+            await journey.type('Search objects and fields', '');
+            await journey.click('button', 'Save as new Treecipe');
+            const notificationCountBefore = journey.notifications.length;
+            await journey.click('button', 'Save');
+            await journey.waitForNotification(new RegExp(`^Saved ${CUSTOM_FOLDER_NAME}, `), notificationCountBefore);
+
+            await journey.step('custom-<tree> leaves out only Visit__c, the removal one ✕ on Visit__c posts', () => {
+                const { recipeText, definition } = readCustomFolder(journey, CUSTOM_FOLDER_NAME);
+                expectEqual(recipeObjectNames(recipeText), ['Account', 'Contact'], 'The objects of the custom recipe');
+                expectEqual(definition.removedObjectApiNames, ['Visit__c'], 'customTreecipe.json removedObjectApiNames');
+                expectEqual(definition.removedFields, [], 'customTreecipe.json removedFields');
+            });
+
+        }
+    },
+
+    {
         name: 'Cancel closes the modal and writes nothing; removing the root asks first',
         run: async journey => {
 
