@@ -81,6 +81,9 @@ export interface ITreeFieldState {
     fixedValueBadgeElement: HTMLElement | null;
     fixedValueElement: HTMLElement | null;
     expressionElement: HTMLElement | null;
+    // "Test faker value" (#718): SET ONLY ON A ROW THAT DRAWS THE BUTTON
+    fakerValueTestElement: HTMLButtonElement | null;
+    fakerValueExampleElement: HTMLElement | null;
     picklistSectionElement: HTMLElement | null;
     validationRuleElement: HTMLElement | null;
     isValidationRuleApplied: boolean;

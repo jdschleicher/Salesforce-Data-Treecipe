@@ -5,6 +5,7 @@ import type {
     IRecipeCockpitAddFriendStateMessage,
     IRecipeCockpitAddableParentViewModel,
     IRecipeCockpitEmptyLookupViewModel,
+    IRecipeCockpitFakerValueExampleMessage,
     IRecipeCockpitLookupWiringViewModel,
     IRecipeCockpitObjectRefreshStateMessage,
     IRecipeCockpitPanelMessage,
@@ -40,6 +41,8 @@ import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { RECIPE_COCKPIT_NAME_NOT_SAVED_REFUSAL } from './RecipeCockpitNavigationConstants';
 import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 import { RecipeCockpitTreeSelectionStore } from './RecipeCockpitTreeSelectionStore';
+import { RecipeCockpitFakerValueExample } from './RecipeCockpitFakerValueExample';
+import { RecipeCockpitFakerValueGeneration } from './RecipeCockpitFakerValueGeneration';
 
 /*
     The Treecipe tab's recipe edits, its host half (moved out of the hub by #688, after #665's
@@ -124,7 +127,8 @@ export const RECIPE_COCKPIT_TREECIPE_COMMANDS = [
     'openObjectRefresh',
     'startObjectRefresh',
     'cancelObjectRefresh',
-    'applyObjectRefresh'
+    'applyObjectRefresh',
+    'testFakerValue'
 ] as const;
 
 export const RECIPE_COCKPIT_TREECIPE_ACTION_KINDS = [
@@ -151,7 +155,8 @@ export const RECIPE_COCKPIT_TREECIPE_ACTION_KINDS = [
     'startObjectRefresh',
     'cancelObjectRefresh',
     'applyObjectRefresh',
-    'refuseObjectRefresh'
+    'refuseObjectRefresh',
+    'testFakerValue'
 ] as const;
 
 export type RecipeCockpitTreecipePanelAction =
@@ -179,7 +184,9 @@ export type RecipeCockpitTreecipePanelAction =
     | { kind: 'startObjectRefresh'; refreshId: string; kinds: ObjectRefreshKind[] }
     | { kind: 'cancelObjectRefresh'; refreshId: string }
     | { kind: 'applyObjectRefresh'; refreshId: string; itemIndexes: number[] }
-    | { kind: 'refuseObjectRefresh'; refusalText: string; hostMessage?: IRecipeCockpitObjectRefreshStateMessage };
+    | { kind: 'refuseObjectRefresh'; refusalText: string; hostMessage?: IRecipeCockpitObjectRefreshStateMessage }
+    // "Test faker value" (#718): THE DRAWN FIELD AND THE EXPRESSION ITS ROW SHOWS, TAKEN FROM THE MODEL, NEVER FROM THE POST
+    | { kind: 'testFakerValue'; treeKey: string; renderSequence: number; objectApiName: string; nickname?: string; fieldApiName: string; expression: string };
 
 export class RecipeCockpitTreecipeHost {
 
@@ -784,6 +791,62 @@ export class RecipeCockpitTreecipeHost {
 
             }
 
+            /*
+                "Test faker value" (#718) posts the card, the occurrence and the field. The field must be
+                one the confirmed-drawn model shows with a recipe line and a row that draws the button:
+                an expression to run, not read only, derived or dependent, and no fixed value or edit
+                shown in its place. The expression is the one the row shows -- the rules' unconstrained
+                one when the reader unticked them -- read from the model.
+            */
+            case 'testFakerValue': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+                const recipeDataMessage = panelState.recipeDataMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                if ( !drawnField ) {
+                    return undefined;
+                }
+
+                const { tree, occurrence, fieldViewModel } = drawnField;
+                const isThisOccurrence = (fieldReference: { objectApiName: string; nickname?: string; fieldApiName: string }) =>
+                    fieldReference.objectApiName === objectApiName && fieldReference.fieldApiName === fieldApiName
+                    && ( fieldReference.nickname === undefined || fieldReference.nickname === occurrence.nickname );
+
+                if ( RecipeCockpitFakerValueExample.findNoExampleReason({ objectApiName, fieldApiName, recipeValue: fieldViewModel.recipeValue, controllingField: fieldViewModel.controllingField }) !== undefined
+                        || ( tree.fixedValues ?? [] ).some(isThisOccurrence) ) {
+                    return undefined;
+                }
+
+                const unconstrainedExpression = fieldViewModel.validationRules?.unconstrainedExpression;
+                const shownExpression = unconstrainedExpression !== undefined && ( tree.validationRulesOff ?? [] ).some(isThisOccurrence)
+                    ? unconstrainedExpression
+                    : RecipeCockpitDrawnModel.findRecipeExpression(fieldViewModel.recipeValue);
+
+                if ( shownExpression === undefined ) {
+                    return undefined;
+                }
+
+                return {
+                    kind: 'testFakerValue',
+                    treeKey: tree.treeKey,
+                    renderSequence: recipeDataMessage.renderSequence,
+                    objectApiName: objectApiName,
+                    // THE NICKNAME AS POSTED, WHICH RESOLVED TO THIS OCCURRENCE, SO THE ANSWER FINDS THE ROW THAT ASKED
+                    ...( nickname !== undefined ? { nickname: nickname as string } : {} ),
+                    fieldApiName: fieldApiName,
+                    expression: shownExpression
+                };
+
+            }
+
         }
 
         return undefined;
@@ -934,6 +997,81 @@ export class RecipeCockpitTreecipeHost {
                 }
                 return;
 
+            case 'testFakerValue':
+
+                await this.testFakerValue(hub, cockpitPanel, panelState, panelAction);
+                return;
+
+        }
+
+    }
+
+    // ONE RUN PER FIELD ROW AT A TIME: A SECOND CLICK WHILE ONE RUNS DOES NOTHING
+    private static readonly runningFakerValueExampleKeys = new Set<string>();
+
+    /*
+        One record of a one-field recipe, run by the card's own backend through the Adapter's path
+        (#718). Nothing is written to the workspace, the recipe or an org. The example is drawn under
+        the expression, since it is the value the reader asked to look at; a failure is the one
+        notification, and the row is answered either way so its button is pressable again.
+    */
+    private static async testFakerValue(hub: IRecipeCockpitHubForTreecipeTab, cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        testAction: Extract<RecipeCockpitTreecipePanelAction, { kind: 'testFakerValue' }>) {
+
+        const { treeKey, renderSequence, objectApiName, nickname, fieldApiName, expression } = testAction;
+        const runningKey = JSON.stringify([treeKey, objectApiName, nickname ?? '', fieldApiName]);
+
+        if ( this.runningFakerValueExampleKeys.has(runningKey) ) {
+            return;
+        }
+
+        const fieldLabel = `${objectApiName}.${fieldApiName}`;
+        const answerRow = (exampleText?: string) => {
+            if ( hub.recipeCockpitPanel !== cockpitPanel || hub.recipeCockpitPanelState !== panelState ) {
+                return;
+            }
+            const exampleMessage: IRecipeCockpitFakerValueExampleMessage = {
+                command: 'fakerValueExample',
+                renderSequence: renderSequence,
+                treeKey: treeKey,
+                objectApiName: objectApiName,
+                ...( nickname !== undefined ? { nickname: nickname } : {} ),
+                fieldApiName: fieldApiName,
+                ...( exampleText !== undefined ? { exampleText: exampleText } : {} )
+            };
+            hub.postToPanel(cockpitPanel, exampleMessage);
+        };
+        const refuse = (refusal: string) => {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${fieldLabel} could not generate an example: ${refusal}`));
+            answerRow();
+        };
+
+        const fakerService = hub.readTreeFakerService(panelState, treeKey);
+        if ( fakerService === undefined ) {
+            refuse('the card\'s recipe file could not be read to tell which faker backend it was written for.');
+            return;
+        }
+
+        const recipeBuild = RecipeCockpitRecipeWriter.buildUpdaterValueRecipe(objectApiName, 1, [
+            { fieldApiName: fieldApiName, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: expression, kind: 'expression' }) }
+        ]);
+        if ( recipeBuild.isBuilt === false ) {
+            refuse(recipeBuild.refusal);
+            return;
+        }
+
+        this.runningFakerValueExampleKeys.add(runningKey);
+        try {
+            const generation = await RecipeCockpitFakerValueGeneration.generateObjectRecords(RecipeCockpitFakerValueGeneration.createRecipeProcessor(fakerService), fakerService,
+                                                                                              objectApiName, 1, recipeBuild.recipeText, `fakerValueExample-${objectApiName}.yml`);
+            if ( 'refusal' in generation ) {
+                refuse(generation.refusal);
+                return;
+            }
+            answerRow(RecipeCockpitFakerValueExample.toExampleText(RecipeCockpitDrawnModel.readRecordFieldValue(generation.records[0], fieldApiName)));
+        } finally {
+            this.runningFakerValueExampleKeys.delete(runningKey);
         }
 
     }

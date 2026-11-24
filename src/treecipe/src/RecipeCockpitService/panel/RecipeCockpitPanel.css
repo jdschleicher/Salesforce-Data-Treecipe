@@ -405,6 +405,15 @@
     .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
     .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
     .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
+    /* "Test faker value" (#718): the button at the right of the expression, and the example under it */
+    .expressionRow > .fakerValueTest { flex: 0 0 auto; }
+    .fakerValueExample {
+        margin: 0.1rem 0 0.2rem 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 0.9em;
+    }
     .constrainedExpression {
         margin: 0.15rem 0 0 0;
         white-space: pre-wrap;

@@ -1100,6 +1100,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = "↗ ";
   var RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE = "NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED";
   var RECIPE_COCKPIT_RESET_SELECTION_LABEL = "Reset Selections";
+  var RECIPE_COCKPIT_FAKER_VALUE_TEST_GLYPH = "▶";
+  var RECIPE_COCKPIT_FAKER_VALUE_TEST_LABEL_PREFIX = "Test the faker value of ";
+  var RECIPE_COCKPIT_FAKER_VALUE_TEST_TITLE = "Generate one example value from this expression";
+  var RECIPE_COCKPIT_FAKER_VALUE_TEST_BUSY_TITLE = "Generating an example…";
+  var RECIPE_COCKPIT_FAKER_VALUE_EXAMPLE_PREFIX = "Example: ";
 
   // src/treecipe/src/ObjectInfoWrapper/StandardDerivedFields.ts
   var StandardDerivedFields = class {
@@ -1576,7 +1581,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     buttonElement.setAttribute("title", title);
     buttonElement.setAttribute("aria-label", field.fieldApiName + ": " + title);
     if (fieldState.expressionElement && typeof validationRules.unconstrainedExpression === "string") {
-      fieldState.expressionElement.textContent = isApplied || lockReason ? field.recipeValue : validationRules.unconstrainedExpression;
+      const shownExpression = isApplied || lockReason ? field.recipeValue : validationRules.unconstrainedExpression;
+      if (fieldState.fakerValueExampleElement && fieldState.expressionElement.textContent !== shownExpression) {
+        fieldState.fakerValueExampleElement.textContent = "";
+        fieldState.fakerValueExampleElement.classList.add("hidden");
+      }
+      fieldState.expressionElement.textContent = shownExpression;
     }
   }
   function buildFieldValidationRuleElement(treeObjectState, fieldState) {
@@ -5072,7 +5082,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "+ Add friend beside the copy of an object nested under itself: adds one of the object's friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.",
         "Remove TODO (in the Troubleshooting tab's TODO's list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field's whole value, such as a lookup's, stays.",
         "Edit (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On a lookup, including one with no parent in its metadata such as Product2.SellerId, it takes the 15- or 18-character Id of an existing record instead, and the tree insert checks the org it inserts into holds that record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.",
-        "Edit values (under a picklist's faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field's expression is rewritten to choose only the ticked ones, by the recipe's own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type's own values are listed under the tiles; saving replaces the field's commented record type lines until Reset to generated puts them back."
+        "Edit values (under a picklist's faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field's expression is rewritten to choose only the ticked ones, by the recipe's own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. While the tiles are open Edit values is hidden: Save or Cancel ends the edit (× and Escape also close it without saving, and are the way out while the values load). Each record type's own values are listed under the tiles; saving replaces the field's commented record type lines until Reset to generated puts them back.",
+        "Test faker value (▶, right of a field's faker expression): runs the expression once with the recipe's own backend and shows Example: and the value under it; click again for another. It writes nothing. A lookup, a dependent picklist, a read-only field, or a field whose edit replaces its expression, has none."
       ],
       closingParagraphs: [
         "Others write other files: Remember this selection, under Manage record types, saves the ticked record types to treecipe.config.json when you generate, so Generate Treecipe reuses them, and on a card's Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter's read straight from the org instead of through the Salesforce CLI (listing an org's validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.",
@@ -8108,8 +8119,137 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     drawTreeInserts();
   }
 
-  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRow.ts
+  // src/treecipe/src/RecipeCockpitService/RecipeCockpitFakerValueExample.ts
+  var RECIPE_COCKPIT_FAKER_VALUE_EXAMPLE_MAX_LENGTH = 500;
+  var _RecipeCockpitFakerValueExample = class _RecipeCockpitFakerValueExample {
+    static findNoExampleReason(field) {
+      return this.rules.find((rule) => !rule.isMet(field))?.reason;
+    }
+    /*
+        The same test as RecipeCockpitRecipeWriter.findFirstExpressionLine, which the host runs to
+        take the expression out: a line that is, or double-quotes, one "\${{ ... }}" with no line
+        break either YAML reader sees. The writer is too large to bundle into the panel, so a test
+        holds the two to the same answer on every value the golden recipes write.
+    */
+    static hasExpressionLine(recipeValue) {
+      return String(recipeValue ?? "").split("\\n").some((valueLine) => {
+        const trimmedLine = valueLine.trim();
+        let candidate = trimmedLine;
+        if (trimmedLine.length >= 2 && trimmedLine.startsWith('"') && trimmedLine.endsWith('"')) {
+          try {
+            candidate = JSON.parse(trimmedLine);
+          } catch {
+            candidate = trimmedLine;
+          }
+        }
+        return typeof candidate === "string" && candidate.startsWith("\${{") && !/[\\r\\n\\u0085\\u2028\\u2029]/.test(candidate);
+      });
+    }
+    // A GENERATED VALUE AS ONE LINE OF TEXT: A STRING AS IT IS, ANYTHING ELSE AS JSON, CUT TO THE LIMIT
+    static toExampleText(generatedValue) {
+      const exampleText = typeof generatedValue === "string" ? generatedValue : JSON.stringify(generatedValue) ?? String(generatedValue);
+      return exampleText.length > RECIPE_COCKPIT_FAKER_VALUE_EXAMPLE_MAX_LENGTH ? exampleText.slice(0, RECIPE_COCKPIT_FAKER_VALUE_EXAMPLE_MAX_LENGTH) + "…" : exampleText;
+    }
+  };
+  _RecipeCockpitFakerValueExample.rules = [
+    {
+      ruleName: "hasExpression",
+      isMet: (field) => _RecipeCockpitFakerValueExample.hasExpressionLine(field.recipeValue),
+      reason: 'has no "\${{ ... }}" faker expression to run'
+    },
+    {
+      ruleName: "isNotReadOnly",
+      isMet: (field) => ReadOnlyFields.readReason(field.recipeValue) === void 0,
+      reason: "is set by Salesforce, not generated"
+    },
+    {
+      ruleName: "isNotDerived",
+      isMet: (field) => StandardDerivedFields.resolveDerivedField(field.objectApiName, field.fieldApiName) === void 0,
+      reason: "is set by Salesforce from another lookup"
+    },
+    {
+      ruleName: "isNotDependentPicklist",
+      isMet: (field) => !field.controllingField,
+      reason: "takes its value from its controlling field, so one field alone cannot be run"
+    }
+  ];
+  var RecipeCockpitFakerValueExample = _RecipeCockpitFakerValueExample;
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRowFakerValueTest.ts
   var vscodeApi6 = vscodeApi;
+  var pendingExampleRowsByKey = /* @__PURE__ */ Object.create(null);
+  function buildExampleKey(treeKey, objectApiName, nickname, fieldApiName) {
+    return JSON.stringify([treeKey, objectApiName, nickname || "", fieldApiName]);
+  }
+  function canTestFakerValue(treeObjectState, fieldState) {
+    const field = fieldState.field;
+    return !!treeObjectState.canSelectFields && !!field.lineNumber && typeof field.recipeValue === "string" && RecipeCockpitFakerValueExample.findNoExampleReason({
+      objectApiName: treeObjectState.object.objectApiName,
+      fieldApiName: field.fieldApiName,
+      recipeValue: field.recipeValue,
+      controllingField: field.controllingField
+    }) === void 0;
+  }
+  function buildFakerValueTestElements(treeObjectState, fieldState) {
+    const tree = treeObjectState.tree;
+    const object = treeObjectState.object;
+    const field = fieldState.field;
+    const buttonElement = createButton("icon", "fakerValueTest", RECIPE_COCKPIT_FAKER_VALUE_TEST_GLYPH);
+    const exampleElement = createElement("div", "fakerValueExample muted hidden");
+    buttonElement.setAttribute("aria-label", RECIPE_COCKPIT_FAKER_VALUE_TEST_LABEL_PREFIX + object.objectApiName + "." + field.fieldApiName);
+    buttonElement.setAttribute("title", RECIPE_COCKPIT_FAKER_VALUE_TEST_TITLE);
+    exampleElement.setAttribute("aria-live", "polite");
+    const setBusy = function(isBusy) {
+      buttonElement.disabled = isBusy;
+      buttonElement.setAttribute("aria-busy", isBusy ? "true" : "false");
+      buttonElement.setAttribute("title", isBusy ? RECIPE_COCKPIT_FAKER_VALUE_TEST_BUSY_TITLE : RECIPE_COCKPIT_FAKER_VALUE_TEST_TITLE);
+    };
+    buttonElement.addEventListener("click", function() {
+      if (buttonElement.disabled) {
+        return;
+      }
+      const exampleKey = buildExampleKey(tree.treeKey, object.objectApiName, object.nickname, field.fieldApiName);
+      if (!hasOwnKey(pendingExampleRowsByKey, exampleKey)) {
+        pendingExampleRowsByKey[exampleKey] = [];
+      }
+      pendingExampleRowsByKey[exampleKey].push(function(exampleText) {
+        setBusy(false);
+        if (exampleText === void 0) {
+          return;
+        }
+        exampleElement.textContent = RECIPE_COCKPIT_FAKER_VALUE_EXAMPLE_PREFIX + exampleText;
+        setShown(exampleElement, true);
+      });
+      setBusy(true);
+      const message = { command: "testFakerValue", treeKey: tree.treeKey, objectApiName: object.objectApiName, fieldApiName: field.fieldApiName };
+      if (object.nickname) {
+        message.nickname = object.nickname;
+      }
+      vscodeApi6.postMessage(message);
+    });
+    return { buttonElement, exampleElement };
+  }
+  function resetFakerValueExampleRequests() {
+    pendingExampleRowsByKey = /* @__PURE__ */ Object.create(null);
+  }
+  function renderFakerValueExample(exampleMessage) {
+    if (exampleMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const exampleKey = buildExampleKey(exampleMessage.treeKey, exampleMessage.objectApiName, exampleMessage.nickname, exampleMessage.fieldApiName);
+    if (!hasOwnKey(pendingExampleRowsByKey, exampleKey)) {
+      return;
+    }
+    const answerRows = pendingExampleRowsByKey[exampleKey];
+    delete pendingExampleRowsByKey[exampleKey];
+    const exampleText = typeof exampleMessage.exampleText === "string" ? exampleMessage.exampleText : void 0;
+    answerRows.forEach(function(answerRow) {
+      answerRow(exampleText);
+    });
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRow.ts
+  var vscodeApi7 = vscodeApi;
   var fieldSearchTexts = /* @__PURE__ */ new Map();
   function resetFieldSearchTexts() {
     fieldSearchTexts = /* @__PURE__ */ new Map();
@@ -8205,7 +8345,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (object.nickname) {
         message.nickname = object.nickname;
       }
-      vscodeApi6.postMessage(message);
+      vscodeApi7.postMessage(message);
     });
     fieldState.includeElement = includeElement;
     return includeElement;
@@ -8311,6 +8451,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       fieldState.expressionElement = createElement("pre", "expression", field.recipeValue);
       expressionRowElement.appendChild(fieldState.expressionElement);
       fieldRowElement.appendChild(expressionRowElement);
+      if (canTestFakerValue(treeObjectState, fieldState)) {
+        const fakerValueTestElements = buildFakerValueTestElements(treeObjectState, fieldState);
+        fieldState.fakerValueTestElement = fakerValueTestElements.buttonElement;
+        fieldState.fakerValueExampleElement = fakerValueTestElements.exampleElement;
+        expressionRowElement.appendChild(fakerValueTestElements.buttonElement);
+        fieldRowElement.appendChild(fakerValueTestElements.exampleElement);
+      }
     }
     fieldState.fixedValueElement = createElement("pre", "fixedValue hidden");
     fieldRowElement.appendChild(fieldState.fixedValueElement);
@@ -8409,7 +8556,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/SelectionCascade.ts
-  var vscodeApi7 = vscodeApi;
+  var vscodeApi8 = vscodeApi;
   function buildIncludeElement(treeObjectState, treeKey) {
     const includeElement = createButton("icon", "treeObjectInclude");
     const object = treeObjectState.object;
@@ -8424,7 +8571,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (object.nickname) {
         message.nickname = object.nickname;
       }
-      vscodeApi7.postMessage(message);
+      vscodeApi8.postMessage(message);
     });
   }
   var exclusionIndexesBySelection = /* @__PURE__ */ new WeakMap();
@@ -8825,6 +8972,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         fieldState.expressionElement.classList.remove("hidden");
       }
     }
+    if (fieldState.fakerValueTestElement) {
+      setShown(fieldState.fakerValueTestElement, !isFixed);
+    }
+    if (fieldState.fakerValueExampleElement && isFixed) {
+      fieldState.fakerValueExampleElement.textContent = "";
+      fieldState.fakerValueExampleElement.classList.add("hidden");
+    }
     const buttonElement = fieldState.fixedValueButtonElement;
     if (!buttonElement) {
       return;
@@ -8854,7 +9008,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/PicklistTiles.ts
-  var vscodeApi8 = vscodeApi;
+  var vscodeApi9 = vscodeApi;
   var pendingPicklistValueElements = /* @__PURE__ */ Object.create(null);
   function resetPicklistValueRequests() {
     pendingPicklistValueElements = /* @__PURE__ */ Object.create(null);
@@ -8881,7 +9035,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (nickname) {
       message.nickname = nickname;
     }
-    vscodeApi8.postMessage(message);
+    vscodeApi9.postMessage(message);
   }
   function renderPicklistValues(picklistValuesMessage) {
     if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== "string") {
@@ -9004,7 +9158,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       drawChoice();
       fieldState.isPicklistExpanded = false;
       savePanelPlace();
-      vscodeApi8.postMessage(message);
+      vscodeApi9.postMessage(message);
     });
     if (resetElement) {
       resetElement.setAttribute("title", "Put back the lines " + field.fieldApiName + " had before it was edited, after a confirmation");
@@ -9028,7 +9182,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         drawChoice();
         fieldState.isPicklistExpanded = false;
         savePanelPlace();
-        vscodeApi8.postMessage(message);
+        vscodeApi9.postMessage(message);
       });
     }
     cancelElement.addEventListener("click", function(event) {
@@ -9089,7 +9243,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/FieldEditor.ts
-  var vscodeApi9 = vscodeApi;
+  var vscodeApi10 = vscodeApi;
   function toggleFieldEditor(treeObjectState, fieldState, edit) {
     const isSameEditOpen = fieldState.editorEdit === edit;
     closeFieldEditor(fieldState);
@@ -9201,7 +9355,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
       refusalElement.textContent = "";
       refusalElement.classList.add("hidden");
-      vscodeApi9.postMessage(message);
+      vscodeApi10.postMessage(message);
     };
     const actionsElement = createElement("div", "fieldEditorActions");
     const saveElement = createButton("primary", "fieldEditorSave", "Save", "compact");
@@ -9290,6 +9444,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       fixedValueBadgeElement: null,
       fixedValueElement: null,
       expressionElement: null,
+      fakerValueTestElement: null,
+      fakerValueExampleElement: null,
       picklistSectionElement: null,
       validationRuleElement: null,
       isValidationRuleApplied: true,
@@ -10026,7 +10182,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterRetrieve.ts
-  var vscodeApi10 = vscodeApi;
+  var vscodeApi11 = vscodeApi;
   function requestAdapterMetadataRetrieve(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterParentObjectApiName) {
       return;
@@ -10034,7 +10190,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "retrieve";
     drawUpdaterLoadButtons();
-    vscodeApi10.postMessage({ command: "retrieveAdapterMetadata", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
+    vscodeApi11.postMessage({ command: "retrieveAdapterMetadata", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
   }
   function requestAdapterRetrievedFilesApply(treeState) {
     if (renderedSequence === null || !treeState.adapterChangesMessage || runLocks.updaterLoadRunningTreeKey !== null) {
@@ -10043,7 +10199,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "apply";
     drawUpdaterLoadButtons();
-    vscodeApi10.postMessage({ command: "applyAdapterRetrievedFiles", treeKey: treeState.tree.treeKey, renderSequence: treeState.adapterChangesMessage.renderSequence });
+    vscodeApi11.postMessage({ command: "applyAdapterRetrievedFiles", treeKey: treeState.tree.treeKey, renderSequence: treeState.adapterChangesMessage.renderSequence });
   }
   function countAdapterFileChanges(treeState) {
     const changesMessage = treeState.adapterChangesMessage;
@@ -10357,7 +10513,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterLoadAndUpdate.ts
-  var vscodeApi11 = vscodeApi;
+  var vscodeApi12 = vscodeApi;
   function requestUpdaterRecords(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) {
       return;
@@ -10380,7 +10536,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "load";
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "loadUpdaterRecords", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects });
+    vscodeApi12.postMessage({ command: "loadUpdaterRecords", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects });
   }
   function requestUpdaterValues(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) {
@@ -10405,7 +10561,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "generate";
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "generateUpdaterValues", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields });
+    vscodeApi12.postMessage({ command: "generateUpdaterValues", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields });
   }
   function requestUpdaterUpdate(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) {
@@ -10414,7 +10570,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "update";
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "updateUpdaterRecords", treeKey: treeState.tree.treeKey });
+    vscodeApi12.postMessage({ command: "updateUpdaterRecords", treeKey: treeState.tree.treeKey });
   }
   function requestUpdaterSnapshots(treeState) {
     if (renderedSequence === null) {
@@ -10422,7 +10578,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return;
     }
     treeState.isUpdaterSnapshotsWanted = false;
-    vscodeApi11.postMessage({ command: "loadUpdaterSnapshots", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+    vscodeApi12.postMessage({ command: "loadUpdaterSnapshots", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
   }
   function renderUpdaterSnapshots(snapshotsMessage) {
     if (renderedSequence === null || snapshotsMessage.renderSequence !== renderedSequence) {
@@ -10459,7 +10615,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       listElement.appendChild(createElement("div", "updaterSnapshotsNote muted", hiddenSnapshotCount + " older not shown: they are in RunArtifacts/UpdateAttempts in the tree folder, or in treecipe/UpdateAttempts for updates made before it."));
     }
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "updaterSnapshotsRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, snapshotsSequence: snapshotsMessage.snapshotsSequence });
+    vscodeApi12.postMessage({ command: "updaterSnapshotsRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, snapshotsSequence: snapshotsMessage.snapshotsSequence });
   }
   function requestUpdaterRestore(treeState, snapshotName) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) {
@@ -10469,7 +10625,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterRunKind = "restore";
     runLocks.updaterRestoringSnapshotName = snapshotName;
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "restoreUpdaterSnapshot", treeKey: treeState.tree.treeKey, snapshotName });
+    vscodeApi12.postMessage({ command: "restoreUpdaterSnapshot", treeKey: treeState.tree.treeKey, snapshotName });
   }
   function countUpdaterValueRecords(valuesMessage) {
     return (Array.isArray(valuesMessage.objects) ? valuesMessage.objects : []).reduce(function(total, generatedObject) {
@@ -10489,7 +10645,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       applyUpdaterValues(treeState, valuesMessage);
     }
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "updaterValuesRendered", renderSequence: renderedSequence, valuesSequence: valuesMessage.valuesSequence });
+    vscodeApi12.postMessage({ command: "updaterValuesRendered", renderSequence: renderedSequence, valuesSequence: valuesMessage.valuesSequence });
   }
   function applyUpdaterValues(treeState, valuesMessage) {
     const generatedObjects = Array.isArray(valuesMessage.objects) ? valuesMessage.objects : [];
@@ -10810,6 +10966,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     orgSection = null;
     resetDataOrgPickerState();
     resetPicklistValueRequests();
+    resetFakerValueExampleRequests();
     resetRecordTypesState();
     resetDatasetRecordCounts();
     resetFieldSearchTexts();
@@ -12336,7 +12493,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitRecordTable.ts
-  var vscodeApi12 = vscodeApi;
+  var vscodeApi13 = vscodeApi;
   function buildRecordTable(columns, rows, recordLinks, recordLinkSequence, objectApiName) {
     const links = recordLinks;
     const linkColumnIndex = links && typeof recordLinkSequence === "number" && Number.isInteger(links.columnIndex) ? links.columnIndex : -1;
@@ -12366,7 +12523,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
           if (typeof objectApiName === "string") {
             openMessage.objectApiName = objectApiName;
           }
-          vscodeApi12.postMessage(openMessage);
+          vscodeApi13.postMessage(openMessage);
         });
         cellElement.appendChild(recordLinkElement);
         rowElement.appendChild(cellElement);
@@ -12379,11 +12536,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence || typeof previewMessage.recordLinkSequence !== "number") {
       return;
     }
-    vscodeApi12.postMessage({ command: "recordLinksRendered", renderSequence: renderedSequence, recordLinkSequence: previewMessage.recordLinkSequence });
+    vscodeApi13.postMessage({ command: "recordLinksRendered", renderSequence: renderedSequence, recordLinkSequence: previewMessage.recordLinkSequence });
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterChild.ts
-  var vscodeApi13 = vscodeApi;
+  var vscodeApi14 = vscodeApi;
   function isAdapterChildOf(adapterChild, parentObjectApiName, childObject) {
     return !!adapterChild && !!childObject && adapterChild.parentObjectApiName === parentObjectApiName && adapterChild.childObjectApiName === String(childObject.childObjectApiName) && adapterChild.lookupFieldApiName === String(childObject.fieldApiName);
   }
@@ -12443,7 +12600,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterRunKind = "prepareChild";
     runLocks.adapterChildPreparingKey = adapterChildKeyOf(updaterObjectState.object.objectApiName, childObject);
     drawUpdaterLoadButtons();
-    vscodeApi13.postMessage({
+    vscodeApi14.postMessage({
       command: "prepareAdapterChild",
       treeKey: treeState.tree.treeKey,
       renderSequence: renderedSequence,
@@ -12648,7 +12805,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "generateChild";
     drawUpdaterLoadButtons();
-    vscodeApi13.postMessage({
+    vscodeApi14.postMessage({
       command: "generateAdapterChild",
       treeKey: treeState.tree.treeKey,
       renderSequence: renderedSequence,
@@ -12822,6 +12979,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     if (hostMessage.command === "picklistValues") {
       renderPicklistValues(hostMessage);
+      return;
+    }
+    if (hostMessage.command === "fakerValueExample") {
+      renderFakerValueExample(hostMessage);
       return;
     }
     if (hostMessage.command === "datasetRecordCounts") {

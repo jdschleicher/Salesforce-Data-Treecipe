@@ -83,7 +83,13 @@ export function drawFieldRowValidationRule(treeObjectState: IFieldRowObjectState
     buttonElement.setAttribute('aria-label', field.fieldApiName + ': ' + title);
 
     if (fieldState.expressionElement && typeof validationRules.unconstrainedExpression === 'string') {
-        fieldState.expressionElement.textContent = isApplied || lockReason ? ( field.recipeValue as string ) : validationRules.unconstrainedExpression;
+        const shownExpression = isApplied || lockReason ? ( field.recipeValue as string ) : validationRules.unconstrainedExpression;
+        // AN EXAMPLE OF THE OTHER EXPRESSION (#718) NO LONGER SAYS WHAT THIS ONE GENERATES
+        if (fieldState.fakerValueExampleElement && fieldState.expressionElement.textContent !== shownExpression) {
+            fieldState.fakerValueExampleElement.textContent = '';
+            fieldState.fakerValueExampleElement.classList.add('hidden');
+        }
+        fieldState.expressionElement.textContent = shownExpression;
     }
 
 }

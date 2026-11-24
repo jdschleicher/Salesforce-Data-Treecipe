@@ -15,6 +15,7 @@ import { dataOrgPicker, resetDataOrgPickerState } from '../treecipe/dataOrg/Data
 import { buildDataOrgView } from '../treecipe/dataOrg/DataOrgView';
 import { resetLookupButtons } from '../treecipe/fieldEditor/LookupWiring';
 import { resetPicklistValueRequests } from '../treecipe/fieldEditor/PicklistTiles';
+import { resetFakerValueExampleRequests } from '../treecipe/fieldRows/FieldRowFakerValueTest';
 import { resetFieldSearchTexts } from '../treecipe/fieldRows/FieldRow';
 import { navigationState, resetNavigationState } from '../treecipe/navigation/NavigationState';
 import { applyTreeFocus } from '../treecipe/navigation/StructureFilter';
@@ -193,6 +194,7 @@ function resetPanelState(): void {
     orgSection = null;
     resetDataOrgPickerState();
     resetPicklistValueRequests();
+    resetFakerValueExampleRequests();
     resetRecordTypesState();
     resetDatasetRecordCounts();
     resetFieldSearchTexts();
