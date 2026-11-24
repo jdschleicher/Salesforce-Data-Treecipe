@@ -191,11 +191,13 @@ describe('RecipeCockpitService, a field Salesforce calculates or sets itself (#6
             expect(showFormulaButton.classList.contains('sdtButton-link')).toBeTrue();
             expect(showFormulaButton.textContent).toBe(RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL);
             expect(showFormulaButton.attributes['aria-expanded']).toBe('false');
+            expect(showFormulaButton.attributes['aria-label']).toBe(`${RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL} of Total__c`);
 
             showFormulaButton.dispatch('click');
             expect(noteElement.classList.contains('readOnlyFormulaClamped')).toBeFalse();
             expect(showFormulaButton.textContent).toBe(RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL);
             expect(showFormulaButton.attributes['aria-expanded']).toBe('true');
+            expect(showFormulaButton.attributes['aria-label']).toBe(`${RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL} of Total__c`);
 
             showFormulaButton.dispatch('click');
             expect(noteElement.classList.contains('readOnlyFormulaClamped')).toBeTrue();

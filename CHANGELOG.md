@@ -7,7 +7,7 @@ A formula field's read-only row shows `formula: <formula>` (#685), and a formula
 ### Treecipe tab
 
 - **A formula longer than 120 characters is cut to two lines,** ending in `…`, on a line of its own under the row's name.
-- **Show formula**, a link button after it, expands the note in place, and **Hide formula** cuts it back to two lines. It is an ordinary button, so Tab reaches it and Enter or Space presses it, and it says whether the formula is open (`aria-expanded`). The whole formula stays in the page while it is cut, so a screen reader reads all of it.
+- **Show formula**, a link button after it, expands the note in place, and **Hide formula** cuts it back to two lines. It is an ordinary button, so Tab reaches it and Enter or Space presses it, and it says whose formula it opens and whether it is open (`aria-label`, `aria-expanded`). The whole formula stays in the page while it is cut, so a screen reader reads all of it.
 - **What does not change.** A formula of 120 characters or fewer, and every other read-only reason (roll-up summary, auto number, set by Salesforce), looks exactly as before: no clamp, no button. The formula is still written as text, no colour is added, and the model still posts formulas of up to 3,900 characters.
 
 ### Under the hood

@@ -8210,11 +8210,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     fieldState.includeElement = includeElement;
     return includeElement;
   }
-  function buildFormulaClampToggle(formulaNoteElement) {
+  function buildFormulaClampToggle(formulaNoteElement, fieldApiName) {
     formulaNoteElement.classList.add("readOnlyFormulaNote");
     formulaNoteElement.classList.add("readOnlyFormulaClamped");
     const toggleElement = createButton("link", "readOnlyFormulaToggle", RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL);
     toggleElement.setAttribute("aria-expanded", "false");
+    toggleElement.setAttribute("aria-label", RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL + " of " + fieldApiName);
     toggleElement.addEventListener("click", () => {
       const isExpanding = formulaNoteElement.classList.contains("readOnlyFormulaClamped");
       if (isExpanding) {
@@ -8223,6 +8224,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         formulaNoteElement.classList.add("readOnlyFormulaClamped");
       }
       toggleElement.textContent = isExpanding ? RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL : RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL;
+      toggleElement.setAttribute("aria-label", toggleElement.textContent + " of " + fieldApiName);
       toggleElement.setAttribute("aria-expanded", isExpanding ? "true" : "false");
     });
     return toggleElement;
@@ -8260,7 +8262,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       const readOnlyNote = readOnlyReason === "formula" && field.formula ? RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX + field.formula : readOnlyReason;
       const readOnlyNoteElement = fieldHeaderElement.appendChild(createElement("span", "treeFieldNote readOnlyFieldNote muted", readOnlyNote));
       if (readOnlyReason === "formula" && field.formula && field.formula.length > RECIPE_COCKPIT_READ_ONLY_FORMULA_CLAMP_LENGTH) {
-        fieldHeaderElement.appendChild(buildFormulaClampToggle(readOnlyNoteElement));
+        fieldHeaderElement.appendChild(buildFormulaClampToggle(readOnlyNoteElement, field.fieldApiName));
       }
     }
     if (fieldState.recordTypeDeveloperNames) {
