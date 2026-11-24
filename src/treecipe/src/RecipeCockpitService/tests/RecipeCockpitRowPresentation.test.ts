@@ -161,7 +161,7 @@ describe('RecipeCockpitService, row presentation (#558)', () => {
             return panel;
         };
 
-        it('draws each object as a two-line row header: ✕, the chain, the chevron, the name and its count first, then its lookups', () => {
+        it('draws each object as a two-line row header: ✕, the chain, the chevron, the name and its count first, an open object\'s Remove every field last (#711), then its lookups', () => {
 
             const panel = openCustomizeModal();
             const objectRows = panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeObject');
@@ -172,8 +172,9 @@ describe('RecipeCockpitService, row presentation (#558)', () => {
                 expect(hasClass(rowElement, 'sdtRowHeader')).toBe(true);
                 const [primaryLine, detailLine] = rowElement.children;
                 expect(hasClass(primaryLine, 'sdtRowHeaderPrimary')).toBe(true);
+                const isOpen = panel.findAll(rowElement, 'customTreecipeChevron')[0].attributes['aria-expanded'] === 'true';
                 expect(primaryLine.children.map((childElement: any) => childElement.className.split(' ').find((className: string) => className.startsWith('customTreecipe'))))
-                    .toEqual(['customTreecipeRemove', 'customTreecipeChain', 'customTreecipeChevron', 'customTreecipeObjectName', 'customTreecipeFieldCount']);
+                    .toEqual(['customTreecipeRemove', 'customTreecipeChain', 'customTreecipeChevron', 'customTreecipeObjectName', 'customTreecipeFieldCount', ...( isOpen ? ['customTreecipeRemoveEveryField'] : [] )]);
                 expect(hasClass(detailLine, 'sdtRowHeaderDetail')).toBe(true);
                 expect(panel.findAll(detailLine, 'customTreecipeLookups')).toHaveLength(1);
             });

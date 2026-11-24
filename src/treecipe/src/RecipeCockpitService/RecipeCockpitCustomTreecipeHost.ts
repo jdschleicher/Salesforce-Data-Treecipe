@@ -177,21 +177,25 @@ export class RecipeCockpitCustomTreecipeHost {
 
     /*
         The modal's removals as the router reads them: three lists of names, each name a key the
-        drawn card has a chain link or a checkbox for. Anything else, or more names than any tree
-        holds, and the whole message is refused.
+        drawn card has a chain link or a checkbox for. Anything else, or a list longer than the panel
+        has keys for (and than the floor), and the whole message is refused: "Deselect all fields"
+        on a big tree posts every field it draws (#711), and a forged list costs no more than that.
     */
     static readCustomTreecipeRemoval(hub: IRecipeCockpitHubForCustomTreecipe, panelMessage: IRecipeCockpitPanelMessage,
                                         panelState: IRecipeCockpitPanelState,
                                         treeKey: string): IRecipeCockpitCustomTreecipeRemoval | undefined {
 
         const { removedObjectApiNames, removedFields, outOfRunObjectApiNames } = panelMessage;
+        const { selectableObjectKeys, selectableFieldKeys } = panelState.treeHistoryAllowLists;
+        const maxPostedObjectNames = Math.max(RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES, selectableObjectKeys.size);
+        const maxPostedFields = Math.max(RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES, selectableFieldKeys.size);
         const isDrawnObject = (objectApiName: unknown): objectApiName is string => typeof objectApiName === 'string'
-            && panelState.treeHistoryAllowLists.selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName));
+            && selectableObjectKeys.has(RecipeCockpitDrawnModel.buildSelectableObjectKey(treeKey, objectApiName));
         const isDrawnObjectList = (candidate: unknown): candidate is string[] => Array.isArray(candidate)
-            && candidate.length <= RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES && candidate.every(isDrawnObject);
+            && candidate.length <= maxPostedObjectNames && candidate.every(isDrawnObject);
 
         if ( !isDrawnObjectList(removedObjectApiNames) || !isDrawnObjectList(outOfRunObjectApiNames)
-                || !Array.isArray(removedFields) || removedFields.length > RECIPE_COCKPIT_CUSTOM_TREECIPE_MAX_POSTED_NAMES ) {
+                || !Array.isArray(removedFields) || removedFields.length > maxPostedFields ) {
             return undefined;
         }
 
@@ -202,7 +206,7 @@ export class RecipeCockpitCustomTreecipeHost {
             }
             const { objectApiName, fieldApiName } = removedField;
             if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string'
-                    || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    || !selectableFieldKeys.has(RecipeCockpitDrawnModel.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                 return undefined;
             }
             removedFieldApiNamesByObject.set(objectApiName, ( removedFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName));

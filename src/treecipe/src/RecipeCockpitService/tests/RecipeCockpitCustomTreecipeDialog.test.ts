@@ -345,4 +345,308 @@ describe('the "Customize and create new recipe" modal (#677)', () => {
 
     });
 
+    describe('the toolbar: search, and bulk ✕ and ↺ over what it shows (#711)', () => {
+
+        const toolbarControl = (panel: Panel, className: string) => panel.findAll(panel.cockpitDialogHostElement, className)[0];
+        const search = (panel: Panel, searchText: string) => {
+            const searchElement = toolbarControl(panel, 'customTreecipeSearch');
+            searchElement.value = searchText;
+            searchElement.dispatch('input');
+        };
+        const shownObjectNames = (panel: Panel) => panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeObjectName').map((nameElement: any) => nameElement.textContent);
+        const shownFieldNames = (panel: Panel, objectApiName: string) => panel.findAll(fieldListOf(panel, objectApiName), 'customTreecipeFieldApiName').map((nameElement: any) => nameElement.textContent);
+        const previewCount = (panel: Panel) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'previewCustomTreecipe').length;
+
+        describe('search', () => {
+
+            it('has an accessible name and sits above the object list', () => {
+
+                const panel = openModal();
+                const searchElement = toolbarControl(panel, 'customTreecipeSearch');
+
+                expect(searchElement.attributes['aria-label']).toBe('Search objects and fields');
+                expect(panel.findAll(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeBody')[0], 'customTreecipeSearch')).toEqual([]);
+
+            });
+
+            it('shows an object whose name matches with every field, ignoring case', () => {
+
+                const panel = openModalWithEveryObjectOpen();
+
+                search(panel, 'CONTACT');
+
+                expect(shownObjectNames(panel)).toEqual(['Contact', 'OtherChildObject__c']);
+                expect(shownFieldNames(panel, 'Contact')).toEqual(['LastName', 'AccountId']);
+
+            });
+
+            it('opens an object shown only for its fields, listing just the fields that match', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                expect(fieldListOf(panel, 'Account')).toBeUndefined();
+
+                search(panel, 'rating');
+
+                expect(shownObjectNames(panel)).toEqual(['Account']);
+                expect(shownFieldNames(panel, 'Account')).toEqual(['Rating__c', 'Sub_Rating__c']);
+                expect(controlOf(panel, 'Account', 'customTreecipeChevron').attributes['aria-expanded']).toBe('true');
+
+            });
+
+            it('puts back the full list, each object open or closed as before, when the box is cleared', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'rating');
+                controlOf(panel, 'Account', 'customTreecipeChevron').dispatch('click');
+                expect(fieldListOf(panel, 'Account')).toBeUndefined();
+                search(panel, '');
+
+                expect(shownObjectNames(panel)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+                expect(fieldListOf(panel, 'Account')).toBeUndefined();
+                expect(shownFieldNames(panel, 'Contact')).toEqual(['LastName', 'AccountId']);
+
+            });
+
+            it('says what it searched for when nothing matches', () => {
+
+                const panel = openModal();
+
+                search(panel, '  zzz ');
+
+                expect(shownObjectNames(panel)).toEqual([]);
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeNoMatch')[0].textContent).toBe('No object or field matches "zzz".');
+
+            });
+
+            it('changes only what is shown: it posts nothing to the host', () => {
+
+                const panel = openModal();
+                const previewsBefore = previewCount(panel);
+
+                search(panel, 'rating');
+                search(panel, '');
+
+                expect(previewCount(panel)).toBe(previewsBefore);
+
+            });
+
+            it('leaves a filtered row\'s ✕ removing the same field', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'rating');
+                buttonLabelled(panel, 'Remove Account.Rating__c from the new recipe').dispatch('click');
+
+                expect(lastPreviewRequest(panel).removedFields).toEqual([{ objectApiName: 'Account', fieldApiName: 'Rating__c' }]);
+
+            });
+
+        });
+
+        describe('Deselect all objects', () => {
+
+            it('removes every object but the root, and ↺ brings one back', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                toolbarControl(panel, 'customTreecipeDeselectObjects').dispatch('click');
+
+                expect(lastPreviewRequest(panel)).toMatchObject({ removedObjectApiNames: ['Contact', 'OtherChildObject__c'], removedFields: [] });
+
+                buttonLabelled(panel, 'Restore OtherChildObject__c').dispatch('click');
+
+                expect(lastPreviewRequest(panel).removedObjectApiNames).toEqual(['Contact']);
+
+            });
+
+            it('leaves an object the cascade took to the cascade, so ↺ on its parent still brings it back', () => {
+
+                const panel = openModal();
+                buttonLabelled(panel, 'Remove Contact from the new recipe').dispatch('click');
+                answerLatestPreview(panel, { keptObjectCount: 1, objectSelection: { exclusions: [
+                    { objectApiName: 'Contact', kind: 'excluded' },
+                    { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+                ], disabledLookups: [] } });
+
+                expect(toolbarControl(panel, 'customTreecipeDeselectObjects').disabled).toBe(true);
+
+            });
+
+            it('acts only on the objects the search shows, and says so', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'other');
+                const deselectObjects = toolbarControl(panel, 'customTreecipeDeselectObjects');
+                expect(deselectObjects.textContent).toBe('Deselect shown objects');
+                deselectObjects.dispatch('click');
+
+                expect(lastPreviewRequest(panel).removedObjectApiNames).toEqual(['OtherChildObject__c']);
+
+            });
+
+            it('is off on a tree whose only shown object is its root', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'legacy');
+
+                expect(shownObjectNames(panel)).toEqual(['Account']);
+                expect(toolbarControl(panel, 'customTreecipeDeselectObjects').disabled).toBe(true);
+
+            });
+
+        });
+
+        describe('Deselect all fields', () => {
+
+            it('asks first in the modal, and Keep fields removes nothing', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                const previewsBefore = previewCount(panel);
+
+                toolbarControl(panel, 'customTreecipeDeselectFields').dispatch('click');
+
+                const askElement = panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAsk')[0];
+                const askText = askElement.children.map((childElement: any) => childElement.textContent).join(' ');
+                expect(askElement.attributes.role).toBe('alert');
+                expect(askText).toContain('Removes 13 field(s).');
+                expect(askText).toContain('An object with no locked field is removed with its fields');
+                expect(previewCount(panel)).toBe(previewsBefore);
+
+                const keepFields = panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeKeepFields')[0];
+                keepFields.focus();
+                keepFields.dispatch('click');
+
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAsk')).toEqual([]);
+                expect(previewCount(panel)).toBe(previewsBefore);
+                expect(panel.activeElement()).toBe(toolbarControl(panel, 'customTreecipeSearch'));
+
+            });
+
+            it('removes every field whose ✕ is on, leaving locked fields and lookups cut with their parent', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel, {
+                    fieldSelection: { objects: [{ objectApiName: 'Account', lockedFields: [{ fieldApiName: 'Rating__c', reason: 'controls Sub_Rating__c' }] }] },
+                    objectSelection: { exclusions: [], disabledLookups: [{ objectApiName: 'OtherChildObject__c', fieldApiName: 'Contact__c' }] }
+                });
+
+                toolbarControl(panel, 'customTreecipeDeselectFields').dispatch('click');
+                panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeRemoveFields')[0].dispatch('click');
+
+                const removedFieldKeys = lastPreviewRequest(panel).removedFields.map((removedField: any) => `${removedField.objectApiName}.${removedField.fieldApiName}`);
+                expect(removedFieldKeys).toEqual([
+                    'Account.Name', 'Account.Legacy_Code__c', 'Account.Annual_Budget__c', 'Account.Sub_Rating__c', 'Account.Regions__c', 'Account.ParentId', 'Account.OwnerId',
+                    'Contact.LastName', 'Contact.AccountId',
+                    'OtherChildObject__c.Score__c', 'OtherChildObject__c.Ratio__c'
+                ]);
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAsk')).toEqual([]);
+
+            });
+
+            it('acts only on the fields the search shows', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'rating');
+                expect(toolbarControl(panel, 'customTreecipeDeselectFields').textContent).toBe('Deselect shown fields');
+                toolbarControl(panel, 'customTreecipeDeselectFields').dispatch('click');
+                panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeRemoveFields')[0].dispatch('click');
+
+                expect(lastPreviewRequest(panel).removedFields).toEqual([
+                    { objectApiName: 'Account', fieldApiName: 'Rating__c' },
+                    { objectApiName: 'Account', fieldApiName: 'Sub_Rating__c' }
+                ]);
+
+            });
+
+            it('gives each open object\'s row its own Remove every field, which asks nothing', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                const removeEveryContactField = controlOf(panel, 'Contact', 'customTreecipeRemoveEveryField');
+
+                expect(removeEveryContactField.textContent).toBe('Remove every field of Contact');
+                removeEveryContactField.dispatch('click');
+
+                expect(lastPreviewRequest(panel).removedFields).toEqual([
+                    { objectApiName: 'Contact', fieldApiName: 'LastName' },
+                    { objectApiName: 'Contact', fieldApiName: 'AccountId' }
+                ]);
+                expect(panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeAsk')).toEqual([]);
+
+            });
+
+            it('names a row\'s button for its shown fields during a search, and draws none on a closed object', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+
+                search(panel, 'rating');
+
+                expect(controlOf(panel, 'Account', 'customTreecipeRemoveEveryField').textContent).toBe('Remove shown fields of Account');
+                search(panel, '');
+                expect(controlOf(panel, 'Account', 'customTreecipeRemoveEveryField')).toBeUndefined();
+
+            });
+
+        });
+
+        describe('Restore all', () => {
+
+            it('is off while nothing is removed', () => {
+
+                const panel = openModal();
+
+                expect(toolbarControl(panel, 'customTreecipeRestoreAll').disabled).toBe(true);
+
+            });
+
+            it('clears every object and field removal, keeps a run\'s chain link, and hands focus to the search box', () => {
+
+                const panel = openModal();
+                answerLatestPreview(panel);
+                controlOf(panel, 'Account', 'customTreecipeChain').dispatch('click');
+                buttonLabelled(panel, 'Remove Contact.LastName from the new recipe').dispatch('click');
+                toolbarControl(panel, 'customTreecipeDeselectObjects').dispatch('click');
+                const restoreAll = toolbarControl(panel, 'customTreecipeRestoreAll');
+
+                restoreAll.focus();
+                restoreAll.dispatch('click');
+
+                expect(lastPreviewRequest(panel)).toMatchObject({ removedObjectApiNames: [], removedFields: [], outOfRunObjectApiNames: ['Account'] });
+                expect(restoreAll.disabled).toBe(true);
+                expect(panel.activeElement()).toBe(toolbarControl(panel, 'customTreecipeSearch'));
+
+            });
+
+        });
+
+        it('puts the toolbar in tab order after the close ✕ and before the rows', () => {
+
+            const panel = openModal();
+            answerLatestPreview(panel);
+            buttonLabelled(panel, 'Remove Contact.LastName from the new recipe').dispatch('click');
+            const dialogElement = panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeDialog')[0];
+            panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeClose')[0].focus();
+
+            const focusedAfterTabs = [1, 2, 3, 4, 5].map(() => { dialogElement.dispatch('keydown', { key: 'Tab' }); return panel.activeElement(); });
+
+            expect(focusedAfterTabs.slice(0, 4)).toEqual(['customTreecipeSearch', 'customTreecipeDeselectObjects', 'customTreecipeDeselectFields', 'customTreecipeRestoreAll'].map(className => toolbarControl(panel, className)));
+            expect(focusedAfterTabs[4].attributes['aria-label']).toBe('Remove Account from the new recipe');
+
+        });
+
+    });
+
 });

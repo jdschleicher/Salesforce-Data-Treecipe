@@ -1111,6 +1111,10 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     .customTreecipeSource { margin: 0.15rem 0 0; }
     .customTreecipeSummary { margin: 0.35rem 0 0.5rem; font-variant-numeric: tabular-nums; }
     .customTreecipeBody { display: flex; flex-direction: column; gap: 0.4rem; }
+    /* THE TOOLBAR (#711): THE SEARCH BOX TAKES THE ROW, THE BULK BUTTONS WRAP UNDER IT ON A NARROW PANEL */
+    .customTreecipeToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; }
+    .customTreecipeSearch { flex: 1 1 14rem; min-width: 0; box-sizing: border-box; font: inherit; padding: 0.3rem 0.45rem; border: 1px solid var(--sdt-border); border-radius: 4px; color: var(--sdt-text); background-color: var(--sdt-surface); }
+    .customTreecipeNoMatch { margin: 0.5rem 0; }
     .customTreecipeObject { padding: 0.35rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; background-color: var(--sdt-surface); }
     .sdtRowHeaderPrimary.customTreecipeObjectPrimary { align-items: center; }
     .sdtRowHeaderDetail.customTreecipeObjectDetail { flex-direction: column; gap: 0.1rem; }

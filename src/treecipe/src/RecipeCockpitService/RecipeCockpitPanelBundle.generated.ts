@@ -5075,6 +5075,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "Others write other files: Remember this selection, under Manage record types, saves the ticked record types to treecipe.config.json when you generate, so Generate Treecipe reuses them, and on a card's Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org. With the setting Metadata Retrieve Method at jsforce, these retrieves and the Treecipe Adapter's read straight from the org instead of through the Salesforce CLI (listing an org's validation rules and record types never uses it), and Cancel stops a retrieve before anything is written.",
         "The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields & dependencies (Fields: custom fields, the custom objects that hold them and the record pages and compact layouts those objects open, any such page or layout not in your project set back to the standard one in what is sent, with an optional box for every tree object's validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.",
         "Customize and create new recipe, at the top of a card's Treecipe tab, opens its objects in a box: the red ✕ before an object or a field takes it out of a new recipe with whatever was linked only through it, ↺ puts it back, and removing the first object asks first. Save as new Treecipe, at the box's bottom right, writes a new recipe beside the tree's own, in a folder named custom- and the tree's name (-2, -3 for later copies), keeping your record counts and edits. The tree's own recipe is not changed, and a custom tree can be customized again.",
+        "In that box, the search box above the objects shows only the objects and fields whose API name holds what you type. Deselect all objects removes every object but the first, Deselect all fields asks and then removes every field that can be removed (an object left with none is removed too), and Restore all puts everything back; while you search, the first two say shown and act only on what you see. Remove every field of, on an open object's row, does the same for that object's fields alone.",
         "Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.",
         "The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.",
         "In the Query tab's results and the Treecipe Adapter's loaded records and new values, each row's own Id is a link: click it to open that record in your browser, signed in to the org it was read from. A lookup's Id is not a link, and nothing is opened once a newer query, load or update has replaced the rows.",
@@ -5263,6 +5264,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_PREFIX = "Removed with ";
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_OUT_OF_RUN_TEXT = "Left out of a run, kept in the recipe";
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_OUT_OF_RUN_WITH_PREFIX = "Left out of a run with ";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_SEARCH_LABEL = "Search objects and fields";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_SEARCH_PLACEHOLDER = "Search objects and fields by API name";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_NO_MATCH_PREFIX = "No object or field matches ";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_OBJECTS_LABEL = "Deselect all objects";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_OBJECTS_LABEL = "Deselect shown objects";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_LABEL = "Deselect all fields";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_FIELDS_LABEL = "Deselect shown fields";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORE_ALL_LABEL = "Restore all";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVE_EVERY_FIELD_PREFIX = "Remove every field of ";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVE_SHOWN_FIELDS_PREFIX = "Remove shown fields of ";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_TITLE = "Remove every field you can?";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_NOTE = "An object with no locked field is removed with its fields, since an object with every field removed is left out. ↺ brings each back.";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_KEEP_LABEL = "Keep fields";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_CONFIRM_LABEL = "Remove fields";
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/customTreecipe/CustomTreecipeDialog.ts
   var customTreecipeDialog = null;
@@ -5320,6 +5335,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const sourceElement = createElement("p", "customTreecipeSource muted", "From " + treeState.tree.folderName + ". " + RECIPE_COCKPIT_CUSTOM_TREECIPE_SOURCE_NOTE);
     const closeElement = createButton("icon", "customTreecipeClose", "✕");
     const summaryElement = createElement("p", "customTreecipeSummary muted");
+    const toolbar = buildToolbar();
     const bodyElement = createElement("div", "confirmBody customTreecipeBody");
     const footerElement = createElement("div", "confirmActions customTreecipeFooter");
     const statusElement = createElement("p", "customTreecipeStatus muted");
@@ -5341,6 +5357,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     footerElement.appendChild(saveElement);
     dialogElement.appendChild(headerElement);
     dialogElement.appendChild(summaryElement);
+    dialogElement.appendChild(toolbar.element);
     dialogElement.appendChild(bodyElement);
     dialogElement.appendChild(footerElement);
     overlayElement.appendChild(dialogElement);
@@ -5352,7 +5369,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       removedFields: /* @__PURE__ */ new Map(),
       outOfRunObjects: /* @__PURE__ */ new Set(),
       expandedObjects: new Set(objects.length > 1 ? [objects[1].objectApiName] : []),
+      searchText: "",
+      searchToggledObjects: /* @__PURE__ */ new Set(),
       isRootRemovalAsked: false,
+      isEveryFieldRemovalAsked: false,
       step: "edit",
       previewSequence: 0,
       preview: null,
@@ -5368,6 +5388,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       controls: [],
       rowsByObject: /* @__PURE__ */ new Map(),
       fieldListsByObject: /* @__PURE__ */ new Map(),
+      toolbar: toolbar.toolbar,
       frameControls: [
         { key: "frame:close", element: closeElement },
         { key: "frame:cancel", element: cancelElement },
@@ -5398,7 +5419,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (event.key !== "Tab" || !customTreecipeDialog) {
         return;
       }
-      const enabledElements = [customTreecipeDialog.frameControls[0]].concat(customTreecipeDialog.controls, customTreecipeDialog.frameControls.slice(1)).map(function(control) {
+      const enabledElements = [customTreecipeDialog.frameControls[0]].concat(customTreecipeDialog.toolbar.controls, customTreecipeDialog.controls, customTreecipeDialog.frameControls.slice(1)).map(function(control) {
         return control.element;
       }).filter(function(element) {
         return !element.disabled && !element.classList.contains("hidden");
@@ -5441,6 +5462,185 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (isFocusReturned && openerElement) {
       focusElement(openerElement);
     }
+  }
+  function buildToolbar() {
+    const toolbarElement = createElement("div", "customTreecipeToolbar");
+    const searchElement = createElement("input", "customTreecipeSearch");
+    searchElement.setAttribute("type", "search");
+    searchElement.setAttribute("maxlength", "80");
+    searchElement.setAttribute("aria-label", RECIPE_COCKPIT_CUSTOM_TREECIPE_SEARCH_LABEL);
+    searchElement.setAttribute("placeholder", RECIPE_COCKPIT_CUSTOM_TREECIPE_SEARCH_PLACEHOLDER);
+    searchElement.addEventListener("input", function() {
+      if (!customTreecipeDialog) {
+        return;
+      }
+      customTreecipeDialog.searchText = searchElement.value;
+      customTreecipeDialog.searchToggledObjects.clear();
+      drawCustomTreecipeDialog();
+    });
+    searchElement.addEventListener("keydown", function(event) {
+      if (event.key === "Enter" && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+    });
+    const deselectObjectsElement = createButton("secondary", "customTreecipeDeselectObjects", RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_OBJECTS_LABEL, "compact");
+    deselectObjectsElement.addEventListener("click", function() {
+      if (!customTreecipeDialog || deselectObjectsElement.disabled) {
+        return;
+      }
+      const objectApiNames = listDeselectableObjectApiNames(customTreecipeDialog);
+      changeRemoval(function(dialog) {
+        objectApiNames.forEach(function(objectApiName) {
+          dialog.removedObjects.add(objectApiName);
+          dialog.outOfRunObjects.delete(objectApiName);
+        });
+      });
+    });
+    const deselectFieldsElement = createButton("secondary", "customTreecipeDeselectFields", RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_LABEL, "compact");
+    deselectFieldsElement.addEventListener("click", function() {
+      if (!customTreecipeDialog || deselectFieldsElement.disabled) {
+        return;
+      }
+      customTreecipeDialog.isEveryFieldRemovalAsked = true;
+      drawCustomTreecipeDialog();
+    });
+    const restoreAllElement = createButton("secondary", "customTreecipeRestoreAll", RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORE_ALL_LABEL, "compact");
+    restoreAllElement.addEventListener("click", function() {
+      if (!customTreecipeDialog || restoreAllElement.disabled) {
+        return;
+      }
+      changeRemoval(function(dialog) {
+        dialog.removedObjects.clear();
+        dialog.removedFields.clear();
+        dialog.isRootRemovalAsked = false;
+        dialog.isEveryFieldRemovalAsked = false;
+      });
+    });
+    [searchElement, deselectObjectsElement, deselectFieldsElement, restoreAllElement].forEach(function(element) {
+      toolbarElement.appendChild(element);
+    });
+    return {
+      element: toolbarElement,
+      toolbar: {
+        searchElement,
+        deselectObjectsElement,
+        deselectFieldsElement,
+        restoreAllElement,
+        controls: [
+          { key: "toolbar:search", element: searchElement },
+          { key: "toolbar:deselectObjects", element: deselectObjectsElement },
+          { key: "toolbar:deselectFields", element: deselectFieldsElement },
+          { key: "toolbar:restoreAll", element: restoreAllElement }
+        ]
+      }
+    };
+  }
+  function readSearchText(dialog) {
+    return dialog.searchText.trim().toLowerCase();
+  }
+  function listShownObjects(dialog) {
+    const searchText = readSearchText(dialog);
+    const shownObjects = [];
+    dialog.objects.forEach(function(dialogObject) {
+      if (searchText === "" || dialogObject.objectApiName.toLowerCase().indexOf(searchText) !== -1) {
+        shownObjects.push({ dialogObject, shownFields: dialogObject.fields, isShownByFieldsOnly: false });
+        return;
+      }
+      const matchingFields = dialogObject.fields.filter(function(field) {
+        return field.fieldApiName.toLowerCase().indexOf(searchText) !== -1;
+      });
+      if (matchingFields.length > 0) {
+        shownObjects.push({ dialogObject, shownFields: matchingFields, isShownByFieldsOnly: true });
+      }
+    });
+    return shownObjects;
+  }
+  function isObjectRemoved(dialog, objectApiName) {
+    return dialog.removedObjects.has(objectApiName) || !!dialog.preview && dialog.preview.removedByObject.has(objectApiName);
+  }
+  function isFieldListShown(dialog, shownObject) {
+    const objectApiName = shownObject.dialogObject.objectApiName;
+    if (isObjectRemoved(dialog, objectApiName)) {
+      return false;
+    }
+    if (readSearchText(dialog) === "") {
+      return dialog.expandedObjects.has(objectApiName);
+    }
+    const isOpenForSearch = dialog.expandedObjects.has(objectApiName) || shownObject.isShownByFieldsOnly;
+    return dialog.searchToggledObjects.has(objectApiName) ? !isOpenForSearch : isOpenForSearch;
+  }
+  function listDeselectableObjectApiNames(dialog) {
+    const rootObjectApiName = dialog.objects.length > 0 ? dialog.objects[0].objectApiName : null;
+    return listShownObjects(dialog).map(function(shownObject) {
+      return shownObject.dialogObject.objectApiName;
+    }).filter(function(objectApiName) {
+      return objectApiName !== rootObjectApiName && !isObjectRemoved(dialog, objectApiName);
+    });
+  }
+  function isFieldRemovable(dialog, objectApiName, fieldApiName) {
+    const preview = dialog.preview;
+    const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : void 0;
+    return !removedFieldsOf(dialog, objectApiName).has(fieldApiName) && !(lockedFields && lockedFields.has(fieldApiName)) && !(preview && preview.cutLookupKeys.has(objectApiName + "\\n" + fieldApiName));
+  }
+  function listRemovableShownFieldApiNames(dialog, shownObject) {
+    const objectApiName = shownObject.dialogObject.objectApiName;
+    if (isObjectRemoved(dialog, objectApiName)) {
+      return [];
+    }
+    return shownObject.shownFields.map(function(field) {
+      return field.fieldApiName;
+    }).filter(function(fieldApiName) {
+      return isFieldRemovable(dialog, objectApiName, fieldApiName);
+    });
+  }
+  function removeFields(dialog, objectApiName, fieldApiNames) {
+    const removedFields = removedFieldsOf(dialog, objectApiName);
+    fieldApiNames.forEach(function(fieldApiName) {
+      removedFields.add(fieldApiName);
+    });
+    dialog.removedFields.set(objectApiName, removedFields);
+  }
+  function countRemovableShownFields(dialog) {
+    return listShownObjects(dialog).reduce(function(total, shownObject) {
+      return total + listRemovableShownFieldApiNames(dialog, shownObject).length;
+    }, 0);
+  }
+  function buildEveryFieldConfirmation(dialog) {
+    const boxElement = createElement("div", "customTreecipeAsk");
+    boxElement.setAttribute("role", "alert");
+    boxElement.appendChild(createElement("span", "customTreecipeAskTitle", RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_TITLE));
+    boxElement.appendChild(createElement("span", "", "Removes " + countRemovableShownFields(dialog) + " field(s). " + RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_NOTE));
+    const actionsElement = createElement("div", "customTreecipeAskActions");
+    const keepElement = addControl(createButton("secondary", "customTreecipeKeepFields", RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_KEEP_LABEL), "everyField:keep");
+    keepElement.addEventListener("click", function() {
+      if (!customTreecipeDialog) {
+        return;
+      }
+      customTreecipeDialog.isEveryFieldRemovalAsked = false;
+      drawCustomTreecipeDialog();
+    });
+    const removeElement = addControl(createButton("secondary", "customTreecipeRemoveFields", RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_CONFIRM_LABEL), "everyField:remove");
+    removeElement.addEventListener("click", function() {
+      changeRemoval(function(changedDialog) {
+        changedDialog.isEveryFieldRemovalAsked = false;
+        listShownObjects(changedDialog).forEach(function(shownObject) {
+          removeFields(changedDialog, shownObject.dialogObject.objectApiName, listRemovableShownFieldApiNames(changedDialog, shownObject));
+        });
+      });
+    });
+    actionsElement.appendChild(keepElement);
+    actionsElement.appendChild(removeElement);
+    boxElement.appendChild(actionsElement);
+    return boxElement;
+  }
+  function drawToolbar(dialog) {
+    const toolbar = dialog.toolbar;
+    const isSearching = readSearchText(dialog) !== "";
+    toolbar.deselectObjectsElement.textContent = isSearching ? RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_OBJECTS_LABEL : RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_OBJECTS_LABEL;
+    toolbar.deselectFieldsElement.textContent = isSearching ? RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_SHOWN_FIELDS_LABEL : RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_LABEL;
+    toolbar.deselectObjectsElement.disabled = listDeselectableObjectApiNames(dialog).length === 0;
+    toolbar.deselectFieldsElement.disabled = dialog.isEveryFieldRemovalAsked || countRemovableShownFields(dialog) === 0;
+    toolbar.restoreAllElement.disabled = !hasRemovals(dialog);
   }
   function buildRemovalMessage(dialog) {
     const removedFields = [];
@@ -5593,7 +5793,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       dialog.outOfRunObjects.delete(objectApiName);
     });
   }
-  function buildObjectRow(dialog, dialogObject) {
+  function buildObjectRow(dialog, shownObject, isListShown) {
+    const dialogObject = shownObject.dialogObject;
     const objectApiName = dialogObject.objectApiName;
     const removal = dialog.preview ? dialog.preview.removedByObject.get(objectApiName) : void 0;
     const outOfRun = !removal && dialog.preview ? dialog.preview.outOfRunByObject.get(objectApiName) : void 0;
@@ -5646,7 +5847,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       });
     });
     primaryElement.appendChild(addControl(chainElement, "chain:" + objectApiName));
-    const isExpanded = dialog.expandedObjects.has(objectApiName) && !removal && !isDirectlyRemoved;
+    const isExpanded = isListShown;
     const chevronElement = createButton("icon", "customTreecipeChevron" + (isExpanded ? " isExpanded" : ""));
     const chevronLabel = (isExpanded ? "Hide" : "Show") + " the fields of " + objectApiName;
     chevronElement.setAttribute("aria-label", chevronLabel);
@@ -5657,10 +5858,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (!customTreecipeDialog) {
         return;
       }
-      if (customTreecipeDialog.expandedObjects.has(objectApiName)) {
-        customTreecipeDialog.expandedObjects.delete(objectApiName);
+      const toggledObjects = readSearchText(customTreecipeDialog) === "" ? customTreecipeDialog.expandedObjects : customTreecipeDialog.searchToggledObjects;
+      if (toggledObjects.has(objectApiName)) {
+        toggledObjects.delete(objectApiName);
       } else {
-        customTreecipeDialog.expandedObjects.add(objectApiName);
+        toggledObjects.add(objectApiName);
       }
       drawCustomTreecipeDialog();
     });
@@ -5668,6 +5870,17 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     primaryElement.appendChild(createElement("span", "customTreecipeObjectName", objectApiName));
     const keptFieldCount = removal || isDirectlyRemoved ? 0 : countKeptFields(dialog, dialogObject);
     primaryElement.appendChild(createElement("span", "customTreecipeFieldCount muted", keptFieldCount + " of " + dialogObject.fields.length + " fields"));
+    if (isListShown) {
+      const removableFieldApiNames = listRemovableShownFieldApiNames(dialog, shownObject);
+      const removeEveryElement = addControl(createButton("secondary", "customTreecipeRemoveEveryField", describeRemoveEveryField(shownObject), "compact"), "fields:" + objectApiName);
+      removeEveryElement.disabled = removableFieldApiNames.length === 0;
+      removeEveryElement.addEventListener("click", function() {
+        changeRemoval(function(changedDialog) {
+          removeFields(changedDialog, objectApiName, removableFieldApiNames);
+        });
+      });
+      primaryElement.appendChild(removeEveryElement);
+    }
     if (dialogObject.parentLookups.length > 0) {
       detailElement.appendChild(createElement("span", "customTreecipeLookups muted", dialogObject.parentLookups.map(function(lookup) {
         return lookup.fieldApiName + " → " + lookup.parentObjectApiName;
@@ -5683,6 +5896,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     return rowElement;
   }
+  function describeRemoveEveryField(shownObject) {
+    const prefix = shownObject.shownFields.length === shownObject.dialogObject.fields.length ? RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVE_EVERY_FIELD_PREFIX : RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVE_SHOWN_FIELDS_PREFIX;
+    return prefix + shownObject.dialogObject.objectApiName;
+  }
   function countKeptFields(dialog, dialogObject) {
     const removedFields = removedFieldsOf(dialog, dialogObject.objectApiName);
     return dialogObject.fields.filter(function(field) {
@@ -5696,13 +5913,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }) || CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS[CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS.length - 1];
     return "fieldCountUpTo" + sizeFieldCount;
   }
-  function buildFieldList(dialog, dialogObject) {
+  function buildFieldList(dialog, shownObject) {
+    const dialogObject = shownObject.dialogObject;
     const objectApiName = dialogObject.objectApiName;
-    const listElement = createElement("ul", "treeFieldsBox customTreecipeFields " + customTreecipeFieldListSizeClassName(dialogObject.fields.length));
+    const listElement = createElement("ul", "treeFieldsBox customTreecipeFields " + customTreecipeFieldListSizeClassName(shownObject.shownFields.length));
     listElement.setAttribute("aria-label", "Fields of " + objectApiName);
     const removedFields = removedFieldsOf(dialog, objectApiName);
     const lockedFields = dialog.preview ? dialog.preview.lockedFieldsByObject.get(objectApiName) : void 0;
-    dialogObject.fields.forEach(function(field) {
+    shownObject.shownFields.forEach(function(field) {
       const qualifiedName = objectApiName + "." + field.fieldApiName;
       const isRemoved = removedFields.has(field.fieldApiName);
       const isCut = !isRemoved && !!dialog.preview && dialog.preview.cutLookupKeys.has(objectApiName + "\\n" + field.fieldApiName);
@@ -5862,20 +6080,23 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
     });
   }
-  function signatureOfObjectRow(dialog, dialogObject) {
+  function signatureOfObjectRow(dialog, shownObject, isListShown) {
+    const dialogObject = shownObject.dialogObject;
     const objectApiName = dialogObject.objectApiName;
     const preview = dialog.preview;
     return JSON.stringify([
       !!preview,
       dialog.removedObjects.has(objectApiName),
       dialog.outOfRunObjects.has(objectApiName),
-      dialog.expandedObjects.has(objectApiName),
+      isListShown,
       preview ? preview.removedByObject.get(objectApiName) || null : null,
       preview ? preview.outOfRunByObject.get(objectApiName) || null : null,
-      countKeptFields(dialog, dialogObject)
+      countKeptFields(dialog, dialogObject),
+      isListShown ? [describeRemoveEveryField(shownObject), listRemovableShownFieldApiNames(dialog, shownObject)] : null
     ]);
   }
-  function signatureOfFieldList(dialog, dialogObject) {
+  function signatureOfFieldList(dialog, shownObject) {
+    const dialogObject = shownObject.dialogObject;
     const objectApiName = dialogObject.objectApiName;
     const preview = dialog.preview;
     const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : void 0;
@@ -5886,6 +6107,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       dialogObject.fields.filter(function(field) {
         return !!preview && preview.cutLookupKeys.has(objectApiName + "\\n" + field.fieldApiName);
       }).map(function(field) {
+        return field.fieldApiName;
+      }),
+      shownObject.shownFields.length === dialogObject.fields.length ? null : shownObject.shownFields.map(function(field) {
         return field.fieldApiName;
       })
     ]);
@@ -5925,6 +6149,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return control.element === document.activeElement;
     });
     const focusedKey = focusedControl ? focusedControl.key : null;
+    const focusedToolbarControl = dialog.toolbar.controls.find(function(control) {
+      return control.element === document.activeElement;
+    });
     const scrollTop = dialog.bodyElement.scrollTop;
     dialog.nameInputElement = null;
     dialog.controls = [];
@@ -5932,15 +6159,23 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (dialog.isRootRemovalAsked) {
       nextElements.push(buildRootConfirmation(dialog));
     }
-    dialog.objects.forEach(function(dialogObject) {
+    if (dialog.isEveryFieldRemovalAsked) {
+      nextElements.push(buildEveryFieldConfirmation(dialog));
+    }
+    const shownObjects = listShownObjects(dialog);
+    if (shownObjects.length === 0) {
+      nextElements.push(createElement("p", "customTreecipeNoMatch muted", RECIPE_COCKPIT_CUSTOM_TREECIPE_NO_MATCH_PREFIX + '"' + dialog.searchText.trim() + '".'));
+    }
+    shownObjects.forEach(function(shownObject) {
+      const dialogObject = shownObject.dialogObject;
       const objectApiName = dialogObject.objectApiName;
-      nextElements.push(reuseOrBuild(dialog, dialog.rowsByObject, objectApiName, signatureOfObjectRow(dialog, dialogObject), function() {
-        return buildObjectRow(dialog, dialogObject);
+      const isListShown = isFieldListShown(dialog, shownObject);
+      nextElements.push(reuseOrBuild(dialog, dialog.rowsByObject, objectApiName, signatureOfObjectRow(dialog, shownObject, isListShown), function() {
+        return buildObjectRow(dialog, shownObject, isListShown);
       }));
-      const isRemoved = dialog.removedObjects.has(objectApiName) || !!preview && preview.removedByObject.has(objectApiName);
-      if (dialog.expandedObjects.has(objectApiName) && !isRemoved) {
-        nextElements.push(reuseOrBuild(dialog, dialog.fieldListsByObject, objectApiName, signatureOfFieldList(dialog, dialogObject), function() {
-          return buildFieldList(dialog, dialogObject);
+      if (isListShown) {
+        nextElements.push(reuseOrBuild(dialog, dialog.fieldListsByObject, objectApiName, signatureOfFieldList(dialog, shownObject), function() {
+          return buildFieldList(dialog, shownObject);
         }));
       }
     });
@@ -5948,6 +6183,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       nextElements.push(buildSaveForm(dialog));
     }
     placeBodyElements(dialog.bodyElement, nextElements);
+    drawToolbar(dialog);
     const isNothingLeft = keptObjectCount === 0;
     if (dialog.step === "edit") {
       dialog.saveElement.classList.remove("hidden");
@@ -5959,6 +6195,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     dialog.bodyElement.scrollTop = scrollTop;
     if (dialog.step === "save" && dialog.nameInputElement) {
       focusWithoutScrolling(dialog.nameInputElement);
+    } else if (focusedToolbarControl && focusedToolbarControl.element.disabled || focusedKey && focusedKey.indexOf("everyField:") === 0) {
+      focusWithoutScrolling(dialog.toolbar.searchElement);
     } else if (focusedKey) {
       const enabledControls = dialog.controls.filter(function(control) {
         return !control.element.disabled;

@@ -154,6 +154,48 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         });
 
+        describe('reads as many names as the panel has drawn keys for (#711)', () => {
+
+            const postFieldRemovals = async (removedFieldCount: number) => {
+                const recipeDataMessage = await openAndDraw();
+                const removedFields = Array.from({ length: removedFieldCount }, () => ({ objectApiName: 'Contact', fieldApiName: 'AccountId' }));
+                await receivedMessageHandler({ command: 'previewCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, previewSequence: 1, ...removal({ removedFields }) });
+                return lastPosted('customTreecipePreview');
+            };
+            const drawMoreFieldKeys = (extraFieldKeyCount: number) => {
+                const { selectableFieldKeys } = RecipeCockpitService.recipeCockpitPanelState.treeHistoryAllowLists;
+                for ( let keyIndex = 0; keyIndex < extraFieldKeyCount; keyIndex++ ) {
+                    selectableFieldKeys.add(RecipeCockpitDrawnModel.buildSelectableFieldKey('Big-thru-Tree', 'Big__c', `Field${keyIndex}__c`));
+                }
+            };
+
+            it('reads up to the floor on a small tree', async () => {
+                expect(await postFieldRemovals(5000)).toMatchObject({ treeKey: SOURCE_TREE_KEY });
+            });
+
+            it('refuses more than the floor on a small tree', async () => {
+                expect(await postFieldRemovals(5001)).toBeUndefined();
+            });
+
+            it('reads past the floor when the panel draws more field keys than that', async () => {
+                const recipeDataMessage = await openAndDraw();
+                drawMoreFieldKeys(6000);
+                const removedFields = Array.from({ length: 5500 }, () => ({ objectApiName: 'Contact', fieldApiName: 'AccountId' }));
+                await receivedMessageHandler({ command: 'previewCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, previewSequence: 1, ...removal({ removedFields }) });
+                expect(lastPosted('customTreecipePreview')).toMatchObject({ treeKey: SOURCE_TREE_KEY });
+            });
+
+            it('refuses a list longer than every field key the panel draws', async () => {
+                const recipeDataMessage = await openAndDraw();
+                drawMoreFieldKeys(6000);
+                const drawnFieldKeyCount = RecipeCockpitService.recipeCockpitPanelState.treeHistoryAllowLists.selectableFieldKeys.size;
+                const removedFields = Array.from({ length: drawnFieldKeyCount + 1 }, () => ({ objectApiName: 'Contact', fieldApiName: 'AccountId' }));
+                await receivedMessageHandler({ command: 'previewCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, previewSequence: 1, ...removal({ removedFields }) });
+                expect(lastPosted('customTreecipePreview')).toBeUndefined();
+            });
+
+        });
+
         it('answers nothing for a model the panel has not drawn', async () => {
 
             const recipeDataMessage = await openAndDraw();
