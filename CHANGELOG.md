@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.208.10] - Recipe Cockpit: a long formula on a read-only row is clamped, with the whole formula one click away (#706)
+
+A formula field's read-only row shows `formula: <formula>` (#685), and a formula can run to 3,900 characters. A long one made its row many lines tall and pushed the rest of the object's fields down.
+
+### Treecipe tab
+
+- **A formula longer than 120 characters is cut to two lines,** ending in `…`, on a line of its own under the row's name.
+- **Show formula**, a link button after it, expands the note in place, and **Hide formula** cuts it back to two lines. It is an ordinary button, so Tab reaches it and Enter or Space presses it, and it says whether the formula is open (`aria-expanded`). The whole formula stays in the page while it is cut, so a screen reader reads all of it.
+- **What does not change.** A formula of 120 characters or fewer, and every other read-only reason (roll-up summary, auto number, set by Salesforce), looks exactly as before: no clamp, no button. The formula is still written as text, no colour is added, and the model still posts formulas of up to 3,900 characters.
+
+### Under the hood
+
+- `FieldRow.ts` gains `buildFormulaClampToggle`. The cut-off length and the button's words are `RECIPE_COCKPIT_READ_ONLY_FORMULA_CLAMP_LENGTH`, `RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL` and `RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL` in `RecipeCockpitFieldRowsConstants.ts`. `RecipeCockpitPanel.css` adds `.readOnlyFormulaNote` (its own line, wrapped anywhere) and `.readOnlyFormulaClamped` (two lines).
+- **Tests.** `RecipeCockpitReadOnlyFields.test.ts` covers a 3,000-character formula (cut, whole text present), the button expanding and cutting it again, a short formula and one exactly at the limit (unchanged), the other reasons (no button), and the stylesheet rule (two lines, no colour).
+
 ## [3.208.9] - Recipe Cockpit: the "Customize and create new recipe" modal can search, deselect every object or field, and restore all (#711)
 
 ### Customize and create new recipe
