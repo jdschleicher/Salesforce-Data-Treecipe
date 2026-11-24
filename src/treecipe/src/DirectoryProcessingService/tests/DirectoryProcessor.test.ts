@@ -305,15 +305,9 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         const mockedUri:vscode.Uri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
         jest.spyOn(vscode.Uri, "joinPath").mockReturnValue(mockedUri);
 
-        jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
-          Promise.resolve(Buffer.from('fake xml markup'))
-        );
-
-        const mockedBuffer:any = 'dont care text';
-        jest.spyOn(Buffer, 'from').mockReturnValue(mockedBuffer);
-
         const fakeFieldXMLInfo:any = XMLMarkupMockService.getRichTextAreaXMLFieldDetail();
-        jest.spyOn(directoryProcessor, 'buildFieldInfoByXMLContent').mockReturnValue(fakeFieldXMLInfo);
+        const readFieldXmlDetailSpy = jest.spyOn(directoryProcessor, 'readFieldXmlDetail').mockResolvedValue(fakeFieldXMLInfo);
+        jest.spyOn(directoryProcessor, 'buildFieldInfoByXMLDetail').mockReturnValue(fakeFieldXMLInfo);
         
         const fakeUri = vscode.Uri.file('/fake/fields/fakepath');
         const fakeObjectName = 'dont worry about me';
@@ -325,6 +319,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
                                                                                           salesforceOOTBMappings);
 
         expect(processedFileInfoDetails.length).toBe(expectedXMLFileTypesInDirectory);
+        expect(readFieldXmlDetailSpy).toHaveBeenCalledTimes(expectedXMLFileTypesInDirectory);
 
       });
           

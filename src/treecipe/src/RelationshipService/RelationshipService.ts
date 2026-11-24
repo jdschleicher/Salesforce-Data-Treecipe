@@ -263,7 +263,8 @@ export class RelationshipService {
 
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper,
                               nestChildObjectsAsFriends: boolean,
-                              isChildTreeCopiedPerRecordTypeBlock: boolean = false): OrderedRecipeStructure {
+                              isChildTreeCopiedPerRecordTypeBlock: boolean = false,
+                              onlyTreeFolderName?: string): OrderedRecipeStructure {
 
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
@@ -326,6 +327,11 @@ export class RelationshipService {
 
         }
 
+      }
+
+      // ONE CARD'S BUILD (#702) COMBINES ITS TREE ALONE; EVERY TREE KEEPS ITS NUMBER, SO THE CARD'S RECIPE IS WRITTEN AS IN A FULL RUN
+      if ( onlyTreeFolderName !== undefined && RelationshipService.buildRecipeTreeFolderName(orderedTree.orderedLevels.flatMap(level => level.objects)) !== onlyTreeFolderName ) {
+        return;
       }
 
       // Build combined recipe for this tree (in dependency order)
@@ -1029,9 +1035,10 @@ export class RelationshipService {
 
   generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper,
                               nestChildObjectsAsFriends: boolean = false,
-                              isChildTreeCopiedPerRecordTypeBlock: boolean = false): RecipeFileOutput[] {
+                              isChildTreeCopiedPerRecordTypeBlock: boolean = false,
+                              onlyTreeFolderName?: string): RecipeFileOutput[] {
 
-    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper, nestChildObjectsAsFriends, isChildTreeCopiedPerRecordTypeBlock);
+    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper, nestChildObjectsAsFriends, isChildTreeCopiedPerRecordTypeBlock, onlyTreeFolderName);
     const recipeFiles: RecipeFileOutput[] = [];
 
     orderedStructure.relationshipTrees.forEach((tree, index) => {
