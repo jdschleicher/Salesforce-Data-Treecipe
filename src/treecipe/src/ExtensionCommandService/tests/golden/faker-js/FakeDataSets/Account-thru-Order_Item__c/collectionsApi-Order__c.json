@@ -7,8 +7,8 @@
         "referenceId": "Order__c_Reference_1__Order__c_Account_NickName"
       },
       "Account__c": "Account_NickName",
-      "Status__c": "In Production",
-      "Type__c": "Water Sports"
+      "Status__c": "Submitted to Manufacturing",
+      "Type__c": "Relaxation & Quiet Zones"
     }
   ]
 }

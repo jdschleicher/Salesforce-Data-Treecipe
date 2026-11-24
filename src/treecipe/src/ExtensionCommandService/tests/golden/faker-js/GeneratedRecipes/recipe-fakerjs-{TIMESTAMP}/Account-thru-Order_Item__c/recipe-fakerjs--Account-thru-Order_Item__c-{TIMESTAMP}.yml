@@ -574,13 +574,15 @@
       count: 1
       fields:
         Name: ${{faker.company.catchPhrase()}}
-        Amount: ${{ (faker.string.numeric(6)) }}.00
+        Amount: |
+                        ${{ faker.finance.amount({min: 0, max: 999999, dec: 2}) }}
         CloseDate: |
                         ${{ faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) }) }}
         Description: ${{faker.lorem.paragraph()}}
         LeadSource: ${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}
         NextStep: ${{faker.lorem.sentence()}}
-        Probability: ${{ (faker.string.numeric(2))}}.0 
+        Probability: |
+                        ${{ faker.finance.amount({min: 0, max: 99, dec: 1}) }}
         StageName: ${{faker.helpers.arrayElement(['Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'])}}
         Type: ${{faker.helpers.arrayElement(['New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade'])}}
         AccountId: Account_NickName

@@ -11,10 +11,7 @@ Objects: Pricebook2
 
 ```sql
 SELECT Id,
-       Description,
-       IsActive,
-       IsStandard,
-       Name
+       IsStandard
 FROM Pricebook2
 ```
 
