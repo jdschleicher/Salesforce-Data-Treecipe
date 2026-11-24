@@ -12,6 +12,7 @@
   - The status line names every field that came back along with the one you restored ("Also restored, to link it to the tree: …").
 - **A removal still closes an object's list**, so ✕ on the root still rebuilds no field list (#684). A list you open on a removed object stays open once the object comes back.
 - **The ? help and the guide** say that a removed object opens and that one field's ↺ brings back what links it to the tree.
+- **The guide's screenshot script is gone.** `developmentSupportScripts/recipe-cockpit-screenshots/captureRecipeCockpitScreenshots.js` had been broken since #671 moved the cockpit's shell out of `RecipeCockpitService`. The pictures in `docs/images/recipe-cockpit/` stay and are now taken by hand. `/cockpit-help-sync` names a picture that no longer matches instead of re-taking it.
 - **What does not change.** **Restore every field of <object>**, the object ↺, **Restore all**, both Deselect buttons, the root's question and the chain link work as before. The host still decides the cascade and the locks from the removal the panel posts, and the same removals save the same files.
 
 ### Under the hood
