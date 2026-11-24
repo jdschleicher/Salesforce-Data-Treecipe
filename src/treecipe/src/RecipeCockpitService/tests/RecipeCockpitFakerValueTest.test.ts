@@ -326,6 +326,38 @@ describe('RecipeCockpitService, "Test faker value" on a field row (#718)', () =>
 
         });
 
+        test('runs only the first expression line of an unconstrained value that carries record type variant lines', () => {
+
+            const unconstrainedDisplayValue = [
+                '${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}',
+                '### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Status__c',
+                '# ${{ faker.helpers.arrayElement([`cle`]) }}'
+            ].join('\n');
+            const panelState = buildDrawnPanelState(recipe => {
+                const statusField = recipe.objects[0].fields.find(field => field.fieldApiName === 'Status__c');
+                statusField.validationRules = { appliedRuleNames: ['Not_Madison'], notAppliedRules: [], unconstrainedExpression: unconstrainedDisplayValue };
+                recipe.trees[0].validationRulesOff = [{ objectApiName: 'Gizmo__c', fieldApiName: 'Status__c' }];
+            });
+
+            expect(route({ fieldApiName: 'Status__c' }, panelState)).toMatchObject({ expression: '${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}' });
+
+        });
+
+        test('matches a fixed value and a rules-off entry to its occurrence exactly: one with no nickname is not an iteration\'s', () => {
+
+            const panelState = buildDrawnPanelState(recipe => {
+                const amountField = recipe.objects[0].fields.find(field => field.fieldApiName === 'Amount__c');
+                amountField.validationRules = { appliedRuleNames: ['Min_Amount'], notAppliedRules: [], unconstrainedExpression: '${{ faker.number.int() }}' };
+                recipe.trees[0].fixedValues = [{ objectApiName: 'Gizmo__c', fieldApiName: 'Amount__c', value: '5', kind: 'number' }];
+                recipe.trees[0].validationRulesOff = [{ objectApiName: 'Gizmo__c', fieldApiName: 'Amount__c' }];
+            });
+            const drawnField = RecipeCockpitDrawnModel.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, TREE_KEY, 'Gizmo__c', undefined, 'Amount__c');
+            jest.spyOn(RecipeCockpitDrawnModel, 'findDrawnOccurrenceField').mockReturnValue({ ...drawnField, occurrence: { ...drawnField.occurrence, nickname: 'Gizmo__c_NickName-1' } });
+
+            expect(route({ fieldApiName: 'Amount__c', nickname: 'Gizmo__c_NickName-1' }, panelState)).toMatchObject({ kind: 'testFakerValue', nickname: 'Gizmo__c_NickName-1', expression: CURRENCY_EXPRESSION });
+
+        });
+
         test.each([
             ['a lookup', { fieldApiName: 'Account__c' }],
             ['a read-only field', { fieldApiName: 'Total__c' }],
@@ -452,7 +484,7 @@ describe('RecipeCockpitService, "Test faker value" on a field row (#718)', () =>
 
         });
 
-        test('a second click while the first runs does nothing, and a panel closed meanwhile is not posted to', async () => {
+        test('a click on a row redrawn while its field still runs starts nothing and frees that row, and a panel closed meanwhile is not posted to', async () => {
 
             let finishRun: (generatedJson: string) => void = () => undefined;
             jest.spyOn(SnowfakeryRecipeProcessor.prototype, 'generateFakeDataBySelectedRecipeFile').mockImplementation(() => new Promise(resolve => { finishRun = resolve; }));
@@ -464,14 +496,15 @@ describe('RecipeCockpitService, "Test faker value" on a field row (#718)', () =>
             const testAction = { kind: 'testFakerValue' as const, treeKey: TREE_KEY, renderSequence: 4, objectApiName: 'Gizmo__c', fieldApiName: 'Amount__c', expression: '${{fake.Word}}' };
 
             const firstRun = RecipeCockpitTreecipeHost.executePanelAction(hub, cockpitPanel, testAction);
-            await RecipeCockpitTreecipeHost.executePanelAction(hub, cockpitPanel, testAction);
+            await RecipeCockpitTreecipeHost.executePanelAction(hub, cockpitPanel, { ...testAction, renderSequence: 5 });
             expect(generateSpy).toHaveBeenCalledTimes(1);
+            expect(postToPanel.mock.calls.map(call => call[1])).toEqual([{ command: 'fakerValueExample', renderSequence: 5, treeKey: TREE_KEY, objectApiName: 'Gizmo__c', fieldApiName: 'Amount__c' }]);
 
             hub.recipeCockpitPanel = undefined;
             finishRun(JSON.stringify([{ id: 1, _table: 'Gizmo__c', Amount__c: 'x' }]));
             await firstRun;
 
-            expect(postToPanel).not.toHaveBeenCalled();
+            expect(postToPanel).toHaveBeenCalledTimes(1);
 
         });
 

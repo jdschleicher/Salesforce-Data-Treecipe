@@ -816,19 +816,22 @@ export class RecipeCockpitTreecipeHost {
                 }
 
                 const { tree, occurrence, fieldViewModel } = drawnField;
+                // A FIXED VALUE AND A RULES-OFF ENTRY NAME THEIR OCCURRENCE EXACTLY, AS THE PANEL'S isSameOccurrence READS THEM
                 const isThisOccurrence = (fieldReference: { objectApiName: string; nickname?: string; fieldApiName: string }) =>
                     fieldReference.objectApiName === objectApiName && fieldReference.fieldApiName === fieldApiName
-                    && ( fieldReference.nickname === undefined || fieldReference.nickname === occurrence.nickname );
+                    && ( fieldReference.nickname ?? '' ) === ( occurrence.nickname ?? '' );
 
                 if ( RecipeCockpitFakerValueExample.findNoExampleReason({ objectApiName, fieldApiName, recipeValue: fieldViewModel.recipeValue, controllingField: fieldViewModel.controllingField }) !== undefined
                         || ( tree.fixedValues ?? [] ).some(isThisOccurrence) ) {
                     return undefined;
                 }
 
+                // THE ROW SHOWS THE DISPLAY VALUE, WHICH CAN CARRY RECORD TYPE VARIANT LINES: ONLY ITS FIRST EXPRESSION LINE RUNS
                 const unconstrainedExpression = fieldViewModel.validationRules?.unconstrainedExpression;
-                const shownExpression = unconstrainedExpression !== undefined && ( tree.validationRulesOff ?? [] ).some(isThisOccurrence)
+                const shownValue = unconstrainedExpression !== undefined && ( tree.validationRulesOff ?? [] ).some(isThisOccurrence)
                     ? unconstrainedExpression
-                    : RecipeCockpitDrawnModel.findRecipeExpression(fieldViewModel.recipeValue);
+                    : fieldViewModel.recipeValue;
+                const shownExpression = RecipeCockpitDrawnModel.findRecipeExpression(shownValue);
 
                 if ( shownExpression === undefined ) {
                     return undefined;
@@ -1006,14 +1009,17 @@ export class RecipeCockpitTreecipeHost {
 
     }
 
-    // ONE RUN PER FIELD ROW AT A TIME: A SECOND CLICK WHILE ONE RUNS DOES NOTHING
+    // ONE RUN PER FIELD ROW AT A TIME: A CLICK WHILE ITS FIELD RUNS STARTS NOTHING
     private static readonly runningFakerValueExampleKeys = new Set<string>();
 
     /*
         One record of a one-field recipe, run by the card's own backend through the Adapter's path
-        (#718). Nothing is written to the workspace, the recipe or an org. The example is drawn under
-        the expression, since it is the value the reader asked to look at; a failure is the one
-        notification, and the row is answered either way so its button is pressable again.
+        (#718). It runs the recipe's own code with no confirmation, as Run Faker does after its modal:
+        the expression is on the row beside the button, and workspace trust is the gate. Nothing is
+        written to the recipe or an org; a failed run leaves the processor's error capture file, as
+        Run Faker's does. The example is drawn under the expression, since it is the value the reader
+        asked to look at; a failure is the one notification, and the row is answered either way so
+        its button is pressable again.
     */
     private static async testFakerValue(hub: IRecipeCockpitHubForTreecipeTab, cockpitPanel: vscode.WebviewPanel,
                                         panelState: IRecipeCockpitPanelState,
@@ -1021,11 +1027,6 @@ export class RecipeCockpitTreecipeHost {
 
         const { treeKey, renderSequence, objectApiName, nickname, fieldApiName, expression } = testAction;
         const runningKey = JSON.stringify([treeKey, objectApiName, nickname ?? '', fieldApiName]);
-
-        if ( this.runningFakerValueExampleKeys.has(runningKey) ) {
-            return;
-        }
-
         const fieldLabel = `${objectApiName}.${fieldApiName}`;
         const answerRow = (exampleText?: string) => {
             if ( hub.recipeCockpitPanel !== cockpitPanel || hub.recipeCockpitPanelState !== panelState ) {
@@ -1046,6 +1047,12 @@ export class RecipeCockpitTreecipeHost {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${fieldLabel} could not generate an example: ${refusal}`));
             answerRow();
         };
+
+        // A ROW REDRAWN WHILE ITS FIELD STILL RUNS IS ANSWERED AT ONCE, SO ITS BUTTON FREES; THE FIRST RUN'S ANSWER IS FOR THE OLD ROW
+        if ( this.runningFakerValueExampleKeys.has(runningKey) ) {
+            answerRow();
+            return;
+        }
 
         const fakerService = hub.readTreeFakerService(panelState, treeKey);
         if ( fakerService === undefined ) {

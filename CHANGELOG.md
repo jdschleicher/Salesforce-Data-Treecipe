@@ -9,7 +9,8 @@ A field row on the Treecipe tab shows its faker expression, such as `${{faker.st
 - **▶ at the right of a field's faker expression** runs that expression once, with the recipe's own backend (faker-js or snowfakery), and shows **Example: 48213.07** under it. Clicking again replaces it with a new value. The button is disabled while the run lasts, and a screen reader hears its name ("Test the faker value of Account.AccountNumber") and the example.
 - **It runs the expression the row shows:** the rules' unconstrained one while the field's validation-rule box is unticked. An example of the other expression is cleared when the box changes.
 - **No button where one field cannot be run alone, or where there is nothing to run:** a lookup, a dependent picklist, a read-only or derived field, and a field whose fixed value or edit takes the expression's place. Clearing the edit brings the button back.
-- **Nothing is written.** The one-field recipe is run from a temporary folder outside the workspace, which is removed afterwards. The recipe, its sidecar files, the workspace and every org stay as they were.
+- **Nothing is written to the recipe or an org.** The one-field recipe is run from a temporary folder outside the workspace, which is removed afterwards, and the recipe and its sidecar files stay as they were. A failed run leaves the same error capture file in the workspace's errors folder that a failed Run Faker leaves.
+- **It runs the recipe's own code on one click.** Run Faker by Recipe runs the same expressions after its confirmation. Here the expression is printed beside the button, and VS Code's workspace trust is what allows it, as for every Treecipe command.
 - **A failure is one notification** naming the object, the field and why, for example an expression that throws, or snowfakery not installed (with how to fix it). The row keeps its last example and its button is pressable again.
 
 ### Under the hood
