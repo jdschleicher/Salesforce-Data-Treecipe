@@ -449,6 +449,9 @@
     .fieldEditorHint { font-size: 0.85em; }
     .fieldEditorRefusal { color: var(--sdt-removed); font-size: 0.9em; }
     .treeFieldNote { position: relative; z-index: 2; font-size: 0.85em; }
+    /* A LONG FORMULA (#706): ITS OWN LINE, TWO LINES AT MOST UNTIL "Show formula" */
+    .readOnlyFormulaNote { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+    .readOnlyFormulaClamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     .treeNoFieldsSelected { color: var(--sdt-removed); font-weight: bold; }
     .noFieldsSelectedHidden { display: none !important; }
     .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject { min-height: 1.9rem; padding: 0.2rem 0.6rem; }

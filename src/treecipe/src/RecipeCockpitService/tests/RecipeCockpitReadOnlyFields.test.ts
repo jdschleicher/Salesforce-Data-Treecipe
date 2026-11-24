@@ -16,11 +16,15 @@ jest.mock('vscode', () => ({
 import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_CLAMP_LENGTH,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL,
     RECIPE_COCKPIT_READ_ONLY_FORMULA_MAXIMUM_LENGTH,
+    RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL,
     RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX
 } from '../RecipeCockpitFieldRowsConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { RecipeCockpitTreeSelectionStore } from '../RecipeCockpitTreeSelectionStore';
+import { RECIPE_COCKPIT_PANEL_STYLESHEET } from '../RecipeCockpitPanelStylesheet.generated';
 import { IRecipeCockpitRecipeViewModel } from '../RecipeCockpitViewModel';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -154,6 +158,90 @@ describe('RecipeCockpitService, a field Salesforce calculates or sets itself (#6
 
         expect(totalViewModel).not.toHaveProperty('formula');
         expect(textsOf(panel, gizmoRow(panel, 'Total__c'), 'readOnlyFieldNote')).toEqual(['formula']);
+
+    });
+
+    describe('a long formula is clamped to two lines, with the whole formula one click away (#706)', () => {
+
+        const LONG_FORMULA = 'IF(ISBLANK(Price__c), 0, ' + 'Price__c * Quantity__c + '.repeat(120) + '0)';
+        const showFormulaButtonOf = (panel: any) => panel.findAll(gizmoRow(panel, 'Total__c'), 'readOnlyFormulaToggle')[0];
+        const formulaNoteOf = (panel: any) => panel.findAll(gizmoRow(panel, 'Total__c'), 'readOnlyFieldNote')[0];
+
+        test('a 3,000-character formula is clamped, and its whole text is still in the note', () => {
+
+            expect(LONG_FORMULA.length).toBeGreaterThan(3000);
+            writeWorkspace(LONG_FORMULA);
+            const panel = renderModel(loadModel());
+            const noteElement = formulaNoteOf(panel);
+
+            expect(noteElement.classList.contains('readOnlyFormulaClamped')).toBeTrue();
+            expect(noteElement.textContent).toBe(`formula: ${LONG_FORMULA}`);
+
+        });
+
+        test('"Show formula" is a link button that expands the note in place, and "Hide formula" clamps it again', () => {
+
+            writeWorkspace(LONG_FORMULA);
+            const panel = renderModel(loadModel());
+            const showFormulaButton = showFormulaButtonOf(panel);
+            const noteElement = formulaNoteOf(panel);
+
+            // A <button> IS FOCUSABLE AND ANSWERS ENTER AND SPACE WITH A CLICK, SO A CLICK IS WHAT THE KEYBOARD SENDS TOO
+            expect(showFormulaButton.tagName).toBe('button');
+            expect(showFormulaButton.classList.contains('sdtButton-link')).toBeTrue();
+            expect(showFormulaButton.textContent).toBe(RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL);
+            expect(showFormulaButton.attributes['aria-expanded']).toBe('false');
+            expect(showFormulaButton.attributes['aria-label']).toBe(`${RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL} of Total__c`);
+
+            showFormulaButton.dispatch('click');
+            expect(noteElement.classList.contains('readOnlyFormulaClamped')).toBeFalse();
+            expect(showFormulaButton.textContent).toBe(RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL);
+            expect(showFormulaButton.attributes['aria-expanded']).toBe('true');
+            expect(showFormulaButton.attributes['aria-label']).toBe(`${RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL} of Total__c`);
+
+            showFormulaButton.dispatch('click');
+            expect(noteElement.classList.contains('readOnlyFormulaClamped')).toBeTrue();
+            expect(showFormulaButton.textContent).toBe(RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL);
+            expect(showFormulaButton.attributes['aria-expanded']).toBe('false');
+
+        });
+
+        test.each([
+            ['a short formula', TOTAL_FORMULA],
+            ['a formula exactly as long as the clamp allows', 'x'.repeat(RECIPE_COCKPIT_READ_ONLY_FORMULA_CLAMP_LENGTH)]
+        ])('%s looks as it did before: no clamp and no button', (unusedCase, formula) => {
+
+            writeWorkspace(formula);
+            const panel = renderModel(loadModel());
+            const noteElement = formulaNoteOf(panel);
+
+            expect(noteElement.className).toBe('treeFieldNote readOnlyFieldNote muted');
+            expect(noteElement.textContent).toBe(`formula: ${formula}`);
+            expect(showFormulaButtonOf(panel)).toBeUndefined();
+
+        });
+
+        test('a read-only row that is not a formula has no clamp and no button', () => {
+
+            writeWorkspace(LONG_FORMULA);
+            const panel = renderModel(loadModel());
+
+            ['Line_Count__c', 'Gizmo_Number__c', 'Status_Code__c'].forEach(fieldApiName => {
+                expect(panel.findAll(gizmoRow(panel, fieldApiName), 'readOnlyFormulaClamped')).toEqual([]);
+                expect(panel.findAll(gizmoRow(panel, fieldApiName), 'readOnlyFormulaToggle')).toEqual([]);
+            });
+
+        });
+
+        test('the clamp is a stylesheet rule of two lines that sets no colour', () => {
+
+            const [clampRule] = RECIPE_COCKPIT_PANEL_STYLESHEET.match(/\.readOnlyFormulaClamped\s*\{[^}]*\}/) ?? [];
+
+            expect(clampRule).toContain('-webkit-line-clamp: 2');
+            expect(clampRule).toContain('overflow: hidden');
+            expect(clampRule).not.toMatch(/color/);
+
+        });
 
     });
 

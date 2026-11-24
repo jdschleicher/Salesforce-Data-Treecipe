@@ -1,5 +1,5 @@
 import { createButton, createElement, setShownWithMotion } from '../../../../CockpitKit/panel/CockpitPanelElements';
-import { RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL, RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX, RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL, RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL, RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX } from '../../../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_DERIVED_FIELD_BADGE_LABEL, RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX, RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_READ_ONLY_FORMULA_CLAMP_LENGTH, RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL, RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX, RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL, RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL, RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL, RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX } from '../../../RecipeCockpitFieldRowsConstants';
 import { StandardDerivedFields } from '../../../../ObjectInfoWrapper/StandardDerivedFields';
 import { ReadOnlyFields } from '../../../../ObjectInfoWrapper/ReadOnlyFields';
 import { RECIPE_COCKPIT_PICKLIST_RESET_LABEL } from '../../../RecipeCockpitTreecipeFieldEditorConstants';
@@ -157,6 +157,26 @@ function buildFieldIncludeElement(treeObjectState: IFieldRowObjectState, fieldSt
 
 }
 
+// A LONG FORMULA IS CLAMPED TO TWO LINES (#706); THE BUTTON EXPANDS IT IN PLACE AND CLAMPS IT AGAIN
+function buildFormulaClampToggle(formulaNoteElement: HTMLElement, fieldApiName: string): HTMLButtonElement {
+
+    formulaNoteElement.classList.add('readOnlyFormulaNote');
+    formulaNoteElement.classList.add('readOnlyFormulaClamped');
+    const toggleElement = createButton('link', 'readOnlyFormulaToggle', RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL);
+    toggleElement.setAttribute('aria-expanded', 'false');
+    // EVERY LONG FORMULA ROW HAS ONE, SO ITS ACCESSIBLE NAME SAYS WHOSE FORMULA IT OPENS
+    toggleElement.setAttribute('aria-label', RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL + ' of ' + fieldApiName);
+    toggleElement.addEventListener('click', () => {
+        const isExpanding = formulaNoteElement.classList.contains('readOnlyFormulaClamped');
+        if (isExpanding) { formulaNoteElement.classList.remove('readOnlyFormulaClamped'); } else { formulaNoteElement.classList.add('readOnlyFormulaClamped'); }
+        toggleElement.textContent = isExpanding ? RECIPE_COCKPIT_READ_ONLY_FORMULA_HIDE_LABEL : RECIPE_COCKPIT_READ_ONLY_FORMULA_SHOW_LABEL;
+        toggleElement.setAttribute('aria-label', toggleElement.textContent + ' of ' + fieldApiName);
+        toggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+    });
+    return toggleElement;
+
+}
+
 export function buildTreeFieldRow(treeObjectState: IFieldRowObjectState, fieldState: IFieldRowFieldState): HTMLElement {
 
     const field = fieldState.field;
@@ -198,7 +218,10 @@ export function buildTreeFieldRow(treeObjectState: IFieldRowObjectState, fieldSt
         readOnlyBadgeElement.setAttribute('title', 'Salesforce sets ' + field.fieldApiName + ' itself (' + readOnlyReason + ')' + RECIPE_COCKPIT_DERIVED_FIELD_NOT_INSERTED_SUFFIX);
         fieldHeaderElement.appendChild(readOnlyBadgeElement);
         const readOnlyNote = readOnlyReason === 'formula' && field.formula ? RECIPE_COCKPIT_READ_ONLY_FORMULA_PREFIX + field.formula : readOnlyReason;
-        fieldHeaderElement.appendChild(createElement('span', 'treeFieldNote readOnlyFieldNote muted', readOnlyNote));
+        const readOnlyNoteElement = fieldHeaderElement.appendChild(createElement('span', 'treeFieldNote readOnlyFieldNote muted', readOnlyNote));
+        if (readOnlyReason === 'formula' && field.formula && field.formula.length > RECIPE_COCKPIT_READ_ONLY_FORMULA_CLAMP_LENGTH) {
+            fieldHeaderElement.appendChild(buildFormulaClampToggle(readOnlyNoteElement, field.fieldApiName));
+        }
     }
 
     // THE RECORD TYPES THAT RESTRICT THIS FIELD (#320), AS TEXT, WHETHER OR NOT THE CHECK IS ON
