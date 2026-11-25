@@ -182,6 +182,7 @@ export function buildAdapterChildBlock(treeState: IAdapterTreeState): void {
     const childTreeState: IUpdaterFieldTreeState = {
         tree: { treeKey: treeState.tree.treeKey, fixedValues: [] },
         updaterChosenFieldKeys: Object.create(null),
+        isFieldChoiceOffered: true,
         updaterEditedValues: Object.create(null),
         updaterObjectStates: [],
         updaterSummaryElement: null

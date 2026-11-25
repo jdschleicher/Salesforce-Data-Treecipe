@@ -19,7 +19,7 @@ type RecordLinkPanelMessage =
     | { command: 'recordLinksRendered'; renderSequence: number; recordLinkSequence: number };
 
 // WHICH ROWS OF A PREVIEW OPEN THEIR RECORD, AS THE HOST SENT IT (#556); READ AS UNTRUSTED
-interface IRecordLinks {
+export interface IRecordLinks {
     columnIndex?: unknown;
     rowIndexes?: unknown;
 }
@@ -64,23 +64,37 @@ export function buildRecordTable(columns: string[], rows: unknown[], recordLinks
                 return;
             }
             const cellElement = createElement('td', '');
-            const recordLinkElement = createButton('link', 'treeQueryRecordLink', cellText);
-            recordLinkElement.setAttribute('title', RECIPE_COCKPIT_RECORD_LINK_TITLE);
-            recordLinkElement.addEventListener('click', function () {
-                if (renderedSequence === null) { return; }
-                const openMessage: RecordLinkPanelMessage = { command: 'openPreviewRecord', renderSequence: renderedSequence, recordLinkSequence: recordLinkSequence, rowIndex: rowIndex };
-                if (typeof objectApiName === 'string') { openMessage.objectApiName = objectApiName; }
-                if (tablePage) { openMessage.pageIndex = tablePage.pageIndex; }
-                if (columnIndex !== linkColumnIndex) { openMessage.columnIndex = columnIndex; }
-                vscodeApi.postMessage(openMessage);
-            });
-            cellElement.appendChild(recordLinkElement);
+            cellElement.appendChild(buildRecordLinkElement(cellText, {
+                recordLinkSequence: recordLinkSequence,
+                rowIndex: rowIndex,
+                objectApiName: objectApiName,
+                pageIndex: tablePage ? tablePage.pageIndex : undefined,
+                columnIndex: columnIndex !== linkColumnIndex ? columnIndex : undefined
+            }));
             rowElement.appendChild(cellElement);
         });
         rowTable.bodyElement.appendChild(rowElement);
     });
 
     return rowTable.wrapElement;
+
+}
+
+// ONE CELL'S LINK: ITS CLICK POSTS THE CELL'S POSITION, AND ONLY THE PARTS OF IT GIVEN
+export function buildRecordLinkElement(cellText: string, position: { recordLinkSequence: unknown; rowIndex: number; objectApiName?: string; pageIndex?: number; columnIndex?: number }): HTMLButtonElement {
+
+    const recordLinkElement = createButton('link', 'treeQueryRecordLink', cellText);
+    recordLinkElement.setAttribute('title', RECIPE_COCKPIT_RECORD_LINK_TITLE);
+    recordLinkElement.addEventListener('click', function () {
+        if (renderedSequence === null) { return; }
+        const openMessage: RecordLinkPanelMessage = { command: 'openPreviewRecord', renderSequence: renderedSequence, recordLinkSequence: position.recordLinkSequence, rowIndex: position.rowIndex };
+        if (typeof position.objectApiName === 'string') { openMessage.objectApiName = position.objectApiName; }
+        if (position.pageIndex !== undefined) { openMessage.pageIndex = position.pageIndex; }
+        if (position.columnIndex !== undefined) { openMessage.columnIndex = position.columnIndex; }
+        vscodeApi.postMessage(openMessage);
+    });
+
+    return recordLinkElement;
 
 }
 

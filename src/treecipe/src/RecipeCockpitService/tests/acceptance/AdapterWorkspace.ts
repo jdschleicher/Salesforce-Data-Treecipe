@@ -4,7 +4,7 @@ import { TREE_NAME, openTreecipeTabJourney } from './TreecipeTabWorkspace';
 /*
     What the Treecipe Adapter journeys (#580) load: treecipeTabWorkspace's tree (Account, Contact under
     it, Visit__c under Contact) and an org holding 201 Accounts in EMEA, one Contact under the first and
-    no Visit__c -- 201, so an update of every Account goes in two PATCH requests (200, then 1).
+    no Visit__c -- 201, so the Account table has five pages and the Contact query goes in two parts.
 */
 
 export const ADAPTER_TAB_NAME = 'Treecipe Adapter';
@@ -53,14 +53,10 @@ export async function openAdapterJourney(): Promise<RecipeCockpitJourney> {
     return journey;
 }
 
-// STEP 1 AND 2: THE PARENT AND ITS WHERE, Next, THEN Account.Region__c AND Contact.Title__c CHOSEN
-export async function chooseParentAndFields(journey: RecipeCockpitJourney, parentWhere: string = PARENT_WHERE): Promise<void> {
+// STEP 1: THE PARENT AND ITS WHERE, THEN Next
+export async function chooseParent(journey: RecipeCockpitJourney, parentWhere: string = PARENT_WHERE): Promise<void> {
     await journey.type(PARENT_WHERE_BOX, parentWhere);
     await journey.click('button', 'Next');
-    await journey.click('button', 'Show or hide the fields of Account');
-    await journey.click('checkbox', 'Account.Region__c: Click to choose this field to fill');
-    await journey.click('button', 'Show or hide the fields of Contact');
-    await journey.click('checkbox', 'Contact.Title__c: Click to choose this field to fill');
 }
 
 // THE QUERIES SENT, BUT NOT THE CONNECTION CHECK'S OR THE RECORD TYPE LOOKUP'S

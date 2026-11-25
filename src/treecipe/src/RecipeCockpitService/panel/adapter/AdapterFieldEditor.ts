@@ -17,8 +17,8 @@ import { RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL, RECIPE_COCKPIT_FIXED_VALU
 /*
     The Updater's own editor (#417): the Treecipe tab's inline editor's parts -- one input, its
     hint and Save / Clear / Cancel -- but Save keeps the value in this card's panel state ONLY.
-    Nothing is written to the recipe: the value is posted with Generate values, where the host
-    checks it as a pin's value is checked and shows it in the confirmation before anything runs.
+    Nothing is written to the recipe: the value is posted with the add-child block's generate, where
+    the host checks it as a pin's value is checked. The card's own rows have no editor since #721.
 */
 export function buildUpdaterFieldEditElement(treeState: IUpdaterFieldTreeState, updaterObjectState: IUpdaterFieldObjectState, fieldState: IUpdaterFieldRowState): HTMLButtonElement {
 

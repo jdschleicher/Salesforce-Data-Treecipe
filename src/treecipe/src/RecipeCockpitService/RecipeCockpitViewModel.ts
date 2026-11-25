@@ -27,7 +27,6 @@ import type {
     IRecipeCockpitUpdaterRecordsMessage,
     IRecipeCockpitUpdaterRecordsPageMessage,
     IRecipeCockpitUpdaterSnapshotsMessage,
-    IRecipeCockpitUpdaterValuesMessage,
     RecipeCockpitAdapterPanelAction
 } from './RecipeCockpitAdapterHost';
 import type {
@@ -751,14 +750,14 @@ export interface IRecipeCockpitPanelMessage {
     lookupFieldApiName?: unknown;
     countPerParent?: unknown;
     fields?: unknown;
-    // "updaterValuesRendered" (#418): THE GENERATED VALUES THE PANEL DREW
-    valuesSequence?: unknown;
     // A RECORD Id OPENED FROM A PREVIEW (#556): WHICH PREVIEW, AND WHICH OF ITS ROWS
     recordLinkSequence?: unknown;
     rowIndex?: unknown;
     // AN ADAPTER RECORD TABLE'S PAGE AND, FOR A LOOKUP CELL, ITS COLUMN (#720)
     pageIndex?: unknown;
     columnIndex?: unknown;
+    // ONE EDIT OF THE ADAPTER'S RECORDS ON SCREEN (#721): WHICH OF RECIPE_COCKPIT_UPDATER_EDIT_RULES
+    editKind?: unknown;
     // THE UPDATER'S RESTORE (#419): A SNAPSHOT'S FILE NAME, AND THE LIST THE PANEL DREW IT FROM
     snapshotName?: unknown;
     snapshotsSequence?: unknown;
@@ -1139,7 +1138,6 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitObjectRefreshStateMessage
                                         | IRecipeCockpitAdapterChildBlockMessage
                                         | IRecipeCockpitAdapterChildPreviewMessage
-                                        | IRecipeCockpitUpdaterValuesMessage
                                         | IRecipeCockpitUpdaterSnapshotsMessage
                                         | IRecipeCockpitTroubleshootingHistoryMessage
                                         | IRecipeCockpitDatasetJourneyMessage
@@ -1332,7 +1330,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'activateTroubleshootingHistory'; treeKey: string }
     | { kind: 'activateDatasetJourney'; datasetFolderName: string }
     // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
-    | { kind: 'activateUpdaterValues' }
     // A RECORD Id OPENED FROM A PREVIEW (#556): THE PREVIEW THE PANEL DREW, THEN ONE OF ITS ROWS
     | { kind: 'activateRecordLinks'; recordLinkSequence: number }
     // THE UPDATER'S RESTORE (#419): THE SNAPSHOT LIST THE PANEL DREW, WHICH A RESTORE THEN NAMES BY FILE NAME
@@ -1447,15 +1444,6 @@ export interface IRecipeCockpitPanelState {
     // THE NEW CHILD OBJECT BEING ADDED (#447) AND ITS LAST PREVIEW, REPLAYED WHILE THEIR MODEL IS ON SCREEN; THE FIELD MODELS AND RECORDS ARE HELD ON THE CLASS
     adapterChildBlockMessage?: IRecipeCockpitAdapterChildBlockMessage;
     adapterChildPreviewMessage?: IRecipeCockpitAdapterChildPreviewMessage;
-    // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN; SET ONLY THROUGH setUpdaterValuesMessage
-    updaterValuesMessage?: IRecipeCockpitUpdaterValuesMessage;
-    /*
-        "Update records" (#418): the card whose generated values were posted, a pending/active pair.
-        PENDING is set with the values; only the panel's "updaterValuesRendered" echoing them makes it
-        ACTIVE, and a ready, a new model, a failure to draw and values let go each empty it.
-    */
-    pendingUpdatableTreeKeys: Set<string>;
-    updatableTreeKeys: Set<string>;
     /*
         A record Id opened from a preview (#556): the previews whose rows link a record, by
         recordLinkSequence, a pending/active pair holding at most one preview of each kind. PENDING is

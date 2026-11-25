@@ -280,11 +280,11 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
             const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
 
             const querySequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('query', {}, 1, new Map([['', [ACCOUNT_ID]]])));
-            const valuesSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('updaterValues', {}, 1, new Map([['Account', [ACCOUNT_ID]]])));
-            expect([...panelState.pendingOpenableRecordPreviews.keys()]).toEqual([querySequence, valuesSequence]);
+            const recordsSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('updaterRecords', {}, 1, new Map([['Account', [ACCOUNT_ID]]])));
+            expect([...panelState.pendingOpenableRecordPreviews.keys()]).toEqual([querySequence, recordsSequence]);
 
             expect(RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, previewDetail('query', {}, 1, new Map([['', [undefined]]])))).toBeUndefined();
-            expect([...panelState.pendingOpenableRecordPreviews.keys()]).toEqual([valuesSequence]);
+            expect([...panelState.pendingOpenableRecordPreviews.keys()]).toEqual([recordsSequence]);
 
         });
 
@@ -358,7 +358,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
         // A PREVIEW THE HOST POSTED AND THE PANEL SAID IT DREW, OVER HELD DATA OF ITS KIND
         const drawPreview = async (previewKind: RecipeCockpitRecordLinkPreviewKind, recordIdsByObjectApiName: Map<string, (string | undefined)[]>) => {
             const heldSource = { records: [] };
-            const heldField = { query: 'heldTreeQueryResult', updaterRecords: 'heldUpdaterRecords', updaterValues: 'heldUpdaterValues' }[previewKind];
+            const heldField = { query: 'heldTreeQueryResult', updaterRecords: 'heldUpdaterRecords' }[previewKind];
             ( previewKind === 'query' ? RecipeCockpitQueryHost as any : RecipeCockpitAdapterState as any )[heldField] = heldSource;
             const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState(), previewDetail(previewKind, heldSource, lastRenderSequence(), recordIdsByObjectApiName))!;
             await receivedMessageHandler({ command: 'recordLinksRendered', renderSequence: lastRenderSequence(), recordLinkSequence });
@@ -416,8 +416,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
         it.each([
             ['query', '', ACCOUNT_ID],
-            ['updaterRecords', 'Contact', CONTACT_ID],
-            ['updaterValues', 'Account', ACCOUNT_ID]
+            ['updaterRecords', 'Contact', CONTACT_ID]
         ] as const)('opens a %s row\'s record through a one-time address with retURL, runs no CLI, and hands it to the browser alone', async (previewKind, objectApiName, recordId) => {
 
             answerOrgOpen(async () => ({ frontdoor_uri: FRONT_DOOR_URI }));
@@ -464,20 +463,18 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
             answerOrgOpen(async () => ({ frontdoor_uri: FRONT_DOOR_URI }));
             await openCockpit();
             const recordsSequence = await drawPreview('updaterRecords', new Map([['Account', [ACCOUNT_ID]]]));
-            const valuesSequence = await drawPreview('updaterValues', new Map([['Account', [ACCOUNT_ID]]]));
             const querySequence = await drawPreview('query', new Map([['', [ACCOUNT_ID]]]));
 
-            // AN UPDATE THAT SENT A REQUEST LETS THE RECORDS AND THEIR VALUES GO (isRecordsSpent), AND A RUN LETS THE LAST RESULT GO
+            // AN UPDATE THAT SENT A REQUEST LETS THE RECORDS GO (isRecordsSpent), AND A RUN LETS THE LAST RESULT GO
             RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             RecipeCockpitQueryHost.clearHeldTreeQueryResult();
 
             await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: recordsSequence, objectApiName: 'Account', rowIndex: 0 });
-            await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: valuesSequence, objectApiName: 'Account', rowIndex: 0 });
             await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: querySequence, rowIndex: 0 });
 
             expect(Org.create).not.toHaveBeenCalled();
             expect(vscode.env.openExternal).not.toHaveBeenCalled();
-            expect(warningSpy.mock.calls).toEqual(Array(3).fill([RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL)]));
+            expect(warningSpy.mock.calls).toEqual(Array(2).fill([RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL)]));
 
         });
 
@@ -485,10 +482,10 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             answerOrgOpen(async () => ({ frontdoor_uri: FRONT_DOOR_URI }));
             await openCockpit();
-            const valuesSequence = await drawPreview('updaterValues', new Map([['Account', [ACCOUNT_ID]]]));
-            (RecipeCockpitAdapterState as any).heldUpdaterValues = { records: [] };
+            const recordsSequence = await drawPreview('updaterRecords', new Map([['Account', [ACCOUNT_ID]]]));
+            (RecipeCockpitAdapterState as any).heldUpdaterRecords = { records: [] };
 
-            await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: valuesSequence, objectApiName: 'Account', rowIndex: 0 });
+            await receivedMessageHandler({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence: recordsSequence, objectApiName: 'Account', rowIndex: 0 });
 
             expect(vscode.env.openExternal).not.toHaveBeenCalled();
             expect(warningSpy).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL));
@@ -686,6 +683,13 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
                 return { panel, accountObject };
             };
 
+            // THE ADAPTER'S TABLE (#721) STARTS EACH ROW WITH ITS ✎ AND HOLDS A CELL'S TEXT IN A SPAN: A LINK IS DRAWN [ ], ANY OTHER CELL AS ITS TEXT
+            const adapterCellTexts = (panel: ReturnType<typeof runPanelScript>, containerElement: any) => panel.findAll(containerElement, 'treeQueryRow')
+                .map((rowElement: any) => rowElement.children.slice(1).map((cellElement: any) => {
+                    const [contentElement] = cellElement.children;
+                    return contentElement.className.includes('treeQueryRecordLink') ? `[${contentElement.textContent}]` : contentElement.textContent;
+                }));
+
             it('links the loaded records\' own Ids, naming the object in the click', () => {
 
                 const { panel, accountObject } = renderUpdater();
@@ -695,7 +699,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
                 });
 
                 const recordsElement = panel.findAll(accountObject, 'updaterRecords')[0];
-                expect(cellTexts(panel, recordsElement)).toEqual([[`[${ACCOUNT_ID}]`, 'Acme'], ['bad', 'Globex']]);
+                expect(adapterCellTexts(panel, recordsElement)).toEqual([[`[${ACCOUNT_ID}]`, 'Acme'], ['bad', 'Globex']]);
                 expect(posted(panel, 'recordLinksRendered')).toEqual([{ command: 'recordLinksRendered', renderSequence: 1, recordLinkSequence: 4 }]);
 
                 panel.findAll(recordsElement, 'treeQueryRecordLink')[0].dispatch('click');
@@ -719,7 +723,7 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
                 });
                 const recordsElement = panel.findAll(accountObject, 'updaterRecords')[0];
 
-                expect(cellTexts(panel, recordsElement)).toEqual([[`[${ACCOUNT_ID}]`, `[${PARENT_ID}]`, 'Acme'], ['[001000000000002AAA]', '', 'Globex']]);
+                expect(adapterCellTexts(panel, recordsElement)).toEqual([[`[${ACCOUNT_ID}]`, `[${PARENT_ID}]`, 'Acme'], ['[001000000000002AAA]', '', 'Globex']]);
 
                 panel.findAll(recordsElement, 'treeQueryRecordLink')[1].dispatch('click');
                 expect(posted(panel, 'openPreviewRecord')).toEqual([{ command: 'openPreviewRecord', renderSequence: 1, recordLinkSequence: 4, objectApiName: 'Account', rowIndex: 0, pageIndex: 0, columnIndex: 1 }]);
@@ -733,24 +737,14 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
             });
 
-            it('links the generated values\' Ids, and lets them go with the records an update spent', () => {
+            it('lets the links go with the records an update spent', () => {
 
                 const { panel, accountObject } = renderUpdater();
                 panel.postToPanel({
                     command: 'updaterRecords', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa', recordLinkSequence: 4,
                     objects: [{ objectApiName: 'Account', totalSize: 1, recordCount: 1, isTruncated: false, columns: ['Id'], rows: [[ACCOUNT_ID]], hiddenColumnCount: 0, recordLinks: { columnIndex: 0, rowIndexes: [0] } }]
                 });
-                panel.postToPanel({
-                    command: 'updaterValues', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, valuesSequence: 1, recordLinkSequence: 5,
-                    objects: [{ objectApiName: 'Account', recordCount: 1, fieldApiNames: ['Name'], columns: ['Id', 'Name (current)', 'Name (new)'], rows: [[ACCOUNT_ID, 'Acme', 'New']], hiddenColumnCount: 0, recordLinks: { columnIndex: 0, rowIndexes: [0] } }]
-                });
-
-                const valuesElement = panel.findAll(accountObject, 'updaterValues')[0];
-                expect(cellTexts(panel, valuesElement)).toEqual([[`[${ACCOUNT_ID}]`, 'Acme', 'New']]);
-                expect(posted(panel, 'recordLinksRendered').at(-1)).toEqual({ command: 'recordLinksRendered', renderSequence: 1, recordLinkSequence: 5 });
-
-                panel.findAll(valuesElement, 'treeQueryRecordLink')[0].dispatch('click');
-                expect(posted(panel, 'openPreviewRecord').at(-1)).toEqual({ command: 'openPreviewRecord', renderSequence: 1, recordLinkSequence: 5, objectApiName: 'Account', rowIndex: 0 });
+                expect(panel.findAll(accountObject, 'treeQueryRecordLink')).toHaveLength(1);
 
                 panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, isRecordsSpent: true });
                 expect(panel.findAll(accountObject, 'treeQueryRecordLink')).toEqual([]);

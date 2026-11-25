@@ -45,6 +45,7 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), exec
 import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
+    RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON
@@ -59,14 +60,13 @@ import {
     RecipeCockpitAdapterMetadata
 } from '../RecipeCockpitAdapterMetadata';
 import {
-    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import { RecipeCockpitAdapterEdits } from '../RecipeCockpitAdapterEdits';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { HOSTILE_PICKLIST_VALUES } from '../../RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { IOrgNewFieldDetail, IOrgObjectChanges, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
@@ -390,7 +390,6 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const warnings = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText);
-        const confirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.inPanel);
         const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
         const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
         const readAttemptFiles = (suffix: string) => attemptFiles().filter(fileName => fileName.endsWith(suffix)).map(fileName => JSON.parse(fs.readFileSync(path.join(attemptsFolderPath(), fileName), 'utf8')));
@@ -425,13 +424,24 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             ]
         });
 
-        const generate = (fields: unknown) => send({ command: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fields: fields });
+        const loadedObject = (objectApiName: string) => postedNamed('updaterRecords').at(-1).objects.find((objectRecords: any) => objectRecords.objectApiName === objectApiName);
+        const editMessage = (objectApiName: string, editKind: string, position: Record<string, unknown>) => ({
+            command: 'editUpdaterRecords', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), objectApiName: objectApiName, pageIndex: 0, editKind: editKind, ...position
+        });
 
-        const acknowledgeValuesAndUpdate = async () => {
-            const valuesMessage = postedNamed('updaterValues').at(-1);
-            await send({ command: 'updaterValuesRendered', renderSequence: valuesMessage.renderSequence, valuesSequence: valuesMessage.valuesSequence });
-            await send({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
+        // EVERY LOADED ROW OF THE OBJECT MARKED, THEN 🎲 ON EACH FIELD'S COLUMN (#721)
+        const generate = async (fields: Array<{ objectApiName: string; fieldApiName: string }>) => {
+            for ( const { objectApiName, fieldApiName } of fields ) {
+                for ( const rowIndex of loadedObject(objectApiName).rows.keys() ) {
+                    await send(editMessage(objectApiName, 'markRow', { rowIndex: rowIndex }));
+                }
+                await send(editMessage(objectApiName, 'generateColumn', { columnIndex: loadedObject(objectApiName).columns.indexOf(fieldApiName) }));
+            }
         };
+
+        const plannedAccountValues = () => RecipeCockpitAdapterEdits.planUpdate(RecipeCockpitAdapterState.heldUpdaterRecords!, ['Account']).valuesByObjectApiName.get('Account');
+
+        const acknowledgeValuesAndUpdate = () => send({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
         const listAndRestore = async (snapshotName: string) => {
             await send({ command: 'loadUpdaterSnapshots', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
@@ -484,7 +494,6 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation((message: string, options?: { inPanel?: boolean }) => {
                 if ( !options?.inPanel ) { return Promise.resolve(undefined); }
-                if ( message.startsWith('Generate new values') ) { return Promise.resolve(RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL); }
                 if ( message.startsWith('Update ') ) { return Promise.resolve(RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL); }
                 if ( message.startsWith('Restore ') ) { return Promise.resolve(RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL); }
                 return Promise.resolve(undefined);
@@ -623,57 +632,31 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         });
 
-        it('generates an org-only field from the backend\'s expression for the loaded records, says so, and refuses a typed expression for a fixed-value-only field', async () => {
+        it('gives 🎲 to an org-only field the backend writes an expression for, and none to a fixed-value-only one or a locked one (#721)', async () => {
 
             await openCockpitAndRetrieve();
             await send(loadRequest());
 
-            await generate([{ objectApiName: 'Account', fieldApiName: 'Hologram__c', value: '${{ fake.Word }}' }]);
-            expect(warnings().at(-1)).toBe(`No values were generated: Account.Hologram__c: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL}.`);
+            const account = loadedObject('Account');
+            const columnEditOf = (fieldApiName: string) => account.columnEdits[account.columns.indexOf(fieldApiName)];
+            expect(columnEditOf('Region_Code__c')).toEqual({ canGenerate: true });
+            // NO EXPRESSION FOR ITS TYPE: NOT LOCKED, AND NO 🎲
+            expect(columnEditOf('Hologram__c')).toEqual({ canGenerate: false });
+            expect(RecipeCockpitService.routePanelMessage(editMessage('Account', 'generateColumn', { columnIndex: account.columns.indexOf('Hologram__c') }) as any, panelState())).toBeUndefined();
+            // A LOCKED FIELD ONLY THE ORG HOLDS IS NEVER LOADED, SO IT HAS NO COLUMN
+            expect(account.columns).not.toContain('Score_Formula__c');
 
-            await generate([{ objectApiName: 'Account', fieldApiName: 'Hologram__c' }]);
-            expect(warnings().at(-1)).toBe(`No values were generated: Account.Hologram__c: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE}`);
-
-            await generate([
-                { objectApiName: 'Account', fieldApiName: 'Region_Code__c' },
-                { objectApiName: 'Account', fieldApiName: 'Hologram__c', value: 'Shimmer' }
-            ]);
+            await generate([{ objectApiName: 'Account', fieldApiName: 'Region_Code__c' }]);
 
             expect(processorSpy).toHaveBeenCalledWith('snowfakery');
-            expect(generatedRecipeTexts.map(recipeText => yaml.load(recipeText))).toEqual([
-                [{ object: 'Account', nickname: 'Account_Updater_NickName', count: 3, fields: { Region_Code__c: '${{fake.text(max_nb_chars=80)}}' } }]
-            ]);
-            expect(confirmations().at(-1)[1].detail.split('\n').slice(2)).toEqual([
-                'Account: 3 records',
-                '  Region_Code__c (only in the org) -- expression the recipe\'s backend writes for its type in the org: ${{fake.text(max_nb_chars=80)}}',
-                '  Hologram__c (only in the org) -- fixed value: Shimmer'
-            ]);
-            expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toEqual([0, 1, 2].map(recordIndex => ({
+            expect(generatedRecipeTexts.map(recipeText => ( yaml.load(recipeText) as any[] )[0].fields)).toEqual([{ Region_Code__c: '${{fake.text(max_nb_chars=80)}}' }]);
+            expect(plannedAccountValues()).toEqual([0, 1, 2].map(recordIndex => ({
                 recordId: fakeRecordId('Account', recordIndex),
-                fieldValues: { Region_Code__c: `Region_Code__c-new-${recordIndex}`, Hologram__c: 'Shimmer' }
+                fieldValues: { Region_Code__c: `Region_Code__c-new-${recordIndex}` }
             })));
 
         });
 
-        it('holds a typed value for an org-only picklist to the values its staged file lists', async () => {
-
-            ORG_ONLY_FIELD_FILES['Tier__c'] = fieldXml('Tier__c', 'Picklist', '    <valueSet><valueSetDefinition><value><fullName>Gold</fullName><label>Gold</label></value></valueSetDefinition></valueSet>');
-            try {
-                (describeAnswers.Account as any).fields.push({ name: 'Tier__c', type: 'picklist', updateable: true });
-                await openCockpitAndRetrieve();
-                await send(loadRequest());
-
-                await generate([{ objectApiName: 'Account', fieldApiName: 'Tier__c', value: 'Platinum' }]);
-                expect(warnings().at(-1)).toMatch(/^No values were generated: Account\.Tier__c: .*Platinum/);
-                expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')).toBeUndefined();
-
-                await generate([{ objectApiName: 'Account', fieldApiName: 'Tier__c', value: 'Gold' }]);
-                expect(RecipeCockpitAdapterState.readHeldUpdaterValues('Account')?.[0].fieldValues).toEqual({ Tier__c: 'Gold' });
-            } finally {
-                delete ORG_ONLY_FIELD_FILES['Tier__c'];
-            }
-
-        });
 
         it('locks a field only the org holds when the card has no recipe file to read its backend from', async () => {
 
@@ -703,7 +686,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             await send(loadRequest());
             await generate([{ objectApiName: 'Account', fieldApiName: 'Region_Code__c' }]);
 
-            const heldValues = RecipeCockpitAdapterState.readHeldUpdaterValues('Account')!;
+            const heldValues = plannedAccountValues()!;
             expect(heldValues.map(recordValues => recordValues.recordId)).toEqual([0, 1, 2].map(recordIndex => fakeRecordId('Account', recordIndex)));
             heldValues.forEach(recordValues => {
                 expect(typeof recordValues.fieldValues.Region_Code__c).toBe('string');
@@ -872,64 +855,39 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
 
-        it('draws a field only the org holds as a row to choose, its expression, a locked one with its reason and a fixed-value-only one with its note', () => {
+        it('draws a field only the org holds as a row that describes it, with no box and no editor since its values change in the record table (#721)', () => {
 
             const panel = runPanelScript();
             const { rowNamed } = openUpdaterTab(panel);
 
             const regionRow = rowNamed('Region_Code__c');
-            const regionChoose = panel.findAll(regionRow, 'updaterFieldChoose')[0];
-            expect(regionChoose.disabled).toBe(false);
             expect(panel.findAll(regionRow, 'expression')[0].textContent).toBe('${{fake.text(max_nb_chars=80)}}');
             expect(panel.findAll(regionRow, 'fieldType')[0].textContent).toBe('Text(80)');
             expect(panel.findAll(regionRow, 'updaterFieldNote').map((noteElement: any) => noteElement.textContent)).toEqual([RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE]);
-            expect(panel.findAll(regionRow, 'updaterFieldEdit')).toHaveLength(1);
 
             const formulaRow = rowNamed('Score_Formula__c');
-            expect(panel.findAll(formulaRow, 'updaterFieldChoose')[0].disabled).toBe(true);
             expect(panel.findAll(formulaRow, 'updaterFieldNote').map((noteElement: any) => noteElement.textContent)).toEqual([RECIPE_COCKPIT_UPDATER_FORMULA_REASON, RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE]);
-            expect(panel.findAll(formulaRow, 'updaterFieldEdit')).toHaveLength(0);
 
             const hologramRow = rowNamed('Hologram__c');
-            expect(panel.findAll(hologramRow, 'updaterFieldChoose')[0].disabled).toBe(false);
             expect(panel.findAll(hologramRow, 'expression')).toHaveLength(0);
-            expect(panel.findAll(hologramRow, 'updaterOrgOnlyFixedNote')[0].textContent).toBe(RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE);
+            expect(panel.findAll(hologramRow, 'updaterOrgOnlyFixedNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE);
+
+            for ( const rowElement of [regionRow, formulaRow, hologramRow] ) {
+                expect(panel.findAll(rowElement, 'updaterFieldChoose')).toHaveLength(0);
+                expect(panel.findAll(rowElement, 'updaterFieldEdit')).toHaveLength(0);
+            }
 
         });
 
-        it('posts no field list with the load, and a chosen field only the org holds, with any value typed, with Generate values', () => {
+        it('posts no field list with the load', () => {
 
             const panel = runPanelScript();
-            const { card, rowNamed } = openUpdaterTab(panel);
+            const { card } = openUpdaterTab(panel);
 
-            panel.findAll(rowNamed('Region_Code__c'), 'updaterFieldChoose')[0].dispatch('click');
-            panel.findAll(rowNamed('Hologram__c'), 'updaterFieldChoose')[0].dispatch('click');
             panel.findAll(card, 'updaterLoad')[0].dispatch('click');
 
             const loadMessage = postedNamed(panel, 'loadUpdaterRecords').at(-1);
             expect(loadMessage.objects.find((loadObject: any) => loadObject.objectApiName === 'Account')).toEqual({ objectApiName: 'Account', whereClause: '' });
-
-            panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
-            panel.postToPanel({
-                command: 'updaterRecords',
-                renderSequence: 1,
-                treeKey: ACCOUNT_TREE_KEY,
-                orgLabel: 'qa',
-                objects: [{ objectApiName: 'Account', totalSize: 3, recordCount: 3, isTruncated: false, columns: ['Id'], rows: [], hiddenColumnCount: 0 }]
-            });
-
-            const hologramRow = rowNamed('Hologram__c');
-            panel.findAll(hologramRow, 'updaterFieldEdit')[0].dispatch('click');
-            const editorInput = panel.findAll(hologramRow, 'fieldEditorInput')[0];
-            editorInput.value = 'Shimmer';
-            panel.findAll(hologramRow, 'fieldEditorSave')[0].dispatch('click');
-            panel.findAll(card, 'updaterGenerate')[0].dispatch('click');
-
-            const generateMessage = postedNamed(panel, 'generateUpdaterValues').at(-1);
-            expect(generateMessage.fields).toEqual([
-                { objectApiName: 'Account', fieldApiName: 'Region_Code__c' },
-                { objectApiName: 'Account', fieldApiName: 'Hologram__c', value: 'Shimmer' }
-            ]);
 
         });
 
@@ -937,27 +895,24 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
             const panel = runPanelScript();
             const { card, rowNamed } = openUpdaterTab(panel);
-            panel.findAll(rowNamed('Region_Code__c'), 'updaterFieldChoose')[0].dispatch('click');
-            expect(panel.findAll(card, 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+            expect(rowNamed('Region_Code__c')).toBeDefined();
 
             panel.postToPanel({ command: 'adapterMetadataChanges', renderSequence: 1, treeKey: 'Lead-ONLY', orgLabel: 'qa', objects: [] });
 
             expect(rowNamed('Region_Code__c')).toBeUndefined();
-            expect(panel.findAll(card, 'updaterSummary')[0].textContent).not.toBe('1 field chosen on 1 object');
             expect(panel.findAll(card, 'updaterOrgChangesNote')[0].classList.contains('hidden')).toBe(true);
 
         });
 
-        it('lets a choice go when the next retrieve no longer offers the field', () => {
+        it('lets an offered field go when the next retrieve no longer offers it', () => {
 
             const panel = runPanelScript();
-            const { card, rowNamed } = openUpdaterTab(panel);
-
-            panel.findAll(rowNamed('Region_Code__c'), 'updaterFieldChoose')[0].dispatch('click');
-            expect(panel.findAll(card, 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+            const { rowNamed } = openUpdaterTab(panel);
+            expect(rowNamed('Region_Code__c')).toBeDefined();
 
             panel.postToPanel({ command: 'adapterMetadataChanges', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa', objects: [] });
-            expect(panel.findAll(card, 'updaterSummary')[0].textContent).not.toBe('1 field chosen on 1 object');
+
+            expect(rowNamed('Region_Code__c')).toBeUndefined();
 
         });
 

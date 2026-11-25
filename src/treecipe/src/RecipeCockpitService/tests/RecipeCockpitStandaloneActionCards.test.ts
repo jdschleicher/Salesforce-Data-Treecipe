@@ -177,14 +177,14 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
         });
 
-        it('draws the Treecipe Adapter\'s three actions as cards in one grid, each with its verb', () => {
+        it('draws the Treecipe Adapter\'s two actions as cards in one grid, each with its verb', () => {
 
             const panel = drawTreeRecipe();
             const treeCard = panel.shownTreeCards()[0];
             panel.openTab(treeCard, 'Treecipe Adapter');
 
-            const cards = ['updaterLoad', 'updaterGenerate', 'updaterUpdate'].map(className => panel.findAll(treeCard, className)[0]);
-            const expectedEmojis = ['loadUpdaterRecords', 'generateUpdaterValues', 'updateUpdaterRecords']
+            const cards = ['updaterLoad', 'updaterUpdate'].map(className => panel.findAll(treeCard, className)[0]);
+            const expectedEmojis = ['loadUpdaterRecords', 'updateUpdaterRecords']
                 .map(action => RECIPE_COCKPIT_ACTION_VERB_EMOJI[RECIPE_COCKPIT_STANDALONE_ACTION_CARDS[action as keyof typeof RECIPE_COCKPIT_STANDALONE_ACTION_CARDS].verb]);
 
             cards.forEach((cardElement: any, cardIndex: number) => {
@@ -193,9 +193,8 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
                 expect(partOf(panel, cardElement, 'actionCardEmoji').textContent).toBe(expectedEmojis[cardIndex]);
             });
             expect(cards[0].parentNode.classList.contains('updaterCards')).toBe(true);
-            // GENERATE AND UPDATE SAY WHY THEY WAIT, ON THE CARD
+            // UPDATE SAYS WHY IT WAITS, ON THE CARD
             expect(partOf(panel, cards[1], 'actionCardReason').textContent).toMatch(/^Load records first/);
-            expect(partOf(panel, cards[2], 'actionCardReason').textContent).toMatch(/^Generate values first/);
 
             // ANOTHER CARD'S LOAD HOLDS THIS ONE TOO, AND THE LOAD CARD SAYS SO
             panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY' });

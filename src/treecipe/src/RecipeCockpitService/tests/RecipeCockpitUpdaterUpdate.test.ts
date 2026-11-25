@@ -51,6 +51,10 @@ import {
 } from '../RecipeCockpitDataOrgConstants';
 import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
 import {
+    RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON,
+    RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON,
+    RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED,
+    RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON,
     RECIPE_COCKPIT_UPDATER_UPDATE_LABEL,
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
 } from '../RecipeCockpitAdapterConstants';
@@ -60,8 +64,8 @@ import { RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL } from '../RecipeCockpitAdap
 import {
     RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
     RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL,
+    RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL,
+    RECIPE_COCKPIT_UPDATER_NOT_LOADED_FOR_UPDATE_REFUSAL,
     RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
     RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL,
@@ -69,6 +73,7 @@ import {
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import { RecipeCockpitAdapterEdits } from '../RecipeCockpitAdapterEdits';
 import { IUpdateObjectDescribe, IUpdateRequestRecord, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
 import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
 import { RecipeCockpitRunArtifacts } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
@@ -155,15 +160,36 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
-        it('sends the type, the Id and only the fields being updated, a field with no value as null', () => {
+        it('sends the type, the Id and, of the fields being updated, only those the record holds a value for: a field it does not hold is never sent as null (#721)', () => {
 
             expect(RecipeCockpitRecordUpdate.buildRequestRecords('Account', ['Legacy_Code__c', 'Rating__c'], [
                 { recordId: '001A', fieldValues: { Legacy_Code__c: 'NEW', Rating__c: 'Hot', Other__c: 'never sent' } },
-                { recordId: '001B', fieldValues: { Legacy_Code__c: 'NEW-B' } }
+                { recordId: '001B', fieldValues: { Legacy_Code__c: 'NEW-B' } },
+                { recordId: '001C', fieldValues: { Rating__c: null } }
             ])).toEqual([
                 { attributes: { type: 'Account' }, Id: '001A', Legacy_Code__c: 'NEW', Rating__c: 'Hot' },
-                { attributes: { type: 'Account' }, Id: '001B', Legacy_Code__c: 'NEW-B', Rating__c: null }
+                { attributes: { type: 'Account' }, Id: '001B', Legacy_Code__c: 'NEW-B' },
+                { attributes: { type: 'Account' }, Id: '001C', Rating__c: null }
             ]);
+
+        });
+
+        it('snapshots, per record, only the fields updated on it, and leaves out a record that is not updated (#721)', () => {
+
+            const loadedRecords = [
+                { Id: '001A', Legacy_Code__c: 'OLD-A', Rating__c: 'Warm' },
+                { Id: '001B', Legacy_Code__c: 'OLD-B', Rating__c: null },
+                { Id: '001C', Legacy_Code__c: 'OLD-C', Rating__c: 'Cold' }
+            ];
+
+            expect(RecipeCockpitRecordUpdate.buildSnapshotObject('Account', ['Legacy_Code__c', 'Rating__c'], loadedRecords, [], new Map([['001A', ['Legacy_Code__c']], ['001B', ['Rating__c', 'Legacy_Code__c']]]))).toEqual({
+                objectApiName: 'Account',
+                fieldApiNames: ['Legacy_Code__c', 'Rating__c'],
+                records: [
+                    { recordId: '001A', fieldValues: { Legacy_Code__c: 'OLD-A' } },
+                    { recordId: '001B', fieldValues: { Legacy_Code__c: 'OLD-B', Rating__c: null } }
+                ]
+            });
 
         });
 
@@ -380,11 +406,18 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             panelState().dataOrgSelection = { orgIndex: 0, orgDetail: orgDetail, requestSequence: 1, orgTypeDetail: { isSandbox: isSandbox, organizationType: isSandbox ? 'Developer Edition' : 'Enterprise Edition' } };
         };
 
-        const openCockpitLoadAndGenerate = async (fields: unknown = [
-            { objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' },
-            { objectApiName: 'Account', fieldApiName: 'Rating__c', value: 'Hot' },
-            { objectApiName: 'Contact', fieldApiName: 'LastName' }
-        ]) => {
+        /*
+            The records loaded, then the edits an update writes (#721), put on the host as its own
+            edit actions leave them: every Account marked with a new Legacy_Code__c and Rating__c,
+            every Contact with a new LastName. RecipeCockpitAdapterEdits.test.ts covers how a reader
+            makes them; these tests are about what an update does with them.
+        */
+        const DEFAULT_EDITS: Record<string, (recordIndex: number) => Record<string, unknown>> = {
+            Account: recordIndex => ({ Legacy_Code__c: `Legacy_Code__c-new-${recordIndex}`, Rating__c: 'Hot' }),
+            Contact: recordIndex => ({ LastName: `LastName-new-${recordIndex}` })
+        };
+
+        const openCockpitLoadAndEdit = async (editsByObject: Record<string, (recordIndex: number) => Record<string, unknown> | undefined> = DEFAULT_EDITS, accountWhereClause = '') => {
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
             await receivedMessageHandler({ command: 'ready' });
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
@@ -395,18 +428,27 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: lastRenderSequence(),
                 objects: [
-                    { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c', 'Rating__c'], whereClause: '' },
-                    { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: '' },
-                    { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+                    { objectApiName: 'Account', whereClause: accountWhereClause },
+                    { objectApiName: 'Contact', whereClause: '' },
+                    { objectApiName: 'OtherChildObject__c', whereClause: '' }
                 ]
             });
-            await send({ command: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fields: fields });
+            const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords!;
+            Object.entries(editsByObject).forEach(([objectApiName, editOf]) => {
+                const objectEdits = RecipeCockpitAdapterEdits.readObjectEdits(heldRecords, objectApiName);
+                ( heldRecords.recordsByObjectApiName.get(objectApiName) ?? [] ).forEach((record, recordIndex) => {
+                    const changedValues = editOf(recordIndex);
+                    if ( changedValues ) {
+                        objectEdits.markedRecordIds.add(String(record.Id));
+                        objectEdits.changedValuesByRecordId.set(String(record.Id), new Map(Object.entries(changedValues)));
+                    }
+                });
+            });
         };
 
-        const acknowledgeValues = async () => {
-            const valuesMessage = postedNamed('updaterValues').at(-1);
-            await send({ command: 'updaterValuesRendered', renderSequence: valuesMessage.renderSequence, valuesSequence: valuesMessage.valuesSequence });
-        };
+        // WHAT AN UPDATE WOULD WRITE NOW, AS THE HOST PLANS IT
+        const plannedValuesOf = (objectApiName: string) => RecipeCockpitAdapterEdits
+            .planUpdate(RecipeCockpitAdapterState.heldUpdaterRecords!, ['Account', 'Contact', 'OtherChildObject__c']).valuesByObjectApiName.get(objectApiName);
 
         const requestUpdate = () => send({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
@@ -429,7 +471,6 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             allOrNoneAnswer = false;
             cancelAfterRequests = undefined;
             confirmationAnswers = {
-                'Generate new values': RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
                 'Update ': RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
             };
             describeAnswers = {
@@ -531,28 +572,32 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
-        it('offers the update only once the panel says it drew the values it echoes', async () => {
+        it('offers the update only for the card whose records are on screen, and only once a marked row holds a change (#721)', async () => {
 
-            await openCockpitLoadAndGenerate();
-            const valuesMessage = postedNamed('updaterValues').at(-1);
-            expect(valuesMessage.valuesSequence).toEqual(expect.any(Number));
+            const refused = { kind: 'refuseUpdaterLoad', hostMessage: { command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' } };
+            const route = (treeKey: unknown = ACCOUNT_TREE_KEY) => RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: treeKey }, panelState());
 
-            // NOT YET DRAWN: REFUSED, AND THE BUTTON GIVEN BACK
-            expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState()))
-                .toEqual({ kind: 'refuseUpdaterLoad', hostMessage: { command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' } });
+            // LOADED, NOTHING MARKED OR CHANGED
+            await openCockpitLoadAndEdit({});
+            expect(route()).toEqual(refused);
 
-            // AN ACK OF OTHER VALUES, OR OF ANOTHER MODEL, ACTIVATES NOTHING
-            expect(RecipeCockpitService.routePanelMessage({ command: 'updaterValuesRendered', renderSequence: valuesMessage.renderSequence, valuesSequence: valuesMessage.valuesSequence + 1 }, panelState())).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'updaterValuesRendered', renderSequence: valuesMessage.renderSequence + 1, valuesSequence: valuesMessage.valuesSequence }, panelState())).toBeUndefined();
+            // MARKED, NO CELL CHANGED
+            const accountEdits = RecipeCockpitAdapterEdits.readObjectEdits(RecipeCockpitAdapterState.heldUpdaterRecords!, 'Account');
+            accountEdits.markedRecordIds.add(fakeRecordId('Account', 0));
+            expect(route()).toEqual(refused);
 
-            await acknowledgeValues();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toEqual({ kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: 'Lead-ONLY' }, panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: 7 }, panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
+            // CHANGED ON A ROW THAT IS NOT MARKED
+            accountEdits.changedValuesByRecordId.set(fakeRecordId('Account', 1), new Map([['Legacy_Code__c', 'NEW']]));
+            expect(route()).toEqual(refused);
 
-            // A RELOADED DOCUMENT HAS NOT DRAWN THEM YET
-            await send({ command: 'ready' });
-            expect(panelState().updatableTreeKeys.size).toBe(0);
+            accountEdits.changedValuesByRecordId.set(fakeRecordId('Account', 0), new Map([['Legacy_Code__c', 'NEW']]));
+            expect(route()).toEqual({ kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
+            expect(route('Lead-ONLY')).toMatchObject({ kind: 'refuseUpdaterLoad' });
+            expect(route(7)).toMatchObject({ kind: 'refuseUpdaterLoad' });
+
+            // THE RECORDS LET GO: NOTHING TO UPDATE
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
+            expect(route()).toEqual(refused);
 
         });
 
@@ -565,8 +610,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             ['a query asking for an org', (state: IRecipeCockpitPanelState) => { state.isQueryOrgPromptOpen = true; }]
         ])('refuses the update while %s holds the org selection', async (_description, holdSelection) => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             holdSelection(panelState());
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toEqual({
@@ -579,8 +623,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('refuses an org that has not answered that it is a sandbox, and no org at all, before any connection', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
 
             selectOrg(SANDBOX_ORG, false);
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({
@@ -598,7 +641,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('holds the org selection while an update runs: the insert, the org picker, ⟳, the listing, the deploys and the assignment are refused', async () => {
 
-            await openCockpitLoadAndGenerate();
+            await openCockpitLoadAndEdit();
             panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' };
             panelState().dataOrgObjectApiNames = new Set(['Account']);
             panelState().assignableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
@@ -624,8 +667,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('names a scratch org, and when it expires, in the confirmation (#458)', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             panelState().dataOrgSelection.scratchOrgDetail = { isScratchOrg: true, expirationDate: '2026-11-01' };
             await requestUpdate();
 
@@ -642,8 +684,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('saves the old values, then updates every record by Id, parents first, and says so with View results', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             const [[title, options, ...buttons]] = updateConfirmations();
@@ -656,8 +697,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
                 '',
                 'Records and fields · 2',
-                'Account: 3 records -- Legacy_Code__c, Rating__c',
-                'Contact: 2 records -- LastName',
+                'Account: 3 marked, 3 records to update -- Legacy_Code__c, Rating__c',
+                'Contact: 2 marked, 2 records to update -- LastName',
                 '',
                 'How it can be undone',
                 'Each record is updated by its Id.',
@@ -696,8 +737,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 { command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update', isRecordsSpent: true }
             ]);
             expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(0);
-            expect(panelState().updaterValuesMessage).toBeUndefined();
-            expect(panelState().updatableTreeKeys.size).toBe(0);
+            expect(RecipeCockpitAdapterState.heldUpdaterEdits).toBeUndefined();
+            expect(panelState().updaterRecordsMessage).toBeUndefined();
 
         });
 
@@ -712,9 +753,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
                 const recipeBefore = fs.readFileSync(recipeFilePath(), 'utf8');
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                await requestUpdate();
+                await openCockpitLoadAndEdit();
+                    await requestUpdate();
 
                 expect(adaptedDatasetFolderNames()).toEqual([expect.stringMatching(new RegExp(`^${ACCOUNT_TREE_KEY.replace(/[_]/g, '_')}-adapted-\\d{8}-\\d{6}$`))]);
 
@@ -763,7 +803,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 const adaptedLines = adaptedRecipe.split('\n').filter(recipeLine => recipeLine.includes('# ADAPTED'));
                 expect(adaptedLines).toEqual([
                     `    Legacy_Code__c: \${{fake.Word}} ${adaptedComment}`,
-                    `    Rating__c: "Hot" ${adaptedComment}`,
+                    // EVERY VALUE CAME FROM THE RECIPE'S OWN LINE (#721), SO THE LINE IS MARKED AND KEPT
+                    `    Rating__c: \${{ random_choice('Hot','Warm','Cold') }} ${adaptedComment}`,
                     `    LastName: \${{fake.LastName}} ${adaptedComment}`
                 ]);
                 expect(adaptedRecipe.replace(/ # ADAPTED [^\n]*/g, '').replace('Rating__c: "Hot"', 'Rating__c: ${{ random_choice(\'Hot\',\'Warm\',\'Cold\') }}')).toBe(recipeBefore);
@@ -772,9 +813,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             it('adds the data set in place, labelled adapted, and the card still reads one recipe', async () => {
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                await requestUpdate();
+                await openCockpitLoadAndEdit();
+                    await requestUpdate();
 
                 const [datasetAdded] = postedNamed('datasetAdded');
                 expect(datasetAdded.treeKeys).toEqual([ACCOUNT_TREE_KEY]);
@@ -795,23 +835,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                     ? { id: record.Id, success: false, errors: [{ statusCode: 'FIELD_CUSTOM_VALIDATION_EXCEPTION', message: 'no', fields: [] }] }
                     : { id: record.Id, success: true, errors: [] });
 
-                await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
-                await receivedMessageHandler({ command: 'ready' });
-                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
-                selectOrg(SANDBOX_ORG);
-                await send({
-                    command: 'loadUpdaterRecords',
-                    parentObjectApiName: 'Account',
-                    treeKey: ACCOUNT_TREE_KEY,
-                    renderSequence: lastRenderSequence(),
-                    objects: [
-                        { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c'], whereClause: "Name LIKE 'Acme%'" },
-                        { objectApiName: 'Contact', fieldApiNames: [], whereClause: '' },
-                        { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
-                    ]
-                });
-                await send({ command: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fields: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }] });
-                await acknowledgeValues();
+                await openCockpitLoadAndEdit({ Account: recordIndex => ({ Legacy_Code__c: `Legacy_Code__c-new-${recordIndex}` }) }, "Name LIKE 'Acme%'");
                 await requestUpdate();
 
                 expect(readCollectionsApiFile('Account').records.map((record: any) => record.Legacy_Code__c)).toEqual(['Legacy_Code__c-new-0', 'OLD-1', 'Legacy_Code__c-new-2']);
@@ -827,9 +851,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                     ? { id: record.Id, success: false, errors: [{ statusCode: 'X', message: 'no', fields: [] }] }
                     : { id: record.Id, success: true, errors: [] } ));
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                await requestUpdate();
+                await openCockpitLoadAndEdit();
+                    await requestUpdate();
 
                 expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets')) ? adaptedDatasetFolderNames() : []).toEqual([]);
                 expect(adaptedRecipeFileNames()).toEqual([]);
@@ -839,9 +862,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             it('says in the notification why no copy was written when the card has no single recipe file, and still reports the update', async () => {
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                panelState().treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.delete(ACCOUNT_TREE_KEY);
+                await openCockpitLoadAndEdit();
+                    panelState().treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.delete(ACCOUNT_TREE_KEY);
                 await requestUpdate();
 
                 expect(updateCalls).toHaveLength(2);
@@ -851,9 +873,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             it('writes the data set and says why there is no adapted recipe when the recipe no longer has an updated field', async () => {
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                fs.writeFileSync(recipeFilePath(), fs.readFileSync(recipeFilePath(), 'utf8').replace('    LastName: ${{fake.LastName}}\n', ''));
+                await openCockpitLoadAndEdit();
+                    fs.writeFileSync(recipeFilePath(), fs.readFileSync(recipeFilePath(), 'utf8').replace('    LastName: ${{fake.LastName}}\n', ''));
                 await requestUpdate();
 
                 expect(adaptedDatasetFolderNames()).toHaveLength(1);
@@ -873,9 +894,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                     return records.map(record => ({ id: record.Id, success: true, errors: [] }));
                 };
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                await requestUpdate();
+                await openCockpitLoadAndEdit();
+                    await requestUpdate();
 
                 expect(readCollectionsApiFile('Contact').records.map((record: any) => record.LastName)).toEqual(['Old 0', 'Old 1']);
                 expect(readCollectionsApiFile('Account').records.map((record: any) => record.Legacy_Code__c)).toEqual(['Legacy_Code__c-new-0', 'Legacy_Code__c-new-1', 'Legacy_Code__c-new-2']);
@@ -891,9 +911,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                     return records.map(record => ({ id: record.Id, success: true, errors: [] }));
                 };
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                selectOrg({ ...SANDBOX_ORG, alias: undefined } as unknown as typeof SANDBOX_ORG);
+                await openCockpitLoadAndEdit();
+                    selectOrg({ ...SANDBOX_ORG, alias: undefined } as unknown as typeof SANDBOX_ORG);
                 await requestUpdate();
 
                 const adaptedRecipe = fs.readFileSync(path.join(recipeFolderPath(), adaptedRecipeFileNames()[0]), 'utf8');
@@ -904,9 +923,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             it('reveals the data set and opens the adapted recipe from the notification\'s buttons', async () => {
 
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                (vscode.window.showInformationMessage as jest.Mock).mockImplementation((_text: string, ...buttons: string[]) => Promise.resolve(buttons.includes(RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL) ? RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL : undefined));
+                await openCockpitLoadAndEdit();
+                    (vscode.window.showInformationMessage as jest.Mock).mockImplementation((_text: string, ...buttons: string[]) => Promise.resolve(buttons.includes(RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL) ? RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL : undefined));
                 await requestUpdate();
                 await flushAsyncWork();
 
@@ -917,9 +935,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             it('warns rather than revealing a data set that is gone when the button is chosen', async () => {
 
                 let chooseOpenDataset: (label: string) => void = () => undefined;
-                await openCockpitLoadAndGenerate();
-                await acknowledgeValues();
-                (vscode.window.showInformationMessage as jest.Mock).mockImplementation((_text: string, ...buttons: string[]) => (
+                await openCockpitLoadAndEdit();
+                    (vscode.window.showInformationMessage as jest.Mock).mockImplementation((_text: string, ...buttons: string[]) => (
                     buttons.includes(RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL) ? new Promise(resolve => { chooseOpenDataset = resolve; }) : Promise.resolve(undefined)
                 ));
                 await requestUpdate();
@@ -939,8 +956,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
         it('sends at most 200 records per request', async () => {
 
             recordCountByObject = { Account: 450, Contact: 0, OtherChildObject__c: 0 };
-            await openCockpitLoadAndGenerate([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]);
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit({ Account: recordIndex => ({ Legacy_Code__c: `Legacy_Code__c-new-${recordIndex}` }) });
             await requestUpdate();
 
             expect(updateCalls.map(updateCall => updateCall.records.length)).toEqual([200, 200, 50]);
@@ -956,8 +972,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 ? { id: record.Id, success: false, errors: [{ statusCode: 'INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST', message: 'Rating: bad value for restricted picklist field: Hot', fields: ['Rating__c'] }] }
                 : { id: record.Id, success: true, errors: [] });
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls.map(updateCall => updateCall.objectApiName)).toEqual(['Account', 'Contact']);
@@ -980,8 +995,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 ? records.map(record => ({ id: record.Id, success: false, errors: [{ statusCode: 'FIELD_CUSTOM_VALIDATION_EXCEPTION', message: 'no', fields: [] }] }))
                 : records.map(record => ({ id: record.Id, success: true, errors: [] }));
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls.map(updateCall => [updateCall.objectApiName, updateCall.options.allOrNone])).toEqual([
@@ -1009,8 +1023,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 return records.map((record, recordIndex) => ({ id: record.Id, success: callNumber === 1 || recordIndex > 0, errors: [] }));
             };
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             // THE UPDATE: Account, THEN Contact THREW; THE SET-BACK: Account's 3, THEN Contact's 2 IT MAY HAVE SAVED
@@ -1040,8 +1053,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 return records.map(record => ({ id: record.Id, success: objectApiName === 'Account', errors: [] }));
             };
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             const progressTitles = (vscode.window.withProgress as jest.Mock).mock.calls.map(([options]) => [options.title, options.cancellable]);
@@ -1056,17 +1068,51 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
-        it('refuses values that do not cover every record, which would clear a field in the org', async () => {
+        it('writes only the marked rows, and of each only its own changed cells: the request, the snapshot and the plan agree (#721)', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
-            const heldValues = (RecipeCockpitAdapterState as any).heldUpdaterValues;
-            delete heldValues.valuesByObjectApiName.get('Account')[1].fieldValues.Rating__c;
+            // Account 0: BOTH FIELDS. Account 1: ONE FIELD. Account 2: NOT MARKED. Contact 0: MARKED WITH NO CHANGE. Contact 1: CHANGED BUT NOT MARKED
+            await openCockpitLoadAndEdit({
+                Account: recordIndex => [{ Legacy_Code__c: 'NEW-0', Rating__c: 'Hot' }, { Rating__c: null }, undefined][recordIndex]
+            });
+            const contactEdits = RecipeCockpitAdapterEdits.readObjectEdits(RecipeCockpitAdapterState.heldUpdaterRecords!, 'Contact');
+            contactEdits.markedRecordIds.add(fakeRecordId('Contact', 0));
+            contactEdits.changedValuesByRecordId.set(fakeRecordId('Contact', 1), new Map([['LastName', 'Unmarked']]));
+
+            expect(plannedValuesOf('Account')).toEqual([
+                { recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'NEW-0', Rating__c: 'Hot' } },
+                { recordId: fakeRecordId('Account', 1), fieldValues: { Rating__c: null } }
+            ]);
+            expect(plannedValuesOf('Contact')).toBeUndefined();
+
             await requestUpdate();
+
+            expect(updateConfirmations()[0][0]).toBe('Update 2 records of Account-thru-OtherChildObject__c in qa · qa@example.com.qa?');
+            expect(updateConfirmations()[0][1].detail).toContain('Account: 2 marked, 2 records to update -- Legacy_Code__c, Rating__c');
+            expect(updateConfirmations()[0][1].detail).not.toContain('Contact');
+            expect(updateCalls).toHaveLength(1);
+            expect(updateCalls[0].records).toEqual([
+                { attributes: { type: 'Account' }, Id: fakeRecordId('Account', 0), Legacy_Code__c: 'NEW-0', Rating__c: 'Hot' },
+                { attributes: { type: 'Account' }, Id: fakeRecordId('Account', 1), Rating__c: null }
+            ]);
+            expect(readAttemptFile('-before.json').objects).toEqual([{
+                objectApiName: 'Account',
+                fieldApiNames: ['Legacy_Code__c', 'Rating__c'],
+                records: [
+                    { recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'OLD-0', Rating__c: 'Warm' } },
+                    { recordId: fakeRecordId('Account', 1), fieldValues: { Rating__c: 'Warm' } }
+                ]
+            }]);
+
+        });
+
+        it('refuses with what to do when no marked row holds a change', async () => {
+
+            await openCockpitLoadAndEdit({});
+            await (RecipeCockpitAdapterRecords as any).updateUpdaterRecordsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
             expect(updateConfirmations()).toEqual([]);
             expect(updateCalls).toEqual([]);
-            expect(warnings().at(-1)).toBe('Nothing was updated: the new values for Account do not cover every record. Generate them again.');
+            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL));
 
         });
 
@@ -1074,8 +1120,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             fs.mkdirSync(runArtifactsFolderPath(), { recursive: true });
             fs.writeFileSync(path.join(runArtifactsFolderPath(), '.gitignore'), '*\n!*.json\n');
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls).toHaveLength(2);
@@ -1085,30 +1130,23 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
-        it('empties the active list on a failure to draw and on a new model', async () => {
+        it('offers no update once a new model lets the records and their edits go', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
-            expect(panelState().updatableTreeKeys.has(ACCOUNT_TREE_KEY)).toBe(true);
+            await openCockpitLoadAndEdit();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toEqual({ kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
-            // THE FAILURE IS REPORTED THROUGH THE ERROR HANDLER, WHICH WAITS ON ITS NOTIFICATION
-            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
-            await send({ command: 'renderFailed', message: 'draw failed', stack: '', phase: 'render' });
-            expect(panelState().updatableTreeKeys.size).toBe(0);
-
-            await acknowledgeValues();
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
             await flushAsyncWork();
-            expect(panelState().updatableTreeKeys.size).toBe(0);
-            expect(panelState().pendingUpdatableTreeKeys.size).toBe(0);
+
+            expect(RecipeCockpitAdapterState.heldUpdaterEdits).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
 
         });
 
         it('on a cancel keeps what was updated without all-or-none, and puts it back with it', async () => {
 
             cancelAfterRequests = 1;
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls.map(updateCall => updateCall.objectApiName)).toEqual(['Account']);
@@ -1121,8 +1159,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             allOrNoneAnswer = true;
             cancelAfterRequests = 1;
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls.map(updateCall => [updateCall.objectApiName, updateCall.options.allOrNone])).toEqual([['Account', true], ['Account', false]]);
@@ -1133,13 +1170,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
         it('writes and sends nothing when the confirmation or the all-or-none question is dismissed, and keeps the records', async () => {
 
             confirmationAnswers['Update '] = undefined;
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             allOrNoneAnswer = undefined;
             confirmationAnswers['Update '] = RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL;
-            await acknowledgeValues();
             await requestUpdate();
 
             expect(updateConfirmations()).toHaveLength(2);
@@ -1152,8 +1187,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('writes and sends nothing when the Organization row, asked again on the connection, is not a sandbox', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             organizationAnswers = [{ IsSandbox: false, OrganizationType: 'Enterprise Edition' }];
             await requestUpdate();
 
@@ -1163,11 +1197,26 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
+        it('sends nothing when the snapshot is short of a record the update would write', async () => {
+
+            await openCockpitLoadAndEdit();
+            const buildSnapshotObject = RecipeCockpitRecordUpdate.buildSnapshotObject.bind(RecipeCockpitRecordUpdate);
+            jest.spyOn(RecipeCockpitRecordUpdate, 'buildSnapshotObject').mockImplementation((...snapshotArguments) => {
+                const snapshotObject = buildSnapshotObject(...snapshotArguments);
+                return { ...snapshotObject, records: snapshotObject.records.slice(1) };
+            });
+            await requestUpdate();
+
+            expect(updateCalls).toEqual([]);
+            expect(attemptFiles()).toEqual([]);
+            expect(warnings().at(-1)).toBe(RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL);
+
+        });
+
         it('sends nothing when the old values cannot be saved', async () => {
 
             fs.writeFileSync(runArtifactsFolderPath(), 'a file where the folder goes');
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls).toEqual([]);
@@ -1185,8 +1234,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 'Nothing was updated in qa · qa@example.com.qa: Account could not be described in the org: NOT_FOUND: The requested resource does not exist.']
         ])('refuses %s before asking anything', async (_description, describeOverrides, expectedWarning) => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             // THE ORG CHANGED AFTER THE LOAD: A FIELD IT LACKED AT THE LOAD IS LEFT OUT THERE AND NEVER REACHES AN UPDATE (#720)
             Object.entries(describeOverrides).forEach(([objectApiName, describeAnswer]) => {
                 if ( describeAnswer === undefined ) { delete describeAnswers[objectApiName]; } else { describeAnswers[objectApiName] = describeAnswer; }
@@ -1202,26 +1250,30 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('refuses an org other than the one the records were loaded from, and values for records let go', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             selectOrg(OTHER_SANDBOX_ORG);
             await requestUpdate();
 
             expect(updateConfirmations()).toEqual([]);
             expect(warnings().at(-1)).toBe('Nothing was updated: the records of Account-thru-OtherChildObject__c were loaded from qa@example.com.qa, not uat · uat@example.com.uat. Load them again from the org selected now.');
 
+            // THE EDITS OF ANOTHER LOAD ARE NOT THIS ONE'S, AND RECORDS LET GO HAVE NONE
+            const runUpdate = () => (RecipeCockpitAdapterRecords as any).updateUpdaterRecordsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
             selectOrg(SANDBOX_ORG);
-            RecipeCockpitAdapterState.clearHeldUpdaterValues();
-            await requestUpdate();
-            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL));
+            RecipeCockpitAdapterState.heldUpdaterEdits!.resultKey = 'another load';
+            await runUpdate();
+            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL));
+
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
+            await runUpdate();
+            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_UPDATER_NOT_LOADED_FOR_UPDATE_REFUSAL));
             expect(updateCalls).toEqual([]);
 
         });
 
         it('refuses when the org selection changed while the confirmation was open', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation((message: string, options?: { inPanel?: boolean }) => {
                 if ( options?.inPanel && message.startsWith('Update ') ) {
                     selectOrg(SANDBOX_ORG);
@@ -1233,14 +1285,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             expect(updateCalls).toEqual([]);
             expect(attemptFiles()).toEqual([]);
-            expect(warnings().at(-1)).toBe('Nothing was updated: the run, the org selection or the loaded records changed after qa · qa@example.com.qa was confirmed. Load and generate again.');
+            expect(warnings().at(-1)).toBe('Nothing was updated: the run, the org selection or the loaded records changed after qa · qa@example.com.qa was confirmed. Load the records and make the changes again.');
 
         });
 
         it('says when a connection cannot be opened, quoting nothing of its error', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             (SalesforceOrgService.getConnection as jest.Mock).mockRejectedValue(new Error('token xyz expired'));
             await requestUpdate();
 
@@ -1253,17 +1304,16 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             const NO_ALIAS_ORG = { targetOrgIdentifier: 'solo@example.com.dev', username: 'solo@example.com.dev' } as typeof SANDBOX_ORG;
             recordCountByObject = { Account: 1, Contact: 1, OtherChildObject__c: 0 };
             updateAnswer = () => Promise.reject('socket hang up');
-            await openCockpitLoadAndGenerate([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, { objectApiName: 'Contact', fieldApiName: 'LastName' }]);
+            await openCockpitLoadAndEdit({ Account: () => ({ Legacy_Code__c: 'Legacy_Code__c-new-0' }), Contact: () => ({ LastName: 'LastName-new-0' }) });
             // LOADED FROM, AND WRITTEN TO, AN ORG WITH NO ALIAS
             (RecipeCockpitAdapterState as any).heldUpdaterRecords.orgUsername = NO_ALIAS_ORG.username;
             selectOrg(NO_ALIAS_ORG);
             panelState().recipeDataMessage!.recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY)!.customName = 'My accounts';
             jest.spyOn(RecipeCockpitRecordUpdate, 'writeResults').mockReturnValue(false);
-            await acknowledgeValues();
             await requestUpdate();
 
             expect(updateConfirmations()[0][0]).toBe('Update 2 records of My accounts in solo@example.com.dev?');
-            expect(updateConfirmations()[0][1].detail.split('\n').slice(3, 5)).toEqual(['Account: 1 record -- Legacy_Code__c', 'Contact: 1 record -- LastName']);
+            expect(updateConfirmations()[0][1].detail.split('\n').slice(3, 5)).toEqual(['Account: 1 marked, 1 record to update -- Legacy_Code__c', 'Contact: 1 marked, 1 record to update -- LastName']);
             expect(vscode.window.showWarningMessage).toHaveBeenLastCalledWith('0 records of My accounts were updated in solo@example.com.dev and 2 failed. Their old values are in ' + attemptFiles()[0] + '. The request for Account failed: socket hang up');
 
         });
@@ -1273,8 +1323,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             allOrNoneAnswer = true;
             recordCountByObject = { Account: 1, Contact: 2, OtherChildObject__c: 0 };
             updateAnswer = (_objectApiName, records) => records.map(record => ({ id: record.Id, success: false, errors: [] }));
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             await requestUpdate();
 
             expect(updateCalls).toHaveLength(1);
@@ -1287,8 +1336,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('writes and sends nothing when the Organization row asked again cannot be read', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             organizationAnswers = [{ IsSandbox: 'yes', OrganizationType: 7 } as any];
             await requestUpdate();
 
@@ -1300,8 +1348,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('refuses when the held values no longer match the loaded records, or a check at the run finds the card or the sandbox gone', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             const runUpdate = (treeKey = ACCOUNT_TREE_KEY) => (RecipeCockpitAdapterRecords as any).updateUpdaterRecordsFromPanel(RecipeCockpitService, (RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'updateUpdaterRecords', treeKey: treeKey });
 
             // A CARD THE MODEL ON SCREEN NO LONGER DRAWS: NOTHING ASKED, NOTHING SAID
@@ -1314,14 +1361,15 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             await runUpdate();
             expect(warnings().at(-1)).toBe('Nothing was updated: the org selected in Target Org Manager has not answered that it is a sandbox or scratch org.');
 
+            // EVERY ROW UNMARKED BETWEEN THE CLICK AND THE RUN
             selectOrg(SANDBOX_ORG);
-            const heldValues = (RecipeCockpitAdapterState as any).heldUpdaterValues;
-            heldValues.valuesByObjectApiName = new Map([['Account', [heldValues.valuesByObjectApiName.get('Account')[0]]]]);
+            RecipeCockpitAdapterState.heldUpdaterEdits!.editsByObjectApiName.forEach(objectEdits => objectEdits.markedRecordIds.clear());
             await runUpdate();
-            expect(warnings().at(-1)).toBe('Nothing was updated: there are no new values for the loaded records of Account-thru-OtherChildObject__c.');
+            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL));
             expect(updateCalls).toEqual([]);
 
             // AN UNCHECKED SELECTION IS REFUSED BY THE ROUTER
+            RecipeCockpitAdapterState.heldUpdaterEdits!.editsByObjectApiName.get('Account')!.markedRecordIds.add(fakeRecordId('Account', 0));
             panelState().dataOrgSelection = { orgIndex: 0, orgDetail: SANDBOX_ORG, requestSequence: 1 };
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({
                 refusalText: 'Nothing was updated: qa has not been checked yet, and the Treecipe Adapter updates only a sandbox or scratch org.'
@@ -1331,7 +1379,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('answers an update while one is in flight with no stored state as not running', async () => {
 
-            await openCockpitLoadAndGenerate();
+            await openCockpitLoadAndEdit();
             (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
             (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = undefined;
             postedPanelMessages = [];
@@ -1344,8 +1392,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('answers an update that reaches the host while a run is in flight with that run\'s state', async () => {
 
-            await openCockpitLoadAndGenerate();
-            await acknowledgeValues();
+            await openCockpitLoadAndEdit();
             const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' };
             (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
             (RecipeCockpitAdapterState as any).updaterLoadRunStateMessage = runningState;
@@ -1379,42 +1426,48 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             renderSequence: 1,
             treeKey: ACCOUNT_TREE_KEY,
             orgLabel: 'qa · qa@example.com.qa',
-            objects: [{ objectApiName: 'Account', totalSize: 2, recordCount: 2, isTruncated: false, columns: ['Id'], rows: [['001A'], ['001B']], hiddenColumnCount: 0 }]
+            objects: [{ objectApiName: 'Account', totalSize: 2, recordCount: 2, isTruncated: false, columns: ['Id', 'Legacy_Code__c'], rows: [['001A', 'OLD'], ['001B', 'OLD']], hiddenColumnCount: 0, pageCount: 1, columnEdits: [{ lockReason: 'a record\'s Id is never changed', canGenerate: false }, { canGenerate: true }] }]
         };
 
-        const valuesMessage = {
-            command: 'updaterValues',
-            renderSequence: 1,
-            treeKey: ACCOUNT_TREE_KEY,
-            valuesSequence: 7,
-            objects: [
-                { objectApiName: 'Account', recordCount: 2, fieldApiNames: ['Legacy_Code__c'], columns: ['Id', 'Legacy_Code__c (current)', 'Legacy_Code__c (new)'], rows: [['001A', 'OLD', 'NEW'], ['001B', 'OLD', 'NEW']], hiddenColumnCount: 0 },
-                { objectApiName: 'Contact', recordCount: 1, fieldApiNames: ['LastName'], columns: [], rows: [], hiddenColumnCount: 0 }
-            ]
+        // THE SAME RECORDS ONCE THE HOST HOLDS BOTH ROWS AS MARKED, ONE OF THEM CHANGED
+        const editedMessage = {
+            ...loadedMessage,
+            objects: [{ ...loadedMessage.objects[0], markedRowIndexes: [0, 1], changedCells: [[0, 1]], editSummary: { markedRecordCount: 2, updatableRecordCount: 1, changedFieldApiNames: ['Legacy_Code__c'], hasUnmarkedChanges: false } }]
         };
 
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
 
-        it('holds Update records until values are drawn, names how many and where, and posts the card\'s key alone', () => {
+        it('holds Update records, saying why, until a marked row holds a change; then names how many and where, and posts the card\'s key alone (#721)', () => {
 
             const { panel, updaterPanel } = renderUpdater();
             const updateButton = panel.findAll(updaterPanel, 'updaterUpdate')[0];
 
             expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
             expect(updateButton.disabled).toBe(true);
-            expect(updateButton.attributes.title).toMatch(/^Generate values first/);
+            expect(updateButton.attributes.title).toMatch(/^Load records first/);
             expect(updateButton.classList.contains('sdtButton-card')).toBe(true);
             expect(panel.findAll(updateButton, 'actionCardEmoji')[0].textContent).toBe('✍️');
+            expect(panel.findAll(updaterPanel, 'updaterGenerate')).toEqual([]);
 
+            // LOADED, NO ROW MARKED
             panel.postToPanel(loadedMessage);
-            panel.postToPanel({ ...valuesMessage, renderSequence: 2 });
             expect(updateButton.disabled).toBe(true);
-            expect(postedNamed(panel, 'updaterValuesRendered')).toEqual([]);
+            expect(updateButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON);
+            expect(panel.findAll(updaterPanel, 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED);
 
-            panel.postToPanel(valuesMessage);
-            expect(postedNamed(panel, 'updaterValuesRendered')).toEqual([{ command: 'updaterValuesRendered', renderSequence: 1, valuesSequence: 7 }]);
+            // MARKED, NO CELL CHANGED
+            panel.postToPanel({ ...loadedMessage, objects: [{ ...loadedMessage.objects[0], markedRowIndexes: [0], editSummary: { markedRecordCount: 1, updatableRecordCount: 0, changedFieldApiNames: [], hasUnmarkedChanges: false } }] });
+            expect(updateButton.disabled).toBe(true);
+            expect(updateButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON);
+
+            // AN EDIT FOR ANOTHER MODEL CHANGES NOTHING
+            panel.postToPanel({ ...editedMessage, renderSequence: 2 });
+            expect(updateButton.disabled).toBe(true);
+
+            panel.postToPanel(editedMessage);
             expect(updateButton.disabled).toBe(false);
-            expect(panel.cardTitleOf(updateButton)).toBe('Update 3 records in qa · qa@example.com.qa');
+            expect(panel.cardTitleOf(updateButton)).toBe('Update 1 record in qa · qa@example.com.qa');
+            expect(panel.findAll(updaterPanel, 'updaterSummary')[0].textContent).toBe('2 rows marked · 1 record to update');
 
             updateButton.dispatch('click');
             expect(postedNamed(panel, 'updateUpdaterRecords')).toEqual([{ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }]);
@@ -1427,42 +1480,42 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
-        it('keeps the preview while an update asks, and lets the records and values go once it says they were spent', () => {
+        it('keeps the table while an update asks, and lets the records and their edits go once it says they were spent', () => {
 
             const { panel, updaterPanel } = renderUpdater();
             const accountObject = panel.findAll(updaterPanel, 'updaterObject').find((objectElement: any) => panel.findAll(objectElement, 'updaterObjectName')[0].textContent === 'Account');
             panel.findAll(accountObject.children[0], 'updaterObjectToggle')[0].dispatch('click');
-            panel.postToPanel(loadedMessage);
-            panel.postToPanel(valuesMessage);
-            const valuesElement = panel.findAll(accountObject, 'updaterValues')[0];
+            panel.postToPanel(editedMessage);
+            const recordsElement = panel.findAll(accountObject, 'updaterRecords')[0];
             const updateButton = panel.findAll(updaterPanel, 'updaterUpdate')[0];
 
             panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' });
-            expect(panel.isHidden(valuesElement)).toBe(false);
+            expect(panel.findAll(recordsElement, 'updaterMarkedRow')).toHaveLength(2);
             expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATING_LABEL);
+            // NO EDIT WHILE THE UPDATE HOLDS THE RECORDS
+            expect(panel.findAll(recordsElement, 'updaterRowMark').every((markButton: any) => markButton.disabled)).toBe(true);
 
             // A CANCELLED CONFIRMATION SPENDS NOTHING
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' });
-            expect(panel.isHidden(valuesElement)).toBe(false);
+            expect(panel.findAll(recordsElement, 'updaterMarkedRow')).toHaveLength(2);
+            expect(panel.findAll(recordsElement, 'updaterRowMark').some((markButton: any) => markButton.disabled)).toBe(false);
             expect(updateButton.disabled).toBe(false);
 
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update', isRecordsSpent: true });
-            expect(panel.isHidden(valuesElement)).toBe(true);
-            expect(panel.isHidden(panel.findAll(accountObject, 'updaterRecords')[0])).toBe(true);
+            expect(panel.isHidden(recordsElement)).toBe(true);
             expect(updateButton.disabled).toBe(true);
             expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
 
         });
 
-        it('says when the values hold no record to write', () => {
+        it('says a load of 0 records has nothing to update', () => {
 
             const { panel, updaterPanel } = renderUpdater();
-            panel.postToPanel(loadedMessage);
-            panel.postToPanel({ ...valuesMessage, objects: [{ objectApiName: 'Account', recordCount: 0, fieldApiNames: [], columns: [], rows: [], hiddenColumnCount: 0 }, null] });
+            panel.postToPanel({ ...loadedMessage, objects: [{ ...loadedMessage.objects[0], totalSize: 0, recordCount: 0, rows: [] }] });
 
             const updateButton = panel.findAll(updaterPanel, 'updaterUpdate')[0];
             expect(updateButton.disabled).toBe(true);
-            expect(updateButton.attributes.title).toBe('There are no new values to write: the last load read no records.');
+            expect(updateButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON);
 
         });
 

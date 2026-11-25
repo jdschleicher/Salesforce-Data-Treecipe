@@ -58,7 +58,6 @@ export interface ITreePlace {
     todosView?: 'removed';
     removedTodosSearchText?: string;
     troubleshootingHistorySort?: { column: string; isDescending: boolean };
-    updaterChosenFieldKeys?: string[];
     updaterExpandedObjectKeys?: string[];
     updaterStep?: 'structure';
     updaterParentObjectApiName?: string;
@@ -95,7 +94,6 @@ interface ISavedTreePlace {
     expandedJourneyDatasetFolderNames?: unknown;
     isRecordTypeFieldsOnly?: unknown;
     isTodosOnly?: unknown;
-    updaterChosenFieldKeys?: unknown;
     updaterExpandedObjectKeys?: unknown;
     updaterParentObjectApiName?: unknown;
     updaterStep?: unknown;
@@ -193,10 +191,9 @@ function buildTreePlace(treeState: CardTreeState): ITreePlace | null {
     const historySort = treeState.historySort && !(treeState.historySort.column === 'time' && treeState.historySort.isDescending) ? treeState.historySort : null;
     if (historySort) { hasSearch = true; }
 
-    const updaterChosenFieldKeys = Object.keys(treeState.updaterChosenFieldKeys);
     const updaterExpandedObjectKeys = Object.keys(treeState.updaterExpandedObjectKeys);
     const isUpdaterStructureStep = treeState.updaterStep === 'structure' && !!treeState.updaterParentObjectApiName;
-    if (updaterChosenFieldKeys.length > 0 || updaterExpandedObjectKeys.length > 0) { hasSearch = true; }
+    if (updaterExpandedObjectKeys.length > 0) { hasSearch = true; }
     if (isUpdaterStructureStep || treeState.updaterParentObjectApiName || treeState.updaterParentWhereText) { hasSearch = true; }
 
     const selectedTab = treeState.selectedTab || 'treecipe';
@@ -231,7 +228,6 @@ function buildTreePlace(treeState: CardTreeState): ITreePlace | null {
     if (isRemovedTodosView) { treePlace.todosView = 'removed'; }
     if (removedTodosSearchText) { treePlace.removedTodosSearchText = removedTodosSearchText; }
     if (historySort) { treePlace.troubleshootingHistorySort = { column: historySort.column, isDescending: historySort.isDescending }; }
-    if (updaterChosenFieldKeys.length > 0) { treePlace.updaterChosenFieldKeys = updaterChosenFieldKeys; }
     if (updaterExpandedObjectKeys.length > 0) { treePlace.updaterExpandedObjectKeys = updaterExpandedObjectKeys; }
     if (isUpdaterStructureStep) { treePlace.updaterStep = 'structure'; }
     if (treeState.updaterParentObjectApiName) { treePlace.updaterParentObjectApiName = treeState.updaterParentObjectApiName; }
@@ -475,12 +471,8 @@ function restoreSavedTrees(savedPlace: IPanelPlace): void {
         treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
         treeState.isTodosOnly = savedTree.isTodosOnly === true;
 
-        // READ BEFORE THE UPDATER TAB IS BUILT, WHICH DRAWS THEM; A CHOSEN FIELD WHOSE BOX IS LOCKED NOW IS DROPPED WHEN IT IS
-        treeState.updaterChosenFieldKeys = Object.create(null);
+        // READ BEFORE THE UPDATER TAB IS BUILT, WHICH DRAWS THEM. A PLACE SAVED BEFORE #721 MAY NAME CHOSEN FIELDS: THE CARD HAS NONE NOW, SO THEY ARE NOT READ
         treeState.updaterExpandedObjectKeys = Object.create(null);
-        (Array.isArray(savedTree.updaterChosenFieldKeys) ? savedTree.updaterChosenFieldKeys : []).forEach(function (fieldKey: unknown) {
-            if (typeof fieldKey === 'string') { treeState.updaterChosenFieldKeys[fieldKey] = true; }
-        });
         (Array.isArray(savedTree.updaterExpandedObjectKeys) ? savedTree.updaterExpandedObjectKeys : []).forEach(function (objectKey: unknown) {
             if (typeof objectKey === 'string') { treeState.updaterExpandedObjectKeys[objectKey] = true; }
         });

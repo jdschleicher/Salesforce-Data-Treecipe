@@ -94,13 +94,12 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
 });
 // THE STANDALONE ACTIONS OUTSIDE THE TROUBLESHOOTING TAB THAT ARE CARDS (#384); THE PR'S INVENTORY SAYS WHY EVERY OTHER BUTTON IS NOT
-export type RecipeCockpitStandaloneAction = 'generateTreecipe' | 'runQuery' | 'exportQueryJson' | 'exportQueryCsv' | 'loadUpdaterRecords' | 'generateUpdaterValues' | 'updateUpdaterRecords';
+export type RecipeCockpitStandaloneAction = 'generateTreecipe' | 'runQuery' | 'exportQueryJson' | 'exportQueryCsv' | 'loadUpdaterRecords' | 'updateUpdaterRecords';
 export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockpitStandaloneAction, IRecipeCockpitActionCard>> = Object.freeze({
     generateTreecipe: { verb: 'generate', why: 'No recipe run yet? Read this project\'s object metadata and write a Treecipe run to open here.' },
     runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
     exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as JSON.' },
     exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as CSV.' },
     loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with every field the treecipe lists, from the selected sandbox. It only reads.' },
-    generateUpdaterValues: { verb: 'generateData', why: 'Make a new value for each chosen field of every loaded record. Nothing is written yet.' },
-    updateUpdaterRecords: { verb: 'update', why: 'Write the new values to the loaded records by Id. Their old values are saved first.' }
+    updateUpdaterRecords: { verb: 'update', why: 'Write the changed cells of the marked rows by Id. Their old values are saved first.' }
 });

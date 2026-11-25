@@ -68,7 +68,7 @@ export interface IUpdateRecordValues {
 export interface IUpdateSnapshotObject {
     objectApiName: string;
     fieldApiNames: string[];
-    // EACH LOADED RECORD'S Id AND THE VALUE EACH UPDATED FIELD HELD BEFORE THE UPDATE
+    // EACH UPDATED RECORD'S Id AND THE VALUE EACH FIELD UPDATED ON IT HELD BEFORE THE UPDATE: A RECORD HOLDS ONLY ITS OWN UPDATED FIELDS (#721)
     records: IUpdateRecordValues[];
     // THE FIELDS AMONG fieldApiNames THAT ONLY THE ORG HELD, NOT THE RECIPE (#446); SET ONLY WHEN THERE ARE ANY, SO AN OLDER SNAPSHOT READS AS IT DID
     orgOnlyFieldApiNames?: string[];
@@ -153,22 +153,19 @@ export class RecipeCockpitRecordUpdate {
 
     }
 
-    // WHETHER EVERY RECORD HOLDS A VALUE FOR EVERY FIELD: A FIELD MISSING FROM ONE WOULD BE SENT AS null, WHICH CLEARS IT IN THE ORG
-    static hasEveryField(recordValues: readonly IUpdateRecordValues[], fieldApiNames: readonly string[]): boolean {
-
-        return recordValues.every(recordValue => fieldApiNames.every(fieldApiName => Object.prototype.hasOwnProperty.call(recordValue.fieldValues, fieldApiName)));
-
-    }
-
-    // THE RECORDS ONE OBJECT'S REQUESTS CARRY: ITS TYPE, THE Id AND ONLY THE FIELDS BEING UPDATED
+    /*
+        The records one object's requests carry: its type, the Id and, of the object's fields being
+        updated, only those THIS record holds a value for (#721). A field a record does not hold is
+        left out of its request, never sent as null: null would clear it in the org.
+    */
     static buildRequestRecords(objectApiName: string, fieldApiNames: readonly string[], recordValues: readonly IUpdateRecordValues[]): IUpdateRequestRecord[] {
 
         return recordValues.map(recordValue => {
             const requestRecord: IUpdateRequestRecord = { attributes: { type: objectApiName }, Id: recordValue.recordId };
             fieldApiNames.forEach(fieldApiName => {
-                requestRecord[fieldApiName] = Object.prototype.hasOwnProperty.call(recordValue.fieldValues, fieldApiName)
-                    ? recordValue.fieldValues[fieldApiName]
-                    : null;
+                if ( Object.prototype.hasOwnProperty.call(recordValue.fieldValues, fieldApiName) ) {
+                    requestRecord[fieldApiName] = recordValue.fieldValues[fieldApiName];
+                }
             });
             return requestRecord;
         });
@@ -239,11 +236,16 @@ export class RecipeCockpitRecordUpdate {
 
     }
 
-    // THE OLD VALUES OF EVERY FIELD BEING UPDATED, READ FROM THE LOADED RECORDS (A FIELD NAME MATCHED CASE-INSENSITIVELY)
+    /*
+        The old values of the fields being updated, read from the loaded records (a field name
+        matched case-insensitively). With updatedFieldApiNamesByRecordId, each record holds only the
+        fields updated on IT (#721), and a record it does not name is left out.
+    */
     static buildSnapshotObject(objectApiName: string,
                                fieldApiNames: readonly string[],
                                loadedRecords: readonly Record<string, unknown>[],
-                               orgOnlyFieldApiNames: readonly string[] = []): IUpdateSnapshotObject {
+                               orgOnlyFieldApiNames: readonly string[] = [],
+                               updatedFieldApiNamesByRecordId?: ReadonlyMap<string, readonly string[]>): IUpdateSnapshotObject {
 
         const recordedOrgOnlyFieldApiNames = fieldApiNames.filter(fieldApiName => orgOnlyFieldApiNames.includes(fieldApiName));
 
@@ -251,14 +253,19 @@ export class RecipeCockpitRecordUpdate {
             objectApiName: objectApiName,
             fieldApiNames: [...fieldApiNames],
             ...( recordedOrgOnlyFieldApiNames.length > 0 ? { orgOnlyFieldApiNames: recordedOrgOnlyFieldApiNames } : {} ),
-            records: loadedRecords.map(loadedRecord => {
+            records: loadedRecords.flatMap(loadedRecord => {
+                const recordId = String(loadedRecord.Id);
+                const recordFieldApiNames = updatedFieldApiNamesByRecordId ? updatedFieldApiNamesByRecordId.get(recordId) : fieldApiNames;
+                if ( !recordFieldApiNames ) {
+                    return [];
+                }
                 const keysByLowerCase = new Map(Object.keys(loadedRecord).map(key => [key.toLowerCase(), key] as const));
                 const fieldValues: Record<string, unknown> = {};
-                fieldApiNames.forEach(fieldApiName => {
+                fieldApiNames.filter(fieldApiName => recordFieldApiNames.includes(fieldApiName)).forEach(fieldApiName => {
                     const key = keysByLowerCase.get(fieldApiName.toLowerCase());
                     fieldValues[fieldApiName] = key === undefined ? null : loadedRecord[key] ?? null;
                 });
-                return { recordId: String(loadedRecord.Id), fieldValues: fieldValues };
+                return [{ recordId: recordId, fieldValues: fieldValues }];
             })
         };
 
@@ -547,14 +554,16 @@ export class RecipeCockpitRecordUpdate {
                 }
                 seenRecordIds.add(recordKey);
 
+                // A RECORD HOLDS THE FIELDS UPDATED ON IT (#721): AT LEAST ONE, AND NONE BUT ITS OBJECT'S
                 const candidateValues = candidateRecord.fieldValues;
-                if ( Object.keys(candidateValues).length !== fieldApiNames.length ) {
+                const recordFieldApiNames = ( fieldApiNames as string[] ).filter(fieldApiName => Object.prototype.hasOwnProperty.call(candidateValues, fieldApiName));
+                if ( recordFieldApiNames.length === 0 || Object.keys(candidateValues).length !== recordFieldApiNames.length ) {
                     return { refusal: `the ${objectApiName} record ${candidateRecord.recordId} holds other values than its fields` };
                 }
 
                 const fieldValues: Record<string, unknown> = {};
-                for ( const fieldApiName of fieldApiNames as string[] ) {
-                    const fieldValue = Object.prototype.hasOwnProperty.call(candidateValues, fieldApiName) ? candidateValues[fieldApiName] : undefined;
+                for ( const fieldApiName of recordFieldApiNames ) {
+                    const fieldValue = candidateValues[fieldApiName];
                     const isUsableValue = fieldValue === null
                         || typeof fieldValue === 'string'
                         || typeof fieldValue === 'boolean'

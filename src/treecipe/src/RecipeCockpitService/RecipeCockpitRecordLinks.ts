@@ -14,7 +14,7 @@ import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
     preview does not keep a released result, load or set of values in memory. The panel is sent only
     positions.
 */
-export type RecipeCockpitRecordLinkPreviewKind = 'query' | 'updaterRecords' | 'updaterValues';
+export type RecipeCockpitRecordLinkPreviewKind = 'query' | 'updaterRecords';
 
 export interface IRecipeCockpitOpenableRecordPreview {
     previewKind: RecipeCockpitRecordLinkPreviewKind;

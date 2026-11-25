@@ -56,10 +56,10 @@ import {
     RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON,
     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import { RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE } from '../RecipeCockpitAdapterEdits';
 import { RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
 import { RECIPE_COCKPIT_QUERY_MAX_LENGTH, RECIPE_COCKPIT_QUERY_RECORD_CAP, RECIPE_COCKPIT_QUERY_VALUE_BUDGET } from '../RecipeCockpitQuery';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -1173,6 +1173,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
         const rowNamed = (panel: any, objectElement: any, fieldApiName: string) => panel.findAll(objectElement, 'updaterField')
             .find((rowElement: any) => panel.findAll(rowElement, 'updaterFieldName')[0].textContent === fieldApiName);
 
+        // A ROW OF THE ADAPTER'S TABLE (#721) WITHOUT ITS ✎ CELL: EACH CELL'S TEXT, A LINK'S IN [ ]
+        const rowTexts = (panel: any, containerElement: any) => panel.findAll(containerElement, 'treeQueryRow').map((rowElement: any) => rowElement.children.slice(1).map((cellElement: any) => {
+            const [contentElement] = cellElement.children;
+            return contentElement.className.includes('treeQueryRecordLink') ? `[${contentElement.textContent}]` : contentElement.textContent;
+        }));
+
         const recordsMessage = (overrides: Record<string, unknown> = {}) => ({
             command: 'updaterRecords',
             renderSequence: 1,
@@ -1186,14 +1192,16 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             ...overrides
         });
 
-        it('posts every object with the WHERE typed and no field list, whatever is ticked, and holds every Load records button until the host answers', () => {
+        it('posts every object with the WHERE typed and no field list, and holds every Load records button until the host answers', () => {
 
             const { panel, updaterPanel } = renderUpdater();
             const accountObject = objectNamed(panel, updaterPanel, 'Account');
             const contactObject = objectNamed(panel, updaterPanel, 'Contact');
             expand(panel, accountObject);
             expand(panel, contactObject);
-            panel.findAll(rowNamed(panel, accountObject, 'Legacy_Code__c'), 'updaterFieldChoose')[0].dispatch('click');
+            // THE CARD'S FIELD ROWS DESCRIBE ITS FIELDS: THEY HAVE NO BOX TO TICK AND NO EDITOR (#721)
+            expect(panel.findAll(rowNamed(panel, accountObject, 'Legacy_Code__c'), 'updaterFieldChoose')).toEqual([]);
+            expect(panel.findAll(rowNamed(panel, accountObject, 'Legacy_Code__c'), 'updaterFieldEdit')).toEqual([]);
             const whereInput = panel.findAll(contactObject, 'updaterWhereInput')[0];
             expect(whereInput.attributes['aria-label']).toBe('WHERE for Contact records');
             expect(whereInput.attributes['maxlength']).toBe(String(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH));
@@ -1247,8 +1255,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             const accountRecords = panel.findAll(accountObject, 'updaterRecords')[0];
             expect(panel.isHidden(accountRecords)).toBe(false);
             expect(panel.findAll(accountRecords, 'updaterRecordsSummary')[0].textContent).toBe('2 records');
-            const cells = panel.findAll(accountRecords, 'treeQueryRow').map((rowElement: any) => rowElement.children.map((cellElement: any) => cellElement.textContent));
-            expect(cells).toEqual([['001A', '<b>Acme</b>'], ['001B', 'Globex']]);
+            expect(rowTexts(panel, accountRecords)).toEqual([['001A', '<b>Acme</b>'], ['001B', 'Globex']]);
             expect(panel.findAll(accountRecords, 'b')).toEqual([]);
 
             // AN OBJECT OPENED AFTER THE RECORDS ARRIVED DRAWS THEM WHEN ITS BODY IS BUILT
@@ -1305,7 +1312,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 panel.postToPanel({ command: 'updaterRecordsPage', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', pageIndex: 1, rows: [['001C', '', '<b>Initech</b>']], recordLinks: { columnIndex: 0, rowIndexes: [0] } });
 
                 expect(pageLabelOf(panel, accountRecords)).toBe('Page 2 of 3');
-                expect(panel.findAll(accountRecords, 'treeQueryRow').map((rowElement: any) => rowElement.children.map((cellElement: any) => cellElement.children.length > 0 ? `[${cellElement.children[0].textContent}]` : cellElement.textContent))).toEqual([['[001C]', '', '<b>Initech</b>']]);
+                expect(rowTexts(panel, accountRecords)).toEqual([['[001C]', '', '<b>Initech</b>']]);
                 expect(panel.findAll(accountRecords, 'b')).toEqual([]);
                 expect(previousButton().disabled).toBe(false);
 

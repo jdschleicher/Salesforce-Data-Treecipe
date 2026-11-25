@@ -4,13 +4,14 @@ import {
     RECIPE_COCKPIT_ADAPTER_APPLY_LABEL,
     RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON,
     RECIPE_COCKPIT_ADAPTER_APPLY_TITLE,
-    RECIPE_COCKPIT_UPDATER_GENERATE_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATING_LABEL,
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
     RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE,
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
     RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL,
+    RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON,
     RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON,
+    RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON,
     RECIPE_COCKPIT_UPDATER_PREVIOUS_PAGE_LABEL,
     RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON,
     RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE,
@@ -23,22 +24,20 @@ import {
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
 } from '../../RecipeCockpitAdapterConstants';
 import type { IActionCardView } from '../RecipeCockpitPanelBuilders';
-import { buildRecordTable } from '../RecipeCockpitRecordTable';
+import { buildEditableRecordSection, drawUpdaterEditControls, focusEditButton, readEditSummary } from './AdapterRecordEdit';
 import { clearAdapterChildren, drawAdapterChildControls } from './AdapterChild';
 import { countAdapterFileChanges } from './AdapterRetrieve';
-import { drawUpdaterObjectCount, drawUpdaterParentChip, listUpdaterChoosableFieldStates, showUpdaterParentStep } from './AdapterTab';
+import { drawUpdaterObjectCount, drawUpdaterParentChip, drawUpdaterSummary, openUpdaterObject, showUpdaterParentStep } from './AdapterTab';
 import type {
     AdapterPanelMessage,
     IAdapterTreeState,
-    IUpdaterFieldValueRequest,
     IUpdaterObjectRequest,
     IUpdaterObjectState,
     IUpdaterParentChangeMessage,
     IUpdaterPreviewObject,
     IUpdaterRecordsMessage,
     IUpdaterRecordsPageMessage,
-    IUpdaterSnapshotsMessage,
-    IUpdaterValuesMessage
+    IUpdaterSnapshotsMessage
 } from './AdapterTypes';
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
 import { findTreeState, renderedSequence, treeStates } from '../shell/PanelRender';
@@ -105,47 +104,18 @@ export function renderUpdaterParentChange(changeMessage: IUpdaterParentChangeMes
 
     // THE HOST HOLDS ONE LOAD FOR THE WINDOW, AND IT HAS LET IT GO
     clearUpdaterRecords();
-    clearUpdaterValues();
     clearAdapterChildren();
     if (treeState.updaterObjectStates) { showUpdaterParentStep(treeState); }
 
 }
 
 /*
-    "Generate values" (#417): every chosen field of this card, in the tab's order, with the value
-    typed for it when there is one. The host checks each again, asks in the panel, and answers
-    with updaterValues; the button is held until it says the run ended.
-*/
-export function requestUpdaterValues(treeState: IAdapterTreeState): void {
-
-    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) { return; }
-
-    const fields: IUpdaterFieldValueRequest[] = [];
-    treeState.updaterObjectStates.forEach(function (updaterObjectState) {
-        listUpdaterChoosableFieldStates(updaterObjectState).forEach(function (fieldState) {
-            if (fieldState.lockReason || !hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) { return; }
-            const fieldRequest: IUpdaterFieldValueRequest = { objectApiName: updaterObjectState.object.objectApiName, fieldApiName: fieldState.field.fieldApiName };
-            if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { fieldRequest.value = treeState.updaterEditedValues[fieldState.fieldKey]; }
-            fields.push(fieldRequest);
-        });
-    });
-
-    if (fields.length === 0) { return; }
-
-    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    runLocks.updaterRunKind = 'generate';
-    drawUpdaterLoadButtons();
-    vscodeApi.postMessage({ command: 'generateUpdaterValues', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields: fields });
-
-}
-
-/*
     "Update records" (#418): the card's KEY and nothing else. What is written, to which records
-    and in which org are the host's: the values it holds, which this card shows a preview of.
+    and in which org are the host's: the changed cells of the rows it holds as marked (#721).
 */
 export function requestUpdaterUpdate(treeState: IAdapterTreeState): void {
 
-    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) { return; }
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterRecordsMessage) { return; }
 
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = 'update';
@@ -223,83 +193,13 @@ function requestUpdaterRestore(treeState: IAdapterTreeState, snapshotName: strin
 
 }
 
-function countUpdaterValueRecords(valuesMessage: IUpdaterValuesMessage): number {
-
-    return (Array.isArray(valuesMessage.objects) ? valuesMessage.objects : []).reduce(function (total: number, generatedObject) {
-        return total + (generatedObject ? Number(generatedObject.recordCount) || 0 : 0);
-    }, 0);
-
-}
-
-// THE VALUES ARE DRAWN ONLY ON THE MODEL THEY WERE GENERATED ON, AND A TAB NOT YET BUILT DRAWS THEM WHEN IT IS
-export function renderUpdaterValues(valuesMessage: IUpdaterValuesMessage): void {
-
-    if (renderedSequence === null || valuesMessage.renderSequence !== renderedSequence) { return; }
-
-    const treeState = findTreeState(valuesMessage.treeKey);
-    if (!treeState) { return; }
-
-    treeState.updaterValuesMessage = valuesMessage;
-    if (treeState.updaterObjectStates) { applyUpdaterValues(treeState, valuesMessage); }
-    drawUpdaterLoadButtons();
-    // ONLY THIS ACK OFFERS "Update records" ON THESE VALUES (#418)
-    vscodeApi.postMessage({ command: 'updaterValuesRendered', renderSequence: renderedSequence, valuesSequence: valuesMessage.valuesSequence });
-
-}
-
-export function applyUpdaterValues(treeState: IAdapterTreeState, valuesMessage: IUpdaterValuesMessage): void {
-
-    const generatedObjects = Array.isArray(valuesMessage.objects) ? valuesMessage.objects : [];
-
-    (treeState.updaterObjectStates || []).forEach(function (updaterObjectState) {
-        updaterObjectState.generatedValues = generatedObjects.find(function (generatedObject) { return generatedObject && generatedObject.objectApiName === updaterObjectState.object.objectApiName; }) || null;
-        updaterObjectState.generatedValuesLinkSequence = valuesMessage.recordLinkSequence;
-        drawUpdaterObjectValues(updaterObjectState);
-    });
-
-}
-
-export function clearUpdaterValues(): void {
-
-    treeStates.forEach(function (treeState) {
-        if (!treeState.updaterValuesMessage) { return; }
-        treeState.updaterValuesMessage = null;
-        if (!treeState.updaterObjectStates) { return; }
-        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
-            updaterObjectState.generatedValues = null;
-            drawUpdaterObjectValues(updaterObjectState);
-        });
-    });
-
-}
-
-export function drawUpdaterObjectValues(updaterObjectState: IUpdaterObjectState): void {
-
-    const valuesElement = updaterObjectState.valuesElement;
-    if (!valuesElement) { return; }
-
-    valuesElement.textContent = '';
-    const generatedValues = updaterObjectState.generatedValues;
-
-    if (!generatedValues) {
-        valuesElement.classList.add('hidden');
-        return;
-    }
-
-    const columns: string[] = Array.isArray(generatedValues.columns) ? generatedValues.columns.map(String) : [];
-    const rows: unknown[] = Array.isArray(generatedValues.rows) ? generatedValues.rows : [];
-    const recordCount = Number(generatedValues.recordCount) || 0;
-    const hiddenColumnCount = Number(generatedValues.hiddenColumnCount) || 0;
-    let summaryText = recordCount === 0
-        ? 'No new values: the last load read no records of this object'
-        : 'New values for ' + pluralize(recordCount, 'record', 'records') + ', not written to the org yet';
-    if (rows.length < recordCount) { summaryText += '. Showing the first ' + rows.length; }
-    if (hiddenColumnCount > 0) { summaryText += (rows.length < recordCount ? ', ' : '. Showing ') + pluralize(columns.length, 'column', 'columns') + ', ' + hiddenColumnCount + ' more not shown'; }
-
-    valuesElement.appendChild(createElement('div', 'updaterValuesSummary muted', summaryText));
-    if (columns.length > 0 && rows.length > 0) { valuesElement.appendChild(buildRecordTable(columns, rows, generatedValues.recordLinks, updaterObjectState.generatedValuesLinkSequence, updaterObjectState.object.objectApiName)); }
-    valuesElement.classList.remove('hidden');
-
+// THE CARD'S MARKED ROWS AND THE RECORDS AN UPDATE WOULD WRITE, OVER EVERY OBJECT ITS LAST LOAD READ: THE HOST'S COUNTS, NEVER THE PANEL'S OWN
+export function sumUpdaterEdits(treeState: IAdapterTreeState): { markedRecordCount: number; updatableRecordCount: number } {
+    const loadedObjects = treeState.updaterRecordsMessage && Array.isArray(treeState.updaterRecordsMessage.objects) ? treeState.updaterRecordsMessage.objects : [];
+    return loadedObjects.reduce(function (totals, loadedObject) {
+        const editSummary = readEditSummary(loadedObject ? loadedObject.editSummary : undefined);
+        return { markedRecordCount: totals.markedRecordCount + editSummary.markedRecordCount, updatableRecordCount: totals.updatableRecordCount + editSummary.updatableRecordCount };
+    }, { markedRecordCount: 0, updatableRecordCount: 0 });
 }
 
 function countUpdaterLoadedRecords(recordsMessage: IUpdaterRecordsMessage): number {
@@ -341,30 +241,25 @@ export function drawUpdaterLoadButtons(): void {
             snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to RunArtifacts in the tree folder first.');
         });
 
-        if (!treeState.updaterGenerateCard) { return; }
-        const hasChosenField = updaterObjectStates.some(function (updaterObjectState) { return updaterObjectState.chosenFieldCount > 0; });
-        const generateReason = !treeState.updaterRecordsMessage ? 'Load records first: new values are generated for the records the last load read.'
-            : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON
-            : !hasChosenField ? 'Choose a field to fill first.'
-            : '';
-        setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === 'generate' ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL : RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
-        drawActionCardState(treeState.updaterGenerateCard, generateReason || busyReason,
-            'Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org.');
+        updaterObjectStates.forEach(drawUpdaterEditControls);
 
         if (!treeState.updaterUpdateCard) { return; }
-        const valueRecordCount = treeState.updaterValuesMessage ? countUpdaterValueRecords(treeState.updaterValuesMessage) : 0;
+        const editTotals = sumUpdaterEdits(treeState);
         const orgLabel = treeState.updaterRecordsMessage ? String(treeState.updaterRecordsMessage.orgLabel || '') : '';
-        const updateReason = treeState.updaterRecordsMessage && countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON
-            : !treeState.updaterValuesMessage ? 'Generate values first: the update writes the values the last Generate values made.'
-            : valueRecordCount === 0 ? 'There are no new values to write: the last load read no records.'
+        const updateReason = !treeState.updaterRecordsMessage ? 'Load records first: an update writes the changes you make to the records the last load read.'
+            : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON
+            : editTotals.markedRecordCount === 0 ? RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON
+            : editTotals.updatableRecordCount === 0 ? RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON
             : '';
         setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === 'update'
             ? RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
-            : valueRecordCount > 0
-                ? 'Update ' + pluralize(valueRecordCount, 'record', 'records') + (orgLabel ? ' in ' + orgLabel : '')
+            : isThisCardLoading && runLocks.updaterRunKind === 'generate' ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL
+            : editTotals.updatableRecordCount > 0
+                ? 'Update ' + pluralize(editTotals.updatableRecordCount, 'record', 'records') + (orgLabel ? ' in ' + orgLabel : '')
                 : RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
         drawActionCardState(treeState.updaterUpdateCard, updateReason || busyReason,
-            'Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to RunArtifacts in the tree folder first.');
+            'Write the changed cells of the marked rows to their records by Id, in the sandbox they were loaded from. Their old values are saved to RunArtifacts in the tree folder first.');
+        drawUpdaterSummary(treeState);
     });
 
 }
@@ -378,6 +273,9 @@ export function renderUpdaterRecords(recordsMessage: IUpdaterRecordsMessage): vo
     if (!treeState) { return; }
 
     treeState.updaterRecordsMessage = recordsMessage;
+    (Array.isArray(recordsMessage.objects) ? recordsMessage.objects : []).forEach(function (loadedObject) {
+        if (loadedObject && typeof loadedObject.objectApiName === 'string' && Number(loadedObject.recordCount) > 0) { openUpdaterObject(treeState, loadedObject.objectApiName); }
+    });
     if (treeState.updaterObjectStates) { applyUpdaterRecords(treeState, recordsMessage); }
 
 }
@@ -453,11 +351,25 @@ export function renderUpdaterRecordsPage(pageMessage: IUpdaterRecordsPageMessage
 
     if (!treeState || !updaterObjectState || !updaterObjectState.loadedRecords || !Number.isInteger(pageIndex) || pageIndex < 0) { return; }
 
-    updaterObjectState.loadedRecords = Object.assign({}, updaterObjectState.loadedRecords, { rows: pageMessage.rows, recordLinks: pageMessage.recordLinks, lookupLinks: pageMessage.lookupLinks });
+    // THE OBJECT IS THE RECORDS MESSAGE'S OWN, SO THE CARD'S TOTALS (sumUpdaterEdits) READ WHAT THE HOST COUNTS NOW
+    Object.assign(updaterObjectState.loadedRecords, {
+        rows: pageMessage.rows, recordLinks: pageMessage.recordLinks, lookupLinks: pageMessage.lookupLinks,
+        markedRowIndexes: pageMessage.markedRowIndexes, changedCells: pageMessage.changedCells, editSummary: pageMessage.editSummary
+    });
     const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
+    // THE SAME PAGE AGAIN IS AN EDIT'S ANSWER (#721)
+    const isSamePage = pageIndex === updaterObjectState.loadedRecordsPageIndex;
+    const pressedEditKey = isSamePage ? updaterObjectState.pressedEditKey : null;
+    updaterObjectState.pressedEditKey = null;
     updaterObjectState.loadedRecordsPageIndex = pageIndex;
     updaterObjectState.requestedRecordsPageIndex = null;
     drawUpdaterObjectRecords(treeState, updaterObjectState);
+    drawUpdaterLoadButtons();
+
+    if (isSamePage) {
+        if (pressedEditKey) { focusEditButton(updaterObjectState, pressedEditKey); }
+        return;
+    }
 
     // THE PAGER WAS REDRAWN WITH THE TABLE, SO THE KEYBOARD'S PLACE GOES BACK TO THE BUTTON PRESSED, OR TO THE OTHER AT AN END
     const pagerElements = updaterObjectState.recordsPagerElements;
@@ -488,7 +400,6 @@ export function drawUpdaterObjectRecords(treeState: IAdapterTreeState, updaterOb
     } else {
         const objectApiName = updaterObjectState.object.objectApiName;
         const columns: string[] = Array.isArray(loadedRecords.columns) ? loadedRecords.columns.map(String) : [];
-        const rows: unknown[] = Array.isArray(loadedRecords.rows) ? loadedRecords.rows : [];
         const recordCount = Number(loadedRecords.recordCount) || 0;
         const pageCount = Number(loadedRecords.pageCount) || 0;
         const pageIndex = updaterObjectState.loadedRecordsPageIndex;
@@ -500,7 +411,7 @@ export function drawUpdaterObjectRecords(treeState: IAdapterTreeState, updaterOb
             recordsElement.appendChild(createElement('div', 'updaterRecordsUnread muted', objectApiName + '.' + fieldApiName + ' was not read: ' + RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON));
         });
         if (columns.length > 0 && recordCount > 0) {
-            recordsElement.appendChild(buildRecordTable(columns, rows, loadedRecords.recordLinks, updaterObjectState.loadedRecordsLinkSequence, objectApiName, { pageIndex: pageIndex, lookupLinks: loadedRecords.lookupLinks }));
+            recordsElement.appendChild(buildEditableRecordSection(treeState, updaterObjectState));
             recordsElement.appendChild(buildUpdaterRecordsPager(treeState, updaterObjectState, pageIndex, pageCount));
         }
     }
@@ -528,14 +439,15 @@ function buildUpdaterRecordsPager(treeState: IAdapterTreeState, updaterObjectSta
     const nextElement = createButton('secondary', 'updaterRecordsNext', RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL, 'compact');
     previousElement.setAttribute('aria-label', 'Previous page of ' + objectApiName + ' records');
     nextElement.setAttribute('aria-label', 'Next page of ' + objectApiName + ' records');
-    previousElement.disabled = isPageRequested || pageIndex === 0;
-    nextElement.disabled = isPageRequested || pageIndex >= pageCount - 1;
+    const isPreviousAtEnd = isPageRequested || pageIndex === 0;
+    const isNextAtEnd = isPageRequested || pageIndex >= pageCount - 1;
     previousElement.addEventListener('click', function () { requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex - 1); });
     nextElement.addEventListener('click', function () { requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex + 1); });
     pagerElement.appendChild(previousElement);
     pagerElement.appendChild(pageLabelElement);
     pagerElement.appendChild(nextElement);
-    updaterObjectState.recordsPagerElements = { previousElement: previousElement, nextElement: nextElement };
+    updaterObjectState.recordsPagerElements = { previousElement: previousElement, nextElement: nextElement, isPreviousAtEnd: isPreviousAtEnd, isNextAtEnd: isNextAtEnd };
+    drawUpdaterEditControls(updaterObjectState);
 
     return pagerElement;
 

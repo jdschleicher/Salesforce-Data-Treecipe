@@ -838,6 +838,20 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     .updaterParentChip { min-width: 0; padding: 0.15rem 0.6rem; overflow-wrap: anywhere; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border: 1px solid var(--sdt-accent); border-radius: 0.8rem; }
     .updaterRecordsPager { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
     .updaterRecordsUnread { overflow-wrap: anywhere; }
+    /* "Edit existing records" (#721): A MARKED ROW AND A CHANGED CELL ARE TINTED WITH PAIRS THE CONTRAST TEST HOLDS */
+    .updaterRecordEditToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
+    .updaterRecordEditHeading { font-weight: 600; }
+    .updaterRecordEditSummary { min-width: 0; overflow-wrap: anywhere; }
+    .updaterResetAll { margin-left: auto; }
+    .updaterMarkedRow td { background-color: var(--sdt-row-hover); }
+    .updaterRecords .treeQueryTable td.updaterChangedCell { font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
+    .updaterRecords .treeQueryTable td.updaterMarkCell { min-width: 0; text-align: center; }
+    .updaterRecords .treeQueryTable td .sdtButton-icon, .updaterRecords .treeQueryTable th .sdtButton-icon { margin-left: 0.3rem; }
+    .updaterColumnLock { margin-left: 0.3rem; }
+    /* A ROW HOLDS SEVERAL OF THESE SIDE BY SIDE: EACH KEEPS A TARGET OF 24px, AND A HEADER KEEPS ITS BUTTONS BESIDE ITS NAME */
+    .updaterRecords .treeQueryTable .sdtButton-icon { min-width: 24px; min-height: 24px; }
+    .updaterRecords .treeQueryTable th { white-space: nowrap; }
+    .updaterRowMark[aria-pressed="true"] { border: 1px solid currentColor; border-radius: 4px; }
     /* A TABLE OF EVERY RECIPE FIELD IS WIDE (#720): A CELL KEEPS A READABLE WIDTH AND WRAPS INSIDE IT, AND THE TABLE SCROLLS SIDEWAYS IN ITS WRAP */
     .updaterRecords .treeQueryTable td { white-space: normal; min-width: 9rem; max-width: 24rem; overflow-wrap: anywhere; }
     .updaterRecords .treeQueryTable td .treeQueryRecordLink { white-space: nowrap; }

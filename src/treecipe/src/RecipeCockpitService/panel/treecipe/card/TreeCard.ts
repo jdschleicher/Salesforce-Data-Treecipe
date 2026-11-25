@@ -89,6 +89,7 @@ function renderTree(tree: ICardTree, objectsByApiName: Record<string, ICardObjec
         searchTexts: { treecipe: '', datasets: '', troubleshooting: '', query: '', updater: '' },
         // THE TREECIPE UPDATER TAB (#415): CHOSEN FIELDS BY OBJECT AND FIELD NAME, AND OBJECTS THE READER OPENED, BOTH NAME-KEYED
         updaterChosenFieldKeys: Object.create(null),
+        isFieldChoiceOffered: false,
         updaterExpandedObjectKeys: Object.create(null),
         updaterObjectStates: null,
         // THE ADAPTER'S STEP (#443): 'parent' (STEP 1) OR 'structure' (STEP 2), THE PARENT IT CHOSE AND ITS WHERE, ALL KEPT IN THE PLACE
@@ -106,7 +107,6 @@ function renderTree(tree: ICardTree, objectsByApiName: Record<string, ICardObjec
         adapterChildPreviewMessage: null,
         // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
         updaterEditedValues: Object.create(null),
-        updaterValuesMessage: null,
         isDatasetFavoritesOnly: false,
         expandedJourneyDatasetFolderNames: Object.create(null),
         datasetFavoritesToggleElement: null,

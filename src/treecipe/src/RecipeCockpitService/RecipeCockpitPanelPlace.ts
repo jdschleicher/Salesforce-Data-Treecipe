@@ -74,7 +74,6 @@ export interface IRecipeCockpitPanelTreePlace {
     // THE HISTORY SUB-TAB'S SORT (#485), ONLY WHEN IT IS NOT TIME, NEWEST FIRST
     troubleshootingHistorySort?: { column: RecipeCockpitHistorySortColumn; isDescending: boolean };
     // THE TREECIPE UPDATER TAB'S CHOSEN FIELDS ("<object>\n<field>") AND OPENED OBJECTS (#415), EACH ONLY WHEN THERE IS ONE
-    updaterChosenFieldKeys?: string[];
     updaterExpandedObjectKeys?: string[];
     // THE TREECIPE ADAPTER'S STEP 2 (#443), ITS PARENT OBJECT AND THE PARENT'S WHERE, EACH ONLY WHEN THERE IS ONE; A PLACE WITH NONE OPENS ON STEP 1
     updaterStep?: 'structure';
@@ -247,11 +246,6 @@ export class RecipeCockpitPanelPlace {
             field: 'troubleshootingHistorySort',
             check: candidateTree => RecipeCockpitPanelPlace.readTroubleshootingHistorySort(candidateTree),
             reason: 'the History sub-tab\'s sort, when it is not time, newest first (#485)'
-        },
-        {
-            field: 'updaterChosenFieldKeys',
-            check: candidateTree => RecipeCockpitPanelPlace.namesWhenAny(candidateTree.updaterChosenFieldKeys),
-            reason: 'the Treecipe Adapter\'s chosen fields (#415)'
         },
         {
             field: 'updaterExpandedObjectKeys',

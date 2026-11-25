@@ -74,7 +74,23 @@ export interface IUpdaterPreviewObject {
     pageCount?: unknown;
     lookupLinks?: unknown;
     unreadFieldApiNames?: unknown;
+    // "Edit existing records" (#721): EACH COLUMN'S LOCK OR 🎲, THE PAGE'S MARKED ROWS AND CHANGED CELLS, AND THE OBJECT'S TOTALS
+    columnEdits?: unknown;
+    markedRowIndexes?: unknown;
+    changedCells?: unknown;
+    editSummary?: unknown;
 }
+
+// AN OBJECT'S MARKS AND CHANGES AS THE HOST COUNTS THEM (#721), ONCE READ
+export interface IUpdaterEditSummary {
+    markedRecordCount: number;
+    updatableRecordCount: number;
+    changedFieldApiNames: string[];
+    hasUnmarkedChanges: boolean;
+}
+
+// THE EDITS THIS TAB CAN ASK FOR; THE HOST HOLDS EACH TO RECIPE_COCKPIT_UPDATER_EDIT_RULES
+export type UpdaterEditKind = 'markRow' | 'unmarkRow' | 'generateCell' | 'generateColumn' | 'resetCell' | 'resetColumn' | 'resetObject';
 
 // ONE MORE PAGE OF ONE OBJECT'S RECORD TABLE (#720)
 export interface IUpdaterRecordsPageMessage {
@@ -85,6 +101,9 @@ export interface IUpdaterRecordsPageMessage {
     rows?: unknown;
     recordLinks?: unknown;
     lookupLinks?: unknown;
+    markedRowIndexes?: unknown;
+    changedCells?: unknown;
+    editSummary?: unknown;
 }
 
 // THE HOST LET THE LOADED RECORDS GO: BACK TO STEP 1 (#720)
@@ -98,14 +117,6 @@ export interface IUpdaterRecordsMessage {
     treeKey: unknown;
     objects?: Array<IUpdaterPreviewObject | null>;
     orgLabel?: unknown;
-    recordLinkSequence?: unknown;
-}
-
-export interface IUpdaterValuesMessage {
-    renderSequence: unknown;
-    treeKey: unknown;
-    objects?: Array<IUpdaterPreviewObject | null>;
-    valuesSequence?: unknown;
     recordLinkSequence?: unknown;
 }
 
@@ -297,10 +308,13 @@ export interface IUpdaterObjectState extends IUpdaterFieldObjectState {
     // THE PAGE OF ITS RECORD TABLE ON SCREEN, AND THE ONE ASKED FOR AND NOT YET ANSWERED (#720)
     loadedRecordsPageIndex: number;
     requestedRecordsPageIndex: number | null;
-    recordsPagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement } | null;
-    generatedValues: IUpdaterPreviewObject | null;
-    generatedValuesLinkSequence?: unknown;
-    valuesElement: HTMLElement | null;
+    // isPreviousAtEnd / isNextAtEnd: WHAT THE PAGE ITSELF DISABLES, KEPT SO A RUN'S HOLD CAN BE LIFTED AGAIN
+    recordsPagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement; isPreviousAtEnd: boolean; isNextAtEnd: boolean } | null;
+    // THE EDIT BUTTON LAST PRESSED (#721): WHERE THE KEYBOARD'S PLACE GOES BACK TO WHEN THE HOST'S ANSWER REDRAWS THE TABLE
+    pressedEditKey?: string | null;
+    // THE TABLE'S EDIT BUTTONS (#721), EACH WITH WHETHER THE EDITS THEMSELVES LEAVE IT NOTHING TO DO; ALL ARE HELD WHILE A RUN HOLDS THE RECORDS
+    // editKey NAMES THE BUTTON BY WHAT IT DOES AND WHERE, SO THE KEYBOARD'S PLACE SURVIVES THE TABLE BEING REDRAWN
+    editButtonElements?: Array<{ element: HTMLButtonElement; isDisabledByEdits: boolean; editKey: string }>;
     whereInputElement?: HTMLInputElement;
     fieldStates: IUpdaterRecipeFieldState[];
 }
@@ -308,6 +322,8 @@ export interface IUpdaterObjectState extends IUpdaterFieldObjectState {
 // WHAT A FIELD ROW READS AND WRITES OF ITS CARD; A NEW CHILD'S BLOCK (#447) KEEPS ONE OF ITS OWN, SO NOTHING IN IT TOUCHES THE CARD'S CHOICE
 export interface IUpdaterFieldTreeState {
     tree: IAdapterTreeKey;
+    // A NEW CHILD'S FIELDS ARE CHOSEN AND TYPED (#447); THE CARD'S OWN ARE CHANGED IN ITS RECORD TABLE (#721), SO ITS ROWS ONLY DESCRIBE THEM
+    isFieldChoiceOffered: boolean;
     updaterChosenFieldKeys: Record<string, true>;
     updaterEditedValues: Record<string, string>;
     updaterObjectStates: IUpdaterObjectState[] | null;
@@ -349,7 +365,6 @@ export interface IAdapterTreeState extends IUpdaterFieldTreeState {
     updaterWhereTexts: Record<string, string>;
     updaterExpandedObjectKeys: Record<string, true>;
     updaterRecordsMessage: IUpdaterRecordsMessage | null;
-    updaterValuesMessage: IUpdaterValuesMessage | null;
     adapterChangesMessage: IAdapterChangesMessage | null;
     adapterChild: IAdapterChild | null;
     adapterChildBlockMessage: IAdapterChildBlockMessage | null;
@@ -370,8 +385,6 @@ export interface IAdapterTreeState extends IUpdaterFieldTreeState {
     updaterLoadCard: IActionCardView;
     updaterLoadButtonElement?: HTMLButtonElement;
     updaterLoadNoteElement: HTMLElement;
-    updaterGenerateCard?: IActionCardView;
-    updaterGenerateButtonElement: HTMLButtonElement;
     updaterUpdateCard?: IActionCardView;
     updaterUpdateButtonElement: HTMLButtonElement;
     updaterObjectsElement: HTMLElement;
@@ -385,12 +398,6 @@ export interface IUpdaterObjectRequest {
     whereClause: string;
 }
 
-export interface IUpdaterFieldValueRequest {
-    objectApiName: string;
-    fieldApiName: string;
-    value?: string;
-}
-
 export interface IAdapterChildFieldRequest {
     fieldApiName: string;
     value?: string;
@@ -400,12 +407,11 @@ export type AdapterPanelMessage =
     | { command: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; parentObjectApiName: string; objects: IUpdaterObjectRequest[] }
     | { command: 'loadUpdaterRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number }
     | { command: 'changeUpdaterParent'; treeKey: string; renderSequence: number }
-    | { command: 'generateUpdaterValues'; treeKey: string; renderSequence: number; fields: IUpdaterFieldValueRequest[] }
+    | { command: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: UpdaterEditKind; rowIndex?: number; columnIndex?: number }
     | { command: 'updateUpdaterRecords'; treeKey: string }
     | { command: 'loadUpdaterSnapshots'; treeKey: string; renderSequence: number }
     | { command: 'updaterSnapshotsRendered'; renderSequence: number; treeKey: string; snapshotsSequence: unknown }
     | { command: 'restoreUpdaterSnapshot'; treeKey: string; snapshotName: string }
-    | { command: 'updaterValuesRendered'; renderSequence: number; valuesSequence: unknown }
     | { command: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; parentObjectApiName: string }
     | { command: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: unknown }
     | { command: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }

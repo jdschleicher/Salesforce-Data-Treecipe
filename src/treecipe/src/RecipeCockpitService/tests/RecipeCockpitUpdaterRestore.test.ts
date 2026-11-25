@@ -57,7 +57,6 @@ import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
     RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL,
@@ -65,6 +64,7 @@ import {
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import { RecipeCockpitAdapterEdits } from '../RecipeCockpitAdapterEdits';
 import {
     IUpdateSnapshot,
     RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME,
@@ -173,10 +173,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
                 `it lists the Account record ${buildRecordId(ACCOUNT_ID_PREFIX, 0).slice(0, 15)} twice`],
             ['a value for a field it does not name', tamper(snapshot => { snapshot.objects[0].records[0].fieldValues.OwnerId = '005000000000000AAA'; }),
                 `the Account record ${buildRecordId(ACCOUNT_ID_PREFIX, 0)} holds other values than its fields`],
-            ['a field with no value', tamper(snapshot => { delete snapshot.objects[0].records[0].fieldValues.Rating__c; }),
+            ['a record with no value at all', tamper(snapshot => { snapshot.objects[0].records[0].fieldValues = {}; }),
                 `the Account record ${buildRecordId(ACCOUNT_ID_PREFIX, 0)} holds other values than its fields`],
-            ['a field named twice by its values in another case', tamper(snapshot => { snapshot.objects[0].records[0].fieldValues = { Legacy_Code__c: 'x', rating__c: 'y' }; }),
-                `the Account record ${buildRecordId(ACCOUNT_ID_PREFIX, 0)} has no usable value for Rating__c`],
+            ['a field named by its value in another case', tamper(snapshot => { snapshot.objects[0].records[0].fieldValues = { Legacy_Code__c: 'x', rating__c: 'y' }; }),
+                `the Account record ${buildRecordId(ACCOUNT_ID_PREFIX, 0)} holds other values than its fields`],
             ['an object as a value', tamper(snapshot => { snapshot.objects[0].records[0].fieldValues.Rating__c = { nested: true }; }),
                 `the Account record ${buildRecordId(ACCOUNT_ID_PREFIX, 0)} has no usable value for Rating__c`],
             ['a list as a value', tamper(snapshot => { snapshot.objects[0].records[0].fieldValues.Rating__c = ['Hot']; }),
@@ -184,6 +184,21 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
         ])('refuses the whole file for %s', (_description, snapshotText, expectedRefusal) => {
 
             expect(RecipeCockpitRecordUpdate.parseSnapshot(snapshotText)).toEqual({ refusal: expectedRefusal });
+
+        });
+
+        it('reads a record that holds only the fields updated on it (#721), keeping each record its own', () => {
+
+            const parsedSnapshot = RecipeCockpitRecordUpdate.parseSnapshot(tamper(snapshot => { delete snapshot.objects[0].records[0].fieldValues.Rating__c; }));
+
+            expect('objects' in parsedSnapshot ? parsedSnapshot.objects[0].records.slice(0, 2).map(snapshotRecord => Object.keys(snapshotRecord.fieldValues)) : parsedSnapshot)
+                .toEqual([['Legacy_Code__c'], ['Legacy_Code__c', 'Rating__c']]);
+
+        });
+
+        it('still refuses an empty file', () => {
+
+            expect(RecipeCockpitRecordUpdate.parseSnapshot('')).toEqual({ refusal: 'it is not JSON' });
 
         });
 
@@ -379,23 +394,24 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: lastRenderSequence(),
                 objects: [
-                    { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c', 'Rating__c'], whereClause: '' },
-                    { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: '' },
-                    { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+                    { objectApiName: 'Account', whereClause: '' },
+                    { objectApiName: 'Contact', whereClause: '' },
+                    { objectApiName: 'OtherChildObject__c', whereClause: '' }
                 ]
             });
-            await send({
-                command: 'generateUpdaterValues',
-                treeKey: ACCOUNT_TREE_KEY,
-                renderSequence: lastRenderSequence(),
-                fields: [
-                    { objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' },
-                    { objectApiName: 'Account', fieldApiName: 'Rating__c', value: 'Hot' },
-                    { objectApiName: 'Contact', fieldApiName: 'LastName' }
-                ]
+            // EVERY ROW MARKED AND CHANGED, AS THE HOST'S EDIT ACTIONS LEAVE THEM (#721)
+            const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords!;
+            const editOf: Record<string, (recordIndex: number) => Record<string, unknown>> = {
+                Account: recordIndex => ({ Legacy_Code__c: `Legacy_Code__c-new-${recordIndex}`, Rating__c: 'Hot' }),
+                Contact: recordIndex => ({ LastName: `LastName-new-${recordIndex}` })
+            };
+            Object.entries(editOf).forEach(([objectApiName, changedValuesOf]) => {
+                const objectEdits = RecipeCockpitAdapterEdits.readObjectEdits(heldRecords, objectApiName);
+                ( heldRecords.recordsByObjectApiName.get(objectApiName) ?? [] ).forEach((record, recordIndex) => {
+                    objectEdits.markedRecordIds.add(String(record.Id));
+                    objectEdits.changedValuesByRecordId.set(String(record.Id), new Map(Object.entries(changedValuesOf(recordIndex))));
+                });
             });
-            const valuesMessage = postedNamed('updaterValues').at(-1);
-            await send({ command: 'updaterValuesRendered', renderSequence: valuesMessage.renderSequence, valuesSequence: valuesMessage.valuesSequence });
             await send({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
         };
 
@@ -429,7 +445,6 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             organizationAnswers = [];
             allOrNoneAnswer = false;
             confirmationAnswers = {
-                'Generate new values': RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
                 'Update ': RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
                 'Restore ': RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL
             };
