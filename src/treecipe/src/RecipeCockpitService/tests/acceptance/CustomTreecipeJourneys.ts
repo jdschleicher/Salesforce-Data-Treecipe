@@ -167,6 +167,49 @@ export const CUSTOM_TREECIPE_JOURNEYS: Array<{ name: string; run(journey: Recipe
     },
 
     {
+        name: 'deselect every field, open Visit__c, restore one of its fields, and save a recipe linked from Visit__c up to the root (#715)',
+        run: async journey => {
+
+            await journey.click('button', 'Customize and create new recipe');
+            await journey.click('button', 'Deselect all fields');
+            await journey.click('button', 'Remove fields');
+
+            await journey.step('with every field removed, Visit__c is removed and still opens', () => {
+                const screen = journey.screen();
+                screen.get('button', 'Restore every field of Visit__c');
+                expectEqual(screen.get('button', 'Show the fields of Visit__c').states.includes('disabled'), false, 'Visit__c\'s chevron is enabled');
+            });
+
+            await journey.click('button', 'Show the fields of Visit__c');
+            await journey.click('button', 'Restore Visit__c.Notes__c, and what links it to the tree');
+
+            await journey.step('one field\'s ↺ brings back Visit__c, its lookup to Contact and Contact\'s lookup to Account, and says so', () => {
+                const screen = journey.screen();
+                screen.get('text', /^Also restored, to link it to the tree: Visit__c\.Contact__c, Contact\.AccountId\./);
+                screen.get('text', /^New recipe keeps 3 of 3 objects · /);
+                screen.get('button', 'Remove Visit__c.Notes__c from the new recipe');
+                screen.get('button', 'Restore Contact.LastName');
+            });
+
+            await journey.click('button', 'Save as new Treecipe');
+            const notificationCountBefore = journey.notifications.length;
+            await journey.click('button', 'Save');
+            await journey.waitForNotification(new RegExp(`^Saved ${CUSTOM_FOLDER_NAME}, `), notificationCountBefore);
+
+            await journey.step('the saved recipe holds Account, Contact and Visit__c, each linked to its parent', () => {
+                const { recipeText, definition } = readCustomFolder(journey, CUSTOM_FOLDER_NAME);
+                expectEqual(recipeObjectNames(recipeText), ['Account', 'Contact', 'Visit__c'], 'The objects of the custom recipe');
+                expectEqual(/^\s+AccountId: Account_NickName$/m.test(recipeText), true, 'Contact keeps AccountId');
+                expectEqual(/^\s+Contact__c: Contact_NickName$/m.test(recipeText), true, 'Visit__c keeps Contact__c');
+                expectEqual(/^\s+Notes__c: /m.test(recipeText), true, 'Visit__c keeps Notes__c');
+                expectEqual(/^\s+LastName: /m.test(recipeText), false, 'Contact.LastName stays removed');
+                expectEqual(definition.removedObjectApiNames, [], 'customTreecipe.json removedObjectApiNames');
+            });
+
+        }
+    },
+
+    {
         name: 'Cancel closes the modal and writes nothing; removing the root asks first',
         run: async journey => {
 

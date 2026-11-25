@@ -804,4 +804,90 @@ describe('the "Customize and create new recipe" modal (#677)', () => {
 
     });
 
+
+    describe('a removed object opens, and ↺ on one field brings back the field and what links it to the tree (#715)', () => {
+
+        const fieldStatesOf = (panel: Panel, objectApiName: string) => panel.findAll(fieldListOf(panel, objectApiName), 'customTreecipeFieldState').map((stateElement: any) => stateElement.textContent);
+        const statusOf = (panel: Panel) => panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeStatus')[0].textContent;
+        const removedFieldKeys = (panel: Panel) => lastPreviewRequest(panel).removedFields.map((removedField: any) => `${removedField.objectApiName}.${removedField.fieldApiName}`);
+        const EVERY_OBJECT_EMPTIED = { keptObjectCount: 0, objectSelection: { exclusions: ['Account', 'Contact', 'OtherChildObject__c'].map(objectApiName => ({ objectApiName: objectApiName, kind: 'noFieldsSelected' })), disabledLookups: [] } };
+
+        const deselectEveryField = (panel: Panel) => {
+            panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeDeselectFields')[0].dispatch('click');
+            panel.findAll(panel.cockpitDialogHostElement, 'customTreecipeRemoveFields')[0].dispatch('click');
+            answerLatestPreview(panel, EVERY_OBJECT_EMPTIED);
+        };
+
+        it('opens an object whose every field is removed, each field with its own ↺, and draws no Remove every field on it', () => {
+
+            const panel = openModal();
+            answerLatestPreview(panel);
+            deselectEveryField(panel);
+
+            const chevron = controlOf(panel, 'OtherChildObject__c', 'customTreecipeChevron');
+            expect(chevron.disabled).toBeFalse();
+            chevron.dispatch('click');
+
+            expect(fieldStatesOf(panel, 'OtherChildObject__c').every((stateText: string) => stateText === 'Removed')).toBeTrue();
+            expect(buttonLabelled(panel, 'Restore OtherChildObject__c.Score__c, and what links it to the tree')).toBeDefined();
+            expect(controlOf(panel, 'OtherChildObject__c', 'customTreecipeRemoveEveryField')).toBeUndefined();
+
+        });
+
+        it('↺ on a grandchild\'s field after Deselect all fields keeps its lookups up to the root and the root\'s first field, and says so', () => {
+
+            const panel = openModal();
+            answerLatestPreview(panel);
+            deselectEveryField(panel);
+            const removedBefore = removedFieldKeys(panel);
+            controlOf(panel, 'OtherChildObject__c', 'customTreecipeChevron').dispatch('click');
+
+            const restoreScore = buttonLabelled(panel, 'Restore OtherChildObject__c.Score__c, and what links it to the tree');
+            restoreScore.focus();
+            restoreScore.dispatch('click');
+            answerLatestPreview(panel);
+
+            const comeBack = ['OtherChildObject__c.Score__c', 'OtherChildObject__c.Contact__c', 'Contact.AccountId', 'Account.Name'];
+            expect(removedFieldKeys(panel)).toEqual(removedBefore.filter((fieldKey: string) => !comeBack.includes(fieldKey)));
+            expect(lastPreviewRequest(panel).removedObjectApiNames).toEqual([]);
+            expect(statusOf(panel)).toStartWith('Also restored, to link it to the tree: OtherChildObject__c.Contact__c, Contact.AccountId, Account.Name.');
+            expect(panel.activeElement().attributes['aria-label']).toBe('Remove OtherChildObject__c.Score__c from the new recipe');
+
+        });
+
+        it('opens an object removed by its own ✕, and ↺ on one field brings the object back with only that field and its lookup', () => {
+
+            const panel = openModal();
+            answerLatestPreview(panel);
+            buttonLabelled(panel, 'Remove Contact from the new recipe').dispatch('click');
+            answerLatestPreview(panel, { keptObjectCount: 1, objectSelection: { exclusions: [{ objectApiName: 'Contact', kind: 'excluded' }, { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }], disabledLookups: [] } });
+
+            controlOf(panel, 'Contact', 'customTreecipeChevron').dispatch('click');
+            expect(fieldStatesOf(panel, 'Contact').every((stateText: string) => stateText === 'Removed with the object')).toBeTrue();
+
+            controlOf(panel, 'OtherChildObject__c', 'customTreecipeChevron').dispatch('click');
+            expect(fieldStatesOf(panel, 'OtherChildObject__c').every((stateText: string) => stateText === 'Removed with Contact')).toBeTrue();
+
+            buttonLabelled(panel, 'Restore Contact.LastName, and what links it to the tree').dispatch('click');
+
+            expect(lastPreviewRequest(panel).removedObjectApiNames).toEqual([]);
+            expect(removedFieldKeys(panel)).toEqual([]);
+
+        });
+
+        it('keeps Restore every field of an emptied object as it was', () => {
+
+            const panel = openModal();
+            answerLatestPreview(panel);
+            deselectEveryField(panel);
+
+            buttonLabelled(panel, 'Restore every field of Contact').dispatch('click');
+
+            expect(removedFieldKeys(panel).filter((fieldKey: string) => fieldKey.startsWith('Contact.'))).toEqual([]);
+            expect(statusOf(panel)).not.toContain('Also restored');
+
+        });
+
+    });
+
 });

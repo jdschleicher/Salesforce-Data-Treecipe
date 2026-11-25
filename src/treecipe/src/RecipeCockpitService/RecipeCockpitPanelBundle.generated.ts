@@ -5079,6 +5079,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields & dependencies (Fields: custom fields, the custom objects that hold them and the record pages and compact layouts those objects open, any such page or layout not in your project set back to the standard one in what is sent, with an optional box for every tree object's validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them and says how it deploys: through the Salesforce CLI, or, with the setting Metadata Deploy Method at jsforce, straight to the org, where Cancel cancels the deploy in the org. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.",
         "Customize and create new recipe, at the top of a card's Treecipe tab, opens its objects in a box: the red ✕ before an object or a field takes it out of a new recipe with whatever was linked only through it, ↺ puts it back, and removing the first object asks first. Save as new Treecipe, at the box's bottom right, writes a new recipe beside the tree's own, in a folder named custom- and the tree's name (-2, -3 for later copies), keeping your record counts and edits. The tree's own recipe is not changed, and a custom tree can be customized again.",
         "In that box, the search box above the objects shows only the objects and fields whose API name holds what you type. Deselect all objects removes every object but the first, Deselect all fields asks and then removes every field that can be removed (an object left with none is removed too), and Restore all puts everything back; while you search, the first two say shown and act only on what you see. Remove every field of, on an open object's row, does the same for that object's fields alone.",
+        "A removed object still opens with its ›, so you can build it back up one field at a time: ↺ on one of its fields brings back that field, its object and the lookups that link it to the first object. The line at the bottom of the box names every field that came back with it.",
         "Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.",
         "The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.",
         "In the Query tab's results and the Treecipe Adapter's loaded records and new values, each row's own Id is a link: click it to open that record in your browser, signed in to the org it was read from. A lookup's Id is not a link, and nothing is opened once a newer query, load or update has replaced the rows.",
@@ -5283,6 +5284,113 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_NOTE = "An object with no locked field is removed with its fields, since an object with every field removed is left out. ↺ brings each back.";
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_KEEP_LABEL = "Keep fields";
   var RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_CONFIRM_LABEL = "Remove fields";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_OBJECT_TEXT = "Removed with the object";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORE_WITH_PATH_SUFFIX = ", and what links it to the tree";
+  var RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORED_ALONG_PREFIX = "Also restored, to link it to the tree: ";
+
+  // src/treecipe/src/RecipeCockpitService/panel/treecipe/customTreecipe/CustomTreecipeFieldRestore.ts
+  function restoreFieldWithPath(objects, removalState, hostCascade, objectApiName, fieldApiName) {
+    const insertPositionByObject = new Map(objects.map(function(restorableObject, insertPosition) {
+      return [restorableObject.objectApiName, insertPosition];
+    }));
+    const objectByName = new Map(objects.map(function(restorableObject) {
+      return [restorableObject.objectApiName, restorableObject];
+    }));
+    const isRemoved = function(candidateObjectApiName) {
+      return removalState.removedObjects.has(candidateObjectApiName) || hostCascade.removalKindByObject.has(candidateObjectApiName);
+    };
+    const restoredAlong = [];
+    const walkedObjects = /* @__PURE__ */ new Set();
+    let pathObjectApiName = objectApiName;
+    let fieldsToKeep = [fieldApiName];
+    while (pathObjectApiName !== void 0 && !walkedObjects.has(pathObjectApiName)) {
+      const pathObject = objectByName.get(pathObjectApiName);
+      if (!pathObject) {
+        return restoredAlong;
+      }
+      walkedObjects.add(pathObjectApiName);
+      if (!isRemoved(pathObjectApiName)) {
+        keepFields(removalState, pathObjectApiName, fieldsToKeep);
+        return restoredAlong;
+      }
+      const pathLookup = choosePathLookup(pathObject, insertPositionByObject, isRemoved);
+      const keptFieldApiNames = pathLookup ? fieldsToKeep.concat([pathLookup.fieldApiName]) : fieldsToKeep;
+      const lockedFields = hostCascade.lockedFieldsByObject.get(pathObjectApiName);
+      const wasRemovedByReader = removalState.removedObjects.has(pathObjectApiName) || isEveryFieldRemoved(removalState, pathObject, lockedFields);
+      const removedFieldsBefore = removalState.removedFields.get(pathObjectApiName);
+      const wasPathLookupGone = !!pathLookup && (removalState.removedObjects.has(pathObjectApiName) || !!removedFieldsBefore && removedFieldsBefore.has(pathLookup.fieldApiName));
+      if (wasRemovedByReader) {
+        removalState.removedObjects.delete(pathObjectApiName);
+        keepOnlyFields(removalState, pathObject, keptFieldApiNames, lockedFields);
+      } else {
+        keepFields(removalState, pathObjectApiName, keptFieldApiNames);
+      }
+      if (pathLookup && wasPathLookupGone) {
+        restoredAlong.push({ objectApiName: pathObjectApiName, fieldApiName: pathLookup.fieldApiName, reason: "pathLookup" });
+      }
+      const firstKeptField = keepFirstFieldWhenNoneIsKept(removalState, pathObject);
+      if (firstKeptField !== void 0) {
+        restoredAlong.push({ objectApiName: pathObjectApiName, fieldApiName: firstKeptField, reason: "keepsTopObject" });
+      }
+      pathObjectApiName = pathLookup ? pathLookup.parentObjectApiName : void 0;
+      fieldsToKeep = [];
+    }
+    return restoredAlong;
+  }
+  function isEveryFieldRemoved(removalState, restorableObject, lockedFields) {
+    const removedFields = removalState.removedFields.get(restorableObject.objectApiName);
+    return !!removedFields && removedFields.size > 0 && restorableObject.fieldApiNames.every(function(fieldApiName) {
+      return removedFields.has(fieldApiName) || !!(lockedFields && lockedFields.has(fieldApiName));
+    });
+  }
+  function choosePathLookup(pathObject, insertPositionByObject, isRemoved) {
+    const ownPosition = insertPositionByObject.get(pathObject.objectApiName);
+    const parentLookups = pathObject.parentLookups.filter(function(lookup) {
+      const parentPosition = insertPositionByObject.get(lookup.parentObjectApiName);
+      return lookup.parentObjectApiName !== pathObject.objectApiName && parentPosition !== void 0 && parentPosition < ownPosition;
+    }).slice().sort(function(left, right) {
+      return left.fieldApiName < right.fieldApiName ? -1 : left.fieldApiName > right.fieldApiName ? 1 : 0;
+    });
+    return parentLookups.find(function(lookup) {
+      return !isRemoved(lookup.parentObjectApiName);
+    }) || parentLookups[0];
+  }
+  function keepFields(removalState, objectApiName, fieldApiNames) {
+    const removedFields = removalState.removedFields.get(objectApiName);
+    if (!removedFields) {
+      return;
+    }
+    fieldApiNames.forEach(function(fieldApiName) {
+      removedFields.delete(fieldApiName);
+    });
+    if (removedFields.size === 0) {
+      removalState.removedFields.delete(objectApiName);
+    }
+  }
+  function keepOnlyFields(removalState, restorableObject, keptFieldApiNames, lockedFields) {
+    const removedFields = new Set(restorableObject.fieldApiNames.filter(function(fieldApiName) {
+      return keptFieldApiNames.indexOf(fieldApiName) === -1 && !(lockedFields && lockedFields.has(fieldApiName));
+    }));
+    if (removedFields.size === 0) {
+      removalState.removedFields.delete(restorableObject.objectApiName);
+    } else {
+      removalState.removedFields.set(restorableObject.objectApiName, removedFields);
+    }
+  }
+  function keepFirstFieldWhenNoneIsKept(removalState, restorableObject) {
+    const removedFields = removalState.removedFields.get(restorableObject.objectApiName);
+    if (!removedFields || restorableObject.fieldApiNames.some(function(fieldApiName) {
+      return !removedFields.has(fieldApiName);
+    })) {
+      return void 0;
+    }
+    const firstFieldApiName = restorableObject.fieldApiNames[0];
+    if (firstFieldApiName === void 0) {
+      return void 0;
+    }
+    keepFields(removalState, restorableObject.objectApiName, [firstFieldApiName]);
+    return firstFieldApiName;
+  }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/customTreecipe/CustomTreecipeDialog.ts
   var customTreecipeDialog = null;
@@ -5374,10 +5482,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       removedFields: /* @__PURE__ */ new Map(),
       outOfRunObjects: /* @__PURE__ */ new Set(),
       expandedObjects: new Set(objects.length > 1 ? [objects[1].objectApiName] : []),
+      openedRemovedObjects: /* @__PURE__ */ new Set(),
       searchText: "",
       searchToggledObjects: /* @__PURE__ */ new Set(),
       isRootRemovalAsked: false,
       isEveryFieldRemovalAsked: false,
+      restoredAlongNote: "",
       step: "edit",
       previewSequence: 0,
       preview: null,
@@ -5582,13 +5692,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
   function isFieldListShown(dialog, shownObject) {
     const objectApiName = shownObject.dialogObject.objectApiName;
-    if (isObjectRemoved(dialog, objectApiName)) {
-      return false;
-    }
+    const openedObjects = isObjectRemoved(dialog, objectApiName) ? dialog.openedRemovedObjects : dialog.expandedObjects;
     if (readSearchText(dialog) === "") {
-      return dialog.expandedObjects.has(objectApiName);
+      return openedObjects.has(objectApiName);
     }
-    const isOpenForSearch = dialog.expandedObjects.has(objectApiName) || shownObject.isShownByFieldsOnly;
+    const isOpenForSearch = openedObjects.has(objectApiName) || shownObject.isShownByFieldsOnly;
     return dialog.searchToggledObjects.has(objectApiName) ? !isOpenForSearch : isOpenForSearch;
   }
   function listDeselectableObjectApiNames(dialog) {
@@ -5716,6 +5824,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (!customTreecipeDialog) {
       return;
     }
+    customTreecipeDialog.restoredAlongNote = "";
     applyChange(customTreecipeDialog);
     drawCustomTreecipeDialog();
     postCustomTreecipePreview();
@@ -5897,13 +6006,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const chevronLabel = (isExpanded ? "Hide" : "Show") + " the fields of " + objectApiName;
     chevronElement.setAttribute("aria-label", chevronLabel);
     chevronElement.setAttribute("aria-expanded", isExpanded ? "true" : "false");
-    chevronElement.disabled = !!removal || isDirectlyRemoved;
     chevronElement.appendChild(buildGlyph("customTreecipeChevronGlyph", RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH));
     chevronElement.addEventListener("click", function() {
       if (!customTreecipeDialog) {
         return;
       }
-      const toggledObjects = readSearchText(customTreecipeDialog) === "" ? customTreecipeDialog.expandedObjects : customTreecipeDialog.searchToggledObjects;
+      const openedObjects = isObjectRemoved(customTreecipeDialog, objectApiName) ? customTreecipeDialog.openedRemovedObjects : customTreecipeDialog.expandedObjects;
+      const toggledObjects = readSearchText(customTreecipeDialog) === "" ? openedObjects : customTreecipeDialog.searchToggledObjects;
       if (toggledObjects.has(objectApiName)) {
         toggledObjects.delete(objectApiName);
       } else {
@@ -5915,7 +6024,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     primaryElement.appendChild(createElement("span", "customTreecipeObjectName", objectApiName));
     const keptFieldCount = removal || isDirectlyRemoved ? 0 : countKeptFields(dialog, dialogObject);
     primaryElement.appendChild(createElement("span", "customTreecipeFieldCount muted", keptFieldCount + " of " + dialogObject.fields.length + " fields"));
-    if (isListShown) {
+    if (isListShown && !removal && !isDirectlyRemoved) {
       const removableFieldApiNames = listRemovableShownFieldApiNames(dialog, shownObject);
       const removeEveryElement = addControl(createButton("secondary", "customTreecipeRemoveEveryField", describeRemoveEveryField(shownObject), "compact"), "fields:" + objectApiName);
       removeEveryElement.disabled = !dialog.preview || removableFieldApiNames.length === 0;
@@ -5958,6 +6067,43 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }) || CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS[CUSTOM_TREECIPE_FIELD_LIST_SIZE_FIELD_COUNTS.length - 1];
     return "fieldCountUpTo" + sizeFieldCount;
   }
+  function describeTakenWithObject(dialog, objectApiName) {
+    if (dialog.removedObjects.has(objectApiName)) {
+      return RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_OBJECT_TEXT;
+    }
+    const removal = dialog.preview ? dialog.preview.removedByObject.get(objectApiName) : void 0;
+    if (!removal) {
+      return null;
+    }
+    return removal.kind === "autoExcluded" ? describeRemoval(removal) : RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_OBJECT_TEXT;
+  }
+  function restoreField(objectApiName, fieldApiName) {
+    changeRemoval(function(changedDialog) {
+      const preview = changedDialog.preview;
+      const removalKindByObject = /* @__PURE__ */ new Map();
+      if (preview) {
+        preview.removedByObject.forEach(function(exclusion, removedObjectApiName) {
+          removalKindByObject.set(removedObjectApiName, exclusion.kind);
+        });
+      }
+      const restoredAlong = restoreFieldWithPath(
+        changedDialog.objects.map(function(dialogObject) {
+          return { objectApiName: dialogObject.objectApiName, parentLookups: dialogObject.parentLookups, fieldApiNames: dialogObject.fields.map(function(field) {
+            return field.fieldApiName;
+          }) };
+        }),
+        changedDialog,
+        { removalKindByObject, lockedFieldsByObject: preview ? preview.lockedFieldsByObject : /* @__PURE__ */ new Map() },
+        objectApiName,
+        fieldApiName
+      );
+      if (restoredAlong.length > 0) {
+        changedDialog.restoredAlongNote = RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORED_ALONG_PREFIX + restoredAlong.map(function(restoredField) {
+          return restoredField.objectApiName + "." + restoredField.fieldApiName;
+        }).join(", ") + ".";
+      }
+    });
+  }
   function buildFieldList(dialog, shownObject) {
     const dialogObject = shownObject.dialogObject;
     const objectApiName = dialogObject.objectApiName;
@@ -5965,9 +6111,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     listElement.setAttribute("aria-label", "Fields of " + objectApiName);
     const removedFields = removedFieldsOf(dialog, objectApiName);
     const lockedFields = dialog.preview ? dialog.preview.lockedFieldsByObject.get(objectApiName) : void 0;
+    const takenWithObjectText = describeTakenWithObject(dialog, objectApiName);
     shownObject.shownFields.forEach(function(field) {
       const qualifiedName = objectApiName + "." + field.fieldApiName;
-      const isRemoved = removedFields.has(field.fieldApiName);
+      const isRemovedByReader = removedFields.has(field.fieldApiName);
+      const isRemoved = isRemovedByReader || takenWithObjectText !== null;
       const isCut = !isRemoved && !!dialog.preview && dialog.preview.cutLookupKeys.has(objectApiName + "\\n" + field.fieldApiName);
       const lockReason = !isRemoved && lockedFields ? lockedFields.get(field.fieldApiName) : void 0;
       const lookup = dialogObject.parentLookups.find(function(candidate) {
@@ -5975,10 +6123,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       });
       const fieldElement = createElement("li", "treeField customTreecipeField" + (isRemoved ? " isRemoved" : isCut ? " isCut" : ""));
       if (isRemoved) {
-        fieldElement.appendChild(buildRoundButton("customTreecipeRestore isSmall", "↺", "Restore " + qualifiedName, "field:" + qualifiedName, function() {
-          changeRemoval(function(changedDialog) {
-            removedFieldsOf(changedDialog, objectApiName).delete(field.fieldApiName);
-          });
+        const restoreLabel = "Restore " + qualifiedName + (takenWithObjectText !== null ? RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORE_WITH_PATH_SUFFIX : "");
+        fieldElement.appendChild(buildRoundButton("customTreecipeRestore isSmall", "↺", restoreLabel, "field:" + qualifiedName, function() {
+          restoreField(objectApiName, field.fieldApiName);
         }));
       } else {
         const removeLabel = lockReason ? field.fieldApiName + " cannot be removed: " + lockReason : isCut ? field.fieldApiName + " goes with " + (lookup ? lookup.parentObjectApiName : "its parent") : "Remove " + qualifiedName + " from the new recipe";
@@ -5994,7 +6141,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       nameElement.appendChild(createElement("span", "customTreecipeFieldApiName", field.fieldApiName));
       nameElement.appendChild(createElement("span", "customTreecipeFieldType muted", (field.fieldTypeWithSize || field.fieldType) + (lookup ? " → " + lookup.parentObjectApiName : "")));
       fieldElement.appendChild(nameElement);
-      fieldElement.appendChild(createElement("span", "customTreecipeFieldState muted", isRemoved ? "Removed" : isCut ? "Removed with " + (lookup ? lookup.parentObjectApiName : "its parent") : lockReason ? "Kept: " + lockReason : ""));
+      fieldElement.appendChild(createElement("span", "customTreecipeFieldState muted", isRemovedByReader ? "Removed" : takenWithObjectText !== null ? takenWithObjectText : isCut ? "Removed with " + (lookup ? lookup.parentObjectApiName : "its parent") : lockReason ? "Kept: " + lockReason : ""));
       listElement.appendChild(fieldElement);
     });
     return listElement;
@@ -6147,6 +6294,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const lockedFields = preview ? preview.lockedFieldsByObject.get(objectApiName) : void 0;
     return JSON.stringify([
       !!preview,
+      describeTakenWithObject(dialog, objectApiName),
       Array.from(removedFieldsOf(dialog, objectApiName)).sort(),
       lockedFields ? Array.from(lockedFields.entries()).sort() : [],
       dialogObject.fields.filter(function(field) {
@@ -6214,6 +6362,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     shownObjects.forEach(function(shownObject) {
       const dialogObject = shownObject.dialogObject;
       const objectApiName = dialogObject.objectApiName;
+      if (dialog.openedRemovedObjects.has(objectApiName) && !isObjectRemoved(dialog, objectApiName)) {
+        dialog.openedRemovedObjects.delete(objectApiName);
+        dialog.expandedObjects.add(objectApiName);
+      }
       const isListShown = isFieldListShown(dialog, shownObject);
       nextElements.push(reuseOrBuild(dialog, dialog.rowsByObject, objectApiName, signatureOfObjectRow(dialog, shownObject, isListShown), function() {
         return buildObjectRow(dialog, shownObject, isListShown);
@@ -6237,7 +6389,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       dialog.saveElement.classList.add("hidden");
     }
     dialog.saveElement.disabled = !hasRemovals(dialog) || isNothingLeft || !preview || !!preview.refusal;
-    dialog.statusElement.textContent = isNothingLeft ? RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_LEFT_NOTE : !hasRemovals(dialog) ? RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_REMOVED_NOTE : preview && preview.refusal ? preview.refusal : preview && preview.folderName ? "Ready to save as " + preview.folderName + "." : "";
+    dialog.statusElement.textContent = (dialog.restoredAlongNote ? dialog.restoredAlongNote + " " : "") + (isNothingLeft ? RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_LEFT_NOTE : !hasRemovals(dialog) ? RECIPE_COCKPIT_CUSTOM_TREECIPE_NOTHING_REMOVED_NOTE : preview && preview.refusal ? preview.refusal : preview && preview.folderName ? "Ready to save as " + preview.folderName + "." : "");
     dialog.bodyElement.scrollTop = scrollTop;
     if (dialog.step === "save" && dialog.nameInputElement) {
       focusWithoutScrolling(dialog.nameInputElement);

@@ -46,3 +46,8 @@ export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_EMPTIES_ROOT_SUFFIX 
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_ASK_NOTE = 'An object with no locked field is removed with its fields, since an object with every field removed is left out. ↺ brings each back.';
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_KEEP_LABEL = 'Keep fields';
 export const RECIPE_COCKPIT_CUSTOM_TREECIPE_DESELECT_FIELDS_CONFIRM_LABEL = 'Remove fields';
+
+// A REMOVED OBJECT'S FIELD LIST (#715): EACH FIELD ITS OBJECT TOOK, AND WHAT ITS ↺ BRINGS BACK WITH IT
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_REMOVED_WITH_OBJECT_TEXT = 'Removed with the object';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORE_WITH_PATH_SUFFIX = ', and what links it to the tree';
+export const RECIPE_COCKPIT_CUSTOM_TREECIPE_RESTORED_ALONG_PREFIX = 'Also restored, to link it to the tree: ';
