@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.213.0] - Recipe Cockpit: the Treecipe Adapter generates new records of an object under the loaded parents (#722, part 1)
+
+The only way to add records under loaded parents was **Add to data set**, which works only for a child object that exists only in the org. You could not add more Contacts under the Accounts you had just loaded. This is slice C of the Adapter record table (#719). Part 2 moves **Add to data set** into the same tab.
+
+### Treecipe Adapter tab
+
+- **Every object below the parent has two tabs**: **Edit existing records**, which holds its loaded table, and **Generate new records**. The parent keeps its table alone. Each tab keeps what you set while you switch.
+- **Generate new records lists the object's fields with a box each.** A field with a faker expression starts ticked; an unticked field is left out. The pencil takes a value for this run only: a fixed value for every new record, or an expression starting with `${{`. Neither is written to the recipe.
+- **A count per loaded parent record.** New Contacts go under the loaded Accounts, new Opportunities under the loaded Contacts: the object the load read them under. The lookup to it is set to its Id, in load order; any other lookup is left empty.
+- **Generate records** sits in the object's own section. One confirmation names the count, the parents and the total, and each field with where its value comes from. The recipe's own backend then makes count × parents records, at most 50,000.
+- **The preview is a table of 50 to a page**, the parent's Id first. Nothing is written to the org or the recipe: inserting them is #725.
+- **A new load, Change parent object or an update that was sent lets the new records go** with the loaded ones they were generated under.
+- **Generate records says why it is disabled**: before a load, for an object the load could not read, and when no record of the object above was loaded.
+
+### For contributors
+
+- `RecipeCockpitAdapterNewRecords.ts` (host) and `panel/adapter/AdapterNewRecords.ts`. Commands `generateUpdaterNewRecords` and `loadUpdaterNewRecordsPage`; the records are in `RecipeCockpitAdapterState.heldUpdaterNewRecords`, one set per object. A field is held to the column plan #721's load made for it. The design note is under **The Treecipe Adapter tab** in `RecipeCockpitService/DESIGN.md`.
+
 ## [3.212.0] - Recipe Cockpit: type a value into a cell of the Treecipe Adapter's record table (#721, part 2)
 
 Part 1 gave each cell a 🎲. A field with no faker expression had no way to be changed, and you could not set one record to a value you already had in mind.

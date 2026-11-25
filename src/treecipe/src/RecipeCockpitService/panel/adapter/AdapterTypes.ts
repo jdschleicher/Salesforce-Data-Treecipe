@@ -80,6 +80,8 @@ export interface IUpdaterPreviewObject {
     changedCells?: unknown;
     cutCells?: unknown;
     editSummary?: unknown;
+    // "Generate new records" (#722): THE OBJECT NEW RECORDS GO UNDER AND HOW MANY OF IT WERE LOADED
+    newRecordsParent?: unknown;
 }
 
 // AN OBJECT'S MARKS AND CHANGES AS THE HOST COUNTS THEM (#721), ONCE READ
@@ -91,6 +93,53 @@ export interface IUpdaterEditSummary {
 }
 
 // THE EDITS THIS TAB CAN ASK FOR; THE HOST HOLDS EACH TO RECIPE_COCKPIT_UPDATER_EDIT_RULES
+// AN OBJECT'S TWO TABS (#722)
+export type UpdaterRecordTab = 'edit' | 'new';
+
+// AN OBJECT'S NEW RECORDS AS THE HOST POSTS THEM: THE COUNTS AND PAGE 0
+export interface IUpdaterNewRecordsMessage {
+    command: 'updaterNewRecords';
+    renderSequence: unknown;
+    treeKey: unknown;
+    objectApiName: unknown;
+    parentObjectApiName?: unknown;
+    countPerParent?: unknown;
+    recordCount?: unknown;
+    pageCount?: unknown;
+    columns?: unknown;
+    rows?: unknown;
+}
+
+export interface IUpdaterNewRecordsPageMessage {
+    command: 'updaterNewRecordsPage';
+    renderSequence: unknown;
+    treeKey: unknown;
+    objectApiName: unknown;
+    pageIndex?: unknown;
+    rows?: unknown;
+}
+
+// THE "Generate new records" TAB OF ONE OBJECT: ITS OWN TICKS, TYPED VALUES AND COUNT, AND THE PAGE OF ITS PREVIEW ON SCREEN
+export interface IUpdaterNewRecordsState {
+    selectedTab: UpdaterRecordTab;
+    tabElements: Record<UpdaterRecordTab, HTMLButtonElement>;
+    panelElements: Record<UpdaterRecordTab, HTMLElement>;
+    fieldTreeState: IUpdaterFieldTreeState;
+    fieldStates: IUpdaterFieldRowState[];
+    headingElement: HTMLElement;
+    countInputElement: HTMLInputElement;
+    countLabelElement: HTMLElement;
+    refusalElement: HTMLElement;
+    generateElement: HTMLButtonElement;
+    reasonElement: HTMLElement;
+    previewElement: HTMLElement;
+    previewPageIndex: number;
+    // THE ROWS OF A PAGE PAST THE FIRST; null WHILE PAGE 0 OF THE MESSAGE IS ON SCREEN
+    previewRows: unknown[] | null;
+    isPageRequested: boolean;
+    pagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement; isPreviousAtEnd: boolean; isNextAtEnd: boolean } | null;
+}
+
 export type UpdaterEditKind = 'markRow' | 'unmarkRow' | 'generateCell' | 'generateColumn' | 'resetCell' | 'resetColumn' | 'resetObject' | 'typeCell';
 
 // ONE MORE PAGE OF ONE OBJECT'S RECORD TABLE (#720)
@@ -314,6 +363,8 @@ export interface IUpdaterObjectState extends IUpdaterFieldObjectState {
     recordsPagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement; isPreviousAtEnd: boolean; isNextAtEnd: boolean } | null;
     // THE EDIT BUTTON LAST PRESSED (#721): WHERE THE KEYBOARD'S PLACE GOES BACK TO WHEN THE HOST'S ANSWER REDRAWS THE TABLE
     pressedEditKey?: string | null;
+    // SET FOR AN OBJECT BELOW THE CHOSEN PARENT, ONCE ITS SECTION IS BUILT (#722)
+    newRecords?: IUpdaterNewRecordsState;
     // THE TABLE'S EDIT BUTTONS (#721), EACH WITH WHETHER THE EDITS THEMSELVES LEAVE IT NOTHING TO DO; ALL ARE HELD WHILE A RUN HOLDS THE RECORDS
     // editKey NAMES THE BUTTON BY WHAT IT DOES AND WHERE, SO THE KEYBOARD'S PLACE SURVIVES THE TABLE BEING REDRAWN
     editButtonElements?: Array<{ element: HTMLButtonElement; isDisabledByEdits: boolean; editKey: string }>;
@@ -367,6 +418,8 @@ export interface IAdapterTreeState extends IUpdaterFieldTreeState {
     updaterWhereTexts: Record<string, string>;
     updaterExpandedObjectKeys: Record<string, true>;
     updaterRecordsMessage: IUpdaterRecordsMessage | null;
+    // EACH OBJECT'S NEW RECORDS (#722) AS LAST POSTED, BY OBJECT NAME, WITH NO PROTOTYPE
+    updaterNewRecordsMessages: Record<string, IUpdaterNewRecordsMessage>;
     adapterChangesMessage: IAdapterChangesMessage | null;
     adapterChild: IAdapterChild | null;
     adapterChildBlockMessage: IAdapterChildBlockMessage | null;
@@ -417,4 +470,6 @@ export type AdapterPanelMessage =
     | { command: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; parentObjectApiName: string }
     | { command: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: unknown }
     | { command: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }
-    | { command: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fields: IAdapterChildFieldRequest[] };
+    | { command: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fields: IAdapterChildFieldRequest[] }
+    | { command: 'generateUpdaterNewRecords'; treeKey: string; renderSequence: number; objectApiName: string; countPerParent: number; fields: IAdapterChildFieldRequest[] }
+    | { command: 'loadUpdaterNewRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number };

@@ -792,11 +792,18 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     /* THE TREECIPE UPDATER TAB (#415) DRAWS ITS ROWS AS THE TREECIPE TAB DOES, UNDER ITS OWN CLASSES */
     .updaterObjectHeader, .updaterFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .updaterObjectHeader { padding: 0.35rem 0.6rem; }
-    .updaterObjectHeader, .updaterField { transition: background-color var(--sdt-motion-hover) ease; }
-    .updaterObjectHeader:hover, .updaterField:hover, .updaterObjectHeader:focus-within, .updaterField:focus-within { background-color: var(--sdt-row-hover); }
+    .updaterObjectHeader, .updaterField, .updaterNewRecordsField { transition: background-color var(--sdt-motion-hover) ease; }
+    .updaterObjectHeader:hover, .updaterField:hover, .updaterNewRecordsField:hover, .updaterObjectHeader:focus-within, .updaterField:focus-within, .updaterNewRecordsField:focus-within { background-color: var(--sdt-row-hover); }
     .updaterObjectName { font-weight: 600; }
     .updaterObjectBody { padding-bottom: 0.25rem; }
     .updaterField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterNewRecordsField { padding: 0.25rem 0.6rem 0.25rem 0; }
+    .updaterRecordTabs { margin: 0.3rem 0.6rem 0.3rem 2.1rem; }
+    .updaterRecordTabs .updaterRecordTabStrip { margin: 0; }
+    .updaterRecordTabPanel { padding-top: 0.4rem; }
+    .updaterNewRecordsHeading { font-weight: 600; }
+    .updaterNewRecordsAction { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
+    .updaterNewRecordsReason { min-width: 0; overflow-wrap: anywhere; }
     .updaterFieldHeader .fieldType { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 0.6rem; }
     .updaterFieldNote { font-size: 0.85em; }
     .updaterLoadRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0.6rem 0.5rem; }

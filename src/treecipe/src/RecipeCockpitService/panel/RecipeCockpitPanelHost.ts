@@ -1,6 +1,7 @@
 import { connectConfirmDialog, renderConfirmRequest } from '../../CockpitKit/panel/CockpitConfirmDialogPanel';
 import { RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH, RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX } from '../RecipeCockpitPanelConstants';
 import { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';
+import { renderUpdaterNewRecords, renderUpdaterNewRecordsPage } from './adapter/AdapterNewRecords';
 import { clearUpdaterRecords, drawUpdaterLoadButtons, renderUpdaterParentChange, renderUpdaterRecords, renderUpdaterRecordsPage, renderUpdaterSnapshots } from './adapter/AdapterLoadAndUpdate';
 import { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
 import { renderDatasetJourney } from './datasets/DatasetJourney';
@@ -283,9 +284,10 @@ function routeHostMessage(hostMessage: any): void {
 
     if (hostMessage.command === 'updaterLoadState') {
         runLocks.updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
-        runLocks.updaterRunKind = hostMessage.isRunning ? ( ['generate', 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'].indexOf(hostMessage.runKind) !== -1 ? hostMessage.runKind : 'load' ) : '';
+        runLocks.updaterRunKind = hostMessage.isRunning ? ( ['generate', 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild', 'generateNew'].indexOf(hostMessage.runKind) !== -1 ? hostMessage.runKind : 'load' ) : '';
         const updaterRunKind = runLocks.updaterRunKind;
         if (updaterRunKind !== 'prepareChild') { runLocks.adapterChildPreparingKey = ''; }
+        if (updaterRunKind !== 'generateNew') { runLocks.updaterNewRecordsObjectApiName = ''; }
         if (updaterRunKind !== 'restore') { runLocks.updaterRestoringSnapshotName = ''; }
         // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS MARKS AND CHANGES WITH IT
         if (hostMessage.isRunning) {
@@ -311,6 +313,16 @@ function routeHostMessage(hostMessage: any): void {
 
     if (hostMessage.command === 'updaterRecordsPage') {
         renderUpdaterRecordsPage(hostMessage);
+        return;
+    }
+
+    if (hostMessage.command === 'updaterNewRecords') {
+        renderUpdaterNewRecords(hostMessage);
+        return;
+    }
+
+    if (hostMessage.command === 'updaterNewRecordsPage') {
+        renderUpdaterNewRecordsPage(hostMessage);
         return;
     }
 

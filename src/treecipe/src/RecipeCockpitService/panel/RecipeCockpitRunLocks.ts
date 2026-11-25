@@ -27,6 +27,8 @@ export const runLocks = {
     // THE TREECIPE ADAPTER'S RUN (#416): THE CARD CLICKED, AND WHICH RUN -- 'load', 'generate' (#417), 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'
     updaterLoadRunningTreeKey: null as string | null,
     updaterRunKind: '',
+    // THE OBJECT WHOSE "Generate records" (#722) IS RUNNING, SO ONLY ITS BUTTON SAYS "Generating…"
+    updaterNewRecordsObjectApiName: '',
     // THE NEW CHILD WHOSE "Add to data set" (#447) IS RETRIEVING: PARENT, CHILD AND LOOKUP
     adapterChildPreparingKey: '',
     // THE SNAPSHOT A RESTORE (#419) WAS ASKED FOR, SO ONLY ITS BUTTON SAYS "Restoring…"

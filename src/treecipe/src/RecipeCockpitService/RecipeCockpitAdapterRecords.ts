@@ -67,6 +67,7 @@ import type {
     IRecipeCockpitUpdaterColumnPlan,
     IRecipeCockpitUpdaterUpdatePlan
 } from './RecipeCockpitAdapterEdits';
+import { RecipeCockpitAdapterNewRecords } from './RecipeCockpitAdapterNewRecords';
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 import { RecipeCockpitRecordLinks } from './RecipeCockpitRecordLinks';
 import {
@@ -141,6 +142,7 @@ export class RecipeCockpitAdapterRecords {
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterChildBlockMessage = undefined;
         panelState.adapterChildPreviewMessage = undefined;
+        panelState.updaterNewRecordsMessages = undefined;
         RecipeCockpitAdapterState.setUpdaterLoadState(hub, { command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
 
         try {
@@ -473,9 +475,24 @@ export class RecipeCockpitAdapterRecords {
             lookupFieldApiNamesByObjectApiName: lookupFieldApiNamesByObjectApiName,
             // PAGE 0 OF EVERY OBJECT READ GOES WITH THE MESSAGE BELOW
             postedPageIndexesByObjectApiName: new Map([...columnFieldApiNamesByObjectApiName.keys()].map(objectApiName => [objectApiName, new Set([0])] as const)),
-            columnPlansByObjectApiName: columnPlansByObjectApiName
+            columnPlansByObjectApiName: columnPlansByObjectApiName,
+            narrowingLookupsByObjectApiName: new Map(requests.flatMap(request => request.narrowingLookup
+                ? [[request.objectApiName, { fieldApiName: request.narrowingLookup.fieldApiName, parentObjectApiName: request.narrowingLookup.parentObjectApiName }] as const]
+                : []))
         };
         RecipeCockpitAdapterState.heldUpdaterRecords = heldUpdaterRecords;
+
+        // "Generate new records" (#722) IS OFFERED FOR AN OBJECT THE LOAD READ BELOW THE PARENT: WHICH OBJECT ITS NEW RECORDS GO UNDER, BY WHICH LOOKUP, AND HOW MANY OF THAT OBJECT WERE LOADED
+        objectViewModels.forEach(objectViewModel => {
+            const narrowingLookup = heldUpdaterRecords.narrowingLookupsByObjectApiName.get(objectViewModel.objectApiName);
+            if ( narrowingLookup && columnPlansByObjectApiName.has(objectViewModel.objectApiName) ) {
+                objectViewModel.newRecordsParent = {
+                    parentObjectApiName: narrowingLookup.parentObjectApiName,
+                    lookupFieldApiName: narrowingLookup.fieldApiName,
+                    parentRecordCount: RecipeCockpitAdapterNewRecords.listParentRecordIds(objectViewModel.objectApiName)?.length ?? 0
+                };
+            }
+        });
 
         const recordsMessage: IRecipeCockpitUpdaterRecordsMessage = {
             command: 'updaterRecords',
@@ -624,6 +641,7 @@ export class RecipeCockpitAdapterRecords {
             panelState.updaterRecordsMessage = undefined;
             panelState.adapterChildBlockMessage = undefined;
             panelState.adapterChildPreviewMessage = undefined;
+            panelState.updaterNewRecordsMessages = undefined;
     
         }
 
@@ -667,6 +685,7 @@ export class RecipeCockpitAdapterRecords {
                 panelState.updaterRecordsMessage = undefined;
                 panelState.adapterChildBlockMessage = undefined;
                 panelState.adapterChildPreviewMessage = undefined;
+                panelState.updaterNewRecordsMessages = undefined;
                     }
             RecipeCockpitAdapterState.setUpdaterLoadState(hub, isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
             // AN UPDATE THAT SAVED A SNAPSHOT LISTS IT FOR RESTORE (#419)
@@ -1006,6 +1025,7 @@ export class RecipeCockpitAdapterRecords {
                 panelState.updaterRecordsMessage = undefined;
                 panelState.adapterChildBlockMessage = undefined;
                 panelState.adapterChildPreviewMessage = undefined;
+                panelState.updaterNewRecordsMessages = undefined;
                     }
             RecipeCockpitAdapterState.setUpdaterLoadState(hub, isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
             // THE RESTORE SAVED A SNAPSHOT OF ITS OWN, WHICH IS LISTED TOO: A RESTORE CAN BE UNDONE THE SAME WAY
