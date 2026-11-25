@@ -117,7 +117,8 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             // customTreecipeSave AND customTreecipeConfirmSave ARE THE "Customize and create new recipe" MODAL'S OWN (#677): A DIALOG OWNS THEM
             // updaterChangeParent IS STEP 2'S WAY BACK TO THE PARENT AND WHERE ITS RECORDS CAME FROM (#720): HIGHLIGHTED SO IT IS NOT MISSED
             // updaterCellSave IS THE Save OF A RECORD TABLE CELL'S INLINE EDITOR (#721), AS fieldEditorSave IS A FIELD ROW'S
-            expect([...new Set(primaryClassNames)].sort()).toEqual(['updaterCellSave', 'updaterChangeParent', 'adapterChildGenerate', 'customTreecipeConfirmSave', 'customTreecipeSave', 'dataOrgAuthorize', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
+            // updaterNewRecordsGenerate IS THE ONE ACTION OF AN OBJECT'S Generate new records TAB (#722), IN ITS OWN SECTION
+            expect([...new Set(primaryClassNames)].sort()).toEqual(['updaterNewRecordsGenerate', 'updaterCellSave', 'updaterChangeParent', 'adapterChildGenerate', 'customTreecipeConfirmSave', 'customTreecipeSave', 'dataOrgAuthorize', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
 
         });
 

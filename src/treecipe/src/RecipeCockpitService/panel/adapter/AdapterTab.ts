@@ -53,6 +53,7 @@ import { formatParentLookups } from '../treecipe/fieldRows/FieldRow';
 import { ReadOnlyFields } from '../../../ObjectInfoWrapper/ReadOnlyFields';
 import { StandardDerivedFields } from '../../../ObjectInfoWrapper/StandardDerivedFields';
 import { RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES, RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX } from '../../RecipeCockpitFieldRowsConstants';
+import { buildUpdaterRecordTabs } from './AdapterNewRecords';
 import { displayTitleOf } from '../treecipe/navigation/TreePicker';
 import { expandMatchesWithinBudget } from '../treecipe/navigation/StructureFilter';
 import { savePanelPlace } from '../shell/PanelPlace';
@@ -477,7 +478,10 @@ function setUpdaterObjectExpanded(treeState: IAdapterTreeState, updaterObjectSta
             updaterObjectState.bodyElement.appendChild(buildUpdaterWhereElement(treeState, updaterObjectState));
         }
         updaterObjectState.recordsElement = createElement('div', 'updaterRecords hidden');
-        updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
+        // AN OBJECT BELOW THE PARENT HAS TWO TABS (#722): ITS LOADED TABLE TO EDIT, AND NEW RECORDS TO GENERATE UNDER THE LOADED PARENTS
+        updaterObjectState.bodyElement.appendChild(updaterObjectState.object.objectApiName === treeState.updaterParentObjectApiName
+            ? updaterObjectState.recordsElement
+            : buildUpdaterRecordTabs(treeState, updaterObjectState, updaterObjectState.recordsElement));
         drawUpdaterObjectRecords(treeState, updaterObjectState);
         updaterObjectState.fieldStates.forEach(function (fieldState) {
             const rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
@@ -575,7 +579,7 @@ export function buildUpdaterFieldRow(treeState: IUpdaterFieldTreeState, updaterO
 
 }
 
-function drawUpdaterFieldChoice(treeState: IUpdaterFieldTreeState, updaterObjectState: IUpdaterFieldObjectState, fieldState: IUpdaterFieldRowState): void {
+export function drawUpdaterFieldChoice(treeState: IUpdaterFieldTreeState, updaterObjectState: IUpdaterFieldObjectState, fieldState: IUpdaterFieldRowState): void {
 
     const chooseElement = fieldState.chooseElement;
     if (!chooseElement) { return; }
@@ -583,7 +587,7 @@ function drawUpdaterFieldChoice(treeState: IUpdaterFieldTreeState, updaterObject
     const fieldName = updaterObjectState.object.objectApiName + '.' + fieldState.field.fieldApiName;
     const isChosen = hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
     const title = fieldState.lockReason ? 'Cannot be chosen: ' + fieldState.lockReason
-        : isChosen ? 'Chosen — click to leave this field as it is'
+        : isChosen ? 'Chosen — click to leave this field out of the new records'
         : 'Click to choose this field to fill';
 
     chooseElement.textContent = isChosen ? '✓' : '';

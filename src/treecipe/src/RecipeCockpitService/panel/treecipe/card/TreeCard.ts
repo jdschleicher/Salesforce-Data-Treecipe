@@ -99,6 +99,7 @@ function renderTree(tree: ICardTree, objectsByApiName: Record<string, ICardObjec
         // THE READER'S WHERE PER DESCENDANT OBJECT (#416), BY OBJECT NAME; PANEL-ONLY, NEVER SAVED IN THE PLACE
         updaterWhereTexts: Object.create(null),
         updaterRecordsMessage: null,
+        updaterNewRecordsMessages: Object.create(null),
         // WHAT THE LAST "Retrieve latest metadata" FOUND (#445), DRAWN ON STEP 2 WHENEVER IT IS BUILT
         adapterChangesMessage: null,
         // THE NEW CHILD OBJECT BEING ADDED UNDER THE LOADED RECORDS (#447), ITS BLOCK'S STATE AND ELEMENTS

@@ -253,6 +253,65 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
     },
 
     {
+        name: 'generate new records: an object below the parent has a second tab, a count per loaded parent makes count x parents records with the recipe\'s backend, each under a loaded parent, previewed in pages and written nowhere',
+        run: async journey => {
+
+            await chooseParent(journey);
+            await journey.click('button', 'Load records');
+
+            await journey.step('Contact, below the parent, has two tabs and opens on its loaded table; Account, the parent, has none', () => {
+                const screen = journey.screen();
+                const adapterPanel = screen.get('tabpanel', ADAPTER_TAB_NAME);
+                expectEqual(screen.findAll('tab', 'Generate new records', adapterPanel).length, 1, 'Generate new records tabs: only Contact was loaded below the parent with its section open');
+                expectEqual(screen.get('tab', 'Edit existing records', adapterPanel).states.includes('selected'), true, 'Edit existing records is the tab a load opens');
+            });
+
+            await journey.click('tab', 'Generate new records');
+            await journey.step('the tab says what the new records go under, and offers the count and Generate records', () => {
+                const screen = journey.screen();
+                screen.get('text', `Add new Contact records under the ${ACCOUNT_COUNT} Account records loaded.`);
+                expectEqual(screen.get('button', 'Generate records of Contact').states.includes('disabled'), false, 'Generate records with parents loaded');
+            });
+
+            await journey.type('Contact records per loaded Account record', '2');
+            await journey.click('button', 'Generate records of Contact');
+            await journey.waitForConfirmation();
+            await journey.step('the confirmation names the count, the parents and the total, and that nothing is written', () => {
+                expectEqual(confirmationTitle(journey), [`Generate ${ACCOUNT_COUNT * 2} new Contact records under the loaded Account records?`], 'The confirmation');
+                expectEqual(journey.screen().lines().some(screenLine => screenLine.includes(`2 per Account record, under ${ACCOUNT_COUNT} Account records: ${ACCOUNT_COUNT * 2} Contact records`)), true, 'The count, the parents and the total are on screen');
+            });
+            await journey.answerConfirmation('Generate records');
+            await journey.waitForNotification(/^Generated \d+ new Contact records/, 0);
+
+            await journey.step('the preview counts the records, shows 50 to a page with each record under a loaded Account in load order, and nothing reached the org', () => {
+                const screen = journey.screen();
+                const newRecordsPanel = screen.get('tabpanel', 'Generate new records of Contact');
+                screen.get('text', `${ACCOUNT_COUNT * 2} new Contact records, 2 per Account record`, newRecordsPanel);
+                screen.get('text', `Page 1 of ${Math.ceil(ACCOUNT_COUNT * 2 / 50)}`, newRecordsPanel);
+                const [previewTable] = screen.findAll('table', undefined, newRecordsPanel);
+                const previewRows = screen.findAll('row', undefined, previewTable).map(row => screen.findAll('cell', undefined, row).map(cell => cell.name)).filter(cells => cells.length > 0);
+                expectEqual(previewRows.length, 50, 'Rows on the first page');
+                expectEqual(previewRows.slice(0, 4).map(cells => cells[0]), [ACCOUNT_IDS[0], ACCOUNT_IDS[0], ACCOUNT_IDS[1], ACCOUNT_IDS[1]], 'The parent of the first four new records');
+                expectEqual(journey.org.calls.filter(orgCall => ORG_WRITE_CALL.test(orgCall.call)), [], 'Writes to the org');
+                expectEqual(journey.notifications.slice(-1)[0]?.text, `Generated ${ACCOUNT_COUNT * 2} new Contact records, 2 per loaded Account record. Nothing was written to the org.`, 'The notification');
+            });
+
+            await journey.click('button', 'Next page of new Contact records');
+            await journey.step('Next shows the second page, cut from the records the host holds', () => {
+                const screen = journey.screen();
+                screen.get('text', `Page 2 of ${Math.ceil(ACCOUNT_COUNT * 2 / 50)}`, screen.get('tabpanel', 'Generate new records of Contact'));
+            });
+
+            await journey.click('tab', 'Edit existing records');
+            await journey.step('the loaded table is still on the first tab', () => {
+                const screen = journey.screen();
+                screen.get('button', `Mark to update Contact ${CONTACT_ID}`);
+            });
+
+        }
+    },
+
+    {
         name: 'an update against another sandbox than the records were loaded from is refused, naming both orgs, and nothing is sent',
         run: async journey => {
 

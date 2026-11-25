@@ -1177,6 +1177,7 @@ export class RecipeCockpitService {
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterChildBlockMessage = undefined;
         panelState.adapterChildPreviewMessage = undefined;
+        panelState.updaterNewRecordsMessages = undefined;
         panelState.adapterMetadataChangesMessage = undefined;
         panelState.adapterRetrieveStagingFolderPath = undefined;
         panelState.adapterOrgOnlyFields = undefined;
@@ -2572,6 +2573,8 @@ export class RecipeCockpitService {
         if ( panelState.adapterChildPreviewMessage && panelState.adapterChildPreviewMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.adapterChildPreviewMessage);
         }
+
+        replayMessages.push(...( panelState.updaterNewRecordsMessages ?? [] ).filter(newRecordsMessage => newRecordsMessage.renderSequence === panelState.recipeDataMessage?.renderSequence));
 
         if ( panelState.permissionSetAssignStateMessage ) {
             replayMessages.push(panelState.permissionSetAssignStateMessage);

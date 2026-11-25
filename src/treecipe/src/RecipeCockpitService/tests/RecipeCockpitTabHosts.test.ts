@@ -25,6 +25,7 @@ import * as RecipeCockpitAdapterHostModule from '../RecipeCockpitAdapterHost';
 import * as RecipeCockpitAdapterMetadataModule from '../RecipeCockpitAdapterMetadata';
 import * as RecipeCockpitAdapterRecordsModule from '../RecipeCockpitAdapterRecords';
 import * as RecipeCockpitAdapterEditsModule from '../RecipeCockpitAdapterEdits';
+import * as RecipeCockpitAdapterNewRecordsModule from '../RecipeCockpitAdapterNewRecords';
 import * as RecipeCockpitAdapterStateModule from '../RecipeCockpitAdapterState';
 import * as RecipeCockpitRecordLinksHostModule from '../RecipeCockpitRecordLinksHost';
 import * as RecipeCockpitRecordLinksModule from '../RecipeCockpitRecordLinks';
@@ -168,6 +169,13 @@ const TAB_HOSTS: ITabHost[] = [
                 importedNames: ['IRecipeCockpitPreviewRecordLinks', 'RecipeCockpitQuery'],
                 members: ['buildTablePage', 'readLinkedRecordId'],
                 reason: 'a page of the Adapter\'s record table as it reads after an edit (#721) is cut with the same cell text and Id rule'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitQuery.ts',
+                hostFileName: 'RecipeCockpitAdapterNewRecords.ts',
+                importedNames: ['RecipeCockpitQuery'],
+                members: ['buildTablePage', 'readLinkedRecordId'],
+                reason: 'a page of an object\'s new records (#722) is cut with the same cell text, and a loaded parent\'s Id is read by the same rule'
             }
         ]
     },
@@ -307,8 +315,8 @@ const TAB_HOSTS: ITabHost[] = [
     {
         tabName: 'Treecipe Adapter',
         hostClassName: 'RecipeCockpitAdapterHost',
-        hostFileNames: ['RecipeCockpitAdapterHost.ts', 'RecipeCockpitAdapterMetadata.ts', 'RecipeCockpitAdapterRecords.ts', 'RecipeCockpitAdapterEdits.ts', 'RecipeCockpitAdapterState.ts'],
-        hostModules: [RecipeCockpitAdapterHostModule, RecipeCockpitAdapterMetadataModule, RecipeCockpitAdapterRecordsModule, RecipeCockpitAdapterEditsModule, RecipeCockpitAdapterStateModule],
+        hostFileNames: ['RecipeCockpitAdapterHost.ts', 'RecipeCockpitAdapterMetadata.ts', 'RecipeCockpitAdapterRecords.ts', 'RecipeCockpitAdapterNewRecords.ts', 'RecipeCockpitAdapterEdits.ts', 'RecipeCockpitAdapterState.ts'],
+        hostModules: [RecipeCockpitAdapterHostModule, RecipeCockpitAdapterMetadataModule, RecipeCockpitAdapterRecordsModule, RecipeCockpitAdapterNewRecordsModule, RecipeCockpitAdapterEditsModule, RecipeCockpitAdapterStateModule],
         commands: RECIPE_COCKPIT_ADAPTER_COMMANDS,
         actionKinds: RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitAdapterHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),
@@ -417,6 +425,13 @@ const TAB_HOSTS: ITabHost[] = [
                 importedNames: ['RecipeCockpitRecordCreation'],
                 members: ['spreadParentIds'],
                 reason: 'Add to data set spreads its new child records over their parents as the tree insert does'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
+                hostFileName: 'RecipeCockpitAdapterNewRecords.ts',
+                importedNames: ['RecipeCockpitRecordCreation'],
+                members: ['spreadParentIds'],
+                reason: 'Generate new records (#722) spreads an object\'s new records over the loaded parents as the tree insert does'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRecordCreation.ts',

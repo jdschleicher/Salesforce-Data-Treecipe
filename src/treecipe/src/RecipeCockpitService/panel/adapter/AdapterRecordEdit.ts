@@ -218,7 +218,8 @@ export function buildEditableRecordSection(treeState: IAdapterTreeState, updater
 
     const sectionElement = createElement('div', 'updaterRecordEdit');
     const toolbarElement = createElement('div', 'updaterRecordEditToolbar');
-    toolbarElement.appendChild(createElement('span', 'updaterRecordEditHeading', RECIPE_COCKPIT_UPDATER_EDIT_HEADING));
+    // AN OBJECT WITH TABS (#722) NAMES THIS TABLE ON ITS TAB; THE PARENT, WHICH HAS NONE, NAMES IT HERE
+    if (!updaterObjectState.newRecords) { toolbarElement.appendChild(createElement('span', 'updaterRecordEditHeading', RECIPE_COCKPIT_UPDATER_EDIT_HEADING)); }
     toolbarElement.appendChild(createElement('span', 'updaterRecordEditSummary muted', describeEditSummary(editSummary)));
     const hasChanges = editSummary.updatableRecordCount > 0 || editSummary.hasUnmarkedChanges;
     const resetAllElement = createButton('secondary', 'updaterResetAll', RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL, 'compact');

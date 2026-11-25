@@ -85,6 +85,18 @@ export class RecipeCockpitAdapterState {
         postedPageIndexesByObjectApiName: Map<string, Set<number>>;
         // EACH COLUMN'S LOCK OR THE SOURCE ITS 🎲 GENERATES FROM (#721), PLANNED AT THE LOAD FROM THE MODEL ON SCREEN
         columnPlansByObjectApiName: Map<string, IRecipeCockpitUpdaterColumnPlan[]>;
+        // EVERY OBJECT BELOW THE PARENT: THE LOOKUP ITS RECORDS WERE NARROWED BY AND THE OBJECT IT NAMES, WHICH NEW RECORDS OF IT GO UNDER (#722)
+        narrowingLookupsByObjectApiName: Map<string, { fieldApiName: string; parentObjectApiName: string }>;
+    } | undefined;
+
+    /*
+        The new records generated for an object (#722), one set per object: each record already
+        holds a loaded parent's Id in its lookup. Held for the preview's pages and for the insert
+        of slice D. They belong to the load they were generated under, so they go when it goes.
+    */
+    static heldUpdaterNewRecords: {
+        resultKey: string;
+        byObjectApiName: Map<string, { parentObjectApiName: string; lookupFieldApiName: string; countPerParent: number; columnFieldApiNames: string[]; records: Record<string, unknown>[] }>;
     } | undefined;
 
     /*
@@ -119,6 +131,7 @@ export class RecipeCockpitAdapterState {
     static clearHeldUpdaterRecords() {
         this.heldUpdaterRecords = undefined;
         this.heldUpdaterEdits = undefined;
+        this.heldUpdaterNewRecords = undefined;
         this.heldAdapterChild = undefined;
     }
 
@@ -129,6 +142,15 @@ export class RecipeCockpitAdapterState {
     static readHeldUpdaterRecordCount(): number {
         let recordCount = 0;
         this.heldUpdaterRecords?.recordsByObjectApiName.forEach(records => { recordCount += records.length; });
+        return recordCount;
+    }
+
+    // THE NEW RECORDS GENERATED UNDER THE LOAD HELD NOW (#722), OVER EVERY OBJECT: THEY GO WHEN IT GOES
+    static readHeldUpdaterNewRecordCount(): number {
+        let recordCount = 0;
+        if ( this.heldUpdaterNewRecords && this.heldUpdaterNewRecords.resultKey === this.heldUpdaterRecords?.resultKey ) {
+            this.heldUpdaterNewRecords.byObjectApiName.forEach(objectNewRecords => { recordCount += objectNewRecords.records.length; });
+        }
         return recordCount;
     }
 

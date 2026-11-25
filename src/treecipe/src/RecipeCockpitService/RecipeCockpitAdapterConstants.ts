@@ -77,6 +77,18 @@ export const RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = 'The last load re
 
 // "Edit existing records" (#721): THE TABLE'S HEADING, ITS BUTTONS' GLYPHS AND WHY UPDATE HAS NOTHING TO WRITE YET
 export const RECIPE_COCKPIT_UPDATER_EDIT_HEADING = 'Edit existing records';
+// "Generate new records" (#722): THE SECOND TAB OF EVERY OBJECT BELOW THE CHOSEN PARENT
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL = 'Generate new records';
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_GENERATE_LABEL = 'Generate records';
+// A LOOKUP ON A NEW RECORD IS NEVER TYPED OR GENERATED: THE ONE TO THE LOADED RECORD ABOVE IS THAT RECORD'S Id
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_LOOKUP_REASON = 'a lookup: the one to the loaded record above is set to that record\'s Id, and any other is left empty';
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_GENERATING_LABEL = 'Generating…';
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE = 'A preview only: nothing is written to the org or the recipe file.';
+// A FIELD THE LAST LOAD LEFT OUT OF ITS QUERY (#720) CANNOT BE FILLED ON A NEW RECORD EITHER: THE ORG DOES NOT HAVE IT, OR DOES NOT LET THIS USER SEE IT
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON = 'the last load did not read it: the org does not have it, or does not let this user read it';
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_LOADED_REASON = 'Load records first: new records are added under the records a load read.';
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_READ_REASON = 'The last load did not read this object, so new records of it cannot be generated.';
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON = 'The last load read no records of the object above it, so there is nothing to add under.';
 export const RECIPE_COCKPIT_UPDATER_MARK_COLUMN_LABEL = 'Update';
 export const RECIPE_COCKPIT_UPDATER_MARK_GLYPH = '✎';
 export const RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH = '🎲';

@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from './RecipeCockpitTreecipeFieldEditorConstants';
 import {
-    RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
-    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX
+    RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
+    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON
 } from './RecipeCockpitAdapterConstants';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
@@ -31,6 +32,7 @@ import {
     RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
     RecipeCockpitAdapterEdits
 } from './RecipeCockpitAdapterEdits';
+import { RecipeCockpitAdapterNewRecords } from './RecipeCockpitAdapterNewRecords';
 import type {
     IRecipeCockpitUpdaterColumnEditView,
     IRecipeCockpitUpdaterEditSummary,
@@ -87,9 +89,11 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     treeKey: string;
     // A VALUE GENERATION (#417), AN UPDATE (#418), A RESTORE (#419) AND A METADATA RETRIEVE (#445) SHARE THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
     // A NEW CHILD OBJECT'S RETRIEVE AND ITS GENERATION (#447) SHARE IT TOO
-    runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply' | 'prepareChild' | 'generateChild';
+    runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply' | 'prepareChild' | 'generateChild' | 'generateNew';
     // AN UPDATE OR A RESTORE THAT SENT A REQUEST ENDS WITH THIS: THE LOADED RECORDS AND THEIR VALUES ARE SPENT, SO THE PANEL LETS THEM GO
     isRecordsSpent?: true;
+    // generateNew ONLY: THE OBJECT WHOSE NEW RECORDS ARE BEING GENERATED (#722), SO A REOPENED PANEL KNOWS WHICH BUTTON IS RUNNING
+    objectApiName?: string;
 }
 
 /*
@@ -135,6 +139,8 @@ export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
     changedCells?: Array<[number, number]>;
     cutCells?: Array<[number, number]>;
     editSummary?: IRecipeCockpitUpdaterEditSummary;
+    // "Generate new records" (#722): SET FOR AN OBJECT READ BELOW THE PARENT -- THE OBJECT ITS NEW RECORDS GO UNDER, THE LOOKUP THAT HOLDS ITS Id, AND HOW MANY OF IT WERE LOADED
+    newRecordsParent?: { parentObjectApiName: string; lookupFieldApiName: string; parentRecordCount: number };
 }
 
 // ONE MORE PAGE OF ONE OBJECT'S TABLE (#720): ITS ROWS AND LINKS ONLY, SINCE THE COLUMNS ARE THE LOAD'S
@@ -152,6 +158,29 @@ export interface IRecipeCockpitUpdaterRecordsPageMessage {
     changedCells: Array<[number, number]>;
     cutCells: Array<[number, number]>;
     editSummary: IRecipeCockpitUpdaterEditSummary;
+}
+
+// AN OBJECT'S NEW RECORDS (#722) AS THE PANEL IS SENT THEM: THE COUNTS AND PAGE 0 AS TEXT, THE LOOKUP TO THE PARENT FIRST. THE RECORDS STAY ON THE HOST
+export interface IRecipeCockpitUpdaterNewRecordsMessage {
+    command: 'updaterNewRecords';
+    renderSequence: number;
+    treeKey: string;
+    objectApiName: string;
+    parentObjectApiName: string;
+    countPerParent: number;
+    recordCount: number;
+    pageCount: number;
+    columns: string[];
+    rows: string[][];
+}
+
+export interface IRecipeCockpitUpdaterNewRecordsPageMessage {
+    command: 'updaterNewRecordsPage';
+    renderSequence: number;
+    treeKey: string;
+    objectApiName: string;
+    pageIndex: number;
+    rows: string[][];
 }
 
 // THE HOST LET THE LOADED RECORDS GO, OR HELD NONE: THE PANEL GOES BACK TO STEP 1 (#720)
@@ -307,6 +336,8 @@ export const RECIPE_COCKPIT_ADAPTER_COMMANDS = [
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
     'generateAdapterChild',
+    'generateUpdaterNewRecords',
+    'loadUpdaterNewRecordsPage',
     'editUpdaterRecords',
     'updateUpdaterRecords',
     'loadUpdaterSnapshots',
@@ -321,6 +352,8 @@ export const RECIPE_COCKPIT_ADAPTER_ACTION_KINDS = [
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
     'generateAdapterChild',
+    'generateUpdaterNewRecords',
+    'postUpdaterNewRecordsPage',
     'editUpdaterRecords',
     'updateUpdaterRecords',
     'loadUpdaterSnapshots',
@@ -338,6 +371,8 @@ export type RecipeCockpitAdapterPanelAction =
     | { kind: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }
     | { kind: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
     | { kind: 'updateUpdaterRecords'; treeKey: string }
+    | { kind: 'generateUpdaterNewRecords'; treeKey: string; renderSequence: number; objectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
+    | { kind: 'postUpdaterNewRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number }
     | { kind: 'loadUpdaterSnapshots'; treeKey: string }
     | { kind: 'restoreUpdaterSnapshot'; treeKey: string; snapshotName: string }
     | { kind: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: RecipeCockpitUpdaterEditKind; rowIndex?: number; columnIndex?: number; value?: string };
@@ -693,6 +728,107 @@ export class RecipeCockpitAdapterHost {
             }
 
             /*
+                "Generate records" of an object's Generate new records tab (#722). The panel names the
+                object, a count per loaded parent record and the fields ticked, each with the value typed
+                for it or none. The object must be one the last load read below the parent, on the model
+                on screen; a field must be a column the load planned and did not lock, named once; and
+                count x loaded parents is held to the limit one block generates. What a field generates
+                from, and whether a typed value is one it takes, is decided when the action runs.
+            */
+            case 'generateUpdaterNewRecords': {
+
+                const { treeKey, renderSequence, objectApiName, countPerParent, fields } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'generateNew' };
+
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+                const recordsMessage = panelState.updaterRecordsMessage;
+                const narrowingLookup = typeof objectApiName === 'string' ? heldRecords?.narrowingLookupsByObjectApiName.get(objectApiName) : undefined;
+                const columnPlans = typeof objectApiName === 'string' ? heldRecords?.columnPlansByObjectApiName.get(objectApiName) : undefined;
+
+                if ( typeof treeKey !== 'string'
+                        || typeof objectApiName !== 'string'
+                        || !heldRecords
+                        || !recordsMessage
+                        || !narrowingLookup
+                        || !columnPlans
+                        || recordsMessage.treeKey !== treeKey
+                        || recordsMessage.renderSequence !== renderSequence
+                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
+                        || heldRecords.workspaceRoot !== panelState.workspaceRoot
+                        || heldRecords.renderSequence !== renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                const refuse = (reason: string) => ({ kind: 'refuseUpdaterLoad' as const, refusalText: `No new ${objectApiName} records were generated: ${reason}`, hostMessage: notRunning });
+                const parentRecordCount = RecipeCockpitAdapterNewRecords.listParentRecordIds(objectApiName)?.length ?? 0;
+
+                if ( !RecipeCockpitRecipeWriter.isRecordCount(countPerParent) ) {
+                    return refuse('the count per parent record must be a whole number of one or more.');
+                }
+                if ( parentRecordCount === 0 ) {
+                    return refuse(RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON);
+                }
+                if ( countPerParent * parentRecordCount > RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT ) {
+                    return refuse(`${countPerParent} per record under ${parentRecordCount} ${narrowingLookup.parentObjectApiName} records is more than the ${RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT} one block generates.`);
+                }
+                if ( !Array.isArray(fields) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                const fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] = [];
+                for ( const candidateField of fields as unknown[] ) {
+                    const fieldRecord = candidateField && typeof candidateField === 'object' ? candidateField as Record<string, unknown> : undefined;
+                    const fieldApiName = fieldRecord?.fieldApiName;
+                    const value = fieldRecord?.value;
+                    const columnPlan = typeof fieldApiName === 'string' ? columnPlans.find(candidatePlan => candidatePlan.fieldApiName === fieldApiName) : undefined;
+                    if ( typeof fieldApiName !== 'string'
+                            || !columnPlan
+                            || columnPlan.lockReason !== undefined
+                            || fieldRequests.some(fieldRequest => fieldRequest.fieldApiName === fieldApiName)
+                            || ( value !== undefined && ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) ) {
+                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.`);
+                    }
+                    fieldRequests.push(value === undefined ? { fieldApiName: fieldApiName } : { fieldApiName: fieldApiName, value: value as string });
+                }
+
+                return { kind: 'generateUpdaterNewRecords', treeKey: treeKey, renderSequence: renderSequence, objectApiName: objectApiName, countPerParent: countPerParent, fieldRequests: fieldRequests };
+
+            }
+
+            // ONE MORE PAGE OF AN OBJECT'S NEW RECORDS (#722): ONLY FOR RECORDS GENERATED UNDER THE LOAD ON SCREEN, AND A PAGE THEY HAVE
+            case 'loadUpdaterNewRecordsPage': {
+
+                const { treeKey, renderSequence, objectApiName, pageIndex } = panelMessage;
+                const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+                const heldNewRecords = RecipeCockpitAdapterState.heldUpdaterNewRecords;
+                const objectNewRecords = typeof objectApiName === 'string' && heldRecords && heldNewRecords?.resultKey === heldRecords.resultKey ? heldNewRecords.byObjectApiName.get(objectApiName) : undefined;
+
+                if ( typeof treeKey !== 'string'
+                        || typeof objectApiName !== 'string'
+                        || !heldRecords
+                        || !objectNewRecords
+                        || panelState.updaterRecordsMessage?.treeKey !== treeKey
+                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
+                        || heldRecords.workspaceRoot !== panelState.workspaceRoot
+                        || heldRecords.renderSequence !== renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || typeof pageIndex !== 'number'
+                        || !Number.isInteger(pageIndex)
+                        || pageIndex < 0
+                        || pageIndex * RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE >= objectNewRecords.records.length ) {
+                    return undefined;
+                }
+
+                return { kind: 'postUpdaterNewRecordsPage', treeKey: treeKey, renderSequence: renderSequence, objectApiName: objectApiName, pageIndex: pageIndex };
+
+            }
+
+            /*
                 One edit of the records on screen (#721): a row marked or unmarked, a value made for a
                 cell or a column, or a reset. The panel names a position -- object, page, row, column --
                 and never a value. The edit must be one of RECIPE_COCKPIT_UPDATER_EDIT_RULES and carry
@@ -918,6 +1054,17 @@ export class RecipeCockpitAdapterHost {
             case 'generateAdapterChild':
 
                 await RecipeCockpitAdapterMetadata.generateAdapterChildFromPanel(hub, cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'generateUpdaterNewRecords':
+
+                await RecipeCockpitAdapterNewRecords.generateFromPanel(hub, cockpitPanel, panelState, panelAction,
+                    (fakerService, objectApiName, valueCount, fields, isCancelled) => RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, fakerService, objectApiName, valueCount, fields, isCancelled, undefined, 'adapterChild'));
+                return;
+
+            case 'postUpdaterNewRecordsPage':
+
+                RecipeCockpitAdapterNewRecords.postPage(hub, cockpitPanel, panelAction);
                 return;
 
             case 'editUpdaterRecords':

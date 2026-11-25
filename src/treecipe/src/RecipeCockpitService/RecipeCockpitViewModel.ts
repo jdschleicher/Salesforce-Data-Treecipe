@@ -23,6 +23,8 @@ import type {
     IRecipeCockpitAdapterMetadataChangesMessage,
     IRecipeCockpitAdapterOrgOnlyField,
     IRecipeCockpitUpdaterLoadStateMessage,
+    IRecipeCockpitUpdaterNewRecordsMessage,
+    IRecipeCockpitUpdaterNewRecordsPageMessage,
     IRecipeCockpitUpdaterParentChangeMessage,
     IRecipeCockpitUpdaterRecordsMessage,
     IRecipeCockpitUpdaterRecordsPageMessage,
@@ -1133,6 +1135,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
                                         | IRecipeCockpitUpdaterRecordsPageMessage
+                                        | IRecipeCockpitUpdaterNewRecordsMessage
+                                        | IRecipeCockpitUpdaterNewRecordsPageMessage
                                         | IRecipeCockpitUpdaterParentChangeMessage
                                         | IRecipeCockpitAdapterMetadataChangesMessage
                                         | IRecipeCockpitObjectRefreshStateMessage
@@ -1444,6 +1448,8 @@ export interface IRecipeCockpitPanelState {
     // THE NEW CHILD OBJECT BEING ADDED (#447) AND ITS LAST PREVIEW, REPLAYED WHILE THEIR MODEL IS ON SCREEN; THE FIELD MODELS AND RECORDS ARE HELD ON THE CLASS
     adapterChildBlockMessage?: IRecipeCockpitAdapterChildBlockMessage;
     adapterChildPreviewMessage?: IRecipeCockpitAdapterChildPreviewMessage;
+    // EACH OBJECT'S NEW RECORDS (#722) AS LAST POSTED, PAGE 0, FOR A REOPENED PANEL
+    updaterNewRecordsMessages?: IRecipeCockpitUpdaterNewRecordsMessage[];
     /*
         A record Id opened from a preview (#556): the previews whose rows link a record, by
         recordLinkSequence, a pending/active pair holding at most one preview of each kind. PENDING is
