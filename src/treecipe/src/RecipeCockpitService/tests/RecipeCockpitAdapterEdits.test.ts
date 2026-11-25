@@ -45,30 +45,8 @@ jest.mock('@salesforce/core', () => ({
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFile: jest.fn(), exec: jest.fn() }));
 
 import { RecipeCockpitService } from '../RecipeCockpitService';
-import {
-    RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
-    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
-} from '../RecipeCockpitDataOrgConstants';
-import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
-import {
-    RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON,
-    RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON,
-    RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED,
-    RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON,
-    RECIPE_COCKPIT_UPDATER_UPDATE_LABEL,
-    RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
-} from '../RecipeCockpitAdapterConstants';
-import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
-import { RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
-    RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
-    RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
-    RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL,
-    RECIPE_COCKPIT_UPDATER_NOT_LOADED_FOR_UPDATE_REFUSAL,
-    RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE,
-    RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
-    RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL,
     RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
@@ -79,44 +57,19 @@ import {
     RecipeCockpitAdapterEdits
 } from '../RecipeCockpitAdapterEdits';
 import { RECIPE_COCKPIT_UPDATER_LOOKUP_REASON, RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON } from '../RecipeCockpitAdapterConstants';
-import { IUpdateObjectDescribe, IUpdateRequestRecord, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
-import { makeTreeRunArtifactsLocation } from '../../RunArtifacts/tests/RecipeCockpitRunArtifactsFixture';
-import { RecipeCockpitRunArtifacts } from '../../RunArtifacts/RecipeCockpitRunArtifacts';
-import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
-import { RecipeYamlScalar } from '../../RecipeYamlScalar/RecipeYamlScalar';
-import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
-import { DatasetSourceService } from '../../DatasetSourceService/DatasetSourceService';
-
 
 // A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)
 const fakeRecordId = (objectApiName: string, recordIndex: number) =>
     `${({ Account: '001', Contact: '003', OtherChildObject__c: 'a01' } as Record<string, string>)[objectApiName] ?? 'a99'}${String(recordIndex).padStart(15, '0')}`;
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
-const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
-const OTHER_SANDBOX_ORG = { targetOrgIdentifier: 'uat', username: 'uat@example.com.uat', alias: 'uat' };
-
-const loadTreeRecipe = () => {
-    const recipeRuns = RecipeCockpitModelBuild.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-    return RecipeCockpitModelBuild.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
-};
-
-const ACCOUNT_DESCRIBE: IUpdateObjectDescribe = {
-    objectApiName: 'Account',
-    isUpdateable: true,
-    fields: [
-        { fieldApiName: 'Legacy_Code__c', isUpdateable: true, isCalculated: false },
-        { fieldApiName: 'Formula_Code__c', isUpdateable: false, isCalculated: true },
-        { fieldApiName: 'Locked_Code__c', isUpdateable: false, isCalculated: false }
-    ]
-};
 
 answerInPanelConfirmationsThroughWarningMock();
 
@@ -149,15 +102,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const warnings = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText);
         const confirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.inPanel);
-        const updateConfirmations = () => confirmations().filter(([title]) => String(title).startsWith('Update '));
-        const runArtifactsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts');
-        const attemptsFolderPath = () => path.join(runArtifactsFolderPath(), RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
-        const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
         // WHAT AN UPDATE THAT LANDED ADDS TO ITS NOTIFICATION (#448): THE ADAPTED DATA SET AND RECIPE IT WROTE
-        const adaptedDatasetFolderNames = () => fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets')).filter(folderName => folderName.includes('-adapted-')).sort();
-        const adaptedRecipeFileNames = () => fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY)).filter(fileName => fileName.includes('-adapted-')).sort();
-        const adaptedNote = () => ` The adapted data set is ${adaptedDatasetFolderNames().at(-1)}, and the adapted recipe ${adaptedRecipeFileNames().at(-1)}.`;
-        const readAttemptFile = (suffix: string) => JSON.parse(fs.readFileSync(path.join(attemptsFolderPath(), attemptFiles().find(fileName => fileName.endsWith(suffix))!), 'utf8'));
 
         const send = async (panelMessage: Record<string, unknown>) => {
             await receivedMessageHandler(panelMessage);
@@ -175,45 +120,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
             every Contact with a new LastName. RecipeCockpitAdapterEdits.test.ts covers how a reader
             makes them; these tests are about what an update does with them.
         */
-        const DEFAULT_EDITS: Record<string, (recordIndex: number) => Record<string, unknown>> = {
-            Account: recordIndex => ({ Legacy_Code__c: `Legacy_Code__c-new-${recordIndex}`, Rating__c: 'Hot' }),
-            Contact: recordIndex => ({ LastName: `LastName-new-${recordIndex}` })
-        };
-
-        const openCockpitLoadAndGenerate = async (editsByObject: Record<string, (recordIndex: number) => Record<string, unknown> | undefined> = DEFAULT_EDITS, accountWhereClause = '') => {
-            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
-            await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
-            selectOrg(SANDBOX_ORG);
-            await send({
-                command: 'loadUpdaterRecords',
-                parentObjectApiName: 'Account',
-                treeKey: ACCOUNT_TREE_KEY,
-                renderSequence: lastRenderSequence(),
-                objects: [
-                    { objectApiName: 'Account', whereClause: accountWhereClause },
-                    { objectApiName: 'Contact', whereClause: '' },
-                    { objectApiName: 'OtherChildObject__c', whereClause: '' }
-                ]
-            });
-            const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords!;
-            Object.entries(editsByObject).forEach(([objectApiName, editOf]) => {
-                const objectEdits = RecipeCockpitAdapterEdits.readObjectEdits(heldRecords, objectApiName);
-                ( heldRecords.recordsByObjectApiName.get(objectApiName) ?? [] ).forEach((record, recordIndex) => {
-                    const changedValues = editOf(recordIndex);
-                    if ( changedValues ) {
-                        objectEdits.markedRecordIds.add(String(record.Id));
-                        objectEdits.changedValuesByRecordId.set(String(record.Id), new Map(Object.entries(changedValues)));
-                    }
-                });
-            });
-        };
 
         // WHAT AN UPDATE WOULD WRITE NOW, AS THE HOST PLANS IT
-        const plannedValuesOf = (objectApiName: string) => RecipeCockpitAdapterEdits
-            .planUpdate(RecipeCockpitAdapterState.heldUpdaterRecords!, ['Account', 'Contact', 'OtherChildObject__c']).valuesByObjectApiName.get(objectApiName);
-
-        const requestUpdate = () => send({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
 
         beforeEach(() => {
 
@@ -334,7 +242,6 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
         afterEach(() => {
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
-
 
         // THE ORG DESCRIBES MORE OF Account HERE, SO THE TABLE HAS A LOCKED COLUMN OF EACH KIND AND ONE WITH NO EXPRESSION
         const describeWideAccount = () => {

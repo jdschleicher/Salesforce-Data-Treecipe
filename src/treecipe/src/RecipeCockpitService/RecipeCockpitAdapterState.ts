@@ -1,5 +1,4 @@
 import type { Connection } from '@salesforce/core';
-import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from './RecipeCockpitTreecipeFieldEditorConstants';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES
@@ -16,7 +15,6 @@ import {
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
 import {
-    IAdaptedRecipeField,
     RecipeFixedValueKind
 } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import {

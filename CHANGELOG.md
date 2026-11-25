@@ -1,5 +1,24 @@
 # Change Log
 
+## [3.211.0] - Recipe Cockpit: the Treecipe Adapter edits existing records in the loaded table (#721, part 1)
+
+**Generate values** made a new value for every loaded record of every ticked field, so you could not change three records out of two hundred, or see a new value beside the others before writing it. This is slice B of the Adapter record table (#719). Typing a value into a cell is the second part of #721.
+
+### Treecipe Adapter tab
+
+- **Edit existing records.** Each object's loaded records are now a table you edit. **✎** at the start of a row marks it to update, and the row is tinted. Nothing changes on a row that is not marked.
+- **🎲 makes a new value for one cell**, from the faker expression the field's recipe holds, with the recipe's own backend. The **🎲 in a column's header** does it for every marked row, on every page. No confirmation is asked, since nothing is written to the org until **Update records**.
+- **A changed cell is highlighted, and ↺ puts its loaded value back.** The header's **↺** does that for the column, and **Reset all** for the object.
+- **A column that cannot be changed shows 🔒** and says why: the Id, a lookup, `RecordTypeId`, a dependent picklist, a field Salesforce sets itself. A field with no faker expression has no 🎲.
+- **Update records writes only the changed cells of the marked rows.** A marked row with nothing changed, and a change on a row that is not marked, are not sent. The confirmation lists, per object, the rows marked, the records to update and the fields.
+- **The snapshot saves only what is about to change**: the loaded value of each changed cell. **Restore previous values…** reads these and the older whole-column snapshots alike.
+- **A load opens each object it read records of**, so the table is on screen without a click.
+- **Removed: Generate values, the field boxes and the Adapter's own pencil.** The card's field rows now describe its fields. A field only the org holds is loaded and changed in the table like any other. The boxes of **Add child object** stay.
+
+### For contributors
+
+- `RecipeCockpitAdapterEdits.ts` holds the edit rules (`RECIPE_COCKPIT_UPDATER_EDIT_RULES`), the held marks and values, the value pool and `planUpdate`; `panel/adapter/AdapterRecordEdit.ts` draws the table and posts `editUpdaterRecords` with a position only. `generateUpdaterValues`, `updaterValues`, `updaterValuesRendered`, `heldUpdaterValues` and `updatableTreeKeys` are gone. The design note is under **The Treecipe Adapter tab** in `RecipeCockpitService/DESIGN.md`.
+
 ## [3.210.0] - Recipe Cockpit: the Treecipe Adapter's Load records shows every loaded record with every recipe field, in a table per object (#720)
 
 A load read only the fields ticked before it and showed 10 rows per object, so you could not see what the org holds before deciding what to change. Step 2's **Change parent** was a plain link that was easy to miss. This is slice A of the Adapter record table (#719).

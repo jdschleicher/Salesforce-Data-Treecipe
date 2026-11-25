@@ -57,7 +57,6 @@ import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
 import { IRecipeCockpitPanelState } from '../RecipeCockpitViewModel';
 import { RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL } from '../RecipeCockpitAdapterHost';
 import {
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
     RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL,
@@ -197,11 +196,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
 
         });
 
-        it.each([
-            ['an empty file', '', 'it is not JSON']
-        ])('still refuses %s', (_description, snapshotText, expectedRefusal) => {
+        it('still refuses an empty file', () => {
 
-            expect(RecipeCockpitRecordUpdate.parseSnapshot(snapshotText)).toEqual({ refusal: expectedRefusal });
+            expect(RecipeCockpitRecordUpdate.parseSnapshot('')).toEqual({ refusal: 'it is not JSON' });
 
         });
 
@@ -448,7 +445,6 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             organizationAnswers = [];
             allOrNoneAnswer = false;
             confirmationAnswers = {
-                'Generate new values': RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
                 'Update ': RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
                 'Restore ': RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL
             };

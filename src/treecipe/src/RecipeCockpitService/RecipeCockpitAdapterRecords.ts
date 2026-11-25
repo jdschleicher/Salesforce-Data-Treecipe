@@ -6,7 +6,6 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { IAuthenticatedOrgDetail } from '../SalesforceCli/SalesforceCli';
 import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 import {
-    IAdaptedRecipeField,
     RecipeCockpitRecipeWriter
 } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { CollectionsApiService } from '../CollectionsApiService/CollectionsApiService';
@@ -76,7 +75,6 @@ import {
 } from './RecipeCockpitDataOrgConstants';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
 import type {
-    IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
     RecipeCockpitPanelAction
 } from './RecipeCockpitViewModel';
@@ -102,7 +100,6 @@ export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
 export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
 // AN OBJECT UNDER THE PARENT IS READ ONLY UNDER RECORDS LOADED A LEVEL ABOVE (#444); WHEN THERE ARE NONE, IT SENDS NO QUERY
 export const RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX = 'Not read: ';
-export const RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL = 'Generate values';
 export const RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL = 'No values were generated: load this tree\'s records first. Values are generated for the records the last Load records read.';
 // A FIELD WHOSE RECIPE VALUE IS A COMMENT (A TODO) HAS NO EXPRESSION TO GENERATE FROM; A VALUE TYPED FOR IT STILL WORKS
 export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it; type a value or an expression in its editor';

@@ -60,9 +60,7 @@ import {
     RecipeCockpitAdapterMetadata
 } from '../RecipeCockpitAdapterMetadata';
 import {
-    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
-    RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL,
     RecipeCockpitAdapterRecords
@@ -392,7 +390,6 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const warnings = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText);
-        const confirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.inPanel);
         const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
         const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
         const readAttemptFiles = (suffix: string) => attemptFiles().filter(fileName => fileName.endsWith(suffix)).map(fileName => JSON.parse(fs.readFileSync(path.join(attemptsFolderPath(), fileName), 'utf8')));
@@ -497,7 +494,6 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation((message: string, options?: { inPanel?: boolean }) => {
                 if ( !options?.inPanel ) { return Promise.resolve(undefined); }
-                if ( message.startsWith('Generate new values') ) { return Promise.resolve(RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL); }
                 if ( message.startsWith('Update ') ) { return Promise.resolve(RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL); }
                 if ( message.startsWith('Restore ') ) { return Promise.resolve(RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL); }
                 return Promise.resolve(undefined);
