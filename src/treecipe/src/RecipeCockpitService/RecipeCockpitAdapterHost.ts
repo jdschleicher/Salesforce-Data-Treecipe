@@ -133,6 +133,7 @@ export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
     columnEdits?: IRecipeCockpitUpdaterColumnEditView[];
     markedRowIndexes?: number[];
     changedCells?: Array<[number, number]>;
+    cutCells?: Array<[number, number]>;
     editSummary?: IRecipeCockpitUpdaterEditSummary;
 }
 
@@ -149,6 +150,7 @@ export interface IRecipeCockpitUpdaterRecordsPageMessage {
     // THE PAGE AS IT READS NOW (#721): ITS MARKED ROWS, ITS CHANGED CELLS AND THE OBJECT'S TOTALS
     markedRowIndexes: number[];
     changedCells: Array<[number, number]>;
+    cutCells: Array<[number, number]>;
     editSummary: IRecipeCockpitUpdaterEditSummary;
 }
 
@@ -338,7 +340,7 @@ export type RecipeCockpitAdapterPanelAction =
     | { kind: 'updateUpdaterRecords'; treeKey: string }
     | { kind: 'loadUpdaterSnapshots'; treeKey: string }
     | { kind: 'restoreUpdaterSnapshot'; treeKey: string; snapshotName: string }
-    | { kind: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: RecipeCockpitUpdaterEditKind; rowIndex?: number; columnIndex?: number };
+    | { kind: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: RecipeCockpitUpdaterEditKind; rowIndex?: number; columnIndex?: number; value?: string };
 
 export class RecipeCockpitAdapterHost {
 
@@ -700,7 +702,7 @@ export class RecipeCockpitAdapterHost {
             */
             case 'editUpdaterRecords': {
 
-                const { treeKey, renderSequence, objectApiName, pageIndex, editKind, rowIndex, columnIndex } = panelMessage;
+                const { treeKey, renderSequence, objectApiName, pageIndex, editKind, rowIndex, columnIndex, value } = panelMessage;
                 const recordsMessage = panelState.updaterRecordsMessage;
                 const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
                 const loadedObject = recordsMessage?.objects.find(objectRecords => objectRecords.objectApiName === objectApiName);
@@ -733,7 +735,9 @@ export class RecipeCockpitAdapterHost {
 
                 if ( ( editRule.needsRow ? !isRowOfPage : rowIndex !== undefined )
                         || ( editRule.needsColumn ? ( !columnEdit || columnEdit.lockReason !== undefined ) : columnIndex !== undefined )
-                        || ( editRule.needsGeneration && !columnEdit?.canGenerate ) ) {
+                        || ( editRule.needsGeneration && !columnEdit?.canGenerate )
+                        // THE ONE VALUE THE PANEL POSTS: TEXT THE EDITOR CAN HOLD, AND ONLY WITH THE EDIT THAT TAKES ONE
+                        || ( editRule.needsValue ? ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) : value !== undefined ) ) {
                     return undefined;
                 }
 
@@ -745,7 +749,8 @@ export class RecipeCockpitAdapterHost {
                     pageIndex: pageIndex,
                     editKind: editKind as RecipeCockpitUpdaterEditKind,
                     ...( editRule.needsRow ? { rowIndex: rowIndex as number } : {} ),
-                    ...( editRule.needsColumn ? { columnIndex: columnIndex as number } : {} )
+                    ...( editRule.needsColumn ? { columnIndex: columnIndex as number } : {} ),
+                    ...( editRule.needsValue ? { value: value as string } : {} )
                 };
 
             }

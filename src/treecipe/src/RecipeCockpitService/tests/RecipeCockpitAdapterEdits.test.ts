@@ -51,8 +51,12 @@ import {
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import { ReadOnlyFields } from '../../ObjectInfoWrapper/ReadOnlyFields';
+import { RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX } from '../RecipeCockpitFieldRowsConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from '../RecipeCockpitTreecipeFieldEditorConstants';
 import {
     RECIPE_COCKPIT_UPDATER_ID_COLUMN_LOCK_REASON,
+    RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL,
     RECIPE_COCKPIT_UPDATER_VALUE_POOL_SIZE,
     RecipeCockpitAdapterEdits
 } from '../RecipeCockpitAdapterEdits';
@@ -515,6 +519,190 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
 
         });
 
+        describe('a value typed into a cell (#721, part 2)', () => {
+
+            const describeTypedAccount = () => {
+                describeAnswers.Account = {
+                    name: 'Account',
+                    updateable: true,
+                    fields: ['Name', 'Legacy_Code__c', 'Annual_Budget__c', 'Rating__c', 'Regions__c', 'ParentId'].map(fieldApiName => ({ name: fieldApiName, type: 'string', updateable: true }))
+                };
+            };
+            const typeCell = (rowIndex: number, fieldApiName: string, value: unknown) => edit('typeCell', { rowIndex: rowIndex, columnIndex: columnIndexOf('Account', fieldApiName), value: value });
+            const plannedAccountValues = () => RecipeCockpitAdapterEdits.planUpdate(RecipeCockpitAdapterState.heldUpdaterRecords!, ['Account']).valuesByObjectApiName.get('Account');
+
+            it('puts the value typed in one cell of a marked row, as the kind its field takes, and runs no backend', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await edit('markRow', { rowIndex: 1 });
+                await typeCell(1, 'Legacy_Code__c', 'LEG-7');
+                await typeCell(1, 'Annual_Budget__c', '1250.5');
+
+                expect(cellOf(1, 'Legacy_Code__c')).toBe('LEG-7');
+                expect(cellOf(0, 'Legacy_Code__c')).toBe('OLD-0');
+                expect(lastPage().editSummary).toMatchObject({ markedRecordCount: 1, updatableRecordCount: 1, changedFieldApiNames: ['Legacy_Code__c', 'Annual_Budget__c'] });
+                // A NUMBER FIELD'S VALUE GOES TO THE ORG AS A NUMBER, A TEXT FIELD'S AS THE TEXT TYPED
+                expect(plannedAccountValues()).toEqual([{ recordId: fakeRecordId('Account', 1), fieldValues: { Legacy_Code__c: 'LEG-7', Annual_Budget__c: 1250.5 } }]);
+                expect(generateSpy).not.toHaveBeenCalled();
+                expect(warnings()).toEqual([]);
+
+            });
+
+            it('takes a value for a field with no faker expression, which has no 🎲', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                expect(loadedObject('Account').columnEdits[columnIndexOf('Account', 'Regions__c')]).toEqual({ canGenerate: false });
+
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, 'Regions__c', 'EMEA');
+
+                expect(cellOf(0, 'Regions__c')).toBe('EMEA');
+                expect(plannedAccountValues()).toEqual([{ recordId: fakeRecordId('Account', 0), fieldValues: { Regions__c: 'EMEA' } }]);
+
+            });
+
+            it.each([
+                ['a value that is not a number for a number field', 'Annual_Budget__c', 'plenty', 'Account.Annual_Budget__c was not changed: Type a plain number, such as 42, -7 or 3.25.'],
+                ['a picklist value its field does not declare', 'Rating__c', 'Tepid', 'Account.Rating__c was not changed: "Tepid" is not a value this picklist declares.'],
+                ['an expression, which a cell does not take', 'Legacy_Code__c', '${{ fake.Word }}', 'Account.Legacy_Code__c was not changed: a cell takes a value, not a faker expression. Use 🎲 for a generated one.']
+            ])('refuses %s, naming the field, and changes no cell', async (_description: string, fieldApiName: string, value: string, expectedWarning: string | RegExp) => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, fieldApiName, value);
+
+                expect(warnings()).toHaveLength(1);
+                expect(warnings()[0]).toMatch(expectedWarning instanceof RegExp ? expectedWarning : new RegExp(`^${expectedWarning.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+                expect(lastPage()).toMatchObject({ changedCells: [], editSummary: { updatableRecordCount: 0 } });
+
+            });
+
+            it('types nothing into a row that is not marked', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await typeCell(0, 'Legacy_Code__c', 'LEG-7');
+
+                expect(lastPage()).toMatchObject({ changedCells: [], editSummary: { markedRecordCount: 0, updatableRecordCount: 0 } });
+
+            });
+
+            it.each([
+                ['a value that is not text', { value: 7 }],
+                ['no value', {}],
+                ['an empty value', { value: '' }],
+                ['a value longer than the editor holds', { value: 'x'.repeat(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH + 1) }]
+            ])('drops a typeCell with %s without a word', async (_description: string, valuePart: Record<string, unknown>) => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await edit('markRow', { rowIndex: 0 });
+                const typeMessage = editMessage('typeCell', { rowIndex: 0, columnIndex: columnIndexOf('Account', 'Legacy_Code__c'), ...valuePart });
+
+                expect(RecipeCockpitService.routePanelMessage(typeMessage as any, panelState())).toBeUndefined();
+                await send(typeMessage);
+                expect(lastPage().changedCells).toEqual([]);
+                expect(warnings()).toEqual([]);
+
+            });
+
+            it('drops a value posted with an edit that takes none, and a typed value for a locked column', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await edit('markRow', { rowIndex: 0 });
+
+                expect(RecipeCockpitService.routePanelMessage(editMessage('generateCell', { rowIndex: 0, columnIndex: columnIndexOf('Account', 'Legacy_Code__c'), value: 'LEG-7' }) as any, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage(editMessage('typeCell', { rowIndex: 0, columnIndex: columnIndexOf('Account', 'ParentId'), value: fakeRecordId('Account', 2) }) as any, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage(editMessage('typeCell', { rowIndex: 0, columnIndex: 0, value: fakeRecordId('Account', 2) }) as any, panelState())).toBeUndefined();
+
+            });
+
+            it('writes the adapted recipe a typed field as the one value typed, and keeps the expression of a field typed differently per record', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await edit('markRow', { rowIndex: 0 });
+                await edit('markRow', { rowIndex: 1 });
+                await typeCell(0, 'Rating__c', 'Hot');
+                await typeCell(1, 'Rating__c', 'Hot');
+                await typeCell(0, 'Legacy_Code__c', 'LEG-A');
+                await typeCell(1, 'Legacy_Code__c', 'LEG-B');
+                await typeCell(0, 'Regions__c', 'EMEA');
+                await typeCell(1, 'Regions__c', 'APAC');
+
+                const adaptedFields = RecipeCockpitAdapterEdits.planUpdate(RecipeCockpitAdapterState.heldUpdaterRecords!, ['Account']).adaptedRecipeFields;
+                expect(adaptedFields.map(adaptedField => [adaptedField.fieldApiName, adaptedField.valueText, adaptedField.isRecipeValue === true])).toEqual([
+                    ['Legacy_Code__c', '"${{fake.Word}}"', true],
+                    ['Rating__c', '"Hot"', false],
+                    // NO EXPRESSION AND NO ONE VALUE: THE FIRST RECORD'S, SO THE FIELD IS STILL NAMED AS UPDATED
+                    ['Regions__c', '"EMEA"', false]
+                ]);
+
+            });
+
+            it('names the cells whose text on screen is not their whole value, so no editor starts from a cut or one-line copy of it', async () => {
+
+                describeTypedAccount();
+                const getConnection = (SalesforceOrgService.getConnection as jest.Mock).getMockImplementation()!;
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async (...connectionArguments: any[]) => {
+                    const connection = await (getConnection as any)(...connectionArguments);
+                    return { ...connection, query: async (soql: string) => {
+                        const answer = await connection.query(soql);
+                        if ( /FROM Account/.test(soql) ) {
+                            answer.records[0].Legacy_Code__c = 'x'.repeat(5000);
+                            answer.records[1].Legacy_Code__c = 'first line\nsecond line';
+                        }
+                        return answer;
+                    } };
+                });
+                await openCockpitAndLoad();
+                const legacyColumnIndex = columnIndexOf('Account', 'Legacy_Code__c');
+
+                expect(loadedObject('Account').cutCells).toEqual([[0, legacyColumnIndex], [1, legacyColumnIndex]]);
+
+                // A VALUE TYPED OVER ONE IS SHOWN WHOLE, SO IT IS NO LONGER CUT
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, 'Legacy_Code__c', 'LEG-7');
+                expect(lastPage().cutCells).toEqual([[1, legacyColumnIndex]]);
+
+            });
+
+            it('refuses a value that is a nickname of the recipe, which the adapted recipe would read as a reference', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                const nickname = 'Contact_NickName';
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, 'Legacy_Code__c', nickname);
+
+                expect(warnings()).toEqual([`Account.Legacy_Code__c was not changed: "${nickname}" ${RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL}`]);
+                expect(lastPage().changedCells).toEqual([]);
+
+            });
+
+            it('lets 🎲 and ↺ replace a typed value, which then no longer counts as typed', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, 'Rating__c', 'Hot');
+                await edit('resetCell', { rowIndex: 0, columnIndex: columnIndexOf('Account', 'Rating__c') });
+                expect(cellOf(0, 'Rating__c')).toBe('Warm');
+
+                await typeCell(0, 'Legacy_Code__c', 'LEG-A');
+                await edit('generateCell', { rowIndex: 0, columnIndex: columnIndexOf('Account', 'Legacy_Code__c') });
+                expect(cellOf(0, 'Legacy_Code__c')).toBe('Legacy_Code__c-new-0');
+                const adaptedFields = RecipeCockpitAdapterEdits.planUpdate(RecipeCockpitAdapterState.heldUpdaterRecords!, ['Account']).adaptedRecipeFields;
+                expect(adaptedFields).toEqual([expect.objectContaining({ fieldApiName: 'Legacy_Code__c', isRecipeValue: true })]);
+
+            });
+
+        });
+
         describe('↺ reset', () => {
 
             const loadMarkAndFill = async () => {
@@ -689,6 +877,27 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
 
             });
 
+        });
+
+    });
+
+    describe('rules read without a cockpit', () => {
+
+        it.each([
+            ['2026-01-31T09:30:00.000+0000', '2026-01-31T09:30:00.000+00:00'],
+            ['2026-01-31T09:30:00-0530', '2026-01-31T09:30:00-05:30'],
+            ['2026-01-31T09:30:00.000Z', '2026-01-31T09:30:00.000Z'],
+            ['2026-01-31', '2026-01-31'],
+            ['Order +0000', 'Order +0000']
+        ])('reads a date and time typed as %s, the way an org answers one, as %s', (typedValue, expectedText) => {
+            expect(RecipeCockpitAdapterEdits.normalizeTypedText(typedValue)).toBe(expectedText);
+        });
+
+        it.each([
+            ['a formula', { fieldApiName: 'Score__c', fieldType: 'Number', recipeValue: ReadOnlyFields.formatRecipeValue('formula') }, 'Account', `${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}formula`],
+            ['a field Salesforce sets from another lookup', { fieldApiName: 'AccountId', fieldType: 'Text', recipeValue: 'Opportunity_NickName.AccountId' }, 'Quote', `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}OpportunityId`]
+        ])('locks %s, as the Treecipe tab does, so no cell of it is typed into', (_description, fieldViewModel, objectApiName, expectedReason) => {
+            expect(RecipeCockpitAdapterState.findUpdaterFieldLockReason({ objects: [] } as any, objectApiName, fieldViewModel as any)).toBe(expectedReason);
         });
 
     });

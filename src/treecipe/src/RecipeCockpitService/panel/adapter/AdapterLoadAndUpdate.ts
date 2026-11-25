@@ -354,7 +354,7 @@ export function renderUpdaterRecordsPage(pageMessage: IUpdaterRecordsPageMessage
     // THE OBJECT IS THE RECORDS MESSAGE'S OWN, SO THE CARD'S TOTALS (sumUpdaterEdits) READ WHAT THE HOST COUNTS NOW
     Object.assign(updaterObjectState.loadedRecords, {
         rows: pageMessage.rows, recordLinks: pageMessage.recordLinks, lookupLinks: pageMessage.lookupLinks,
-        markedRowIndexes: pageMessage.markedRowIndexes, changedCells: pageMessage.changedCells, editSummary: pageMessage.editSummary
+        markedRowIndexes: pageMessage.markedRowIndexes, changedCells: pageMessage.changedCells, cutCells: pageMessage.cutCells, editSummary: pageMessage.editSummary
     });
     const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
     // THE SAME PAGE AGAIN IS AN EDIT'S ANSWER (#721)

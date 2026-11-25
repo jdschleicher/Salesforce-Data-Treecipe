@@ -21,6 +21,7 @@ import type {
     RecipeCockpitAdapterPanelAction
 } from './RecipeCockpitAdapterHost';
 import type {
+    IRecipeCockpitFieldViewModel,
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
@@ -35,7 +36,8 @@ import type {
 
     Everything is held on the HOST, in RecipeCockpitAdapterState.heldUpdaterEdits, beside the
     records it belongs to and let go with them. The panel posts a position (object name, page,
-    row, column) and is answered with the page as it now reads; it never posts a value.
+    row, column) and is answered with the page as it now reads. The one value it posts is the
+    text the reader typed into a cell (typeCell), held to the Treecipe tab's fixed value rules.
 */
 
 // HOW MANY ROWS OF A RECORD TABLE ONE PAGE HOLDS (#720); EVERY PAGE IS CUT FROM THE RECORDS THE HOST KEEPS
@@ -54,17 +56,23 @@ export const RECIPE_COCKPIT_UPDATER_UNLISTED_COLUMN_LOCK_REASON = 'it is not a f
 /*
     Each edit the panel can ask for, and what it needs of the position posted with it. The router
     holds a message to its row: an edit that needs a row or a column is refused without one, and
-    one that needs a value made is refused for a column with no expression to make it from.
+    one that needs a value made is refused for a column with no expression to make it from. Only
+    typeCell takes a value, and every other edit is refused with one.
 */
 export const RECIPE_COCKPIT_UPDATER_EDIT_RULES = Object.freeze({
-    markRow: { needsRow: true, needsColumn: false, needsGeneration: false },
-    unmarkRow: { needsRow: true, needsColumn: false, needsGeneration: false },
-    generateCell: { needsRow: true, needsColumn: true, needsGeneration: true },
-    generateColumn: { needsRow: false, needsColumn: true, needsGeneration: true },
-    resetCell: { needsRow: true, needsColumn: true, needsGeneration: false },
-    resetColumn: { needsRow: false, needsColumn: true, needsGeneration: false },
-    resetObject: { needsRow: false, needsColumn: false, needsGeneration: false }
+    markRow: { needsRow: true, needsColumn: false, needsGeneration: false, needsValue: false },
+    unmarkRow: { needsRow: true, needsColumn: false, needsGeneration: false, needsValue: false },
+    generateCell: { needsRow: true, needsColumn: true, needsGeneration: true, needsValue: false },
+    generateColumn: { needsRow: false, needsColumn: true, needsGeneration: true, needsValue: false },
+    typeCell: { needsRow: true, needsColumn: true, needsGeneration: false, needsValue: true },
+    resetCell: { needsRow: true, needsColumn: true, needsGeneration: false, needsValue: false },
+    resetColumn: { needsRow: false, needsColumn: true, needsGeneration: false, needsValue: false },
+    resetObject: { needsRow: false, needsColumn: false, needsGeneration: false, needsValue: false }
 });
+
+export const RECIPE_COCKPIT_UPDATER_TYPED_EXPRESSION_REFUSAL = 'a cell takes a value, not a faker expression. Use 🎲 for a generated one.';
+// A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT, AND THE ADAPTED RECIPE (#448) WOULD HOLD IT
+export const RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL = 'is a nickname in this recipe, which a recipe reads as a reference to a record, not as text.';
 
 export type RecipeCockpitUpdaterEditKind = keyof typeof RECIPE_COCKPIT_UPDATER_EDIT_RULES;
 
@@ -73,12 +81,14 @@ export type RecipeCockpitUpdaterValueSource = 'recipe' | 'recipeEdit' | 'recipeF
 
 /*
     One column of an object's record table as the host plans it at the load: why it cannot be
-    changed, or how 🎲 makes a value for it. Neither set is a field with no expression, which
-    slice B's typed values still reach.
+    changed, or how 🎲 makes a value for it and what a typed value is held to. A field with no
+    expression has no generation, and a typed value still reaches it.
 */
 export interface IRecipeCockpitUpdaterColumnPlan {
     fieldApiName: string;
     lockReason?: string;
+    // WHAT A VALUE TYPED INTO A CELL IS CHECKED AGAINST: THE FIELD AS THE MODEL DRAWS IT, AND THE PICKLIST VALUES IT DECLARES
+    typing?: { fieldViewModel: IRecipeCockpitFieldViewModel; declaredPicklistValues: readonly string[] | undefined; recipeNicknames: readonly string[]; isOrgOnly?: true };
     generation?: {
         source: RecipeCockpitUpdaterValueSource;
         // THE SCALAR A ONE-FIELD RECIPE GENERATES FROM; FOR recipeFixed, THE VALUE ITSELF
@@ -100,6 +110,8 @@ export interface IRecipeCockpitUpdaterColumnEditView {
 export interface IRecipeCockpitUpdaterObjectEdits {
     markedRecordIds: Set<string>;
     changedValuesByRecordId: Map<string, Map<string, unknown>>;
+    // THE TEXT TYPED INTO A CELL THAT STILL HOLDS IT, AS THE ADAPTED RECIPE WOULD WRITE IT: fieldApiName → SCALAR, PER RECORD
+    typedScalarsByRecordId: Map<string, Map<string, string>>;
     valuePoolsByFieldApiName: Map<string, unknown[]>;
 }
 
@@ -121,6 +133,8 @@ export interface IRecipeCockpitUpdaterEditedPage {
     markedRowIndexes: number[];
     // [rowIndex, columnIndex] OF EACH CELL THAT NO LONGER HOLDS ITS LOADED VALUE
     changedCells: Array<[number, number]>;
+    // [rowIndex, columnIndex] OF EACH CELL WHOSE TEXT ON SCREEN IS NOT ITS WHOLE VALUE (CUT SHORT, OR WITH LINE BREAKS): AN EDITOR MUST NOT START FROM IT
+    cutCells: Array<[number, number]>;
     editSummary: IRecipeCockpitUpdaterEditSummary;
 }
 
@@ -169,6 +183,10 @@ export class RecipeCockpitAdapterEdits {
             .filter(fixedValue => fixedValue.objectApiName === objectApiName && ( fixedValue.nickname === undefined || fixedValue.nickname === objectViewModel?.nickname ))
             .map(fixedValue => [fixedValue.fieldApiName, fixedValue] as const));
 
+        // EVERY NICKNAME THE RECIPE WRITES: AN OBJECT'S ONE, AND EACH OCCURRENCE'S OF AN OBJECT WRITTEN MORE THAN ONCE
+        const recipeNicknames = recipe.objects.flatMap(object => [object.nickname, object.recipeNickname, ...( object.iterations ?? [] ).map(iteration => iteration.nickname)])
+            .filter((nickname): nickname is string => typeof nickname === 'string' && nickname !== '');
+
         return columnFieldApiNames.map((fieldApiName): IRecipeCockpitUpdaterColumnPlan => {
 
             if ( fieldApiName === 'Id' ) {
@@ -181,7 +199,9 @@ export class RecipeCockpitAdapterEdits {
             if ( orgOnlyField ) {
                 return {
                     fieldApiName: fieldApiName,
-                    ...( orgOnlyField.lockReason !== undefined ? { lockReason: orgOnlyField.lockReason } : {} ),
+                    ...( orgOnlyField.lockReason !== undefined
+                        ? { lockReason: orgOnlyField.lockReason }
+                        : { typing: { fieldViewModel: orgOnlyField.fieldViewModel, declaredPicklistValues: orgOnlyField.picklistValues.length > 0 ? orgOnlyField.picklistValues : undefined, recipeNicknames: recipeNicknames, isOrgOnly: true as const } } ),
                     ...( orgOnlyField.lockReason === undefined && orgOnlyField.expression !== undefined
                         ? { generation: { source: 'orgExpression' as const, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: orgOnlyField.expression, kind: 'expression' }), isOrgOnly: true as const } }
                         : {} )
@@ -197,10 +217,12 @@ export class RecipeCockpitAdapterEdits {
                 return { fieldApiName: fieldApiName, lockReason: lockReason };
             }
 
+            const typing = { fieldViewModel: recipeFieldViewModel, declaredPicklistValues: RecipeCockpitDrawnModel.listDeclaredPicklistValues(panelState, objectApiName, fieldApiName), recipeNicknames: recipeNicknames };
             const recipeFileEdit = recipeFileEditsByFieldApiName.get(fieldApiName);
             if ( recipeFileEdit && recipeFileEdit.kind !== 'expression' ) {
                 return {
                     fieldApiName: fieldApiName,
+                    typing: typing,
                     generation: {
                         source: 'recipeFixed',
                         valueText: recipeFileEdit.value,
@@ -212,12 +234,13 @@ export class RecipeCockpitAdapterEdits {
 
             const expression = recipeFileEdit ? recipeFileEdit.value : RecipeCockpitDrawnModel.findRecipeExpression(recipeFieldViewModel.recipeValue);
             if ( expression === undefined ) {
-                return { fieldApiName: fieldApiName };
+                return { fieldApiName: fieldApiName, typing: typing };
             }
 
             // DOUBLE-QUOTED, SO ": " OR "#" IN THE EXPRESSION IS NEVER READ AS YAML; IT LOADS AS THE SAME STRING
             return {
                 fieldApiName: fieldApiName,
+                typing: typing,
                 generation: { source: recipeFileEdit ? 'recipeEdit' : 'recipe', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: expression, kind: 'expression' }) }
             };
 
@@ -242,7 +265,7 @@ export class RecipeCockpitAdapterEdits {
         const editsByObjectApiName = RecipeCockpitAdapterState.heldUpdaterEdits.editsByObjectApiName;
         let objectEdits = editsByObjectApiName.get(objectApiName);
         if ( !objectEdits ) {
-            objectEdits = { markedRecordIds: new Set(), changedValuesByRecordId: new Map(), valuePoolsByFieldApiName: new Map() };
+            objectEdits = { markedRecordIds: new Set(), changedValuesByRecordId: new Map(), typedScalarsByRecordId: new Map(), valuePoolsByFieldApiName: new Map() };
             editsByObjectApiName.set(objectApiName, objectEdits);
         }
 
@@ -339,11 +362,30 @@ export class RecipeCockpitAdapterEdits {
 
         return {
             ...tablePage,
+            cutCells: this.listCutCells(shownRecords, columnFieldApiNames, tablePage.rows),
             markedRowIndexes: markedRowIndexes,
             changedCells: changedCells.sort(([firstRowIndex, firstColumnIndex], [secondRowIndex, secondColumnIndex]) => firstRowIndex - secondRowIndex || firstColumnIndex - secondColumnIndex),
             editSummary: this.summarizeObjectEdits(heldRecords, objectApiName)
         };
 
+    }
+
+    // THE ORG ANSWERS A DATE AND TIME WITH A +0000 ZONE, WHICH IS WHAT A CELL SHOWS AND ITS EDITOR STARTS FROM; THE FIXED VALUE RULE WANTS +00:00
+    static normalizeTypedText(typedValue: string): string {
+        return typedValue.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?[+-]\d{2})(\d{2})$/, '$1:$2');
+    }
+
+    // A CELL'S TEXT IS CUT TO A LENGTH AND AN INPUT DROPS LINE BREAKS, SO NEITHER IS A VALUE TO START TYPING FROM: [rowIndex, columnIndex] OF EACH
+    static listCutCells(pageRecords: readonly Record<string, unknown>[], columnFieldApiNames: readonly string[], shownRows: readonly string[][]): Array<[number, number]> {
+        const cutCells: Array<[number, number]> = [];
+        pageRecords.forEach((pageRecord, rowIndex) => columnFieldApiNames.forEach((fieldApiName, columnIndex) => {
+            const recordKey = this.findRecordKey(pageRecord, fieldApiName);
+            const cellValue = recordKey === undefined ? undefined : pageRecord[recordKey];
+            if ( typeof cellValue === 'string' && ( cellValue !== shownRows[rowIndex]?.[columnIndex] || /[\r\n]/.test(cellValue) ) ) {
+                cutCells.push([rowIndex, columnIndex]);
+            }
+        }));
+        return cutCells;
     }
 
     /*
@@ -386,7 +428,7 @@ export class RecipeCockpitAdapterEdits {
                                     editAction: Extract<RecipeCockpitAdapterPanelAction, { kind: 'editUpdaterRecords' }>,
                                     generateValues: RecipeCockpitUpdaterValueGenerator) {
 
-        const { treeKey, renderSequence, objectApiName, pageIndex, editKind, rowIndex, columnIndex } = editAction;
+        const { treeKey, renderSequence, objectApiName, pageIndex, editKind, rowIndex, columnIndex, value: typedValue } = editAction;
         const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
         const records = heldRecords?.recordsByObjectApiName.get(objectApiName);
         const columnPlans = heldRecords?.columnPlansByObjectApiName.get(objectApiName);
@@ -415,6 +457,31 @@ export class RecipeCockpitAdapterEdits {
                 if ( rowRecordId !== undefined ) { objectEdits.markedRecordIds.delete(rowRecordId); }
                 break;
 
+            // TYPED INTO A MARKED ROW ONLY, AS 🎲 IS, AND HELD TO THE RULES THE TREECIPE TAB HOLDS A FIXED VALUE TO
+            case 'typeCell': {
+
+                const typing = columnPlan?.typing;
+                if ( !columnPlan || !typing || typedValue === undefined || rowRecordId === undefined || !objectEdits.markedRecordIds.has(rowRecordId) ) {
+                    break;
+                }
+
+                const typedText = this.normalizeTypedText(typedValue);
+                const valueKind = hub.resolveFixedValueKind(typedText, typing.fieldViewModel);
+                const valueRefusal = valueKind === 'expression' ? RECIPE_COCKPIT_UPDATER_TYPED_EXPRESSION_REFUSAL
+                    : typing.recipeNicknames.includes(typedText) ? `"${typedText}" ${RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL}`
+                    : hub.validateFixedValueInput(typedText, typing.fieldViewModel, typing.declaredPicklistValues);
+
+                if ( valueRefusal !== undefined ) {
+                    VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${objectApiName}.${columnPlan.fieldApiName} was not changed: ${valueRefusal}`));
+                    break;
+                }
+
+                this.setCellValue(objectEdits, rowRecord as Record<string, unknown>, rowRecordId, columnPlan.fieldApiName,
+                                  { value: RecipeCockpitAdapterState.toUpdaterFixedValue(typedText, valueKind), typedScalar: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: typedText, kind: valueKind }) });
+                break;
+
+            }
+
             case 'resetCell':
                 if ( rowRecordId !== undefined && columnPlan ) { this.setCellValue(objectEdits, rowRecord as Record<string, unknown>, rowRecordId, columnPlan.fieldApiName, undefined); }
                 break;
@@ -429,6 +496,7 @@ export class RecipeCockpitAdapterEdits {
             // THE MARKS STAY: THEY SAY WHICH RECORDS THE READER MEANS TO CHANGE, NOT WHAT TO
             case 'resetObject':
                 objectEdits.changedValuesByRecordId.clear();
+                objectEdits.typedScalarsByRecordId.clear();
                 break;
 
             case 'generateCell':
@@ -464,16 +532,27 @@ export class RecipeCockpitAdapterEdits {
     }
 
     // A CELL'S NEW VALUE, OR NONE: A VALUE EQUAL TO THE ONE LOADED IS NO CHANGE, SO AN UPDATE NEVER WRITES A RECORD ITS OWN VALUE
-    private static setCellValue(objectEdits: IRecipeCockpitUpdaterObjectEdits, loadedRecord: Record<string, unknown>, recordId: string, fieldApiName: string, newValue: { value: unknown } | undefined) {
+    private static setCellValue(objectEdits: IRecipeCockpitUpdaterObjectEdits, loadedRecord: Record<string, unknown>, recordId: string, fieldApiName: string,
+                                newValue: { value: unknown; typedScalar?: string } | undefined) {
 
         const changedValues = objectEdits.changedValuesByRecordId.get(recordId) ?? new Map<string, unknown>();
+        const typedScalars = objectEdits.typedScalarsByRecordId.get(recordId) ?? new Map<string, string>();
         const recordKey = this.findRecordKey(loadedRecord, fieldApiName);
         const loadedValue = recordKey === undefined ? null : loadedRecord[recordKey] ?? null;
 
+        // A CELL IS TYPED ONLY WHILE IT HOLDS THE VALUE TYPED: 🎲 AND ↺ TAKE THAT AWAY
+        typedScalars.delete(fieldApiName);
         if ( newValue === undefined || ( newValue.value ?? null ) === loadedValue ) {
             changedValues.delete(fieldApiName);
         } else {
             changedValues.set(fieldApiName, newValue.value ?? null);
+            if ( newValue.typedScalar !== undefined ) { typedScalars.set(fieldApiName, newValue.typedScalar); }
+        }
+
+        if ( typedScalars.size === 0 ) {
+            objectEdits.typedScalarsByRecordId.delete(recordId);
+        } else {
+            objectEdits.typedScalarsByRecordId.set(recordId, typedScalars);
         }
 
         if ( changedValues.size === 0 ) {
@@ -593,19 +672,39 @@ export class RecipeCockpitAdapterEdits {
 
             plannedObjects.push({ objectApiName: objectApiName, fieldApiNames: fieldApiNames, recordValues: recordValues, loadedRecords: loadedRecords, markedRecordCount: editSummary.markedRecordCount });
 
-            ( heldRecords.columnPlansByObjectApiName.get(objectApiName) ?? [] ).filter(columnPlan => columnPlan.generation && fieldApiNames.includes(columnPlan.fieldApiName)).forEach(columnPlan => {
-                const generation = columnPlan.generation as NonNullable<IRecipeCockpitUpdaterColumnPlan['generation']>;
-                if ( generation.isOrgOnly ) {
+            ( heldRecords.columnPlansByObjectApiName.get(objectApiName) ?? [] ).filter(columnPlan => fieldApiNames.includes(columnPlan.fieldApiName)).forEach(columnPlan => {
+
+                const generation = columnPlan.generation;
+                const isOrgOnly = generation?.isOrgOnly === true || columnPlan.typing?.isOrgOnly === true;
+                if ( isOrgOnly ) {
                     orgOnlyFieldApiNamesByObjectApiName.set(objectApiName, [...( orgOnlyFieldApiNamesByObjectApiName.get(objectApiName) ?? [] ), columnPlan.fieldApiName]);
                 }
-                // THE RECIPE ALREADY HOLDS A VALUE THAT CAME FROM IT, SO ITS LINES ARE ONLY MARKED; AN ORG-ONLY FIELD IS WRITTEN AS THE LINE IT WAS GENERATED FROM
-                adaptedRecipeFields.push({
-                    objectApiName: objectApiName,
-                    fieldApiName: columnPlan.fieldApiName,
-                    valueText: generation.recipeValueText ?? generation.valueText,
-                    ...( generation.source === 'orgExpression' ? {} : { isRecipeValue: true as const } ),
-                    ...( generation.isOrgOnly ? { isOrgOnly: true as const } : {} )
-                });
+
+                /*
+                    The one line the adapted recipe (#448) writes for the field. Every record given the
+                    SAME typed value: that value. Otherwise the expression its 🎲 generates from -- the
+                    recipe already holds a value that came from it, so its lines are only marked, and an
+                    org-only field is written as the line it was generated from. A field with no
+                    expression, typed differently per record, has no one line: the first record's value
+                    stands for it, so the field is still named as updated.
+                */
+                const writtenValues = recordValues.filter(recordValue => Object.prototype.hasOwnProperty.call(recordValue.fieldValues, columnPlan.fieldApiName));
+                const typedScalars = writtenValues.map(recordValue => objectEdits.typedScalarsByRecordId.get(recordValue.recordId)?.get(columnPlan.fieldApiName));
+                const [firstTypedScalar] = typedScalars.filter(typedScalar => typedScalar !== undefined);
+                const isOneTypedValue = typedScalars.length > 0 && typedScalars.every(typedScalar => typedScalar !== undefined && typedScalar === typedScalars[0]);
+
+                if ( generation && !isOneTypedValue ) {
+                    adaptedRecipeFields.push({
+                        objectApiName: objectApiName,
+                        fieldApiName: columnPlan.fieldApiName,
+                        valueText: generation.recipeValueText ?? generation.valueText,
+                        ...( generation.source === 'orgExpression' ? {} : { isRecipeValue: true as const } ),
+                        ...( isOrgOnly ? { isOrgOnly: true as const } : {} )
+                    });
+                } else if ( firstTypedScalar !== undefined ) {
+                    adaptedRecipeFields.push({ objectApiName: objectApiName, fieldApiName: columnPlan.fieldApiName, valueText: firstTypedScalar, ...( isOrgOnly ? { isOrgOnly: true as const } : {} ) });
+                }
+
             });
 
         });

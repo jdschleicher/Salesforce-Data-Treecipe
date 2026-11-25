@@ -50,7 +50,9 @@ import type {
 import { hasOwnKey } from '../RecipeCockpitOwnKey';
 import { indexTreeLookupFields } from '../treecipe/fieldRows/FieldRowFixedValue';
 import { formatParentLookups } from '../treecipe/fieldRows/FieldRow';
-import { RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES } from '../../RecipeCockpitFieldRowsConstants';
+import { ReadOnlyFields } from '../../../ObjectInfoWrapper/ReadOnlyFields';
+import { StandardDerivedFields } from '../../../ObjectInfoWrapper/StandardDerivedFields';
+import { RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX, RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES, RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX } from '../../RecipeCockpitFieldRowsConstants';
 import { displayTitleOf } from '../treecipe/navigation/TreePicker';
 import { expandMatchesWithinBudget } from '../treecipe/navigation/StructureFilter';
 import { savePanelPlace } from '../shell/PanelPlace';
@@ -81,6 +83,10 @@ function findUpdaterFieldLockReason(tree: IAdapterTree, objectApiName: string, f
 
     const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\n' + field.fieldApiName);
     if (isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) { return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON; }
+    const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
+    if (derivedField) { return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName; }
+    const readOnlyReason = ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) { return RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX + readOnlyReason; }
     if (field.controllingField) { return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
     if (RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) { return RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON; }
 

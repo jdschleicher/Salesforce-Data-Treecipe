@@ -1,5 +1,27 @@
 # Change Log
 
+## [3.212.0] - Recipe Cockpit: type a value into a cell of the Treecipe Adapter's record table (#721, part 2)
+
+Part 1 gave each cell a 🎲. A field with no faker expression had no way to be changed, and you could not set one record to a value you already had in mind.
+
+### Treecipe Adapter tab
+
+- **⌨ opens a cell to type a value.** It is in every cell of a marked row that can be changed, with or without a 🎲. **Save** or Enter keeps the value, **Cancel** or Escape leaves the cell as it was. ↺ puts the loaded value back, as for a generated one.
+- **A typed value is held to the Treecipe tab's rules for a fixed value**: a number for a number field, a value the picklist declares, `true` or `false` for a checkbox. One the field cannot take is refused in a notification that names the field (`Account.Annual_Budget__c was not changed: Type a plain number, such as 42, -7 or 3.25.`), and the cell is left alone.
+- **A cell takes a value, not a faker expression.** Use 🎲 for a generated one. A value that is a nickname in the recipe is refused too, since the adapted recipe would read it as a reference to a record.
+- **A cell that shows only part of its value opens empty.** The table cuts long text and an input drops line breaks, so the editor says that what you type replaces the whole value, and saving it untouched changes nothing.
+- **A formula, a roll-up and a field Salesforce sets from another lookup are locked (🔒)**, as on the Treecipe tab. One typed into would have had the whole update refused.
+- **A field only the org holds, of a type the backend writes no expression for, can now be changed** by typing.
+- **The adapted recipe writes a typed field as its value** when every updated record was typed the same one. Typed differently per record, the field keeps its expression, or with none the first value typed.
+
+### Not in this change
+
+- No dropdown for a picklist cell, and no way to blank a cell: an empty input changes nothing.
+
+### For contributors
+
+- `typeCell` is the one edit rule with `needsValue`, and the only value the panel posts for the Adapter. The design note is under **The Treecipe Adapter tab** in `RecipeCockpitService/DESIGN.md`.
+
 ## [3.211.0] - Recipe Cockpit: the Treecipe Adapter edits existing records in the loaded table (#721, part 1)
 
 **Generate values** made a new value for every loaded record of every ticked field, so you could not change three records out of two hundred, or see a new value beside the others before writing it. This is slice B of the Adapter record table (#719). Typing a value into a cell is the second part of #721.

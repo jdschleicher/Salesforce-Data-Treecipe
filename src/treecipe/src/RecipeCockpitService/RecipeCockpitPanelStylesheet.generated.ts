@@ -848,6 +848,8 @@ export const RECIPE_COCKPIT_PANEL_STYLESHEET = `    html, body {
     .updaterRecords .treeQueryTable td.updaterMarkCell { min-width: 0; text-align: center; }
     .updaterRecords .treeQueryTable td .sdtButton-icon, .updaterRecords .treeQueryTable th .sdtButton-icon { margin-left: 0.3rem; }
     .updaterColumnLock { margin-left: 0.3rem; }
+    .updaterCellEditor { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+    .updaterCellEditor .fieldEditorInput { flex: 1 1 8rem; min-width: 6rem; }
     /* A ROW HOLDS SEVERAL OF THESE SIDE BY SIDE: EACH KEEPS A TARGET OF 24px, AND A HEADER KEEPS ITS BUTTONS BESIDE ITS NAME */
     .updaterRecords .treeQueryTable .sdtButton-icon { min-width: 24px; min-height: 24px; }
     .updaterRecords .treeQueryTable th { white-space: nowrap; }
