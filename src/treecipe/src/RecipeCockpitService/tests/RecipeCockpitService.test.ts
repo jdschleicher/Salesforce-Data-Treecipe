@@ -607,6 +607,17 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // THE ADAPTER'S PARENT CHIP (#720) DRAWS WITH THE CHIP PAIR, AND ITS BUTTON IS THE primary KIND: BOTH PAIRS ARE HELD BELOW
+        it('draws the Treecipe Adapter\'s parent chip with the chip text on the chip background', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitShell.buildWebviewShellHtml('testNonce'));
+
+            expect(styleSheet).toMatch(/\.updaterParentChip \{[^}]*color: var\(--sdt-chip-text\);[^}]*background-color: var\(--sdt-chip-bg\);/);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toContainEqual(['chipText', 'chipBg']);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toContainEqual(['onAction', 'action']);
+
+        });
+
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
             expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(32);

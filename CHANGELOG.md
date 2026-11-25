@@ -1,5 +1,31 @@
 # Change Log
 
+## [3.210.0] - Recipe Cockpit: the Treecipe Adapter's Load records shows every loaded record with every recipe field, in a table per object (#720)
+
+A load read only the fields ticked before it and showed 10 rows per object, so you could not see what the org holds before deciding what to change. Step 2's **Change parent** was a plain link that was easy to miss. This is slice A of the Adapter record table (#719).
+
+### Treecipe Adapter tab
+
+- **Load records reads every field the treecipe lists**, with the record Id and the object's lookups. The field boxes no longer decide what a load reads; they choose only what **Generate values** fills.
+- **A field the org does not have, or does not let you read, is left out and named** under its object (`Account.Legacy_Code__c was not read: …`), and the other fields still load. Before, one such field failed the whole object.
+- **Each object's records are a table of 50 to a page**, with **Previous**, **Next** and `Page 2 of 7`. The columns are the Id, then the lookups, then the other fields in recipe order, with no 50-column cut. A wide table scrolls sideways inside its own section, and the page never does.
+- **A lookup cell that holds a record Id is a link**, like the row's own Id. It opens that parent record in the org the records were loaded from.
+- **A chip at the top of step 2 names where the records come from**: `Parent: Account · WHERE Name LIKE 'Acme%' · 12 records` (or `every record`; the count appears once a load has read the parent).
+- **Change parent object** is a highlighted button beside the chip. It goes back to step 1 with the parent and WHERE kept. With records loaded it asks first, because they (and new values not yet written) are let go; Cancel leaves step 2 as it was.
+- **What does not change.** Generate values, Update records, Restore previous values and Add to data set work on the loaded records as before. A load of 0 records, an object the org refuses and an object past the load's limit say what they said. The Query tab's preview is untouched.
+- **The ? help and the guide** describe the table, the left-out fields, the chip and the button. The guide has no picture of the Adapter tab, so none needs re-taking.
+
+### Under the hood
+
+- `RecipeCockpitTreeUpdaterQuery`: `readRequest` reads no posted field list, `listSelectedFieldApiNames` is the one order for the query and the table, and `leaveOutUnreadFields` drops what the org's describe does not list.
+- `RecipeCockpitAdapterRecords`: the load describes its objects afresh, posts page 0 of each table, answers `loadUpdaterRecordsPage` from the records it holds (no query), and `changeUpdaterParentFromPanel` asks and lets the records go. `RecipeCockpitQuery.buildTablePage` cuts a page with given columns.
+- Record links: `openPreviewRecord` takes an optional page and column. The Id opened is read from the held record at that position, only for the Id column or a lookup column holding a whole Id, on a page the host posted.
+- **Tests.** The query suite covers the field order, the ignored field list and the left-out fields. The load suite covers the describe, paging, refused pages and objects, and Change parent object with and without records. The record links suite covers lookup cells, partial values and forged indexes. The Adapter tab suite covers the chip and the button. The Adapter journey loads 201 Accounts, pages, opens a lookup and cancels Change parent object. Checked in Chromium at 320px: the page has no sideways scroll.
+
+### Tooling
+
+- `/merge-when-green` (new skill): takes a pull request to merged. It merges the base in, solves conflicts (CHANGELOG and version renumbered, generated files rebuilt), runs the local checks, waits for the build, squash-merges when it is green, and repeats when the base moves.
+
 ## [3.209.0] - Recipe Cockpit: a "Test faker value" button beside each field's faker expression shows an example of what it generates (#718)
 
 A field row on the Treecipe tab shows its faker expression, such as `${{faker.string.numeric(8)}}`, but not what it produces. Seeing a value meant running Run Faker on the whole recipe and opening the data set.
