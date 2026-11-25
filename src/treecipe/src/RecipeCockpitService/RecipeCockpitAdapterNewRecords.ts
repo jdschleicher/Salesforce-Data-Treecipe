@@ -41,6 +41,7 @@ import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
 
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_CONFIRM_LABEL = 'Generate records';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOTE = RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE;
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_FIXED_ONLY_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org.';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it. Type a value for it, or untick it.';
 
 type GenerateNewRecordsAction = Extract<RecipeCockpitAdapterPanelAction, { kind: 'generateUpdaterNewRecords' }>;
@@ -213,7 +214,7 @@ export class RecipeCockpitAdapterNewRecords {
             const valueKind = hub.resolveFixedValueKind(fieldRequest.value, columnPlan.typing.fieldViewModel);
             // AS Add to data set REFUSES IT (#447): A TYPE THE BACKEND WRITES NO EXPRESSION FOR IN THE ORG TAKES A FIXED VALUE ONLY
             if ( valueKind === 'expression' && columnPlan.typing.isOrgOnly && !columnPlan.generation ) {
-                refuse(`${fieldLabel} takes a fixed value only, since this recipe's faker backend writes no expression for its type in the org.`);
+                refuse(`${fieldLabel}: ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_FIXED_ONLY_REFUSAL}`);
                 return;
             }
             plannedFields.push(valueKind === 'expression'
@@ -276,8 +277,9 @@ export class RecipeCockpitAdapterNewRecords {
                 location: vscode.ProgressLocation.Notification,
                 title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating ${describeRecords(recordCount, `new ${objectApiName}`)} with ${fakerService}`),
                 cancellable: true
-            }, async (_progress, cancellationToken) => {
-                generation = await generateValues(fakerService, objectApiName, recordCount, generatedFields, () => cancellationToken.isCancellationRequested);
+            }, async (progress, cancellationToken) => {
+                generation = await generateValues(fakerService, objectApiName, recordCount, generatedFields, () => cancellationToken.isCancellationRequested,
+                                                  (generatedCount: number) => progress.report({ message: `${generatedCount} of ${recordCount}` }));
             });
         }
 

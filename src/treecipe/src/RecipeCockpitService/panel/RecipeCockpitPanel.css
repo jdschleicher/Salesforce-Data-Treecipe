@@ -716,8 +716,7 @@
     .adapterChildCount { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.35rem 0; }
     .adapterChildCountInput { box-sizing: border-box; width: 5em; padding: 0.15rem 0.35rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 4px; }
     .adapterChildCountInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
-    .adapterChildFields { margin: 0.25rem 0 0.4rem; }
-    .adapterChildFields .updaterField { padding-left: 0; }
+    .updaterNewRecordsFields { margin: 0.25rem 0 0.4rem; }
     .adapterChildRefusal { color: var(--sdt-removed); font-size: 0.9em; margin-bottom: 0.3rem; }
     .adapterChildPreviewNote, .adapterChildUnreadable { font-size: 0.9em; margin: 0.25rem 0; }
     .updaterNewRecordsPreview { margin-top: 0.3rem; overflow-x: auto; }

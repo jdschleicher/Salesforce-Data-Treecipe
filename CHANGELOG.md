@@ -11,6 +11,7 @@
 - **Its button reads Generate records** (it read Generate preview), and its confirmation and notification are worded as the tab's.
 - **A typed value that is the block's own nickname is refused with the tab's wording**, and a field with no expression and nothing typed says to type a value or untick it.
 - **Adding a child again lets the last one's preview go.**
+- **Add to data set is refused for a child the last load read as part of the treecipe**, saying to use that object's Generate new records tab. A retrieve lists a child against the parent chosen then, and after another parent and a load the same object can be one the load read.
 - The confirmation shows a field's faker expression as written, without the quotes a recipe wraps it in.
 
 ### For contributors

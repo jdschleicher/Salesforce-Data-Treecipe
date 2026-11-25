@@ -29,8 +29,9 @@ const vscodeApi: { postMessage(message: AdapterPanelMessage): void } = cockpitVs
 
 /*
     "Add to data set" (#447, #641): a custom child object only the org holds, added under the loaded
-    records with a block of its own and a preview the host generates. The run locks are runLocks', also
-    set by the host's updaterLoadState message.
+    records. Its button retrieves the child; the block that opens is the Generate new records panel
+    (#722), which generates and previews. The run locks are runLocks', also set by the host's
+    updaterLoadState message.
 */
 
 export function isAdapterChildOf(adapterChild: IAdapterChild | null, parentObjectApiName: string, childObject: IAdapterNewChildObject | null): boolean {

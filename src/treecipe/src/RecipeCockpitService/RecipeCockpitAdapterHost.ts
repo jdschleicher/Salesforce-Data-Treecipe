@@ -4,7 +4,8 @@ import {
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL
 } from './RecipeCockpitAdapterConstants';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
@@ -638,6 +639,11 @@ export class RecipeCockpitAdapterHost {
                 if ( ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] ).length === 0 ) {
                     return refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON);
                 }
+                // A RETRIEVE LISTS A CHILD AGAINST THE PARENT CHOSEN THEN. AFTER ANOTHER PARENT AND A LOAD, THE SAME OBJECT CAN BE ONE THE LOAD READ:
+                // ITS NEW RECORDS ARE ITS OWN TAB'S, UNDER THE RECORDS IT WAS LOADED UNDER, AND ONE NAME CANNOT MEAN BOTH (#722)
+                if ( heldRecords.columnPlansByObjectApiName.has(childObjectApiName) || heldRecords.narrowingLookupsByObjectApiName.has(childObjectApiName) ) {
+                    return refuse(`the last load read ${childObjectApiName} as part of this treecipe. Use its ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL} tab.`);
+                }
 
                 // THE CHILD IS READ FROM THE SANDBOX ITS PARENTS CAME FROM, AND NO OTHER
                 const dataOrgSelection = panelState.dataOrgSelection;
@@ -711,7 +717,7 @@ export class RecipeCockpitAdapterHost {
                             || columnPlan.lockReason !== undefined
                             || fieldRequests.some(fieldRequest => fieldRequest.fieldApiName === fieldApiName)
                             || ( value !== undefined && ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) ) {
-                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.`);
+                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} cannot be filled: it was not read from the org, or it is a field the Adapter does not set. Untick it.`);
                     }
                     fieldRequests.push(value === undefined ? { fieldApiName: fieldApiName } : { fieldApiName: fieldApiName, value: value as string });
                 }
@@ -974,7 +980,7 @@ export class RecipeCockpitAdapterHost {
             case 'generateUpdaterNewRecords':
 
                 await RecipeCockpitAdapterNewRecords.generateFromPanel(hub, cockpitPanel, panelState, panelAction,
-                    (fakerService, objectApiName, valueCount, fields, isCancelled) => RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, fakerService, objectApiName, valueCount, fields, isCancelled, undefined, 'adapterChild'));
+                    (fakerService, objectApiName, valueCount, fields, isCancelled, reportProgress) => RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, fakerService, objectApiName, valueCount, fields, isCancelled, reportProgress, 'adapterChild'));
                 return;
 
             case 'postUpdaterNewRecordsPage':

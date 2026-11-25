@@ -268,8 +268,6 @@ export interface IAdapterChildBlockMessage {
     unreadableFieldCount?: unknown;
 }
 
-
-
 // A PREVIEW THAT CAN OPEN ITS RECORDS (#556): ITS ACK IS THE ONLY THING THAT MAKES THEM ROUTABLE
 export interface IRecordLinksMessage {
     renderSequence?: unknown;

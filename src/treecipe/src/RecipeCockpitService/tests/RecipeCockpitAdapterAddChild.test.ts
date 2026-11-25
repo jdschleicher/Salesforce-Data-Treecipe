@@ -65,7 +65,7 @@ import {
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
 import { RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL } from '../RecipeCockpitAdapterEdits';
-import { RECIPE_COCKPIT_UPDATER_NEW_RECORDS_CONFIRM_LABEL, RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_EXPRESSION_REASON, RecipeCockpitAdapterNewRecords } from '../RecipeCockpitAdapterNewRecords';
+import { RECIPE_COCKPIT_UPDATER_NEW_RECORDS_CONFIRM_LABEL, RECIPE_COCKPIT_UPDATER_NEW_RECORDS_FIXED_ONLY_REFUSAL, RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_EXPRESSION_REASON, RecipeCockpitAdapterNewRecords } from '../RecipeCockpitAdapterNewRecords';
 import { RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON } from '../RecipeCockpitAdapterConstants';
 import { RecipeCockpitRecipeWriter } from '../../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeCockpitRecordCreation } from '../RecipeCockpitRecordCreation';
@@ -633,7 +633,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             await openRetrieveAndLoad();
             await send(prepareMessage());
 
-            expect(RecipeCockpitService.routePanelMessage(generateMessage(2, [{ fieldApiName: 'Account__c', value: fakeRecordId('Account', 9) }]), panelState())).toMatchObject({ refusalText: `No new ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Account__c cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.` });
+            expect(RecipeCockpitService.routePanelMessage(generateMessage(2, [{ fieldApiName: 'Account__c', value: fakeRecordId('Account', 9) }]), panelState())).toMatchObject({ refusalText: `No new ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Account__c cannot be filled: it was not read from the org, or it is a field the Adapter does not set. Untick it.` });
             expect(RecipeCockpitService.routePanelMessage(generateMessage(2, [{ fieldApiName: 'Secret__c' }]), panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
             expect(RecipeCockpitService.routePanelMessage(generateMessage(2, [{ fieldApiName: 'Carrier__c' }, { fieldApiName: 'Carrier__c' }]), panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
             expect(RecipeCockpitService.routePanelMessage(generateMessage(0, []), panelState())).toMatchObject({ refusalText: expect.stringContaining('whole number of one or more') });
@@ -641,7 +641,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             expect(RecipeCockpitService.routePanelMessage(generateMessage(20000, []), panelState())).toMatchObject({ refusalText: expect.stringContaining('more than the 50000') });
 
             await send(generateMessage(1, [{ fieldApiName: 'Mood__c', value: '${{ fake.Word }}' }]));
-            expect(warnings().at(-1)).toBe('No new Shipment__c records were generated: Shipment__c.Mood__c takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org.');
+            expect(warnings().at(-1)).toBe(`No new Shipment__c records were generated: Shipment__c.Mood__c: ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_FIXED_ONLY_REFUSAL}`);
             await send(generateMessage(1, [{ fieldApiName: 'Mood__c' }]));
             expect(warnings().at(-1)).toBe(`No new ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Mood__c: ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_EXPRESSION_REASON}`);
             expect(generatedRecipeTexts).toEqual([]);
@@ -849,7 +849,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
                 expect(RecipeCockpitService.routePanelMessage({ ...generateMessage(1, []), treeKey: 7 }, panelState())).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ treeKey: '' }) });
                 expect(RecipeCockpitService.routePanelMessage({ ...generateMessage(1, []), renderSequence: -1 }, panelState())).toEqual(notRouted);
-                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [null]), panelState())).toMatchObject({ refusalText: `No new ${CHILD_OBJECT} records were generated: a field cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.` });
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [null]), panelState())).toMatchObject({ refusalText: `No new ${CHILD_OBJECT} records were generated: a field cannot be filled: it was not read from the org, or it is a field the Adapter does not set. Untick it.` });
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 5 }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('a field cannot be filled') });
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 7 }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('Carrier__c cannot be filled') });
                 expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 'x'.repeat(40000) }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('Carrier__c cannot be filled') });
@@ -869,8 +869,10 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 await generateDirectly();
                 expect(postedNamed('updaterLoadState').slice(-2).map((stateMessage: any) => stateMessage.runKind)).toEqual(['prepareChild', 'generateNew']);
                 (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = false;
-                await generateDirectly({ childObjectApiName: 'Gadget__c' });
+                await generateDirectly({ objectApiName: 'Gadget__c', fieldRequests: [{ fieldApiName: 'Carrier__c' }] });
                 expect(generatedRecipeTexts).toEqual([]);
+                expect(postedNamed('updaterNewRecords')).toEqual([]);
+                expect(RecipeCockpitAdapterState.heldUpdaterNewRecords?.byObjectApiName.has('Gadget__c') ?? false).toBe(false);
 
             });
 
@@ -885,7 +887,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                     selectOrg(unaliasedOrg);
                     await send(prepareMessage());
 
-                    expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.at(-1)[0]).toBe(`Retrieved ${CHILD_OBJECT} from ${SANDBOX_ORG.username}: 2 fields. Set the count and the fields on the Treecipe Adapter tab, then generate a preview.`);
+                    expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.at(-1)[0]).toBe(`Retrieved ${CHILD_OBJECT} from ${SANDBOX_ORG.username}: 2 fields. Set the count and the fields under it on the Treecipe Adapter tab, then Generate records.`);
 
                     await send(generateMessage(1, [{ fieldApiName: 'Name', value: '${{ fake.Word }}' }, { fieldApiName: 'Tier__c', value: 'Platinum' }]));
                     expect(warnings().at(-1)).toMatch(/Tier__c: .*Platinum/);
@@ -991,6 +993,19 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                 await send(prepareMessage());
                 expect(heldChildRecords()).toBeUndefined();
                 expect(panelState().updaterNewRecordsMessages).toEqual([]);
+
+            });
+
+            it('refuses to add a child the last load read as part of the treecipe, whose new records are its own tab\'s', async () => {
+
+                await openRetrieveAndLoad();
+                // AS IF THE RETRIEVE LISTED IT UNDER ANOTHER PARENT, AND A LATER LOAD READ IT BELOW THIS ONE
+                RecipeCockpitAdapterState.heldUpdaterRecords!.narrowingLookupsByObjectApiName.set(CHILD_OBJECT, { fieldApiName: 'Account__c', parentObjectApiName: 'Account' });
+
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toMatchObject({
+                    kind: 'refuseUpdaterLoad',
+                    refusalText: `${CHILD_OBJECT} was not added: the last load read ${CHILD_OBJECT} as part of this treecipe. Use its Generate new records tab.`
+                });
 
             });
 

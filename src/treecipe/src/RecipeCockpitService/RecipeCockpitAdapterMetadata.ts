@@ -452,7 +452,6 @@ export class RecipeCockpitAdapterMetadata {
             childObjectApiName: childObjectApiName,
             lookupFieldApiName: lookupFieldApiName,
             parentRecordIds: parentRecordIds,
-            fakerService: fakerService,
             fields: offer.offeredFields
         };
 
@@ -476,7 +475,7 @@ export class RecipeCockpitAdapterMetadata {
             ? ` ${stagedObject.unreadableFieldCount} field ${stagedObject.unreadableFieldCount === 1 ? 'file' : 'files'} could not be read and ${stagedObject.unreadableFieldCount === 1 ? 'is' : 'are'} left out.`
             : '';
         VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(
-            `Retrieved ${childObjectApiName} from ${orgLabel}: ${offer.fieldViewModels.length} ${offer.fieldViewModels.length === 1 ? 'field' : 'fields'}.${unreadableText} Set the count and the fields on the Treecipe Adapter tab, then generate a preview.`
+            `Retrieved ${childObjectApiName} from ${orgLabel}: ${offer.fieldViewModels.length} ${offer.fieldViewModels.length === 1 ? 'field' : 'fields'}.${unreadableText} Set the count and the fields under it on the Treecipe Adapter tab, then Generate records.`
         ));
 
     }

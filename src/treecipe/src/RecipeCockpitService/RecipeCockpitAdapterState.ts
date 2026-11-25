@@ -124,7 +124,6 @@ export class RecipeCockpitAdapterState {
         childObjectApiName: string;
         lookupFieldApiName: string;
         parentRecordIds: string[];
-        fakerService: 'faker-js' | 'snowfakery';
         fields: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
     } | undefined;
 

@@ -292,7 +292,7 @@ function routeHostMessage(hostMessage: any): void {
         // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS MARKS AND CHANGES WITH IT
         if (hostMessage.isRunning) {
             if (updaterRunKind === 'load') { clearUpdaterRecords(); }
-            // A NEW CHILD (#447) BELONGS TO THE RECORDS IT IS ADDED UNDER; A NEW ONE REPLACES IT, AND A GENERATION ITS PREVIEW
+            // A NEW CHILD (#447) BELONGS TO THE RECORDS IT IS ADDED UNDER, AND A NEW ONE REPLACES IT
             if (updaterRunKind === 'load' || updaterRunKind === 'prepareChild') { clearAdapterChildren(); }
         }
         // AN UPDATE THAT SENT A REQUEST SPENT THE LOADED RECORDS: THEIR "current" VALUES ARE NO LONGER CURRENT
