@@ -112,8 +112,9 @@ export class RecipeCockpitAdapterState {
 
     /*
         The new child object being added under the held records (#447): its staged fields as offered,
-        the parent Ids it is added under in the order they were read, and the recipe's backend. Its
-        generated records, once a preview was made. Both belong to the records they were made for.
+        the parent Ids it is added under in the order they were read, and the recipe's backend. It
+        belongs to the records it was prepared for. Its generated records are held with every other
+        object's new records (heldUpdaterNewRecords, #722).
     */
     static heldAdapterChild: {
         // THE HELD RECORDS' resultKey IT WAS PREPARED FOR
@@ -125,7 +126,6 @@ export class RecipeCockpitAdapterState {
         parentRecordIds: string[];
         fakerService: 'faker-js' | 'snowfakery';
         fields: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
-        generatedRecords?: { countPerParent: number; records: Record<string, unknown>[] };
     } | undefined;
 
     static clearHeldUpdaterRecords() {
@@ -133,10 +133,6 @@ export class RecipeCockpitAdapterState {
         this.heldUpdaterEdits = undefined;
         this.heldUpdaterNewRecords = undefined;
         this.heldAdapterChild = undefined;
-    }
-
-    static readHeldAdapterChildRecords(): Record<string, unknown>[] | undefined {
-        return this.heldAdapterChild?.generatedRecords?.records;
     }
 
     static readHeldUpdaterRecordCount(): number {

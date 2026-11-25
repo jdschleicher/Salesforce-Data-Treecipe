@@ -1,6 +1,6 @@
 import { connectConfirmDialog, renderConfirmRequest } from '../../CockpitKit/panel/CockpitConfirmDialogPanel';
 import { RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH, RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX } from '../RecipeCockpitPanelConstants';
-import { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';
+import { clearAdapterChildren, renderAdapterChildBlock } from './adapter/AdapterChild';
 import { renderUpdaterNewRecords, renderUpdaterNewRecordsPage } from './adapter/AdapterNewRecords';
 import { clearUpdaterRecords, drawUpdaterLoadButtons, renderUpdaterParentChange, renderUpdaterRecords, renderUpdaterRecordsPage, renderUpdaterSnapshots } from './adapter/AdapterLoadAndUpdate';
 import { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
@@ -284,7 +284,7 @@ function routeHostMessage(hostMessage: any): void {
 
     if (hostMessage.command === 'updaterLoadState') {
         runLocks.updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
-        runLocks.updaterRunKind = hostMessage.isRunning ? ( ['generate', 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild', 'generateNew'].indexOf(hostMessage.runKind) !== -1 ? hostMessage.runKind : 'load' ) : '';
+        runLocks.updaterRunKind = hostMessage.isRunning ? ( ['generate', 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateNew'].indexOf(hostMessage.runKind) !== -1 ? hostMessage.runKind : 'load' ) : '';
         const updaterRunKind = runLocks.updaterRunKind;
         if (updaterRunKind !== 'prepareChild') { runLocks.adapterChildPreparingKey = ''; }
         runLocks.updaterNewRecordsObjectApiName = updaterRunKind === 'generateNew' && typeof hostMessage.objectApiName === 'string' ? hostMessage.objectApiName : '';
@@ -294,7 +294,6 @@ function routeHostMessage(hostMessage: any): void {
             if (updaterRunKind === 'load') { clearUpdaterRecords(); }
             // A NEW CHILD (#447) BELONGS TO THE RECORDS IT IS ADDED UNDER; A NEW ONE REPLACES IT, AND A GENERATION ITS PREVIEW
             if (updaterRunKind === 'load' || updaterRunKind === 'prepareChild') { clearAdapterChildren(); }
-            if (updaterRunKind === 'generateChild') { clearAdapterChildPreviews(); }
         }
         // AN UPDATE THAT SENT A REQUEST SPENT THE LOADED RECORDS: THEIR "current" VALUES ARE NO LONGER CURRENT
         if (!hostMessage.isRunning && hostMessage.isRecordsSpent === true) {
@@ -338,11 +337,6 @@ function routeHostMessage(hostMessage: any): void {
 
     if (hostMessage.command === 'adapterChildBlock') {
         renderAdapterChildBlock(hostMessage);
-        return;
-    }
-
-    if (hostMessage.command === 'adapterChildPreview') {
-        renderAdapterChildPreview(hostMessage);
         return;
     }
 

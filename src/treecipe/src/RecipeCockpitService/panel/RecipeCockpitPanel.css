@@ -720,7 +720,7 @@
     .adapterChildFields .updaterField { padding-left: 0; }
     .adapterChildRefusal { color: var(--sdt-removed); font-size: 0.9em; margin-bottom: 0.3rem; }
     .adapterChildPreviewNote, .adapterChildUnreadable { font-size: 0.9em; margin: 0.25rem 0; }
-    .adapterChildPreview { margin-top: 0.3rem; overflow-x: auto; }
+    .updaterNewRecordsPreview { margin-top: 0.3rem; overflow-x: auto; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
     .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }

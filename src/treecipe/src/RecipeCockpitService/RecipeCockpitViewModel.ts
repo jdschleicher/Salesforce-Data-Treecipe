@@ -19,7 +19,6 @@ import type {
 } from '../SalesforceOrgService/SalesforceOrgService';
 import type {
     IRecipeCockpitAdapterChildBlockMessage,
-    IRecipeCockpitAdapterChildPreviewMessage,
     IRecipeCockpitAdapterMetadataChangesMessage,
     IRecipeCockpitAdapterOrgOnlyField,
     IRecipeCockpitUpdaterLoadStateMessage,
@@ -1141,7 +1140,6 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitAdapterMetadataChangesMessage
                                         | IRecipeCockpitObjectRefreshStateMessage
                                         | IRecipeCockpitAdapterChildBlockMessage
-                                        | IRecipeCockpitAdapterChildPreviewMessage
                                         | IRecipeCockpitUpdaterSnapshotsMessage
                                         | IRecipeCockpitTroubleshootingHistoryMessage
                                         | IRecipeCockpitDatasetJourneyMessage
@@ -1447,7 +1445,6 @@ export interface IRecipeCockpitPanelState {
     adapterOrgOnlyFields?: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
     // THE NEW CHILD OBJECT BEING ADDED (#447) AND ITS LAST PREVIEW, REPLAYED WHILE THEIR MODEL IS ON SCREEN; THE FIELD MODELS AND RECORDS ARE HELD ON THE CLASS
     adapterChildBlockMessage?: IRecipeCockpitAdapterChildBlockMessage;
-    adapterChildPreviewMessage?: IRecipeCockpitAdapterChildPreviewMessage;
     // EACH OBJECT'S NEW RECORDS (#722) AS LAST POSTED, PAGE 0, FOR A REOPENED PANEL
     updaterNewRecordsMessages?: IRecipeCockpitUpdaterNewRecordsMessage[];
     /*

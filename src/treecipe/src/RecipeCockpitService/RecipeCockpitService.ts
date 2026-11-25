@@ -1176,7 +1176,6 @@ export class RecipeCockpitService {
         // SO ARE AN UPDATER LOAD'S RECORDS (#416), AND WHAT A METADATA RETRIEVE FOUND (#445)
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterChildBlockMessage = undefined;
-        panelState.adapterChildPreviewMessage = undefined;
         panelState.updaterNewRecordsMessages = undefined;
         panelState.adapterMetadataChangesMessage = undefined;
         panelState.adapterRetrieveStagingFolderPath = undefined;
@@ -2568,10 +2567,6 @@ export class RecipeCockpitService {
 
         if ( panelState.adapterChildBlockMessage && panelState.adapterChildBlockMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.adapterChildBlockMessage);
-        }
-
-        if ( panelState.adapterChildPreviewMessage && panelState.adapterChildPreviewMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
-            replayMessages.push(panelState.adapterChildPreviewMessage);
         }
 
         replayMessages.push(...( panelState.updaterNewRecordsMessages ?? [] ).filter(newRecordsMessage => newRecordsMessage.renderSequence === panelState.recipeDataMessage?.renderSequence));
