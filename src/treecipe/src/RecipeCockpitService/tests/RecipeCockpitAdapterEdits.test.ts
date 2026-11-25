@@ -51,9 +51,12 @@ import {
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
+import { ReadOnlyFields } from '../../ObjectInfoWrapper/ReadOnlyFields';
+import { RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX, RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX } from '../RecipeCockpitFieldRowsConstants';
 import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from '../RecipeCockpitTreecipeFieldEditorConstants';
 import {
     RECIPE_COCKPIT_UPDATER_ID_COLUMN_LOCK_REASON,
+    RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL,
     RECIPE_COCKPIT_UPDATER_VALUE_POOL_SIZE,
     RecipeCockpitAdapterEdits
 } from '../RecipeCockpitAdapterEdits';
@@ -641,6 +644,46 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
 
             });
 
+            it('names the cells whose text on screen is not their whole value, so no editor starts from a cut or one-line copy of it', async () => {
+
+                describeTypedAccount();
+                const getConnection = (SalesforceOrgService.getConnection as jest.Mock).getMockImplementation()!;
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async (...connectionArguments: any[]) => {
+                    const connection = await (getConnection as any)(...connectionArguments);
+                    return { ...connection, query: async (soql: string) => {
+                        const answer = await connection.query(soql);
+                        if ( /FROM Account/.test(soql) ) {
+                            answer.records[0].Legacy_Code__c = 'x'.repeat(5000);
+                            answer.records[1].Legacy_Code__c = 'first line\nsecond line';
+                        }
+                        return answer;
+                    } };
+                });
+                await openCockpitAndLoad();
+                const legacyColumnIndex = columnIndexOf('Account', 'Legacy_Code__c');
+
+                expect(loadedObject('Account').cutCells).toEqual([[0, legacyColumnIndex], [1, legacyColumnIndex]]);
+
+                // A VALUE TYPED OVER ONE IS SHOWN WHOLE, SO IT IS NO LONGER CUT
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, 'Legacy_Code__c', 'LEG-7');
+                expect(lastPage().cutCells).toEqual([[1, legacyColumnIndex]]);
+
+            });
+
+            it('refuses a value that is a nickname of the recipe, which the adapted recipe would read as a reference', async () => {
+
+                describeTypedAccount();
+                await openCockpitAndLoad();
+                const nickname = 'Contact_NickName';
+                await edit('markRow', { rowIndex: 0 });
+                await typeCell(0, 'Legacy_Code__c', nickname);
+
+                expect(warnings()).toEqual([`Account.Legacy_Code__c was not changed: "${nickname}" ${RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL}`]);
+                expect(lastPage().changedCells).toEqual([]);
+
+            });
+
             it('lets 🎲 and ↺ replace a typed value, which then no longer counts as typed', async () => {
 
                 describeTypedAccount();
@@ -834,6 +877,27 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s edits of existing record
 
             });
 
+        });
+
+    });
+
+    describe('rules read without a cockpit', () => {
+
+        it.each([
+            ['2026-01-31T09:30:00.000+0000', '2026-01-31T09:30:00.000+00:00'],
+            ['2026-01-31T09:30:00-0530', '2026-01-31T09:30:00-05:30'],
+            ['2026-01-31T09:30:00.000Z', '2026-01-31T09:30:00.000Z'],
+            ['2026-01-31', '2026-01-31'],
+            ['Order +0000', 'Order +0000']
+        ])('reads a date and time typed as %s, the way an org answers one, as %s', (typedValue, expectedText) => {
+            expect(RecipeCockpitAdapterEdits.normalizeTypedText(typedValue)).toBe(expectedText);
+        });
+
+        it.each([
+            ['a formula', { fieldApiName: 'Score__c', fieldType: 'Number', recipeValue: ReadOnlyFields.formatRecipeValue('formula') }, 'Account', `${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}formula`],
+            ['a field Salesforce sets from another lookup', { fieldApiName: 'AccountId', fieldType: 'Text', recipeValue: 'Opportunity_NickName.AccountId' }, 'Quote', `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}OpportunityId`]
+        ])('locks %s, as the Treecipe tab does, so no cell of it is typed into', (_description, fieldViewModel, objectApiName, expectedReason) => {
+            expect(RecipeCockpitAdapterState.findUpdaterFieldLockReason({ objects: [] } as any, objectApiName, fieldViewModel as any)).toBe(expectedReason);
         });
 
     });

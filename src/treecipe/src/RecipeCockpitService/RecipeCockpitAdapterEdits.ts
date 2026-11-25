@@ -71,6 +71,8 @@ export const RECIPE_COCKPIT_UPDATER_EDIT_RULES = Object.freeze({
 });
 
 export const RECIPE_COCKPIT_UPDATER_TYPED_EXPRESSION_REFUSAL = 'a cell takes a value, not a faker expression. Use 🎲 for a generated one.';
+// A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT, AND THE ADAPTED RECIPE (#448) WOULD HOLD IT
+export const RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL = 'is a nickname in this recipe, which a recipe reads as a reference to a record, not as text.';
 
 export type RecipeCockpitUpdaterEditKind = keyof typeof RECIPE_COCKPIT_UPDATER_EDIT_RULES;
 
@@ -86,7 +88,7 @@ export interface IRecipeCockpitUpdaterColumnPlan {
     fieldApiName: string;
     lockReason?: string;
     // WHAT A VALUE TYPED INTO A CELL IS CHECKED AGAINST: THE FIELD AS THE MODEL DRAWS IT, AND THE PICKLIST VALUES IT DECLARES
-    typing?: { fieldViewModel: IRecipeCockpitFieldViewModel; declaredPicklistValues: readonly string[] | undefined; isOrgOnly?: true };
+    typing?: { fieldViewModel: IRecipeCockpitFieldViewModel; declaredPicklistValues: readonly string[] | undefined; recipeNicknames: readonly string[]; isOrgOnly?: true };
     generation?: {
         source: RecipeCockpitUpdaterValueSource;
         // THE SCALAR A ONE-FIELD RECIPE GENERATES FROM; FOR recipeFixed, THE VALUE ITSELF
@@ -131,6 +133,8 @@ export interface IRecipeCockpitUpdaterEditedPage {
     markedRowIndexes: number[];
     // [rowIndex, columnIndex] OF EACH CELL THAT NO LONGER HOLDS ITS LOADED VALUE
     changedCells: Array<[number, number]>;
+    // [rowIndex, columnIndex] OF EACH CELL WHOSE TEXT ON SCREEN IS NOT ITS WHOLE VALUE (CUT SHORT, OR WITH LINE BREAKS): AN EDITOR MUST NOT START FROM IT
+    cutCells: Array<[number, number]>;
     editSummary: IRecipeCockpitUpdaterEditSummary;
 }
 
@@ -179,6 +183,10 @@ export class RecipeCockpitAdapterEdits {
             .filter(fixedValue => fixedValue.objectApiName === objectApiName && ( fixedValue.nickname === undefined || fixedValue.nickname === objectViewModel?.nickname ))
             .map(fixedValue => [fixedValue.fieldApiName, fixedValue] as const));
 
+        // EVERY NICKNAME THE RECIPE WRITES: AN OBJECT'S ONE, AND EACH OCCURRENCE'S OF AN OBJECT WRITTEN MORE THAN ONCE
+        const recipeNicknames = recipe.objects.flatMap(object => [object.nickname, object.recipeNickname, ...( object.iterations ?? [] ).map(iteration => iteration.nickname)])
+            .filter((nickname): nickname is string => typeof nickname === 'string' && nickname !== '');
+
         return columnFieldApiNames.map((fieldApiName): IRecipeCockpitUpdaterColumnPlan => {
 
             if ( fieldApiName === 'Id' ) {
@@ -193,7 +201,7 @@ export class RecipeCockpitAdapterEdits {
                     fieldApiName: fieldApiName,
                     ...( orgOnlyField.lockReason !== undefined
                         ? { lockReason: orgOnlyField.lockReason }
-                        : { typing: { fieldViewModel: orgOnlyField.fieldViewModel, declaredPicklistValues: orgOnlyField.picklistValues.length > 0 ? orgOnlyField.picklistValues : undefined, isOrgOnly: true as const } } ),
+                        : { typing: { fieldViewModel: orgOnlyField.fieldViewModel, declaredPicklistValues: orgOnlyField.picklistValues.length > 0 ? orgOnlyField.picklistValues : undefined, recipeNicknames: recipeNicknames, isOrgOnly: true as const } } ),
                     ...( orgOnlyField.lockReason === undefined && orgOnlyField.expression !== undefined
                         ? { generation: { source: 'orgExpression' as const, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: orgOnlyField.expression, kind: 'expression' }), isOrgOnly: true as const } }
                         : {} )
@@ -209,7 +217,7 @@ export class RecipeCockpitAdapterEdits {
                 return { fieldApiName: fieldApiName, lockReason: lockReason };
             }
 
-            const typing = { fieldViewModel: recipeFieldViewModel, declaredPicklistValues: RecipeCockpitDrawnModel.listDeclaredPicklistValues(panelState, objectApiName, fieldApiName) };
+            const typing = { fieldViewModel: recipeFieldViewModel, declaredPicklistValues: RecipeCockpitDrawnModel.listDeclaredPicklistValues(panelState, objectApiName, fieldApiName), recipeNicknames: recipeNicknames };
             const recipeFileEdit = recipeFileEditsByFieldApiName.get(fieldApiName);
             if ( recipeFileEdit && recipeFileEdit.kind !== 'expression' ) {
                 return {
@@ -354,11 +362,30 @@ export class RecipeCockpitAdapterEdits {
 
         return {
             ...tablePage,
+            cutCells: this.listCutCells(shownRecords, columnFieldApiNames, tablePage.rows),
             markedRowIndexes: markedRowIndexes,
             changedCells: changedCells.sort(([firstRowIndex, firstColumnIndex], [secondRowIndex, secondColumnIndex]) => firstRowIndex - secondRowIndex || firstColumnIndex - secondColumnIndex),
             editSummary: this.summarizeObjectEdits(heldRecords, objectApiName)
         };
 
+    }
+
+    // THE ORG ANSWERS A DATE AND TIME WITH A +0000 ZONE, WHICH IS WHAT A CELL SHOWS AND ITS EDITOR STARTS FROM; THE FIXED VALUE RULE WANTS +00:00
+    static normalizeTypedText(typedValue: string): string {
+        return typedValue.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?[+-]\d{2})(\d{2})$/, '$1:$2');
+    }
+
+    // A CELL'S TEXT IS CUT TO A LENGTH AND AN INPUT DROPS LINE BREAKS, SO NEITHER IS A VALUE TO START TYPING FROM: [rowIndex, columnIndex] OF EACH
+    static listCutCells(pageRecords: readonly Record<string, unknown>[], columnFieldApiNames: readonly string[], shownRows: readonly string[][]): Array<[number, number]> {
+        const cutCells: Array<[number, number]> = [];
+        pageRecords.forEach((pageRecord, rowIndex) => columnFieldApiNames.forEach((fieldApiName, columnIndex) => {
+            const recordKey = this.findRecordKey(pageRecord, fieldApiName);
+            const cellValue = recordKey === undefined ? undefined : pageRecord[recordKey];
+            if ( typeof cellValue === 'string' && ( cellValue !== shownRows[rowIndex]?.[columnIndex] || /[\r\n]/.test(cellValue) ) ) {
+                cutCells.push([rowIndex, columnIndex]);
+            }
+        }));
+        return cutCells;
     }
 
     /*
@@ -438,10 +465,11 @@ export class RecipeCockpitAdapterEdits {
                     break;
                 }
 
-                const valueKind = hub.resolveFixedValueKind(typedValue, typing.fieldViewModel);
-                const valueRefusal = valueKind === 'expression'
-                    ? RECIPE_COCKPIT_UPDATER_TYPED_EXPRESSION_REFUSAL
-                    : hub.validateFixedValueInput(typedValue, typing.fieldViewModel, typing.declaredPicklistValues);
+                const typedText = this.normalizeTypedText(typedValue);
+                const valueKind = hub.resolveFixedValueKind(typedText, typing.fieldViewModel);
+                const valueRefusal = valueKind === 'expression' ? RECIPE_COCKPIT_UPDATER_TYPED_EXPRESSION_REFUSAL
+                    : typing.recipeNicknames.includes(typedText) ? `"${typedText}" ${RECIPE_COCKPIT_UPDATER_TYPED_NICKNAME_REFUSAL}`
+                    : hub.validateFixedValueInput(typedText, typing.fieldViewModel, typing.declaredPicklistValues);
 
                 if ( valueRefusal !== undefined ) {
                     VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${objectApiName}.${columnPlan.fieldApiName} was not changed: ${valueRefusal}`));
@@ -449,7 +477,7 @@ export class RecipeCockpitAdapterEdits {
                 }
 
                 this.setCellValue(objectEdits, rowRecord as Record<string, unknown>, rowRecordId, columnPlan.fieldApiName,
-                                  { value: RecipeCockpitAdapterState.toUpdaterFixedValue(typedValue, valueKind), typedScalar: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: typedValue, kind: valueKind }) });
+                                  { value: RecipeCockpitAdapterState.toUpdaterFixedValue(typedText, valueKind), typedScalar: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: typedText, kind: valueKind }) });
                 break;
 
             }

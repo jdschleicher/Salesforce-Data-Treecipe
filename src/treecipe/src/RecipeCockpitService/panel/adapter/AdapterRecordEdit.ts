@@ -1,5 +1,6 @@
 import { createButton, createElement, focusElement } from '../../../CockpitKit/panel/CockpitPanelElements';
 import {
+    RECIPE_COCKPIT_UPDATER_CUT_CELL_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_EDIT_HEADING,
     RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH,
     RECIPE_COCKPIT_UPDATER_LOCKED_GLYPH,
@@ -133,13 +134,16 @@ export function describeEditSummary(editSummary: IUpdaterEditSummary): string {
 /*
     The input a ⌨ opens in its cell: the cell's value to start from, Save and Cancel, Enter and
     Escape. Save hands the text to the caller, unless nothing was typed or the value is unchanged;
-    either way the cell is as it was until the host's answer redraws the table.
+    either way the cell is as it was until the host's answer redraws the table. A cell the host
+    says shows only part of its value starts empty: saving its text would cut the record's value.
 */
-function openCellEditor(cellElement: HTMLElement, typeElement: HTMLButtonElement, cellText: string, cellLabel: string, saveTypedValue: (typedValue: string) => void): void {
+function openCellEditor(cellElement: HTMLElement, typeElement: HTMLButtonElement, startText: string, placeholder: string, cellLabel: string, saveTypedValue: (typedValue: string) => void): void {
 
     const cellChildren = Array.from(cellElement.children);
     const editorElement = createElement('div', 'updaterCellEditor');
-    const inputElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, cellText, 'New value for ' + cellLabel, '');
+    const inputElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, startText, 'New value for ' + cellLabel, placeholder);
+    // WHAT THE INPUT HOLDS BEFORE A KEY IS PRESSED, WHICH IS NOT ALWAYS WHAT IT WAS GIVEN
+    const startValue = String(inputElement.value);
     const saveElement = createButton('primary', 'updaterCellSave', 'Save', 'compact');
     const cancelElement = createButton('secondary', 'updaterCellCancel', 'Cancel', 'compact');
 
@@ -149,9 +153,11 @@ function openCellEditor(cellElement: HTMLElement, typeElement: HTMLButtonElement
         focusElement(typeElement);
     };
     const save = function (): void {
+        // WHILE A RUN HOLDS THE RECORDS NOTHING CAN BE SAVED: THE TEXT TYPED STAYS IN ITS INPUT
+        if (runLocks.updaterLoadRunningTreeKey !== null) { return; }
         const typedValue = String(inputElement.value);
         close();
-        if (typedValue !== '' && typedValue !== cellText) { saveTypedValue(typedValue); }
+        if (typedValue !== '' && typedValue !== startValue) { saveTypedValue(typedValue); }
     };
 
     editorElement.setAttribute('role', 'group');
@@ -186,6 +192,9 @@ export function buildEditableRecordSection(treeState: IAdapterTreeState, updater
     const changedCellKeys = new Set<string>((Array.isArray(loadedRecords.changedCells) ? loadedRecords.changedCells : [])
         .filter(function (changedCell: unknown) { return Array.isArray(changedCell); })
         .map(function (changedCell: unknown[]) { return changedCell[0] + ':' + changedCell[1]; }));
+    const cutCellKeys = new Set<string>((Array.isArray(loadedRecords.cutCells) ? loadedRecords.cutCells : [])
+        .filter(function (cutCell: unknown) { return Array.isArray(cutCell); })
+        .map(function (cutCell: unknown[]) { return cutCell[0] + ':' + cutCell[1]; }));
     const editButtonElements: NonNullable<IUpdaterObjectState['editButtonElements']> = [];
     updaterObjectState.editButtonElements = editButtonElements;
 
@@ -262,6 +271,7 @@ export function buildEditableRecordSection(treeState: IAdapterTreeState, updater
             const cellText = Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : '';
             const columnEdit = columnEdits[columnIndex];
             const isChanged = changedCellKeys.has(rowIndex + ':' + columnIndex);
+            const isCut = cutCellKeys.has(rowIndex + ':' + columnIndex);
             const cellElement = createElement('td', isChanged ? 'updaterChangedCell' : '');
             const linkedRowIndexes = linkedRowIndexesByColumnIndex.get(columnIndex);
 
@@ -275,7 +285,7 @@ export function buildEditableRecordSection(treeState: IAdapterTreeState, updater
                 if (isMarked) {
                     const typeElement = editButton('typeCell:' + rowIndex + ':' + columnIndex, 'updaterCellType', RECIPE_COCKPIT_UPDATER_TYPE_GLYPH, 'Type a value for ' + column + ' of ' + objectApiName + ' ' + rowName, false,
                         function () {
-                            openCellEditor(cellElement, typeElement, cellText, column + ' of ' + objectApiName + ' ' + rowName, function (typedValue) {
+                            openCellEditor(cellElement, typeElement, isCut ? '' : cellText, isCut ? RECIPE_COCKPIT_UPDATER_CUT_CELL_PLACEHOLDER : '', column + ' of ' + objectApiName + ' ' + rowName, function (typedValue) {
                                 requestUpdaterEdit(treeState, updaterObjectState, 'typeCell', { rowIndex: rowIndex, columnIndex: columnIndex, value: typedValue });
                             });
                         });

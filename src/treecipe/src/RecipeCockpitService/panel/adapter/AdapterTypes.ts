@@ -78,6 +78,7 @@ export interface IUpdaterPreviewObject {
     columnEdits?: unknown;
     markedRowIndexes?: unknown;
     changedCells?: unknown;
+    cutCells?: unknown;
     editSummary?: unknown;
 }
 
@@ -103,6 +104,7 @@ export interface IUpdaterRecordsPageMessage {
     lookupLinks?: unknown;
     markedRowIndexes?: unknown;
     changedCells?: unknown;
+    cutCells?: unknown;
     editSummary?: unknown;
 }
 

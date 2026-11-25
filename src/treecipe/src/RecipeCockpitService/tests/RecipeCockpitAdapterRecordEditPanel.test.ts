@@ -11,6 +11,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import {
+    RECIPE_COCKPIT_UPDATER_CUT_CELL_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_EDIT_HEADING,
     RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON,
     RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON,
@@ -253,6 +254,34 @@ describe('the Treecipe Adapter\'s record table to edit, in the panel (#721)', ()
             // THE ANSWER REDRAWS THE TABLE, AND THE KEYBOARD'S PLACE IS THE ⌨ PRESSED
             postPage(panel, ONE_CHANGED, [['001A', 'Initech', '', '001Z'], ['001B', 'Globex', '', '']]);
             expect(panel.activeElement()).toBe(panel.findAll(accountObject, 'updaterCellType')[0]);
+
+        });
+
+        it('starts empty, saying what saving does, in a cell the host says shows only part of its value', () => {
+
+            const { panel, accountObject } = openLoadedTable({ ...ONE_MARKED, cutCells: [[0, 1]] });
+            const { editorElement, inputElement } = openEditor(panel, accountObject, 0);
+
+            expect(inputElement.value).toBe('');
+            expect(inputElement.attributes.placeholder).toBe(RECIPE_COCKPIT_UPDATER_CUT_CELL_PLACEHOLDER);
+            // SAVED UNTOUCHED, IT POSTS NOTHING: THE RECORD'S WHOLE VALUE IS NEVER REPLACED BY THE PART ON SCREEN
+            panel.findAll(editorElement, 'updaterCellSave')[0].dispatch('click');
+            expect(editsPosted(panel)).toEqual([]);
+
+        });
+
+        it('keeps the editor and its text when Save is pressed while a run holds the records', () => {
+
+            const { panel, accountObject } = openLoadedTable(ONE_MARKED);
+            const { editorElement, inputElement } = openEditor(panel, accountObject, 0);
+            inputElement.value = 'Initech';
+
+            panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' });
+            panel.findAll(editorElement, 'updaterCellSave')[0].dispatch('click');
+
+            expect(editsPosted(panel)).toEqual([]);
+            expect(panel.findAll(accountObject, 'updaterCellEditor')).toHaveLength(1);
+            expect(inputElement.value).toBe('Initech');
 
         });
 

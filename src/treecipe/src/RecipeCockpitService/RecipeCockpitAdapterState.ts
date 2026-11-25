@@ -1,4 +1,10 @@
 import type { Connection } from '@salesforce/core';
+import { ReadOnlyFields } from '../ObjectInfoWrapper/ReadOnlyFields';
+import { StandardDerivedFields } from '../ObjectInfoWrapper/StandardDerivedFields';
+import {
+    RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
+    RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX
+} from './RecipeCockpitFieldRowsConstants';
 import {
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES
@@ -283,6 +289,15 @@ export class RecipeCockpitAdapterState {
                                                             && treeObject.parentLookups.some(parentLookup => parentLookup.fieldApiName === fieldViewModel.fieldApiName));
         if ( isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.includes(fieldViewModel.fieldType) ) {
             return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
+        }
+        // WHAT SALESFORCE SETS OR CALCULATES ITSELF (#680, #685), AS THE TREECIPE TAB LOCKS IT: AN UPDATE THAT NAMED ONE WOULD BE REFUSED WHOLE
+        const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, fieldViewModel.fieldApiName);
+        if ( derivedField ) {
+            return `${RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX}${derivedField.throughFieldApiName}`;
+        }
+        const readOnlyReason = ReadOnlyFields.readReason(fieldViewModel.recipeValue);
+        if ( readOnlyReason ) {
+            return `${RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX}${readOnlyReason}`;
         }
         if ( fieldViewModel.controllingField ) {
             return `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}${fieldViewModel.controllingField}`;

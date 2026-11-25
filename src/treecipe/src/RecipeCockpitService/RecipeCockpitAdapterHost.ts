@@ -133,6 +133,7 @@ export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
     columnEdits?: IRecipeCockpitUpdaterColumnEditView[];
     markedRowIndexes?: number[];
     changedCells?: Array<[number, number]>;
+    cutCells?: Array<[number, number]>;
     editSummary?: IRecipeCockpitUpdaterEditSummary;
 }
 
@@ -149,6 +150,7 @@ export interface IRecipeCockpitUpdaterRecordsPageMessage {
     // THE PAGE AS IT READS NOW (#721): ITS MARKED ROWS, ITS CHANGED CELLS AND THE OBJECT'S TOTALS
     markedRowIndexes: number[];
     changedCells: Array<[number, number]>;
+    cutCells: Array<[number, number]>;
     editSummary: IRecipeCockpitUpdaterEditSummary;
 }
 

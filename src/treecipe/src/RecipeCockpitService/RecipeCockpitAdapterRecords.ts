@@ -414,6 +414,7 @@ export class RecipeCockpitAdapterRecords {
                         columnEdits: RecipeCockpitAdapterEdits.toColumnEditViews(columnPlans),
                         markedRowIndexes: [],
                         changedCells: [],
+                        cutCells: RecipeCockpitAdapterEdits.listCutCells(records.slice(0, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE), columnFieldApiNames, firstPage.rows),
                         editSummary: { markedRecordCount: 0, updatableRecordCount: 0, changedFieldApiNames: [], hasUnmarkedChanges: false }
                     });
                 } catch (queryError) {

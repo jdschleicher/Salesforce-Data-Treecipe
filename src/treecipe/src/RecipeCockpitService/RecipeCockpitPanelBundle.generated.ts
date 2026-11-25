@@ -587,6 +587,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH = "🎲";
   var RECIPE_COCKPIT_UPDATER_RESET_GLYPH = "↺";
   var RECIPE_COCKPIT_UPDATER_TYPE_GLYPH = "⌨";
+  var RECIPE_COCKPIT_UPDATER_CUT_CELL_PLACEHOLDER = "Replaces the whole value, which is longer than shown";
   var RECIPE_COCKPIT_UPDATER_LOCKED_GLYPH = "🔒";
   var RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL = "Reset all";
   var RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON = "Mark a row first: the ✎ at the start of a row marks it to update.";
@@ -5243,6 +5244,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(String(field.fieldType)) !== -1) {
       return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
     }
+    const derivedField = StandardDerivedFields.resolveDerivedField(objectApiName, field.fieldApiName);
+    if (derivedField) {
+      return RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX + derivedField.throughFieldApiName;
+    }
+    const readOnlyReason = ReadOnlyFields.readReason(field.recipeValue);
+    if (readOnlyReason) {
+      return RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX + readOnlyReason;
+    }
     if (field.controllingField) {
       return RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField;
     }
@@ -6133,7 +6142,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         "Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.",
         "The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.",
         "In the Query tab's results and the Treecipe Adapter's loaded records, each row's own Id is a link: click it to open that record in your browser, signed in to the org it was read from. In the Adapter's loaded records a lookup's Id is a link too and opens the parent record; elsewhere it is not. Nothing is opened once a newer query, load or update has replaced the rows.",
-        "The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree's root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; a chip at the top names the parent and its WHERE, and Change parent object beside it goes back, asking first when records are loaded, since they are let go. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org's recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds is loaded and changed like the others: its new values come from the faker expression the recipe's backend writes for its type, or from what you type when it writes none, and a lookup, a formula and the rest stay locked. Each object's rows describe its fields; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be changed. Load records reads the parent records step 1's WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with every field the treecipe lists, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks). A field the org does not have or does not let you read is left out and named. A load opens each object it read records of, with how many it has and a table of them, 50 to a page: the Id, then the lookups, then the other fields, scrolling sideways in its own section; the Id, and a lookup that holds a record Id, opens that record in the org. That table is Edit existing records: ✎ at the start of a row marks it to update, a marked row's 🎲 makes a new value for a cell from its field's faker expression with the recipe's own backend (the header's 🎲 does it for every marked row), ⌨ opens the cell to type a value, held to the Treecipe tab's rules for a fixed value (a number, a declared picklist value, never a faker expression), a changed cell is highlighted, and ↺ puts a loaded value back (Reset all does it for the object). A 🔒 column cannot be changed and says why. Update records then writes only the changed cells of the marked rows to their records by Id, in the sandbox they were loaded from: the loaded values of those cells are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert's, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot's values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now."
+        "The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree's root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; a chip at the top names the parent and its WHERE, and Change parent object beside it goes back, asking first when records are loaded, since they are let go. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org's recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds is loaded and changed like the others: its new values come from the faker expression the recipe's backend writes for its type, or from what you type when it writes none, and a lookup, a formula and the rest stay locked. Each object's rows describe its fields; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be changed. Load records reads the parent records step 1's WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with every field the treecipe lists, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks). A field the org does not have or does not let you read is left out and named. A load opens each object it read records of, with how many it has and a table of them, 50 to a page: the Id, then the lookups, then the other fields, scrolling sideways in its own section; the Id, and a lookup that holds a record Id, opens that record in the org. That table is Edit existing records: ✎ at the start of a row marks it to update, a marked row's 🎲 makes a new value for a cell from its field's faker expression with the recipe's own backend (the header's 🎲 does it for every marked row), ⌨ opens the cell to type a value, held to the Treecipe tab's rules for a fixed value (a number, a declared picklist value, never a faker expression; a cell showing only part of a long value opens empty, and what you type replaces all of it), a changed cell is highlighted, and ↺ puts a loaded value back (Reset all does it for the object). A 🔒 column cannot be changed and says why. Update records then writes only the changed cells of the marked rows to their records by Id, in the sandbox they were loaded from: the loaded values of those cells are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert's, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot's values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now."
       ]
     },
     {
@@ -10716,10 +10725,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const markedText = pluralize(editSummary.markedRecordCount, "row", "rows") + " marked";
     return (editSummary.updatableRecordCount === 0 ? markedText + ", none changed yet. Change a cell with " + RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH + "." : markedText + " · " + pluralize(editSummary.updatableRecordCount, "record", "records") + " to update: " + editSummary.changedFieldApiNames.join(", ")) + (editSummary.hasUnmarkedChanges ? " The changes on rows that are not marked are not written." : "");
   }
-  function openCellEditor(cellElement, typeElement, cellText, cellLabel, saveTypedValue) {
+  function openCellEditor(cellElement, typeElement, startText, placeholder, cellLabel, saveTypedValue) {
     const cellChildren = Array.from(cellElement.children);
     const editorElement = createElement("div", "updaterCellEditor");
-    const inputElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, cellText, "New value for " + cellLabel, "");
+    const inputElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, startText, "New value for " + cellLabel, placeholder);
+    const startValue = String(inputElement.value);
     const saveElement = createButton("primary", "updaterCellSave", "Save", "compact");
     const cancelElement = createButton("secondary", "updaterCellCancel", "Cancel", "compact");
     const close = function() {
@@ -10730,9 +10740,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       focusElement(typeElement);
     };
     const save = function() {
+      if (runLocks.updaterLoadRunningTreeKey !== null) {
+        return;
+      }
       const typedValue = String(inputElement.value);
       close();
-      if (typedValue !== "" && typedValue !== cellText) {
+      if (typedValue !== "" && typedValue !== startValue) {
         saveTypedValue(typedValue);
       }
     };
@@ -10773,6 +10786,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return Array.isArray(changedCell);
     }).map(function(changedCell) {
       return changedCell[0] + ":" + changedCell[1];
+    }));
+    const cutCellKeys = new Set((Array.isArray(loadedRecords.cutCells) ? loadedRecords.cutCells : []).filter(function(cutCell) {
+      return Array.isArray(cutCell);
+    }).map(function(cutCell) {
+      return cutCell[0] + ":" + cutCell[1];
     }));
     const editButtonElements = [];
     updaterObjectState.editButtonElements = editButtonElements;
@@ -10871,6 +10889,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         const cellText = Array.isArray(row) && row[columnIndex] !== void 0 ? String(row[columnIndex]) : "";
         const columnEdit = columnEdits[columnIndex];
         const isChanged = changedCellKeys.has(rowIndex + ":" + columnIndex);
+        const isCut = cutCellKeys.has(rowIndex + ":" + columnIndex);
         const cellElement = createElement("td", isChanged ? "updaterChangedCell" : "");
         const linkedRowIndexes = linkedRowIndexesByColumnIndex.get(columnIndex);
         if (linkedRowIndexes && linkedRowIndexes.has(rowIndex) && cellText !== "") {
@@ -10887,7 +10906,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
               "Type a value for " + column + " of " + objectApiName + " " + rowName,
               false,
               function() {
-                openCellEditor(cellElement, typeElement, cellText, column + " of " + objectApiName + " " + rowName, function(typedValue) {
+                openCellEditor(cellElement, typeElement, isCut ? "" : cellText, isCut ? RECIPE_COCKPIT_UPDATER_CUT_CELL_PLACEHOLDER : "", column + " of " + objectApiName + " " + rowName, function(typedValue) {
                   requestUpdaterEdit(treeState, updaterObjectState, "typeCell", { rowIndex, columnIndex, value: typedValue });
                 });
               }
@@ -11188,6 +11207,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       lookupLinks: pageMessage.lookupLinks,
       markedRowIndexes: pageMessage.markedRowIndexes,
       changedCells: pageMessage.changedCells,
+      cutCells: pageMessage.cutCells,
       editSummary: pageMessage.editSummary
     });
     const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
