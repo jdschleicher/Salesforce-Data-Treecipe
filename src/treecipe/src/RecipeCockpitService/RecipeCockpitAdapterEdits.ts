@@ -232,7 +232,7 @@ export class RecipeCockpitAdapterEdits {
         }));
     }
 
-    // THE EDITS OF THE LOAD HELD NOW, MADE ON FIRST USE; undefined FOR A LOAD THE HOST LET GO
+    // THE EDITS OF THE LOAD HELD NOW, MADE ON FIRST USE; ANOTHER LOAD'S EDITS ARE REPLACED, NEVER READ
     static readObjectEdits(heldRecords: HeldUpdaterRecords, objectApiName: string): IRecipeCockpitUpdaterObjectEdits {
 
         if ( RecipeCockpitAdapterState.heldUpdaterEdits?.resultKey !== heldRecords.resultKey ) {
@@ -450,7 +450,8 @@ export class RecipeCockpitAdapterEdits {
                     return;
                 }
 
-                const loadedRecordsById = recordsById();
+                // ONE CELL'S RECORD IS ALREADY IN HAND; ONLY A COLUMN NEEDS EVERY RECORD BY ITS Id
+                const loadedRecordsById = editKind === 'generateCell' && rowRecord && rowRecordId !== undefined ? new Map([[rowRecordId, rowRecord]]) : recordsById();
                 targetRecordIds.forEach((recordId, valueIndex) => this.setCellValue(objectEdits, loadedRecordsById.get(recordId) ?? {}, recordId, columnPlan.fieldApiName, { value: generatedValues[valueIndex] }));
                 break;
 
@@ -526,7 +527,7 @@ export class RecipeCockpitAdapterEdits {
                 generationResult = valueCount > RECIPE_COCKPIT_UPDATER_VALUE_POOL_SIZE
                     ? await vscode.window.withProgress({
                         location: vscode.ProgressLocation.Notification,
-                        title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating ${valueCount} values for ${fieldLabel} with ${fakerService}`),
+                        title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating ${runValueCount} values for ${fieldLabel} with ${fakerService}`),
                         cancellable: true
                     }, async (_progress, cancellationToken) => await runBackend(() => cancellationToken.isCancellationRequested))
                     : await runBackend(() => false);

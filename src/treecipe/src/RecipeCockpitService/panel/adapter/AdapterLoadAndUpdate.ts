@@ -24,7 +24,7 @@ import {
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
 } from '../../RecipeCockpitAdapterConstants';
 import type { IActionCardView } from '../RecipeCockpitPanelBuilders';
-import { buildEditableRecordSection, drawUpdaterEditControls, focusEditButton, readEditSummary, readFocusedEditKey } from './AdapterRecordEdit';
+import { buildEditableRecordSection, drawUpdaterEditControls, focusEditButton, readEditSummary } from './AdapterRecordEdit';
 import { clearAdapterChildren, drawAdapterChildControls } from './AdapterChild';
 import { countAdapterFileChanges } from './AdapterRetrieve';
 import { drawUpdaterObjectCount, drawUpdaterParentChip, drawUpdaterSummary, openUpdaterObject, showUpdaterParentStep } from './AdapterTab';
@@ -359,14 +359,15 @@ export function renderUpdaterRecordsPage(pageMessage: IUpdaterRecordsPageMessage
     const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
     // THE SAME PAGE AGAIN IS AN EDIT'S ANSWER (#721)
     const isSamePage = pageIndex === updaterObjectState.loadedRecordsPageIndex;
-    const focusedEditKey = isSamePage ? readFocusedEditKey(updaterObjectState) : null;
+    const pressedEditKey = isSamePage ? updaterObjectState.pressedEditKey : null;
+    updaterObjectState.pressedEditKey = null;
     updaterObjectState.loadedRecordsPageIndex = pageIndex;
     updaterObjectState.requestedRecordsPageIndex = null;
     drawUpdaterObjectRecords(treeState, updaterObjectState);
     drawUpdaterLoadButtons();
 
     if (isSamePage) {
-        if (focusedEditKey) { focusEditButton(updaterObjectState, focusedEditKey); }
+        if (pressedEditKey) { focusEditButton(updaterObjectState, pressedEditKey); }
         return;
     }
 
@@ -438,14 +439,15 @@ function buildUpdaterRecordsPager(treeState: IAdapterTreeState, updaterObjectSta
     const nextElement = createButton('secondary', 'updaterRecordsNext', RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL, 'compact');
     previousElement.setAttribute('aria-label', 'Previous page of ' + objectApiName + ' records');
     nextElement.setAttribute('aria-label', 'Next page of ' + objectApiName + ' records');
-    previousElement.disabled = isPageRequested || pageIndex === 0;
-    nextElement.disabled = isPageRequested || pageIndex >= pageCount - 1;
+    const isPreviousAtEnd = isPageRequested || pageIndex === 0;
+    const isNextAtEnd = isPageRequested || pageIndex >= pageCount - 1;
     previousElement.addEventListener('click', function () { requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex - 1); });
     nextElement.addEventListener('click', function () { requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex + 1); });
     pagerElement.appendChild(previousElement);
     pagerElement.appendChild(pageLabelElement);
     pagerElement.appendChild(nextElement);
-    updaterObjectState.recordsPagerElements = { previousElement: previousElement, nextElement: nextElement };
+    updaterObjectState.recordsPagerElements = { previousElement: previousElement, nextElement: nextElement, isPreviousAtEnd: isPreviousAtEnd, isNextAtEnd: isNextAtEnd };
+    drawUpdaterEditControls(updaterObjectState);
 
     return pagerElement;
 

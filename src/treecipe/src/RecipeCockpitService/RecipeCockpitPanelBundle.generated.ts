@@ -1209,6 +1209,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) {
       return;
     }
+    updaterObjectState.pressedEditKey = [String(editKind === "unmarkRow" ? "markRow" : editKind)].concat(
+      position.rowIndex === void 0 ? [] : [String(position.rowIndex)],
+      position.columnIndex === void 0 ? [] : [String(position.columnIndex)]
+    ).join(":");
     vscodeApi2.postMessage({
       command: "editUpdaterRecords",
       treeKey: treeState.tree.treeKey,
@@ -1224,25 +1228,28 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     (updaterObjectState.editButtonElements || []).forEach(function(editButton) {
       editButton.element.disabled = isHeld || editButton.isDisabledByEdits;
     });
-  }
-  function readFocusedEditKey(updaterObjectState) {
-    const focusedButton = (updaterObjectState.editButtonElements || []).find(function(editButton) {
-      return editButton.element === document.activeElement;
-    });
-    return focusedButton ? focusedButton.editKey : null;
+    const pagerElements = updaterObjectState.recordsPagerElements;
+    if (pagerElements) {
+      pagerElements.previousElement.disabled = isHeld || pagerElements.isPreviousAtEnd;
+      pagerElements.nextElement.disabled = isHeld || pagerElements.isNextAtEnd;
+    }
   }
   function focusEditButton(updaterObjectState, editKey) {
     const [editKind, firstIndex] = editKey.split(":");
     const candidateKeys = [editKey, editKey.replace(/^reset(Cell|Column)/, "generate$1")].concat(editKind.endsWith("Cell") ? ["markRow:" + firstIndex] : []);
-    const editButtons = updaterObjectState.editButtonElements || [];
-    for (const candidateKey of candidateKeys) {
-      const editButton = editButtons.find(function(candidateButton) {
-        return candidateButton.editKey === candidateKey && !candidateButton.element.disabled;
+    const enabledButtons = (updaterObjectState.editButtonElements || []).filter(function(candidateButton) {
+      return !candidateButton.element.disabled;
+    });
+    const keyedButton = candidateKeys.map(function(candidateKey) {
+      return enabledButtons.find(function(candidateButton) {
+        return candidateButton.editKey === candidateKey;
       });
-      if (editButton) {
-        focusElement(editButton.element);
-        return;
-      }
+    }).find(function(candidateButton) {
+      return candidateButton !== void 0;
+    });
+    const editButton = keyedButton || enabledButtons[0];
+    if (editButton) {
+      focusElement(editButton.element);
     }
   }
   function describeEditSummary(editSummary) {
@@ -11126,14 +11133,15 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     });
     const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
     const isSamePage = pageIndex === updaterObjectState.loadedRecordsPageIndex;
-    const focusedEditKey = isSamePage ? readFocusedEditKey(updaterObjectState) : null;
+    const pressedEditKey = isSamePage ? updaterObjectState.pressedEditKey : null;
+    updaterObjectState.pressedEditKey = null;
     updaterObjectState.loadedRecordsPageIndex = pageIndex;
     updaterObjectState.requestedRecordsPageIndex = null;
     drawUpdaterObjectRecords(treeState, updaterObjectState);
     drawUpdaterLoadButtons();
     if (isSamePage) {
-      if (focusedEditKey) {
-        focusEditButton(updaterObjectState, focusedEditKey);
+      if (pressedEditKey) {
+        focusEditButton(updaterObjectState, pressedEditKey);
       }
       return;
     }
@@ -11196,8 +11204,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const nextElement = createButton("secondary", "updaterRecordsNext", RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL, "compact");
     previousElement.setAttribute("aria-label", "Previous page of " + objectApiName + " records");
     nextElement.setAttribute("aria-label", "Next page of " + objectApiName + " records");
-    previousElement.disabled = isPageRequested || pageIndex === 0;
-    nextElement.disabled = isPageRequested || pageIndex >= pageCount - 1;
+    const isPreviousAtEnd = isPageRequested || pageIndex === 0;
+    const isNextAtEnd = isPageRequested || pageIndex >= pageCount - 1;
     previousElement.addEventListener("click", function() {
       requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex - 1);
     });
@@ -11207,7 +11215,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     pagerElement.appendChild(previousElement);
     pagerElement.appendChild(pageLabelElement);
     pagerElement.appendChild(nextElement);
-    updaterObjectState.recordsPagerElements = { previousElement, nextElement };
+    updaterObjectState.recordsPagerElements = { previousElement, nextElement, isPreviousAtEnd, isNextAtEnd };
+    drawUpdaterEditControls(updaterObjectState);
     return pagerElement;
   }
 

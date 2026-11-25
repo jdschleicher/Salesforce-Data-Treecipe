@@ -1197,6 +1197,22 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
+        it('sends nothing when the snapshot is short of a record the update would write', async () => {
+
+            await openCockpitLoadAndEdit();
+            const buildSnapshotObject = RecipeCockpitRecordUpdate.buildSnapshotObject.bind(RecipeCockpitRecordUpdate);
+            jest.spyOn(RecipeCockpitRecordUpdate, 'buildSnapshotObject').mockImplementation((...snapshotArguments) => {
+                const snapshotObject = buildSnapshotObject(...snapshotArguments);
+                return { ...snapshotObject, records: snapshotObject.records.slice(1) };
+            });
+            await requestUpdate();
+
+            expect(updateCalls).toEqual([]);
+            expect(attemptFiles()).toEqual([]);
+            expect(warnings().at(-1)).toBe(RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL);
+
+        });
+
         it('sends nothing when the old values cannot be saved', async () => {
 
             fs.writeFileSync(runArtifactsFolderPath(), 'a file where the folder goes');

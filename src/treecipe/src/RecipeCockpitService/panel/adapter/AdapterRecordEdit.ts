@@ -67,6 +67,10 @@ function requestUpdaterEdit(treeState: IAdapterTreeState, updaterObjectState: IU
 
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) { return; }
 
+    // THE KEY ITS BUTTON WAS BUILT WITH: A ROW'S ✎ IS ONE BUTTON WHETHER IT MARKS OR UNMARKS
+    updaterObjectState.pressedEditKey = [String(editKind === 'unmarkRow' ? 'markRow' : editKind)].concat(
+        position.rowIndex === undefined ? [] : [String(position.rowIndex)], position.columnIndex === undefined ? [] : [String(position.columnIndex)]).join(':');
+
     vscodeApi.postMessage({
         command: 'editUpdaterRecords',
         treeKey: treeState.tree.treeKey,
@@ -79,29 +83,30 @@ function requestUpdaterEdit(treeState: IAdapterTreeState, updaterObjectState: IU
 
 }
 
-// EVERY EDIT BUTTON OF THE TABLE ON SCREEN IS HELD WHILE A RUN HOLDS THE RECORDS; drawUpdaterLoadButtons CALLS THIS
+// EVERY EDIT BUTTON OF THE TABLE ON SCREEN, AND ITS PAGER, IS HELD WHILE A RUN HOLDS THE RECORDS; drawUpdaterLoadButtons CALLS THIS
 export function drawUpdaterEditControls(updaterObjectState: IUpdaterObjectState): void {
     const isHeld = runLocks.updaterLoadRunningTreeKey !== null;
     (updaterObjectState.editButtonElements || []).forEach(function (editButton) {
         editButton.element.disabled = isHeld || editButton.isDisabledByEdits;
     });
+    // A PAGE TURNED WHILE 🎲 RUNS WOULD BE PULLED BACK BY THE RUN'S ANSWER, WHICH IS THE PAGE THE EDIT WAS MADE ON
+    const pagerElements = updaterObjectState.recordsPagerElements;
+    if (pagerElements) {
+        pagerElements.previousElement.disabled = isHeld || pagerElements.isPreviousAtEnd;
+        pagerElements.nextElement.disabled = isHeld || pagerElements.isNextAtEnd;
+    }
 }
 
-// AFTER AN EDIT REDRAWS THE TABLE, THE KEYBOARD'S PLACE GOES BACK TO THE BUTTON PRESSED; WHERE THE EDIT TOOK THAT BUTTON AWAY
-// (A ↺ ON A CELL NOW AS LOADED), TO THE CELL'S OR COLUMN'S 🎲, THEN TO THE ROW'S ✎
-export function readFocusedEditKey(updaterObjectState: IUpdaterObjectState): string | null {
-    const focusedButton = (updaterObjectState.editButtonElements || []).find(function (editButton) { return editButton.element === document.activeElement; });
-    return focusedButton ? focusedButton.editKey : null;
-}
-
+// AFTER AN EDIT'S ANSWER REDRAWS THE TABLE, THE KEYBOARD'S PLACE GOES BACK TO THE BUTTON PRESSED. WHERE THE EDIT TOOK THAT BUTTON AWAY
+// OR LEFT IT NOTHING TO DO (A ↺ ON A CELL NOW AS LOADED, Reset all), IT GOES TO THE CELL'S OR COLUMN'S 🎲, THE ROW'S ✎, THEN THE FIRST BUTTON THAT CAN BE PRESSED
 export function focusEditButton(updaterObjectState: IUpdaterObjectState, editKey: string): void {
     const [editKind, firstIndex] = editKey.split(':');
     const candidateKeys = [editKey, editKey.replace(/^reset(Cell|Column)/, 'generate$1')].concat(editKind.endsWith('Cell') ? ['markRow:' + firstIndex] : []);
-    const editButtons = updaterObjectState.editButtonElements || [];
-    for (const candidateKey of candidateKeys) {
-        const editButton = editButtons.find(function (candidateButton) { return candidateButton.editKey === candidateKey && !candidateButton.element.disabled; });
-        if (editButton) { focusElement(editButton.element); return; }
-    }
+    const enabledButtons = (updaterObjectState.editButtonElements || []).filter(function (candidateButton) { return !candidateButton.element.disabled; });
+    const keyedButton = candidateKeys.map(function (candidateKey) { return enabledButtons.find(function (candidateButton) { return candidateButton.editKey === candidateKey; }); })
+        .find(function (candidateButton) { return candidateButton !== undefined; });
+    const editButton = keyedButton || enabledButtons[0];
+    if (editButton) { focusElement(editButton.element); }
 }
 
 // "2 rows marked · 1 record to update: Region__c", AND WHAT IS STILL MISSING BEFORE AN UPDATE HAS ANYTHING TO WRITE

@@ -101,8 +101,6 @@ export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load r
 // AN OBJECT UNDER THE PARENT IS READ ONLY UNDER RECORDS LOADED A LEVEL ABOVE (#444); WHEN THERE ARE NONE, IT SENDS NO QUERY
 export const RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX = 'Not read: ';
 export const RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL = 'No values were generated: load this tree\'s records first. Values are generated for the records the last Load records read.';
-// A FIELD WHOSE RECIPE VALUE IS A COMMENT (A TODO) HAS NO EXPRESSION TO GENERATE FROM; A VALUE TYPED FOR IT STILL WORKS
-export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it; type a value or an expression in its editor';
 // HOW MANY RECORDS ONE GENERATION RUN MAKES (#417): A LOAD CAN HOLD 50,000, AND ONE RUN OF THAT SIZE FROZE THE EXTENSION HOST FOR
 // SECONDS (faker-js) OR OVERFLOWED SNOWFAKERY'S 10 MB OUTPUT BUFFER, SO VALUES ARE MADE IN RUNS OF THIS SIZE, YIELDING BETWEEN THEM
 export const RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE = 2000;
@@ -804,7 +802,9 @@ export class RecipeCockpitAdapterRecords {
         const snapshotObjects = plannedObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.loadedRecords,
                                                                                                                   updatePlan.orgOnlyFieldApiNamesByObjectApiName.get(plannedObject.objectApiName),
                                                                                                                   new Map(plannedObject.recordValues.map(recordValue => [recordValue.recordId, Object.keys(recordValue.fieldValues)] as const))));
-        const attemptFiles = runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
+        // NOTHING IS UPDATED UNLESS ITS OLD VALUES ARE SAVED: A SNAPSHOT SHORT OF A RECORD THE UPDATE WRITES IS NO SNAPSHOT
+        const isEveryRecordSaved = plannedObjects.every((plannedObject, objectIndex) => snapshotObjects[objectIndex].records.length === plannedObject.recordValues.length);
+        const attemptFiles = isEveryRecordSaved && runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
             takenAt: startedAt.toISOString(),
@@ -1214,7 +1214,8 @@ export class RecipeCockpitAdapterRecords {
         const currentSnapshotObjects = restoredObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.currentRecords,
                                                                                                                             snapshotObjects.find(snapshotObject => snapshotObject.objectApiName === plannedObject.objectApiName)?.orgOnlyFieldApiNames,
                                                                                                                             new Map(plannedObject.recordValues.map(recordValue => [recordValue.recordId, Object.keys(recordValue.fieldValues)] as const))));
-        const attemptFiles = runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
+        const isEveryRecordSaved = restoredObjects.every((plannedObject, objectIndex) => currentSnapshotObjects[objectIndex].records.length === plannedObject.recordValues.length);
+        const attemptFiles = isEveryRecordSaved && runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
             takenAt: startedAt.toISOString(),

@@ -308,7 +308,10 @@ export interface IUpdaterObjectState extends IUpdaterFieldObjectState {
     // THE PAGE OF ITS RECORD TABLE ON SCREEN, AND THE ONE ASKED FOR AND NOT YET ANSWERED (#720)
     loadedRecordsPageIndex: number;
     requestedRecordsPageIndex: number | null;
-    recordsPagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement } | null;
+    // isPreviousAtEnd / isNextAtEnd: WHAT THE PAGE ITSELF DISABLES, KEPT SO A RUN'S HOLD CAN BE LIFTED AGAIN
+    recordsPagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement; isPreviousAtEnd: boolean; isNextAtEnd: boolean } | null;
+    // THE EDIT BUTTON LAST PRESSED (#721): WHERE THE KEYBOARD'S PLACE GOES BACK TO WHEN THE HOST'S ANSWER REDRAWS THE TABLE
+    pressedEditKey?: string | null;
     // THE TABLE'S EDIT BUTTONS (#721), EACH WITH WHETHER THE EDITS THEMSELVES LEAVE IT NOTHING TO DO; ALL ARE HELD WHILE A RUN HOLDS THE RECORDS
     // editKey NAMES THE BUTTON BY WHAT IT DOES AND WHERE, SO THE KEYBOARD'S PLACE SURVIVES THE TABLE BEING REDRAWN
     editButtonElements?: Array<{ element: HTMLButtonElement; isDisabledByEdits: boolean; editKey: string }>;

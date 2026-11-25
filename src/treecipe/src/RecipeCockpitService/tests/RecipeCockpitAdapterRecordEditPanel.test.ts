@@ -181,13 +181,39 @@ describe('the Treecipe Adapter\'s record table to edit, in the panel (#721)', ()
 
         const { panel, accountObject } = openLoadedTable(ONE_CHANGED);
 
-        panel.findAll(accountObject, 'updaterRowMark')[1].focus();
+        panel.findAll(accountObject, 'updaterRowMark')[1].dispatch('click');
         postPage(panel, { ...ONE_CHANGED, markedRowIndexes: [0, 1], editSummary: { ...ONE_CHANGED.editSummary, markedRecordCount: 2 } });
         expect(panel.activeElement()).toBe(panel.findAll(accountObject, 'updaterRowMark')[1]);
 
-        panel.findAll(accountObject, 'updaterCellReset')[0].focus();
+        panel.findAll(accountObject, 'updaterCellReset')[0].dispatch('click');
         postPage(panel, ONE_MARKED);
         expect(panel.activeElement()).toBe(panel.findAll(accountObject, 'updaterCellGenerate')[0]);
+
+    });
+
+    it('moves to the first button that can be pressed when Reset all leaves itself nothing to do', () => {
+
+        const { panel, accountObject } = openLoadedTable(ONE_CHANGED);
+
+        panel.findAll(accountObject, 'updaterResetAll')[0].dispatch('click');
+        postPage(panel, ONE_MARKED);
+
+        expect(panel.findAll(accountObject, 'updaterResetAll')[0].disabled).toBe(true);
+        expect(panel.activeElement()).toBe(panel.findAll(accountObject, 'updaterColumnGenerate')[0]);
+
+    });
+
+    it('holds the pager while a run holds the records, so a page turned meanwhile is not pulled back by the run\'s answer', () => {
+
+        const { panel, accountObject } = openLoadedTable({ ...ONE_MARKED, pageCount: 3 });
+        const pagerButtons = () => [panel.findAll(accountObject, 'updaterRecordsPrevious')[0], panel.findAll(accountObject, 'updaterRecordsNext')[0]];
+        expect(pagerButtons().map((pagerButton: any) => pagerButton.disabled)).toEqual([true, false]);
+
+        panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' });
+        expect(pagerButtons().map((pagerButton: any) => pagerButton.disabled)).toEqual([true, true]);
+
+        panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+        expect(pagerButtons().map((pagerButton: any) => pagerButton.disabled)).toEqual([true, false]);
 
     });
 
