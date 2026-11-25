@@ -133,16 +133,16 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
         beforeEach(() => writeWorkspace(FAKER_JS_RECIPE, ['Account', 'Contact', 'Case', 'Opportunity', 'Lead'], 'Account'));
 
-        it('draws one chip per parent, nesting parent first, numbered by place among that parent\'s friends in recipe order', () => {
+        it('draws one chip per parent, nesting parent first, each reading the parent\'s nickname alone (#716)', () => {
 
             const panel = renderModel(loadModel());
 
             expect(chipLines(panel)).toEqual([
                 'Account: ',
-                'Account: Account_NickName-4',
-                'Contact: Account_NickName-1',
-                'Case: Contact_NickName-1, Account_NickName-2',
-                'Opportunity: Account_NickName-3',
+                'Account: Account_NickName',
+                'Contact: Account_NickName',
+                'Case: Contact_NickName, Account_NickName',
+                'Opportunity: Account_NickName',
                 'Lead: '
             ]);
 
@@ -162,8 +162,8 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
                 expect(panel.findAll(chipElement, 'treeFriendGlyph')).toEqual([]);
             });
             expect(caseChips.map((chipElement: any) => chipElement.attributes['aria-label'])).toEqual([
-                'Contact_NickName-1, friend 1 of Contact_NickName: go to Contact',
-                'Account_NickName-2, friend 2 of Account_NickName: go to Account'
+                'Contact_NickName, friend 1 of Contact_NickName: go to Contact',
+                'Account_NickName, friend 2 of Account_NickName: go to Account'
             ]);
             expect(caseChips.every((chipElement: any) => chipElement.classList.contains('sdtButton-secondary'))).toBe(true);
 
@@ -186,15 +186,15 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
         });
 
-        it('lets the Treecipe tab\'s search find a row by its chip', () => {
+        it('lets the Treecipe tab\'s search find every friend of a parent by its chip', () => {
 
             const panel = renderModel(loadModel());
-            panel.typeIntoFilter('account_nickname-3');
+            panel.typeIntoFilter('contact_nickname');
 
-            const opportunityElement = objectElementWithNickname(panel, 'Opportunity_NickName');
+            const caseElement = objectElementWithNickname(panel, 'Case_NickName');
             const leadElement = objectElementWithNickname(panel, 'Lead_NickName');
 
-            expect(panel.visibleFieldNamesOf(opportunityElement)).not.toEqual([]);
+            expect(panel.visibleFieldNamesOf(caseElement)).not.toEqual([]);
             expect(panel.visibleFieldNamesOf(leadElement)).toEqual([]);
 
         });
@@ -202,11 +202,11 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
         it('lets the Treecipes section search find an object by its chip', () => {
 
             const panel = renderModel(loadModel());
-            panel.typeIntoTreecipesSearch('Contact_NickName-1');
+            panel.typeIntoTreecipesSearch('Contact_NickName');
 
             const resultTexts = panel.findAll(panel.cockpitBodyElement, 'treecipesResult').map(deepText);
 
-            expect(resultTexts.some((resultText: string) => resultText.includes('Case · Contact_NickName-1, Account_NickName-2'))).toBe(true);
+            expect(resultTexts.some((resultText: string) => resultText.includes('Case · Contact_NickName, Account_NickName'))).toBe(true);
 
         });
 
@@ -218,9 +218,9 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
             expect(listedObjects).toEqual([
                 // THE SELF-LOOKUP ITERATION'S CHIP IS ON ITS OWN ROW, NEVER BESIDE THE OBJECT'S ONE NAME
                 'Account',
-                'Contact (Account_NickName-1)',
-                'Case (Contact_NickName-1, Account_NickName-2)',
-                'Opportunity (Account_NickName-3)',
+                'Contact (Account_NickName)',
+                'Case (Contact_NickName, Account_NickName)',
+                'Opportunity (Account_NickName)',
                 'Lead'
             ]);
 
@@ -249,7 +249,32 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
                 FAKER_JS_RECIPE.replace('Subject: ${{ faker.lorem.sentence() }}', 'Subject: Nobody_NickName')
             );
 
-            expect(chipLines(renderModel(loadModel()))).toContain('Case: Contact_NickName-1, Account_NickName-2');
+            expect(chipLines(renderModel(loadModel()))).toContain('Case: Contact_NickName, Account_NickName');
+
+        });
+
+    });
+
+    describe('a parent with many friends (#716)', () => {
+
+        it('draws the same chip, the parent\'s nickname, on all 34 friends, and names each friend\'s number only in words', () => {
+
+            const contactBlocks = Array.from({ length: 34 }, (_unused, contactIndex) => [
+                '    - object: Contact',
+                `      nickname: Contact_${contactIndex + 1}_NickName`,
+                '      count: 1',
+                '      fields:',
+                '        LastName: Smith'
+            ].join('\n')).join('\n');
+            writeWorkspace(['- object: Campaign', '  nickname: Campaign_NickName', '  count: 1', '  fields:', '    Name: Spring Launch', '  friends:', contactBlocks, ''].join('\n'), ['Campaign', 'Contact']);
+
+            const panel = renderModel(loadModel());
+            const friendChips = panel.findAll(panel.cockpitBodyElement, 'treeFriendChip');
+
+            expect(friendChips).toHaveLength(34);
+            expect(new Set(friendChips.map((chipElement: any) => panel.findAll(chipElement, 'treeFriendLabel')[0].textContent))).toEqual(new Set(['Campaign_NickName']));
+            expect(friendChips[33].attributes['aria-label']).toBe('Campaign_NickName, friend 34 of Campaign_NickName: go to Campaign');
+            expect(chipLines(panel).join('\n')).not.toMatch(/Campaign-\d|Campaign_NickName-\d/);
 
         });
 
@@ -257,13 +282,13 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
     describe('a parent no one row holds by nickname', () => {
 
-        it('falls back to the parent object, as muted text with no row to open', () => {
+        it('falls back to the parent object when the parent has no nickname, as muted text with no row to open and no number', () => {
 
             writeWorkspace(NESTED_RECIPE_WITHOUT_PARENT_NICKNAME, ['Account', 'Contact']);
             const panel = renderModel(loadModel());
             const contactChips = panel.findAll(objectElementWithNickname(panel, 'Contact_NickName').children[0], 'treeFriendChip');
 
-            expect(chipLines(panel)).toEqual(['Account: ', 'Contact: Account-1']);
+            expect(chipLines(panel)).toEqual(['Account: ', 'Contact: Account']);
             expect(contactChips[0].tagName.toLowerCase()).toBe('span');
             expect(contactChips[0].classList.contains('muted')).toBe(true);
             expect(contactChips[0].children[0].textContent).toBe('👥');
@@ -275,11 +300,12 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
             writeWorkspace(NESTED_RECIPE_WITHOUT_PARENT_NICKNAME.replace('      count: 1\n', ''), ['Account', 'Contact']);
 
-            expect(chipLines(renderModel(loadModel()))).toEqual(['Account: ', 'Contact: Account-1']);
+            expect(chipLines(renderModel(loadModel()))).toEqual(['Account: ', 'Contact: Account']);
 
         });
 
-        it('falls back for a __proto__ nickname, and a lookup holding it draws nothing more', () => {
+        // __proto__ IS NEVER A KEY OF #380'S INDEX, SO NO ROW HOLDS IT: THE CHIP SHOWS IT AS TEXT, AS ANY UNHELD NICKNAME (#716)
+        it('names a __proto__ nickname as muted text, and a lookup holding it draws nothing more', () => {
 
             writeWorkspace(
                 NESTED_RECIPE_WITHOUT_PARENT_NICKNAME
@@ -288,7 +314,7 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
                 ['Account', 'Contact']
             );
 
-            expect(chipLines(renderModel(loadModel()))).toEqual(['Account: ', 'Contact: Account-1']);
+            expect(chipLines(renderModel(loadModel()))).toEqual(['Account: ', 'Contact: __proto__']);
 
         });
 

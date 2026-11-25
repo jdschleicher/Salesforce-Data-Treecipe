@@ -20,6 +20,39 @@ A field row on the Treecipe tab shows its faker expression, such as `${{faker.st
 - `RecipeCockpitTreecipeHost` gains the `testFakerValue` router case and action, which check the drawn model's allow-list and read the expression from the model, never from the post. `fakerValueExample` is the answer. The panel's `fieldRows/FieldRowFakerValueTest.ts` draws the button and the example line with `textContent`.
 - **Tests.** `RecipeCockpitFakerValueTest.test.ts` covers the rules, the writer parity, the panel row (shown, hidden, busy, answered, stale answers ignored, fixed value), the router's refusals, real faker-js runs (a currency gives two decimals, a date gives `yyyy-MM-dd` with no line break, a picklist gives one of its values), a snowfakery run, the failure notifications, one run per row, and the temporary folder removed on success and on throw. A Treecipe tab acceptance journey clicks the button and reads an eight-digit example, with no file written. The rendered baselines for the field editor, the picklist tiles and the in-panel confirmation now list the new buttons.
 
+## [3.208.13] - Recipe Cockpit: a friend's chip reads its parent's nickname, the same on every friend, never `<Object>-<n>` (#716)
+
+A friend row's 👥 chip read the parent's nickname and the friend's place among that parent's friends (`Account_NickName-2`). When no single row held the parent's nickname, it fell back to the object, so 34 friends of one Campaign read `Campaign-1` … `Campaign-34`, and friends of one parent looked like different things.
+
+### Treecipe tab
+
+- **A chip reads the parent's nickname alone**, the same on every friend of it: `Account_NickName`. Click it to go to that parent, as before.
+- **A parent no one row holds is named by its nickname**, as muted text with no row to open. Only a parent with no nickname at all falls back to its object, now with no number: `Account`.
+- **The friend's number is still said.** The chip's spoken name and its tooltip keep it (“Account_NickName, friend 2 of Account_NickName: go to Account”), and the parent's **👥 N** list keeps its numbered labels (`Account_NickName-2: Case`).
+- **Search** finds every friend of a parent by its nickname (`account_nickname`); a number such as `account_nickname-3` no longer matches a chip. The object list under the Treecipes dropdown names each object's chips the same way: `Case (Contact_NickName, Account_NickName)`.
+- **What does not change.** Which chips a friend row draws and in what order, the 👥 N list, snowfakery cards (no friend rows), and generation.
+
+### Under the hood
+
+- `Friends.ts` `ensureFriendIndex` gives a chip its parent's label alone, and an unheld nesting parent its nickname before its object. The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and `RecipeCockpitService/DESIGN.md` say the same.
+- **Tests.** `RecipeCockpitFriendChips.test.ts` holds the new labels, the number in the spoken name, a Campaign with 34 friends whose chips all read `Campaign_NickName`, and a muted chip naming an unheld nickname. `RecipeCockpitFriendsMenu.test.ts` checks that each 👥 N label is its friend's chip and then its number.
+- No screenshot shows a friend chip, so none is re-taken.
+
+## [3.208.12] - faker-js standard-field values all run and end in `}}`: Campaign, Opportunity, Asset and Pricebook2 (#717)
+
+Some faker-js values for standard fields that Generate Treecipe writes from its built-in list were broken.
+
+- **Campaign generates.** `Campaign.Name` called `faker.company.bs()`, which faker-js 9.7.0 no longer has, so Run Faker by Recipe stopped at every faker-js Campaign. It is now `faker.company.catchPhrase()`.
+- **Pricebook2 gets its values, with no stray `"`.** The entry was keyed `PriceBook2`, which matches no Salesforce object, so a Pricebook2 got TODO lines in place of the values meant for it, and its `Name`, `${{ (faker.company.bs()) Price Book }} "`, held a misplaced `}}`, a stray quote and the same missing function. It is keyed `Pricebook2` and writes `Name: ${{ faker.company.name() + ' Price Book' }}`, `Description` and `IsActive`, as snowfakery already did.
+- **Currency and percent values are one expression.** `Campaign.BudgetedCost`, `ActualCost`, `ExpectedRevenue`, `ExpectedResponse`, `Opportunity.Amount`, `Opportunity.Probability` and `Asset.Price` were written as `${{ (faker.string.numeric(5)) }}.00`, with text after the `}}` that the Recipe Cockpit's field editor refused as "not one `${{ ... }}` expression". Each is now a `|` block holding `${{ faker.finance.amount({min: 0, max: 99999, dec: 2}) }}`, the form every precision and scale field already takes, so the value keeps its fixed decimals (`"86863.00"`).
+- **What does not change.** Every other standard-field value, and every snowfakery recipe. A recipe generated before this keeps its old lines until it is generated again.
+
+### Under the hood
+
+- `FakerJSRecipeFakerService.getOOTBObjectApiNameToFieldApiNameMap` holds the nine values and the corrected key.
+- **Tests.** `FakerJSRecipeFakerService.test.ts` now checks that every built-in standard-field value ends with its last `}}`, has no quote or brace outside an expression, and evaluates with the installed faker-js, so a value that stops working when faker-js is upgraded fails here. It also checks each currency and percent field's decimals, the `Pricebook2` key and `Campaign.Name`. `DirectoryProcessor.compoundName.test.ts` now expects a mapped faker-js Pricebook2 `Name`. `RecipeService.standardFieldRecipes.test.ts` writes every standard object each backend maps and loads it as YAML, so a one-line value holding `: ` (as `{min: 0, …}` does) fails there.
+- **Golden files.** The faker-js Pricebook2 tree now writes values in place of three TODO lines. Its SOQL template, like every mapped standard object's, no longer lists the mapped fields. In the Account tree, Opportunity's `Amount` and `Probability` become `|` blocks, and since `faker.finance.amount` draws a different number of random values, every seeded value generated after them differs. The Recipe Cockpit's nested writer fixture is updated to match.
+
 ## [3.208.11] - Recipe Cockpit: a long formula on a read-only row is clamped, with the whole formula one click away (#706)
 
 A formula field's read-only row shows `formula: <formula>` (#685), and a formula can run to 3,900 characters. A long one made its row many lines tall and pushed the rest of the object's fields down.

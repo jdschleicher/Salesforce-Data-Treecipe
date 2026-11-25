@@ -6,7 +6,7 @@
         "type": "MegaMapMadness__c",
         "referenceId": "MegaMapMadness__c_Reference_1__MegaMapMadness__c_NickName"
       },
-      "CheckMadness__c": "true",
+      "CheckMadness__c": "false",
       "LUOne_User__c": null,
       "LUTwo_User__c": null
     }

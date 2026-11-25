@@ -15,10 +15,7 @@ Objects: Pricebook2
 erDiagram
     Pricebook2 {
         id Id
-        string Description
-        string IsActive
         string IsStandard
-        string Name
     }
 
 ```

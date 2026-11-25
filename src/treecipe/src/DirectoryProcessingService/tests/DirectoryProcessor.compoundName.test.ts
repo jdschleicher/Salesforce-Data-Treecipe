@@ -317,7 +317,7 @@ describe.each([
 
     describe('a plain Name is written as before', () => {
 
-        // WHICH OF THE TWO A STANDARD OBJECT GETS DEPENDS ON ITS BACKEND'S MAP (faker-js MAPS NO Pricebook2), NEVER ON THIS CHANGE
+        // WHICH OF THE TWO A STANDARD OBJECT GETS DEPENDS ON ITS BACKEND'S MAP (BOTH MAP Pricebook2 SINCE #717), NEVER ON THIS CHANGE
         test.each(['Account', 'Opportunity', 'Product2', 'Pricebook2'])('a typeless Name on %s is the map\'s Name or one TODO line, and no component', async (objectApiName) => {
 
             const fieldInfoDetails = await walkFields(objectApiName, { 'Name.field-meta.xml': TYPELESS_NAME_XML });
@@ -331,13 +331,14 @@ describe.each([
 
         });
 
-        test('Account and Opportunity have a mapped Name in this backend, and faker-js Pricebook2 has the TODO line', async () => {
+        test('Account and Opportunity have a mapped Name in this backend, and faker-js maps Pricebook2 by its api name (#717)', async () => {
 
             expect(standardFieldMappings.Account.Name).toBeTruthy();
             expect(standardFieldMappings.Opportunity.Name).toBeTruthy();
 
             const fakerJSMappings = new FakerJSRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap();
-            expect(fakerJSMappings.Pricebook2?.Name).toBeUndefined();
+            expect(fakerJSMappings.Pricebook2?.Name).toBeTruthy();
+            expect(fakerJSMappings).not.toHaveProperty('PriceBook2');
 
         });
 

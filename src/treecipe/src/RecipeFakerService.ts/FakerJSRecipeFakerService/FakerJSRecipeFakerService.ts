@@ -501,13 +501,15 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 
             "Opportunity": {
                 "Name": `\${{faker.company.catchPhrase()}}`,
-                "Amount": `\${{ (faker.string.numeric(6)) }}.00`,
+                "Amount": `|
+                    \${{ faker.finance.amount({min: 0, max: 999999, dec: 2}) }}`,
                 "CloseDate": `|
                     \${{ faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) }) }}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
                 "LeadSource": `\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}`,
                 "NextStep": `\${{faker.lorem.sentence()}}`,
-                "Probability": `\${{ (faker.string.numeric(2))}}.0 `,
+                "Probability": `|
+                    \${{ faker.finance.amount({min: 0, max: 99, dec: 1}) }}`,
                 "StageName": `\${{faker.helpers.arrayElement(['Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'])}}`,
                 "Type": `\${{faker.helpers.arrayElement(['New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade'])}}`
             },
@@ -552,7 +554,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             },
                 
             "Campaign": {
-                "Name": `\${{faker.company.bs()}}`,
+                "Name": `\${{faker.company.catchPhrase()}}`,
                 "Type": `\${{faker.helpers.arrayElement(['Email', 'Webinar', 'Conference', 'Direct Mail', 'Advertisement'])}}`,
                 "Status": `\${{faker.helpers.arrayElement(['Planned', 'In Progress', 'Completed', 'Aborted'])}}`,
                 "StartDate": `|
@@ -560,10 +562,14 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 "EndDate": `|
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 91)), to: (new Date().setDate(new Date().getDate() + 180)) })}}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
-                "BudgetedCost": `\${{ (faker.string.numeric(5)) }}.00`,
-                "ActualCost": `\${{ (faker.string.numeric(5)) }}.00`,
-                "ExpectedRevenue": `\${{ (faker.string.numeric(6)) }}.00`,
-                "ExpectedResponse": `\${{ (faker.string.numeric(2)) }}.0`
+                "BudgetedCost": `|
+                    \${{ faker.finance.amount({min: 0, max: 99999, dec: 2}) }}`,
+                "ActualCost": `|
+                    \${{ faker.finance.amount({min: 0, max: 99999, dec: 2}) }}`,
+                "ExpectedRevenue": `|
+                    \${{ faker.finance.amount({min: 0, max: 999999, dec: 2}) }}`,
+                "ExpectedResponse": `|
+                    \${{ faker.finance.amount({min: 0, max: 99, dec: 1}) }}`
             },
                 
             "Task": {
@@ -601,8 +607,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 "ExternalId": `\${{faker.string.uuid()}}`
             },
                 
-            "PriceBook2": {
-                "Name": `\${{ (faker.company.bs()) Price Book }} "`,
+            "Pricebook2": {
+                "Name": `\${{ faker.company.name() + ' Price Book' }}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
                 "IsActive": `\${{faker.helpers.arrayElement(['true', 'false'])}}`
             },
@@ -616,7 +622,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 730)), to: (new Date().setDate(new Date().getDate() - 366)) })}}`,
                 "SerialNumber": `\${{faker.string.alphanumeric(10)}}-\${{faker.string.numeric(6)}}`,
                 "Status": `\${{faker.helpers.arrayElement(['Purchased', 'Shipped', 'Installed', 'Registered'])}}`,
-                "Price": `\${{ (faker.string.numeric(5)) }}.00`,
+                "Price": `|
+                    \${{ faker.finance.amount({min: 0, max: 99999, dec: 2}) }}`,
                 "Quantity": `\${{faker.string.numeric(2)}}`
             },
                 

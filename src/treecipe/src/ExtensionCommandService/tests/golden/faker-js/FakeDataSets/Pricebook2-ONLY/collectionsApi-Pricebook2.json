@@ -6,10 +6,10 @@
         "type": "Pricebook2",
         "referenceId": "Pricebook2_Reference_1__Pricebook2_NickName"
       },
-      "Description": null,
-      "IsActive": null,
-      "IsStandard": null,
-      "Name": null
+      "Name": "Gottlieb - Treutel Price Book",
+      "Description": "Accusamus solitudo adopto hic theatrum amiculum aegrus vulgus. Cupiditate apto tubineus cras cogo textor consequatur. Desidero carpo aro ago commemoro.",
+      "IsActive": "true",
+      "IsStandard": null
     }
   ]
 }
