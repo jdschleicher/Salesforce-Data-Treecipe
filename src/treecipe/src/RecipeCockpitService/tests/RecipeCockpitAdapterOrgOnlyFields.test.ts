@@ -729,6 +729,26 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         });
 
+        it('takes a typed value for an org-only field the backend writes no expression for, and updates it as a field only the org held (#721)', async () => {
+
+            await openCockpitAndRetrieve();
+            await send(loadRequest());
+            await send(editMessage('Account', 'markRow', { rowIndex: 1 }));
+            await send(editMessage('Account', 'typeCell', { rowIndex: 1, columnIndex: loadedObject('Account').columns.indexOf('Hologram__c'), value: 'Shimmer' }));
+            await acknowledgeValuesAndUpdate();
+
+            expect(warnings().filter(warningText => /was not changed|Nothing was updated/.test(warningText))).toEqual([]);
+            expect(updateCalls).toEqual([{ objectApiName: 'Account', records: [{ attributes: { type: 'Account' }, Id: fakeRecordId('Account', 1), Hologram__c: 'Shimmer' }] }]);
+            expect(readAttemptFiles('-before.json')[0].objects).toEqual([{
+                objectApiName: 'Account',
+                fieldApiNames: ['Hologram__c'],
+                orgOnlyFieldApiNames: ['Hologram__c'],
+                records: [{ recordId: fakeRecordId('Account', 1), fieldValues: { Hologram__c: null } }]
+            }]);
+            expect(readAttemptFiles('-results.json')[0]).toMatchObject({ outcome: 'completed', updatedRecordCount: 1, orgOnlyFields: { Account: ['Hologram__c'] } });
+
+        });
+
         it('records no org-only fields in the results of an update that wrote none', async () => {
 
             await openCockpitAndRetrieve();

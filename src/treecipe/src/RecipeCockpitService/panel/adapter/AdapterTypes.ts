@@ -90,7 +90,7 @@ export interface IUpdaterEditSummary {
 }
 
 // THE EDITS THIS TAB CAN ASK FOR; THE HOST HOLDS EACH TO RECIPE_COCKPIT_UPDATER_EDIT_RULES
-export type UpdaterEditKind = 'markRow' | 'unmarkRow' | 'generateCell' | 'generateColumn' | 'resetCell' | 'resetColumn' | 'resetObject';
+export type UpdaterEditKind = 'markRow' | 'unmarkRow' | 'generateCell' | 'generateColumn' | 'resetCell' | 'resetColumn' | 'resetObject' | 'typeCell';
 
 // ONE MORE PAGE OF ONE OBJECT'S RECORD TABLE (#720)
 export interface IUpdaterRecordsPageMessage {
@@ -407,7 +407,7 @@ export type AdapterPanelMessage =
     | { command: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; parentObjectApiName: string; objects: IUpdaterObjectRequest[] }
     | { command: 'loadUpdaterRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number }
     | { command: 'changeUpdaterParent'; treeKey: string; renderSequence: number }
-    | { command: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: UpdaterEditKind; rowIndex?: number; columnIndex?: number }
+    | { command: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: UpdaterEditKind; rowIndex?: number; columnIndex?: number; value?: string }
     | { command: 'updateUpdaterRecords'; treeKey: string }
     | { command: 'loadUpdaterSnapshots'; treeKey: string; renderSequence: number }
     | { command: 'updaterSnapshotsRendered'; renderSequence: number; treeKey: string; snapshotsSequence: unknown }

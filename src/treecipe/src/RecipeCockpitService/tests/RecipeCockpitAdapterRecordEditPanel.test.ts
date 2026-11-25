@@ -164,7 +164,7 @@ describe('the Treecipe Adapter\'s record table to edit, in the panel (#721)', ()
     it('holds every edit button while a run holds the records, and posts nothing', () => {
 
         const { panel, accountObject } = openLoadedTable(ONE_CHANGED);
-        const editButtons = () => ['updaterRowMark', 'updaterCellGenerate', 'updaterCellReset', 'updaterColumnGenerate', 'updaterColumnReset', 'updaterResetAll']
+        const editButtons = () => ['updaterRowMark', 'updaterCellType', 'updaterCellGenerate', 'updaterCellReset', 'updaterColumnGenerate', 'updaterColumnReset', 'updaterResetAll']
             .flatMap(className => panel.findAll(accountObject, className));
 
         panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' });
@@ -214,6 +214,78 @@ describe('the Treecipe Adapter\'s record table to edit, in the panel (#721)', ()
 
         panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
         expect(pagerButtons().map((pagerButton: any) => pagerButton.disabled)).toEqual([true, false]);
+
+    });
+
+    describe('⌨, a value typed into a cell (part 2)', () => {
+
+        const position = { command: 'editUpdaterRecords', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1, objectApiName: 'Account', pageIndex: 0 };
+        const openEditor = (panel: any, accountObject: any, typeIndex: number) => {
+            panel.findAll(accountObject, 'updaterCellType')[typeIndex].dispatch('click');
+            const editorElement = panel.findAll(accountObject, 'updaterCellEditor')[0];
+            return { editorElement, inputElement: panel.findAll(editorElement, 'fieldEditorInput')[0] };
+        };
+
+        it('offers ⌨ in every cell of a marked row that can be changed, with or without a 🎲, and in no other', () => {
+
+            const { panel, accountObject } = openLoadedTable(ONE_MARKED);
+
+            expect(labelsOf(panel, accountObject, 'updaterCellType')).toEqual(['Type a value for Name of Account 001A', 'Type a value for Hologram__c of Account 001A']);
+
+        });
+
+        it('opens an input in the cell on the value it holds, and posts the value typed with the cell\'s position on Save', () => {
+
+            const { panel, accountObject } = openLoadedTable(ONE_MARKED);
+            const { editorElement, inputElement } = openEditor(panel, accountObject, 0);
+
+            expect(editorElement.attributes['aria-label']).toBe('New value for Name of Account 001A');
+            expect(inputElement.value).toBe('<b>Acme</b>');
+            expect(inputElement.attributes['aria-label']).toBe('New value for Name of Account 001A');
+            expect(panel.activeElement()).toBe(inputElement);
+
+            inputElement.value = 'Initech';
+            panel.findAll(editorElement, 'updaterCellSave')[0].dispatch('click');
+
+            expect(editsPosted(panel)).toEqual([{ ...position, editKind: 'typeCell', rowIndex: 0, columnIndex: 1, value: 'Initech' }]);
+            expect(panel.findAll(accountObject, 'updaterCellEditor')).toEqual([]);
+
+            // THE ANSWER REDRAWS THE TABLE, AND THE KEYBOARD'S PLACE IS THE ⌨ PRESSED
+            postPage(panel, ONE_CHANGED, [['001A', 'Initech', '', '001Z'], ['001B', 'Globex', '', '']]);
+            expect(panel.activeElement()).toBe(panel.findAll(accountObject, 'updaterCellType')[0]);
+
+        });
+
+        it('saves on Enter, and posts nothing on Escape, Cancel, an empty input or the value the cell already holds', () => {
+
+            const { panel, accountObject } = openLoadedTable(ONE_MARKED);
+
+            let editor = openEditor(panel, accountObject, 1);
+            editor.inputElement.value = 'Shimmer';
+            editor.inputElement.dispatch('keydown', { key: 'Enter', preventDefault: () => undefined });
+            expect(editsPosted(panel)).toEqual([{ ...position, editKind: 'typeCell', rowIndex: 0, columnIndex: 2, value: 'Shimmer' }]);
+
+            editor = openEditor(panel, accountObject, 0);
+            editor.inputElement.value = 'Initech';
+            editor.inputElement.dispatch('keydown', { key: 'Escape', preventDefault: () => undefined });
+            expect(panel.findAll(accountObject, 'updaterCellEditor')).toEqual([]);
+            expect(panel.activeElement()).toBe(panel.findAll(accountObject, 'updaterCellType')[0]);
+
+            editor = openEditor(panel, accountObject, 0);
+            panel.findAll(editor.editorElement, 'updaterCellCancel')[0].dispatch('click');
+
+            editor = openEditor(panel, accountObject, 0);
+            editor.inputElement.value = '';
+            panel.findAll(editor.editorElement, 'updaterCellSave')[0].dispatch('click');
+
+            editor = openEditor(panel, accountObject, 0);
+            panel.findAll(editor.editorElement, 'updaterCellSave')[0].dispatch('click');
+
+            expect(editsPosted(panel)).toHaveLength(1);
+            // THE CELL IS AS IT WAS: ITS VALUE AND BUTTONS ARE SHOWN AGAIN
+            expect(panel.findAll(accountObject, 'updaterCellValue').every((valueElement: any) => !panel.isHidden(valueElement))).toBe(true);
+
+        });
 
     });
 

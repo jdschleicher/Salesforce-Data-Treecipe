@@ -4,7 +4,7 @@
     the webview can reach vscode or Node; every importer reads its names here (#671).
 */
 
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Mark the rows to change with ✎, then 🎲 makes a new value for a cell or a whole column from the field\'s faker expression, and ↺ puts a loaded value back. Update records writes only the changed cells of the marked rows, by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Mark the rows to change with ✎, then 🎲 makes a new value for a cell or a whole column from the field\'s faker expression, ⌨ takes a value you type for one cell, and ↺ puts a loaded value back. Update records writes only the changed cells of the marked rows, by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
 
 /*
@@ -35,7 +35,7 @@ export const RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL = 'not retrieved from th
 // A FIELD ONLY THE ORG HOLDS IS DRAWN, NOT FILLED: FILLING IT IS #446
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE = 'Only in the org: this project has no file for it yet.';
 // THE CARD'S RECORD TABLE HAS NO 🎲 FOR SUCH A FIELD (#721), SO ITS ROW SAYS WHY
-export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE = 'No 🎲 in the record table: this recipe\'s faker backend writes no expression for its type in the org.';
+export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE = 'No 🎲 in the record table: this recipe\'s faker backend writes no expression for its type in the org. Type a value with ⌨.';
 // A CHILD OBJECT ONLY THE ORG HOLDS IS DRAWN, NOT ADDED: ADDING IT IS #447
 export const RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL = 'new child object in org';
 export const RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE = 'Only in the org: this treecipe has no block for it yet.';
@@ -81,6 +81,8 @@ export const RECIPE_COCKPIT_UPDATER_MARK_COLUMN_LABEL = 'Update';
 export const RECIPE_COCKPIT_UPDATER_MARK_GLYPH = '✎';
 export const RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH = '🎲';
 export const RECIPE_COCKPIT_UPDATER_RESET_GLYPH = '↺';
+// A VALUE TYPED INTO ONE CELL OF A MARKED ROW (#721 PART 2)
+export const RECIPE_COCKPIT_UPDATER_TYPE_GLYPH = '⌨';
 export const RECIPE_COCKPIT_UPDATER_LOCKED_GLYPH = '🔒';
 export const RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL = 'Reset all';
 export const RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON = 'Mark a row first: the ✎ at the start of a row marks it to update.';

@@ -29,6 +29,7 @@ export interface IAdapterJourney {
 }
 
 const ONE_TIME_FRONTDOOR_URI = 'https://acme--qa.sandbox.my.salesforce.com/secur/frontdoor.jsp?otp=ONE-TIME-CODE';
+const TYPED_CONTACT_TITLE = 'Head of Field Trials';
 const ORG_WRITE_CALL = /^connection\.sobject\(.+\)\.(update|insert|create)$/;
 const confirmationTitle = (journey: RecipeCockpitJourney) => {
     const screen = journey.screen();
@@ -167,8 +168,17 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 journey.screen().get('text', '2 rows marked · 1 record to update: Region__c');
             });
 
+            // ⌨ OPENS AN INPUT IN THE CELL: A VALUE THE FIELD CANNOT TAKE IS REFUSED BY NAME, AND ONE IT CAN IS THE CELL'S NEW VALUE
             await journey.click('button', `Mark to update Contact ${CONTACT_ID}`);
-            await journey.click('button', `Generate a value for Title__c of Contact ${CONTACT_ID}`);
+            await journey.click('button', `Type a value for Title__c of Contact ${CONTACT_ID}`);
+            await journey.type(`New value for Title__c of Contact ${CONTACT_ID}`, TYPED_CONTACT_TITLE);
+            await journey.click('button', 'Save');
+            await journey.step('a value typed into a cell of a marked row is that cell\'s new value, and the Contact is one more record to update', () => {
+                const screen = journey.screen();
+                const contactTable = screen.findAll('table', undefined, screen.get('tabpanel', ADAPTER_TAB_NAME))[1];
+                expectEqual(screen.findAll('cell', undefined, contactTable).some(cell => cell.name.startsWith(TYPED_CONTACT_TITLE)), true, `The Contact's cells: ${JSON.stringify(screen.findAll('cell', undefined, contactTable).map(cell => cell.name))}`);
+                screen.get('text', '1 row marked · 1 record to update: Title__c');
+            });
             await journey.step('the card counts the marked rows and the records an update would write, over both objects', () => {
                 journey.screen().get('text', '3 rows marked · 2 records to update');
             });
@@ -205,7 +215,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 expectEqual(updates.map(update => `${update.objectApiName} × ${update.records.length}`), ['Account × 1', 'Contact × 1'], 'The update requests, in order');
                 expectEqual(updates.every(update => JSON.stringify(update.options) === JSON.stringify({ allowRecursive: false, allOrNone: true })), true, 'Every request is all-or-none and never split');
                 expectEqual(updates[0].records[0].Id === ACCOUNT_IDS[50] && Object.keys(fieldsOf(updates[0].records[0])).sort().join(',') === 'Id,Region__c', true, `An Account update carries its Id and the changed field only: ${JSON.stringify(updates[0].records[0])}`);
-                expectEqual(Object.keys(fieldsOf(updates[1].records[0])).sort().join(','), 'Id,Title__c', 'The Contact update carries its Id and the changed field only');
+                expectEqual(fieldsOf(updates[1].records[0]), { Id: CONTACT_ID, Title__c: TYPED_CONTACT_TITLE }, 'The Contact update carries its Id and the value typed, and nothing else');
             });
 
             await journey.step('one notification names the snapshot and the adapted data set and recipe, which are written', () => {

@@ -6,8 +6,11 @@ import {
     RECIPE_COCKPIT_UPDATER_MARK_COLUMN_LABEL,
     RECIPE_COCKPIT_UPDATER_MARK_GLYPH,
     RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL,
-    RECIPE_COCKPIT_UPDATER_RESET_GLYPH
+    RECIPE_COCKPIT_UPDATER_RESET_GLYPH,
+    RECIPE_COCKPIT_UPDATER_TYPE_GLYPH
 } from '../../RecipeCockpitAdapterConstants';
+import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from '../../RecipeCockpitTreecipeFieldEditorConstants';
+import { buildFieldEditorInput } from '../treecipe/fieldEditor/FieldEditor';
 import { buildRowTable } from '../RecipeCockpitPanelBuilders';
 import { buildRecordLinkElement } from '../RecipeCockpitRecordTable';
 import type { IRecordLinks } from '../RecipeCockpitRecordTable';
@@ -30,11 +33,13 @@ const vscodeApi: { postMessage(message: AdapterPanelMessage): void } = cockpitVs
     "Edit existing records" (#721): an object's loaded records as a table the reader edits. A ✎
     at the start of a row marks it to update; a marked row's cell in a column that can be changed
     gets 🎲, which asks the host for a value; a changed cell is highlighted with ↺, which puts its
-    loaded value back. A column's header carries the same 🎲 and ↺ for every marked row.
+    loaded value back. A column's header carries the same 🎲 and ↺ for every marked row. ⌨ in a
+    marked row's cell opens an input in the cell for a value typed by hand.
 
     Nothing is decided here. Every button posts editUpdaterRecords with a POSITION -- the object's
     name, the page, the row and the column -- and the host answers with the page as it now reads.
-    The marks, the values and what an update writes are the host's.
+    A typed value is posted with its position and is the host's to check. The marks, the values
+    and what an update writes are the host's.
 */
 
 // WHAT THE HOST SAYS OF A COLUMN, READ AS UNTRUSTED
@@ -63,7 +68,7 @@ export function readEditSummary(candidateSummary: unknown): IUpdaterEditSummary 
     };
 }
 
-function requestUpdaterEdit(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState, editKind: UpdaterEditKind, position: { rowIndex?: number; columnIndex?: number }): void {
+function requestUpdaterEdit(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState, editKind: UpdaterEditKind, position: { rowIndex?: number; columnIndex?: number; value?: string }): void {
 
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) { return; }
 
@@ -122,6 +127,48 @@ export function describeEditSummary(editSummary: IUpdaterEditSummary): string {
         ? markedText + ', none changed yet. Change a cell with ' + RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH + '.'
         : markedText + ' · ' + pluralize(editSummary.updatableRecordCount, 'record', 'records') + ' to update: ' + editSummary.changedFieldApiNames.join(', '))
         + (editSummary.hasUnmarkedChanges ? ' The changes on rows that are not marked are not written.' : '');
+
+}
+
+/*
+    The input a ⌨ opens in its cell: the cell's value to start from, Save and Cancel, Enter and
+    Escape. Save hands the text to the caller, unless nothing was typed or the value is unchanged;
+    either way the cell is as it was until the host's answer redraws the table.
+*/
+function openCellEditor(cellElement: HTMLElement, typeElement: HTMLButtonElement, cellText: string, cellLabel: string, saveTypedValue: (typedValue: string) => void): void {
+
+    const cellChildren = Array.from(cellElement.children);
+    const editorElement = createElement('div', 'updaterCellEditor');
+    const inputElement = buildFieldEditorInput(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH, cellText, 'New value for ' + cellLabel, '');
+    const saveElement = createButton('primary', 'updaterCellSave', 'Save', 'compact');
+    const cancelElement = createButton('secondary', 'updaterCellCancel', 'Cancel', 'compact');
+
+    const close = function (): void {
+        cellElement.removeChild(editorElement);
+        cellChildren.forEach(function (cellChild) { cellChild.classList.remove('hidden'); });
+        focusElement(typeElement);
+    };
+    const save = function (): void {
+        const typedValue = String(inputElement.value);
+        close();
+        if (typedValue !== '' && typedValue !== cellText) { saveTypedValue(typedValue); }
+    };
+
+    editorElement.setAttribute('role', 'group');
+    editorElement.setAttribute('aria-label', 'New value for ' + cellLabel);
+    saveElement.addEventListener('click', save);
+    cancelElement.addEventListener('click', close);
+    inputElement.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); save(); }
+        if (event.key === 'Escape') { event.preventDefault(); close(); }
+    });
+
+    cellChildren.forEach(function (cellChild) { cellChild.classList.add('hidden'); });
+    editorElement.appendChild(inputElement);
+    editorElement.appendChild(saveElement);
+    editorElement.appendChild(cancelElement);
+    cellElement.appendChild(editorElement);
+    focusElement(inputElement);
 
 }
 
@@ -225,6 +272,15 @@ export function buildEditableRecordSection(treeState: IAdapterTreeState, updater
             }
 
             if (!columnEdit.lockReason) {
+                if (isMarked) {
+                    const typeElement = editButton('typeCell:' + rowIndex + ':' + columnIndex, 'updaterCellType', RECIPE_COCKPIT_UPDATER_TYPE_GLYPH, 'Type a value for ' + column + ' of ' + objectApiName + ' ' + rowName, false,
+                        function () {
+                            openCellEditor(cellElement, typeElement, cellText, column + ' of ' + objectApiName + ' ' + rowName, function (typedValue) {
+                                requestUpdaterEdit(treeState, updaterObjectState, 'typeCell', { rowIndex: rowIndex, columnIndex: columnIndex, value: typedValue });
+                            });
+                        });
+                    cellElement.appendChild(typeElement);
+                }
                 if (isMarked && columnEdit.canGenerate) {
                     cellElement.appendChild(editButton('generateCell:' + rowIndex + ':' + columnIndex, 'updaterCellGenerate', RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH, 'Generate a value for ' + column + ' of ' + objectApiName + ' ' + rowName, false,
                         function () { requestUpdaterEdit(treeState, updaterObjectState, 'generateCell', { rowIndex: rowIndex, columnIndex: columnIndex }); }));
