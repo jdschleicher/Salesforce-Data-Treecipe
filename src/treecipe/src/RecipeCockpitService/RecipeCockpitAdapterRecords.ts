@@ -233,7 +233,13 @@ export class RecipeCockpitAdapterRecords {
                 return;
             }
 
-            const describedFieldApiNamesByObjectApiName = await this.describeLoadedObjects(orgUsername, connection, requests.map(request => request.objectApiName));
+            const describedFieldApiNamesByObjectApiName = await this.describeLoadedObjects(orgUsername, connection, requests.map(request => request.objectApiName), () => cancellationToken.isCancellationRequested);
+
+            if ( cancellationToken.isCancellationRequested ) {
+                isCancelled = true;
+                return;
+            }
+
             const unreadFieldApiNamesByObjectApiName = new Map<string, string[]>();
 
             // EVERY QUERY IS CHECKED WHOLE BEFORE ANY RECORD IS READ; A CHILD'S WITH A PLACEHOLDER Id, SINCE ITS PARENT Ids COME FROM THE LOAD
@@ -323,6 +329,15 @@ export class RecipeCockpitAdapterRecords {
                     queries = 'refusal' in queryBuild ? [] : [queryBuild.objectQuery.query];
                 }
 
+                const tooLongReason = RecipeCockpitTreeUpdaterQuery.findTooLongQueryReason(treeObject, request, queries);
+                if ( tooLongReason !== undefined ) {
+                    objectViewModels.push({
+                        objectApiName: request.objectApiName, totalSize: 0, recordCount: 0, isTruncated: false, columns: [], rows: [], hiddenColumnCount: 0, pageCount: 0,
+                        failureMessage: tooLongReason
+                    });
+                    continue;
+                }
+
                 progress.report({ message: request.objectApiName });
 
                 try {
@@ -379,7 +394,8 @@ export class RecipeCockpitAdapterRecords {
                     const firstPage = RecipeCockpitQuery.buildTablePage(records, columnFieldApiNames, treeObject.lookupFieldApiNames, 0, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE);
                     columnFieldApiNamesByObjectApiName.set(request.objectApiName, columnFieldApiNames);
                     lookupFieldApiNamesByObjectApiName.set(request.objectApiName, [...treeObject.lookupFieldApiNames]);
-                    recordIdsByObjectApiName.set(request.objectApiName, records.map(record => RecipeCockpitQuery.readLinkedRecordId(record, RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN)));
+                    // PAGE 0'S OWN Ids ONLY SAY WHETHER ANY ROW LINKS A RECORD: A CLICK'S Id IS READ FROM THE HELD RECORD (tablePages BELOW)
+                    recordIdsByObjectApiName.set(request.objectApiName, records.slice(0, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE).map(record => RecipeCockpitQuery.readLinkedRecordId(record, RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN)));
                     objectViewModels.push({
                         objectApiName: request.objectApiName,
                         totalSize: totalSize,
@@ -459,6 +475,7 @@ export class RecipeCockpitAdapterRecords {
             orgLabel: orgLabel,
             objects: objectViewModels
         };
+        const heldResultKey = heldUpdaterRecords.resultKey;
         const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, {
             previewKind: 'updaterRecords',
             renderSequence: renderSequence,
@@ -469,14 +486,8 @@ export class RecipeCockpitAdapterRecords {
             tablePages: {
                 pageSize: RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
                 postedPageIndexesByObjectApiName: heldUpdaterRecords.postedPageIndexesByObjectApiName,
-                // THE CELL'S Id AS THE HELD RECORD HOLDS IT NOW: ONLY THE Id COLUMN AND THE LOOKUP COLUMNS OPEN A RECORD
-                readCellRecordId: (objectApiName, recordIndex, columnIndex) => {
-                    const record = recordsByObjectApiName.get(objectApiName)?.[recordIndex];
-                    const columnFieldApiName = columnFieldApiNamesByObjectApiName.get(objectApiName)?.[columnIndex];
-                    const isOpenableColumn = columnFieldApiName === RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN
-                        || ( columnFieldApiName !== undefined && lookupFieldApiNamesByObjectApiName.get(objectApiName)?.includes(columnFieldApiName) );
-                    return record && columnFieldApiName !== undefined && isOpenableColumn ? RecipeCockpitQuery.readLinkedRecordId(record, columnFieldApiName) : undefined;
-                }
+                // READ FROM THE LOAD THE HOST HOLDS WHEN THE CLICK ARRIVES, NEVER FROM RECORDS KEPT HERE: A PREVIEW MUST NOT KEEP A RELEASED LOAD IN MEMORY
+                readCellRecordId: (objectApiName, recordIndex, columnIndex) => this.readHeldTableCellRecordId(heldResultKey, objectApiName, recordIndex, columnIndex)
             }
         });
         if ( recordLinkSequence !== undefined ) {
@@ -508,13 +519,14 @@ export class RecipeCockpitAdapterRecords {
         a change in the org as often as not (#720). An object missing from the answer was not
         described -- the org lacks it, or the describe failed -- and its query says why.
     */
-    private static async describeLoadedObjects(orgUsername: string, connection: Connection, objectApiNames: string[]): Promise<Map<string, string[]>> {
+    private static async describeLoadedObjects(orgUsername: string, connection: Connection, objectApiNames: string[],
+                                               isCancellationRequested: () => boolean): Promise<Map<string, string[]>> {
 
         const describedFieldApiNamesByObjectApiName = new Map<string, string[]>();
         objectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(orgUsername, objectApiName));
 
         try {
-            const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => connection);
+            const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => connection, { isCancellationRequested: isCancellationRequested });
             describeResult.outcomes.forEach(describeOutcome => {
                 if ( describeOutcome.describe ) {
                     describedFieldApiNamesByObjectApiName.set(describeOutcome.objectApiName, describeOutcome.describe.fields.map(describedField => describedField.fieldApiName));
@@ -525,6 +537,24 @@ export class RecipeCockpitAdapterRecords {
         }
 
         return describedFieldApiNamesByObjectApiName;
+
+    }
+
+    // A TABLE CELL'S RECORD Id (#720), ONLY FROM THE LOAD NAMED AND ONLY WHILE IT IS HELD: ITS Id COLUMN, OR A LOOKUP COLUMN HOLDING A WHOLE Id
+    private static readHeldTableCellRecordId(resultKey: string, objectApiName: string, recordIndex: number, columnIndex: number): string | undefined {
+
+        const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+
+        if ( heldRecords?.resultKey !== resultKey ) {
+            return undefined;
+        }
+
+        const record = heldRecords.recordsByObjectApiName.get(objectApiName)?.[recordIndex];
+        const columnFieldApiName = heldRecords.columnFieldApiNamesByObjectApiName.get(objectApiName)?.[columnIndex];
+        const isOpenableColumn = columnFieldApiName === RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN
+            || ( columnFieldApiName !== undefined && heldRecords.lookupFieldApiNamesByObjectApiName.get(objectApiName)?.includes(columnFieldApiName) );
+
+        return record && columnFieldApiName !== undefined && isOpenableColumn ? RecipeCockpitQuery.readLinkedRecordId(record, columnFieldApiName) : undefined;
 
     }
 
@@ -574,7 +604,8 @@ export class RecipeCockpitAdapterRecords {
             && heldRecords.renderSequence === renderSequence
             && heldRecords.folderName === tree?.folderName;
 
-        if ( !clickedRecipeDataMessage || !tree ) {
+        // RECORDS HELD FOR ANOTHER CARD ARE NOT THIS CARD'S TO LET GO, AND THE PANEL'S ANSWER WOULD CLEAR THEM FROM THE SCREEN
+        if ( !clickedRecipeDataMessage || !tree || ( heldRecords !== undefined && !isHeldForThisTree ) ) {
             return;
         }
 
@@ -586,7 +617,7 @@ export class RecipeCockpitAdapterRecords {
                 ? RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
                 : await hub.confirmInPanel(
                     `Change the parent object of ${tree.customName ?? tree.title}?`,
-                    { summary: [`The ${heldText} are let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
+                    { summary: [`The ${heldText} ${recordCount === 1 && !RecipeCockpitAdapterState.heldUpdaterValues ? 'is' : 'are'} let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
                     RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
                 );
 

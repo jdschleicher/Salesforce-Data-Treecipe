@@ -433,7 +433,11 @@ function requestUpdaterRecordsPage(treeState: IAdapterTreeState, updaterObjectSt
     if (renderedSequence === null || updaterObjectState.requestedRecordsPageIndex !== null) { return; }
 
     updaterObjectState.requestedRecordsPageIndex = pageIndex;
-    drawUpdaterObjectRecords(treeState, updaterObjectState);
+    // THE TABLE STAYS AS IT IS UNTIL THE PAGE ARRIVES; ONLY ITS TWO BUTTONS ARE HELD
+    if (updaterObjectState.recordsPagerElements) {
+        updaterObjectState.recordsPagerElements.previousElement.disabled = true;
+        updaterObjectState.recordsPagerElements.nextElement.disabled = true;
+    }
     vscodeApi.postMessage({ command: 'loadUpdaterRecordsPage', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objectApiName: updaterObjectState.object.objectApiName, pageIndex: pageIndex });
 
 }

@@ -533,6 +533,131 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             });
 
+            it('lets nothing go when the records were replaced, or a run began, while the confirmation was open', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                const ask = async () => { void receivedMessageHandler({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() }); await flushAsyncWork(); };
+                const answerYes = () => send({ command: 'confirmResponse', confirmationId: postedNamed('confirmRequest').at(-1).confirmationId, choice: 0 });
+
+                // A NEWER LOAD'S RECORDS TOOK THEIR PLACE
+                await ask();
+                const newerRecords = { ...RecipeCockpitAdapterState.heldUpdaterRecords! };
+                RecipeCockpitAdapterState.heldUpdaterRecords = newerRecords;
+                await answerYes();
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBe(newerRecords);
+                expect(panelState().updaterRecordsMessage).toBeDefined();
+
+                // A RUN ON THE RECORDS BEGAN
+                await ask();
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+                await answerYes();
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBe(newerRecords);
+
+                expect(postedNamed('updaterParentChange')).toEqual([]);
+
+            });
+
+            it('says "is" for one loaded record', async () => {
+
+                queryAnswer = async (soql: string) => {
+                    const records = soql.includes('FROM Account') ? recordsOf('Account', 1) : [];
+                    return { totalSize: records.length, done: true, records: records };
+                };
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                void receivedMessageHandler({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+                await flushAsyncWork();
+
+                expect(postedNamed('confirmRequest')[0].summary[0]).toMatch(/^The 1 loaded record is let go, /);
+
+            });
+
+            it('leaves another card\'s loaded records alone, on the host and on the screen', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                await send({ command: 'changeUpdaterParent', treeKey: 'Lead-ONLY', renderSequence: lastRenderSequence() });
+
+                expect(postedNamed('confirmRequest')).toEqual([]);
+                expect(postedNamed('updaterParentChange')).toEqual([]);
+                expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(29);
+
+            });
+
+            it('refuses the whole load, with no query sent, for a recipe field that is no api name on an object the org did not describe', async () => {
+
+                const listTreeObjects = RecipeCockpitAdapterState.listUpdaterTreeObjects.bind(RecipeCockpitAdapterState);
+                jest.spyOn(RecipeCockpitAdapterState, 'listUpdaterTreeObjects').mockImplementation((...listArguments) => listTreeObjects(...listArguments)
+                    .map(treeObject => treeObject.objectApiName === 'Contact' ? { ...treeObject, fieldApiNames: [...treeObject.fieldApiNames, 'Name FROM User --'] } : treeObject));
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries).toEqual([]);
+                expect(warnings()).toEqual(['Records were not loaded: Contact.Name FROM User -- is not a field api name.']);
+                expect(postedNamed('updaterRecords')).toEqual([]);
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBeUndefined();
+
+            });
+
+            it('says an object whose query is too long for the org could not be read, sends none of it, and still reads the others', async () => {
+
+                const listTreeObjects = RecipeCockpitAdapterState.listUpdaterTreeObjects.bind(RecipeCockpitAdapterState);
+                jest.spyOn(RecipeCockpitAdapterState, 'listUpdaterTreeObjects').mockImplementation((...listArguments) => listTreeObjects(...listArguments)
+                    .map(treeObject => treeObject.objectApiName === 'Contact'
+                        ? { ...treeObject, fieldApiNames: [...treeObject.fieldApiNames, ...Array.from({ length: 600 }, (_unused, fieldIndex) => `Long_Custom_Field_Name_Number_${fieldIndex}__c`)] }
+                        : treeObject));
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries.map(soql => /FROM (\w+)/.exec(soql)![1])).toEqual(['Account']);
+                expect(loadedObject('Account')).toMatchObject({ recordCount: 2 });
+                expect(loadedObject('Contact').failureMessage).toMatch(/^its query names 603 fields and is \d+ characters once sent/);
+                expect(loadedObject('OtherChildObject__c').skippedReason).toContain('Contact records were not read');
+                expect(warnings()).toEqual([expect.stringContaining('Contact could not be read')]);
+
+            });
+
+            it('stops a load cancelled while the org is described, keeping nothing', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
+                    query: async (soql: string) => { sentQueries.push(soql); return await queryAnswer(soql); },
+                    queryMore: async () => { throw new Error('no more pages'); },
+                    describe: async () => { cancellationToken.isCancellationRequested = true; throw new Error('not reached again'); }
+                }) as any);
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries).toEqual([]);
+                expect(warnings()).toEqual([expect.stringMatching(/was cancelled, so none were kept\.$/)]);
+
+            });
+
+            it('opens no record from a load the host has let go, and reads none of its records', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                const { recordLinkSequence } = postedNamed('updaterRecords')[0];
+                await send({ command: 'recordLinksRendered', renderSequence: lastRenderSequence(), recordLinkSequence });
+                const click = () => RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence, objectApiName: 'Contact', rowIndex: 0, pageIndex: 0 } as any, panelState());
+
+                expect(click()).toMatchObject({ kind: 'openPreviewRecord', recordId: fakeRecordId('Contact', 0) });
+
+                RecipeCockpitAdapterState.clearHeldUpdaterRecords();
+                expect(click()).toBeUndefined();
+
+            });
+
             it('changes no parent for another card or model, nor while a run holds the records', async () => {
 
                 await openCockpit();

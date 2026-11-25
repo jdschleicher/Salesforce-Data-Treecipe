@@ -21,6 +21,15 @@ const QUOTED_VALUE_PATTERN = /'(?:[^'\\]|\\.)*'/g;
 */
 export const RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE = 150;
 
+/*
+    How long one load query may be once it is URL-encoded (#720). The connection sends SOQL in the
+    address of a GET, and an org refuses an address past about 16,000 characters with an HTTP error
+    that names no cause. Reading every recipe field makes a long SELECT likely, so a child's Ids go
+    in smaller parts to fit, and a SELECT too long even with one Id is that object's failure, said
+    in words.
+*/
+export const RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH = 14000;
+
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 // A WELL-FORMED Id THE QUERY IS CHECKED WITH BEFORE ANY RECORD IS READ, SO A WHERE THE ORG WOULD NEVER SEE IS REFUSED UP FRONT
@@ -270,10 +279,11 @@ export class RecipeCockpitTreeUpdaterQuery {
 
         const uniqueParentRecordIds = [...new Set(parentRecordIds)];
         const queries: string[] = [];
+        const idChunkSize = this.fitParentIdChunkSize(treeObject, request, readerWhereClause, narrowingLookup.fieldApiName, uniqueParentRecordIds[0]);
 
-        for ( let chunkStart = 0; chunkStart < uniqueParentRecordIds.length; chunkStart += RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE ) {
+        for ( let chunkStart = 0; chunkStart < uniqueParentRecordIds.length; chunkStart += idChunkSize ) {
 
-            const idList = uniqueParentRecordIds.slice(chunkStart, chunkStart + RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE).map(parentRecordId => `'${parentRecordId}'`).join(', ');
+            const idList = uniqueParentRecordIds.slice(chunkStart, chunkStart + idChunkSize).map(parentRecordId => `'${parentRecordId}'`).join(', ');
             const narrowingClause = `${narrowingLookup.fieldApiName} IN (${idList})`;
             const queryBuild = this.buildObjectQuery(treeObject, {
                 objectApiName: request.objectApiName,
@@ -290,6 +300,36 @@ export class RecipeCockpitTreeUpdaterQuery {
         }
 
         return { queries: queries };
+
+    }
+
+    // HOW MANY PARENT Ids A CHILD QUERY NAMES: THE USUAL CHUNK, OR FEWER WHEN ITS SELECT IS LONG, SO THE ENCODED QUERY STAYS WITHIN WHAT AN ORG ACCEPTS
+    private static fitParentIdChunkSize(treeObject: IRecipeCockpitUpdaterTreeObject, request: IRecipeCockpitUpdaterObjectRequest,
+                                        readerWhereClause: string, narrowingFieldApiName: string, sampleParentRecordId: string | undefined): number {
+
+        if ( sampleParentRecordId === undefined ) {
+            return RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE;
+        }
+
+        const selectText = `SELECT ${this.listSelectedFieldApiNames(treeObject, request.fieldApiNames).join(', ')} FROM ${treeObject.objectApiName} WHERE (${readerWhereClause}) AND ${narrowingFieldApiName} IN ()`;
+        const encodedLengthLeft = RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH - encodeURIComponent(selectText).length;
+        const encodedLengthPerId = encodeURIComponent(`'${sampleParentRecordId}', `).length;
+
+        return Math.max(1, Math.min(RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE, Math.floor(encodedLengthLeft / encodedLengthPerId)));
+
+    }
+
+    // WHY AN OBJECT'S QUERIES CANNOT BE SENT AS THEY ARE, OR undefined: ONE OF THEM IS LONGER, ENCODED, THAN AN ORG ACCEPTS IN ONE REQUEST
+    static findTooLongQueryReason(treeObject: IRecipeCockpitUpdaterTreeObject, request: IRecipeCockpitUpdaterObjectRequest, queries: readonly string[]): string | undefined {
+
+        const longestEncodedLength = Math.max(0, ...queries.map(query => encodeURIComponent(query).length));
+
+        if ( longestEncodedLength <= RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH ) {
+            return undefined;
+        }
+
+        const fieldCount = this.listSelectedFieldApiNames(treeObject, request.fieldApiNames).length;
+        return `its query names ${fieldCount} fields and is ${longestEncodedLength} characters once sent, more than the ${RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH} an org accepts in one request. On the Treecipe tab, use Customize and create new recipe to make a treecipe without the ${treeObject.objectApiName} fields you do not need, and load from that.`;
 
     }
 

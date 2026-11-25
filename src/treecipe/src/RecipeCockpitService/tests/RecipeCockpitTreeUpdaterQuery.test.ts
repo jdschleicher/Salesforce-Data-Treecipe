@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
     IRecipeCockpitUpdaterTreeObject,
     RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE,
+    RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH,
     RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH,
     RecipeCockpitTreeUpdaterQuery
 } from '../RecipeCockpitTreeUpdaterQuery';
@@ -341,6 +342,54 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
                 const namedIds = build.queries.flatMap(query => query.match(/001[0-9]{15}/g) ?? []);
                 expect(namedIds).toHaveLength(2500);
                 expect(new Set(namedIds).size).toBe(2500);
+
+            });
+
+            describe('a SELECT of every recipe field, sent in the address of a GET (#720)', () => {
+
+                const wideContact = (fieldCount: number): IRecipeCockpitUpdaterTreeObject => ({
+                    ...contactTreeObject,
+                    fieldApiNames: Array.from({ length: fieldCount }, (_unused, fieldIndex) => `Long_Custom_Field_Name_Number_${fieldIndex}__c`)
+                });
+                const requestOf = (wideTreeObject: IRecipeCockpitUpdaterTreeObject) => ({ ...contactRequest, fieldApiNames: [...wideTreeObject.fieldApiNames] });
+                const parentIds = Array.from({ length: 400 }, (_unused, parentIndex) => accountId(parentIndex + 1));
+                const queriesOf = (wideTreeObject: IRecipeCockpitUpdaterTreeObject) => {
+                    const build = RecipeCockpitTreeUpdaterQuery.buildNarrowedQueries(wideTreeObject, requestOf(wideTreeObject), parentIds);
+                    if ( 'refusal' in build ) { throw new Error(build.refusal); }
+                    return build.queries;
+                };
+
+                it('names fewer parent Ids a query when its SELECT is long, so every query fits what an org accepts and every Id is still named once', () => {
+
+                    const wideTreeObject = wideContact(320);
+                    const queries = queriesOf(wideTreeObject);
+
+                    expect(queries.length).toBeGreaterThan(Math.ceil(parentIds.length / RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE));
+                    queries.forEach(query => expect(encodeURIComponent(query).length).toBeLessThanOrEqual(RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH));
+                    expect(queries.flatMap(query => query.match(/'001\w{15}'/g) ?? [])).toEqual(parentIds.map(parentId => `'${parentId}'`));
+                    expect(RecipeCockpitTreeUpdaterQuery.findTooLongQueryReason(wideTreeObject, requestOf(wideTreeObject), queries)).toBeUndefined();
+
+                });
+
+                it('keeps the usual 150 Ids a query for a SELECT of ordinary length', () => {
+
+                    expect(queriesOf(wideContact(20))).toHaveLength(Math.ceil(parentIds.length / RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE));
+
+                });
+
+                it('says an object\'s SELECT is too long even one Id at a time, naming its field count and what to do', () => {
+
+                    const wideTreeObject = wideContact(600);
+                    const queries = queriesOf(wideTreeObject);
+                    const reason = RecipeCockpitTreeUpdaterQuery.findTooLongQueryReason(wideTreeObject, requestOf(wideTreeObject), queries);
+
+                    // ONE Id A QUERY: IT WENT AS FAR AS IT COULD BEFORE SAYING SO
+                    expect(queries).toHaveLength(parentIds.length);
+                    expect(reason).toMatch(/^its query names 603 fields and is \d+ characters once sent, more than the 14000 an org accepts in one request\./);
+                    expect(reason).toContain('Customize and create new recipe');
+                    expect(reason).toContain('Contact fields you do not need');
+
+                });
 
             });
 

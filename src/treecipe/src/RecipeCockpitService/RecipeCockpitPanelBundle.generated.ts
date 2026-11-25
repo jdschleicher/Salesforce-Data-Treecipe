@@ -11025,7 +11025,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return;
     }
     updaterObjectState.requestedRecordsPageIndex = pageIndex;
-    drawUpdaterObjectRecords(treeState, updaterObjectState);
+    if (updaterObjectState.recordsPagerElements) {
+      updaterObjectState.recordsPagerElements.previousElement.disabled = true;
+      updaterObjectState.recordsPagerElements.nextElement.disabled = true;
+    }
     vscodeApi12.postMessage({ command: "loadUpdaterRecordsPage", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objectApiName: updaterObjectState.object.objectApiName, pageIndex });
   }
   function renderUpdaterRecordsPage(pageMessage) {
