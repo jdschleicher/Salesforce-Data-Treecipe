@@ -1185,11 +1185,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 'Nothing was updated in qa · qa@example.com.qa: Account could not be described in the org: NOT_FOUND: The requested resource does not exist.']
         ])('refuses %s before asking anything', async (_description, describeOverrides, expectedWarning) => {
 
-            Object.entries(describeOverrides).forEach(([objectApiName, describeAnswer]) => {
-                if ( describeAnswer === undefined ) { delete describeAnswers[objectApiName]; } else { describeAnswers[objectApiName] = describeAnswer; }
-            });
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
+            // THE ORG CHANGED AFTER THE LOAD: A FIELD IT LACKED AT THE LOAD IS LEFT OUT THERE AND NEVER REACHES AN UPDATE (#720)
+            Object.entries(describeOverrides).forEach(([objectApiName, describeAnswer]) => {
+                if ( describeAnswer === undefined ) { delete describeAnswers[objectApiName]; } else { describeAnswers[objectApiName] = describeAnswer; }
+                SalesforceOrgService.clearDescribeCache(SANDBOX_ORG.username, objectApiName);
+            });
             await requestUpdate();
 
             expect(updateConfirmations()).toEqual([]);

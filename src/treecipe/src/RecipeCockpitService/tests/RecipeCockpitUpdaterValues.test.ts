@@ -733,14 +733,14 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
         });
 
-        it('refuses a field that was not chosen when the records were loaded, since its current value was not read', async () => {
+        it('refuses a field the last load did not read, since its current value is not known', async () => {
 
             await openCockpitAndLoad();
             (RecipeCockpitAdapterState as any).heldUpdaterRecords.loadedFieldApiNamesByObjectApiName.set('Account', ['Legacy_Code__c']);
 
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Account', fieldApiName: 'Rating__c', value: 'Hot' }]));
 
-            expect(warnings().at(-1)).toBe('No values were generated: Account.Rating__c was not chosen when the records were loaded, so its current value was not read. Load records again.');
+            expect(warnings().at(-1)).toBe('No values were generated: Account.Rating__c was not read by the last Load records, so its current value is not known: the org does not have it, or does not let this user read it. Check the field in the org, then load again.');
 
         });
 
@@ -918,7 +918,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
             (RecipeCockpitAdapterState as any).heldUpdaterRecords.loadedFieldApiNamesByObjectApiName.delete('Contact');
 
             await send(generateRequest(lastRenderSequence(), [{ objectApiName: 'Contact', fieldApiName: 'LastName' }]));
-            expect(warnings().at(-1)).toMatch(/Contact\.LastName was not chosen when the records were loaded/);
+            expect(warnings().at(-1)).toMatch(/Contact\.LastName was not read by the last Load records/);
 
             const emptyPanelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
             await (RecipeCockpitAdapterRecords as any).generateUpdaterValuesFromPanel(RecipeCockpitService, cockpitPanel, emptyPanelState, { kind: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1, fieldRequests: [] });

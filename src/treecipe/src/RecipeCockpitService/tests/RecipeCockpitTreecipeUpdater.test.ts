@@ -47,6 +47,7 @@ import {
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitShellConstants';
 import {
+    RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE,
     RECIPE_COCKPIT_UPDATER_INTRO,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
     RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN,
@@ -55,8 +56,6 @@ import {
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON,
     RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING,
-    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE,
-    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX,
     RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL,
     RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE,
@@ -667,7 +666,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
         });
 
-        it('draws the filter with the retrieve button beside it and says the parent records the WHERE asks for', () => {
+        it('draws the filter with the retrieve button beside it, and a chip with the parent and the WHERE its records come from (#720)', () => {
 
             const { panel, accountCard } = openParentStep();
             chooseParent(panel, accountCard, 'Account');
@@ -680,12 +679,129 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             expect(retrieveButton.disabled).toBe(false);
             expect(retrieveButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE);
             expect(retrieveButton.className).toBe('sdtButton sdtButton-secondary updaterRetrieveMetadata');
-            expect(panel.findAll(structureStep, 'updaterParentWhereNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE);
+            const parentChip = () => panel.findAll(structureStep, 'updaterParentChip')[0].textContent;
+            expect(parentChip()).toBe('Parent: Account · every record');
 
             panel.findAll(structureStep, 'updaterChangeParent')[0].dispatch('click');
             chooseParent(panel, accountCard, 'Account', ' Name = \'Acme\' ');
+            expect(parentChip()).toBe('Parent: Account · WHERE Name = \'Acme\'');
 
-            expect(panel.findAll(structureStep, 'updaterParentWhereNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX + 'Name = \'Acme\'');
+            // A WHERE TYPED WITH ITS KEYWORD SAYS IT ONCE, AND A PARENT BELOW THE ROOT IS NAMED
+            panel.findAll(structureStep, 'updaterChangeParent')[0].dispatch('click');
+            chooseParent(panel, accountCard, 'Contact', 'where LastName != null');
+            expect(parentChip()).toBe('Parent: Contact · WHERE LastName != null');
+
+        });
+
+        describe('the parent chip and Change parent object (#720)', () => {
+
+            const loadedMessage = (accountRecords: Record<string, unknown>) => ({
+                command: 'updaterRecords', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa · qa@example.com.qa',
+                objects: [{ objectApiName: 'Account', totalSize: 12, recordCount: 12, isTruncated: false, columns: ['Id'], rows: [['001A']], hiddenColumnCount: 0, pageCount: 1, ...accountRecords }]
+            });
+
+            const openStructure = (whereText = 'Name LIKE \'Acme%\'') => {
+                const { panel, accountCard } = openParentStep();
+                chooseParent(panel, accountCard, 'Account', whereText);
+                const structureStep = structureStepOf(panel, accountCard);
+                return { panel, accountCard, structureStep, changeButton: panel.findAll(structureStep, 'updaterChangeParent')[0], parentChip: () => panel.findAll(structureStep, 'updaterParentChip')[0].textContent };
+            };
+
+            const changePosts = (panel: any) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'changeUpdaterParent');
+
+            it('adds the loaded parent count to the chip once a load read the parent, and takes it away when the records go', () => {
+
+                const { panel, parentChip } = openStructure();
+                expect(parentChip()).toBe('Parent: Account · WHERE Name LIKE \'Acme%\'');
+
+                panel.postToPanel(loadedMessage({}));
+                expect(parentChip()).toBe('Parent: Account · WHERE Name LIKE \'Acme%\' · 12 records');
+
+                panel.postToPanel(loadedMessage({ recordCount: 1 }));
+                expect(parentChip()).toBe('Parent: Account · WHERE Name LIKE \'Acme%\' · 1 record');
+
+                // A PARENT THAT COULD NOT BE READ HAS NO COUNT TO SHOW
+                panel.postToPanel(loadedMessage({ recordCount: 0, failureMessage: 'No such column' }));
+                expect(parentChip()).toBe('Parent: Account · WHERE Name LIKE \'Acme%\'');
+
+                panel.postToPanel(loadedMessage({}));
+                panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+                expect(parentChip()).toBe('Parent: Account · WHERE Name LIKE \'Acme%\'');
+
+            });
+
+            it('writes the parent and the WHERE as text', () => {
+
+                const { panel, structureStep, parentChip } = openStructure('Name = \'<b>x</b>\'');
+
+                expect(parentChip()).toBe('Parent: Account · WHERE Name = \'<b>x</b>\'');
+                expect(panel.findAll(structureStep, 'b')).toEqual([]);
+
+            });
+
+            it('draws Change parent object as a highlighted button made by createButton, beside the chip', () => {
+
+                const { panel, structureStep, changeButton } = openStructure();
+
+                expect(changeButton.textContent).toBe('Change parent object');
+                expect(changeButton.tagName).toBe('button');
+                expect(changeButton.className).toBe('sdtButton sdtButton-primary sdtButton-compact updaterChangeParent');
+                expect(changeButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE);
+                expect(panel.findAll(structureStep, 'updaterParentRow')[0].children.map((childElement: any) => childElement.className.split(' ').pop())).toEqual(['updaterParentChip', 'updaterChangeParent']);
+
+            });
+
+            it('goes back to step 1 and posts nothing while no records are loaded', () => {
+
+                const { panel, accountCard, changeButton } = openStructure();
+                changeButton.dispatch('click');
+
+                expect(panel.isHidden(parentStepOf(panel, accountCard))).toBe(false);
+                expect(changePosts(panel)).toEqual([]);
+
+            });
+
+            it('with records loaded, asks the host with the card\'s key alone and stays on step 2 until it answers', () => {
+
+                const { panel, accountCard, structureStep, changeButton } = openStructure();
+                panel.postToPanel(loadedMessage({}));
+                changeButton.dispatch('click');
+
+                expect(changePosts(panel)).toEqual([{ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 }]);
+                expect(panel.isHidden(structureStep)).toBe(false);
+                expect(panel.isHidden(parentStepOf(panel, accountCard))).toBe(true);
+
+                // AN ANSWER FOR ANOTHER MODEL OR CARD CHANGES NOTHING
+                panel.postToPanel({ command: 'updaterParentChange', renderSequence: 2, treeKey: ACCOUNT_TREE_KEY });
+                panel.postToPanel({ command: 'updaterParentChange', renderSequence: 1, treeKey: 'No-Such-Tree' });
+                expect(panel.isHidden(structureStep)).toBe(false);
+
+                panel.postToPanel({ command: 'updaterParentChange', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY });
+
+                expect(panel.isHidden(parentStepOf(panel, accountCard))).toBe(false);
+                expect(parentSelectOf(panel, accountCard).value).toBe('0');
+                expect(parentWhereOf(panel, accountCard).value).toBe('Name LIKE \'Acme%\'');
+                // THE RECORDS ARE GONE FROM THE SCREEN AS THEY ARE FROM THE HOST: THE NEXT CHANGE IS NAVIGATION AGAIN
+                chooseParent(panel, accountCard, 'Account', 'Name LIKE \'Acme%\'');
+                expect(panel.findAll(structureStep, 'updaterParentChip')[0].textContent).toBe('Parent: Account · WHERE Name LIKE \'Acme%\'');
+                panel.findAll(structureStep, 'updaterChangeParent')[0].dispatch('click');
+                expect(changePosts(panel)).toHaveLength(1);
+
+            });
+
+            it('is held, saying why, while a load, generation, update or restore runs', () => {
+
+                const { panel, changeButton } = openStructure();
+                panel.postToPanel(loadedMessage({}));
+                panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' });
+
+                expect(changeButton.disabled).toBe(true);
+                expect(changeButton.attributes.title).toBe('Records are being loaded, generated, updated or restored.');
+
+                panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' });
+                expect(changeButton.disabled).toBe(false);
+
+            });
 
         });
 

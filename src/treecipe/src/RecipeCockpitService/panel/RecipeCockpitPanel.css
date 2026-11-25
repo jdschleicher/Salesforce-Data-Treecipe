@@ -653,7 +653,6 @@
     }
     .updaterWhereInput:focus, .updaterParentWhereInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
     .updaterParentStep { margin: 0.5rem 0.6rem; }
-    .updaterStepHeadingRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0.6rem 0.25rem; }
     .updaterStepHeading { font-weight: 600; overflow-wrap: anywhere; }
     .updaterParentStep .updaterStepHeading { margin-bottom: 0.4rem; }
     .updaterParentFields { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
@@ -668,7 +667,14 @@
     }
     .updaterParentSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .updaterParentWhereInput { width: auto; flex: 1 1 16rem; min-width: 0; }
-    .updaterParentWhereNote { margin: 0 0.6rem 0.25rem; overflow-wrap: anywhere; }
+    .updaterStructureHeading { margin: 0.5rem 0.6rem 0.25rem; }
+    .updaterParentRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0.6rem 0.4rem; }
+    .updaterParentChip { min-width: 0; padding: 0.15rem 0.6rem; overflow-wrap: anywhere; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border: 1px solid var(--sdt-accent); border-radius: 0.8rem; }
+    .updaterRecordsPager { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
+    .updaterRecordsUnread { overflow-wrap: anywhere; }
+    /* A TABLE OF EVERY RECIPE FIELD IS WIDE (#720): A CELL KEEPS A READABLE WIDTH AND WRAPS INSIDE IT, AND THE TABLE SCROLLS SIDEWAYS IN ITS WRAP */
+    .updaterRecords .treeQueryTable td { white-space: normal; min-width: 9rem; max-width: 24rem; overflow-wrap: anywhere; }
+    .updaterRecords .treeQueryTable td .treeQueryRecordLink { white-space: nowrap; }
     .updaterFilterRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .updaterFilterRow .tabSearch { flex: 1 1 16rem; min-width: 0; }
     .updaterFilterRow .updaterRetrieveMetadata { margin-right: 0.6rem; }

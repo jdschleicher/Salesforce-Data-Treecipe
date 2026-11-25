@@ -92,6 +92,18 @@ export interface IRecipeCockpitPreviewRecordLinks {
     rowIndexes: number[];
 }
 
+/*
+    One page of an object's loaded records as the Treecipe Adapter's table (#720): the columns are
+    the ones GIVEN, in their order, so every page of a load has the same ones. recordLinks is the
+    Id column's and lookupLinks one entry per lookup column with a cell that holds a whole record Id.
+*/
+export interface IRecipeCockpitRecordTablePage {
+    columns: string[];
+    rows: string[][];
+    recordLinks?: IRecipeCockpitPreviewRecordLinks;
+    lookupLinks?: IRecipeCockpitPreviewRecordLinks[];
+}
+
 // THE COLUMN A RECORD'S OWN Id IS FLATTENED INTO: A PARENT'S IS "Account.Id", A SUBQUERY'S IS IN ITS JSON
 export const RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN = 'Id';
 
@@ -372,6 +384,53 @@ export class RecipeCockpitQuery {
             ? preview
             : { ...preview, recordLinks: { columnIndex: columnIndex, rowIndexes: rowIndexes }, recordIds: recordIds };
 
+    }
+
+    static buildTablePage(records: readonly Record<string, unknown>[],
+                          columnFieldApiNames: readonly string[],
+                          lookupFieldApiNames: readonly string[],
+                          pageIndex: number,
+                          pageSize: number): IRecipeCockpitRecordTablePage {
+
+        const pageRecords = records.slice(pageIndex * pageSize, ( pageIndex + 1 ) * pageSize);
+        const rows = pageRecords.map(record => columnFieldApiNames.map(fieldApiName => {
+            const cellText = this.toCellText(this.readFieldValue(record, fieldApiName));
+            return cellText.length > RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH
+                ? cellText.slice(0, RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH) + '…'
+                : cellText;
+        }));
+
+        const linksOfColumn = (fieldApiName: string): IRecipeCockpitPreviewRecordLinks[] => {
+            const columnIndex = columnFieldApiNames.indexOf(fieldApiName);
+            const rowIndexes = pageRecords.flatMap((record, rowIndex) => this.readLinkedRecordId(record, fieldApiName) === undefined ? [] : [rowIndex]);
+            return columnIndex === -1 || rowIndexes.length === 0 ? [] : [{ columnIndex: columnIndex, rowIndexes: rowIndexes }];
+        };
+        const [recordLinks] = linksOfColumn(RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN);
+        const lookupLinks = lookupFieldApiNames.flatMap(linksOfColumn);
+
+        return {
+            columns: [...columnFieldApiNames],
+            rows: rows,
+            ...( recordLinks ? { recordLinks: recordLinks } : {} ),
+            ...( lookupLinks.length > 0 ? { lookupLinks: lookupLinks } : {} )
+        };
+
+    }
+
+    // THE RECORD Id A CELL OPENS (#556, #720): ONLY A VALUE THAT IS A WHOLE Id, SO WHAT IS CLICKED IS WHAT OPENS
+    static readLinkedRecordId(record: Record<string, unknown>, fieldApiName: string): string | undefined {
+        const fieldValue = this.readFieldValue(record, fieldApiName);
+        return typeof fieldValue === 'string' && RECIPE_COCKPIT_PREVIEW_RECORD_ID_PATTERN.test(fieldValue) ? fieldValue : undefined;
+    }
+
+    // SOQL NAMES ARE CASE-INSENSITIVE, AND THE ORG ANSWERS WITH ITS OWN CASING
+    private static readFieldValue(record: Record<string, unknown>, fieldApiName: string): unknown {
+        if ( Object.prototype.hasOwnProperty.call(record, fieldApiName) ) {
+            return record[fieldApiName];
+        }
+        const lowerCaseName = fieldApiName.toLowerCase();
+        const matchingKey = Object.keys(record).find(recordKey => recordKey.toLowerCase() === lowerCaseName);
+        return matchingKey === undefined ? undefined : record[matchingKey];
     }
 
     static flattenRecords(records: readonly Record<string, unknown>[]): { columns: string[]; flattenedRecords: Map<string, unknown>[] } {

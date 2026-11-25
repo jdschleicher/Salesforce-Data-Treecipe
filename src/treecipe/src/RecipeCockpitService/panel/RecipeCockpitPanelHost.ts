@@ -1,7 +1,7 @@
 import { connectConfirmDialog, renderConfirmRequest } from '../../CockpitKit/panel/CockpitConfirmDialogPanel';
 import { RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH, RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX } from '../RecipeCockpitPanelConstants';
 import { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';
-import { clearUpdaterRecords, clearUpdaterValues, drawUpdaterLoadButtons, renderUpdaterRecords, renderUpdaterSnapshots, renderUpdaterValues } from './adapter/AdapterLoadAndUpdate';
+import { clearUpdaterRecords, clearUpdaterValues, drawUpdaterLoadButtons, renderUpdaterParentChange, renderUpdaterRecords, renderUpdaterRecordsPage, renderUpdaterSnapshots, renderUpdaterValues } from './adapter/AdapterLoadAndUpdate';
 import { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
 import { renderDatasetJourney } from './datasets/DatasetJourney';
 import { renderDatasetRecordCounts } from './datasets/DatasetRow';
@@ -309,6 +309,16 @@ function routeHostMessage(hostMessage: any): void {
     if (hostMessage.command === 'updaterRecords') {
         renderUpdaterRecords(hostMessage);
         acknowledgeRecordLinks(hostMessage);
+        return;
+    }
+
+    if (hostMessage.command === 'updaterRecordsPage') {
+        renderUpdaterRecordsPage(hostMessage);
+        return;
+    }
+
+    if (hostMessage.command === 'updaterParentChange') {
+        renderUpdaterParentChange(hostMessage);
         return;
     }
 

@@ -4,10 +4,11 @@ import * as path from 'path';
 import {
     IRecipeCockpitUpdaterTreeObject,
     RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE,
+    RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH,
     RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH,
     RecipeCockpitTreeUpdaterQuery
 } from '../RecipeCockpitTreeUpdaterQuery';
-import { RECIPE_COCKPIT_QUERY_MAX_LENGTH } from '../RecipeCockpitQuery';
+import { RECIPE_COCKPIT_QUERY_MAX_LENGTH, RecipeCockpitQuery } from '../RecipeCockpitQuery';
 
 const ACCOUNT: IRecipeCockpitUpdaterTreeObject = { objectApiName: 'Account', fieldApiNames: ['Name', 'Legacy_Code__c', 'Rating__c', 'ParentId'], lookupFieldApiNames: ['ParentId'], treeLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }] };
 const CONTACT: IRecipeCockpitUpdaterTreeObject = { objectApiName: 'Contact', fieldApiNames: ['LastName', 'AccountId'], lookupFieldApiNames: ['AccountId'], treeLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] };
@@ -50,6 +51,19 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
 
         });
 
+        it('lists an object\'s other lookups after its lookups to parents in the tree, each once (#720)', () => {
+
+            const [accountTreeObject] = RecipeCockpitTreeUpdaterQuery.listTreeObjects(
+                [{ objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }] }],
+                fieldApiNamesByObjectApiName,
+                new Map([['Account', ['OwnerId', 'ParentId']]])
+            );
+
+            expect(accountTreeObject.lookupFieldApiNames).toEqual(['ParentId', 'OwnerId']);
+            expect(accountTreeObject.treeLookups).toEqual([{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }]);
+
+        });
+
         it('leaves out an object the model draws no fields for', () => {
 
             expect(RecipeCockpitTreeUpdaterQuery.listTreeObjects([{ objectApiName: 'User', parentLookups: [] }], fieldApiNamesByObjectApiName)).toEqual([]);
@@ -63,12 +77,23 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
         it('keeps the parent and the objects under it, a level at a time, each below the parent narrowed by its lookup, a missing WHERE read as none', () => {
 
             expect(RecipeCockpitTreeUpdaterQuery.readRequest([
-                { objectApiName: 'Contact', fieldApiNames: ['LastName'] },
-                { objectApiName: 'Account', fieldApiNames: [], whereClause: 'Name LIKE \'A%\'' }
+                { objectApiName: 'Contact' },
+                { objectApiName: 'Account', whereClause: 'Name LIKE \'A%\'' }
             ], TREE_OBJECTS, 'Account')).toEqual({ requests: [
-                { objectApiName: 'Account', fieldApiNames: [], whereClause: 'Name LIKE \'A%\'' },
-                { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: '', narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } }
+                { objectApiName: 'Account', fieldApiNames: ACCOUNT.fieldApiNames, whereClause: 'Name LIKE \'A%\'' },
+                { objectApiName: 'Contact', fieldApiNames: CONTACT.fieldApiNames, whereClause: '', narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } }
             ] });
+
+        });
+
+        it('reads every field the tree lists for an object, whatever fields the panel posts (#720)', () => {
+
+            const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest([
+                { objectApiName: 'Account', fieldApiNames: ['Name'] },
+                { objectApiName: 'Contact', fieldApiNames: ['Password__c', 7, 'LastName', 'LastName'] }
+            ], TREE_OBJECTS, 'Account');
+
+            expect('requests' in requestRead ? requestRead.requests.map(request => request.fieldApiNames) : []).toEqual([ACCOUNT.fieldApiNames, CONTACT.fieldApiNames]);
 
         });
 
@@ -78,10 +103,6 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
             ['more objects than the card lists', [{ objectApiName: 'Account', fieldApiNames: [] }, { objectApiName: 'Contact', fieldApiNames: [] }, { objectApiName: 'Lead', fieldApiNames: [] }]],
             ['an object the card does not list', [{ objectApiName: 'Lead', fieldApiNames: [] }]],
             ['an object named twice', [{ objectApiName: 'Account', fieldApiNames: [] }, { objectApiName: 'Account', fieldApiNames: [] }]],
-            ['a field the object does not list', [{ objectApiName: 'Account', fieldApiNames: ['LastName'] }]],
-            ['a field named twice', [{ objectApiName: 'Account', fieldApiNames: ['Name', 'Name'] }]],
-            ['a field that is not text', [{ objectApiName: 'Account', fieldApiNames: [7] }]],
-            ['fields that are not a list', [{ objectApiName: 'Account', fieldApiNames: 'Name' }]],
             ['a WHERE that is not text', [{ objectApiName: 'Account', fieldApiNames: [], whereClause: 3 }]],
             ['a WHERE past the length', [{ objectApiName: 'Account', fieldApiNames: [], whereClause: 'x'.repeat(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH + 1) }]],
             ['an entry that is not an object', [null]],
@@ -97,7 +118,6 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
         it.each([
             ['an object named twice', [{ objectApiName: 'Account', fieldApiNames: [] }, { objectApiName: 'Account', fieldApiNames: [] }], 'not the parent and the objects under it'],
             ['an entry that is not an object', [{ objectApiName: 'Account', fieldApiNames: [] }, null], 'not the objects of this treecipe'],
-            ['a field the object does not list', [{ objectApiName: 'Account', fieldApiNames: ['LastName'] }, { objectApiName: 'Contact', fieldApiNames: [] }], 'are not fields of it'],
             ['a WHERE past the length', [{ objectApiName: 'Account', fieldApiNames: [] }, { objectApiName: 'Contact', fieldApiNames: [], whereClause: 'x'.repeat(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH + 1) }], 'is longer than']
         ])('refuses %s in an otherwise whole request, saying why', (_description, candidateObjects, refusalText) => {
 
@@ -109,6 +129,49 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
     });
 
     describe('buildObjectQuery', () => {
+
+        it('selects, for a request read from the tree, the Id, the lookups and every recipe field, each once, in a query the Query tab would send (#720)', () => {
+
+            const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest([{ objectApiName: 'Account' }, { objectApiName: 'Contact' }], TREE_OBJECTS, 'Account');
+            const [accountRequest] = 'requests' in requestRead ? requestRead.requests : [];
+            const build = RecipeCockpitTreeUpdaterQuery.buildObjectQuery(ACCOUNT, accountRequest);
+
+            expect(build).toEqual({ objectQuery: { objectApiName: 'Account', query: 'SELECT Id, ParentId, Name, Legacy_Code__c, Rating__c FROM Account' } });
+            expect(RecipeCockpitQuery.checkQueryText('SELECT Id, ParentId, Name, Legacy_Code__c, Rating__c FROM Account')).toEqual({ query: 'SELECT Id, ParentId, Name, Legacy_Code__c, Rating__c FROM Account' });
+
+        });
+
+        it('orders the columns Id, then the lookups, then the other fields in recipe order (#720)', () => {
+
+            const opportunity: IRecipeCockpitUpdaterTreeObject = {
+                objectApiName: 'Opportunity',
+                fieldApiNames: ['Name', 'OwnerId', 'StageName', 'AccountId', 'Amount', 'accountid'],
+                lookupFieldApiNames: ['AccountId', 'OwnerId'],
+                treeLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]
+            };
+
+            expect(RecipeCockpitTreeUpdaterQuery.listSelectedFieldApiNames(opportunity, opportunity.fieldApiNames)).toEqual(['Id', 'AccountId', 'OwnerId', 'Name', 'StageName', 'Amount']);
+
+        });
+
+        it('leaves out the fields the org does not describe, whatever their case, and names them (#720)', () => {
+
+            const request = { objectApiName: 'Account', fieldApiNames: [...ACCOUNT.fieldApiNames], whereClause: '' };
+            const readable = RecipeCockpitTreeUpdaterQuery.leaveOutUnreadFields({ ...ACCOUNT, lookupFieldApiNames: ['ParentId', 'Secret_Owner__c'] }, request, ['id', 'NAME', 'parentid', 'Rating__c']);
+
+            expect(readable.unreadFieldApiNames).toEqual(['Secret_Owner__c', 'Legacy_Code__c']);
+            expect(readable.treeObject.treeLookups).toEqual(ACCOUNT.treeLookups);
+            expect(RecipeCockpitTreeUpdaterQuery.buildObjectQuery(readable.treeObject, readable.request)).toEqual({ objectQuery: { objectApiName: 'Account', query: 'SELECT Id, ParentId, Name, Rating__c FROM Account' } });
+
+        });
+
+        it('leaves nothing out when the org describes every field', () => {
+
+            const request = { objectApiName: 'Contact', fieldApiNames: [...CONTACT.fieldApiNames], whereClause: '' };
+
+            expect(RecipeCockpitTreeUpdaterQuery.leaveOutUnreadFields(CONTACT, request, ['Id', 'LastName', 'AccountId', 'Email'])).toEqual({ treeObject: CONTACT, request: request, unreadFieldApiNames: [] });
+
+        });
 
         it('selects the Id, the lookups to parents in the tree and the chosen fields, each once', () => {
 
@@ -279,6 +342,54 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
                 const namedIds = build.queries.flatMap(query => query.match(/001[0-9]{15}/g) ?? []);
                 expect(namedIds).toHaveLength(2500);
                 expect(new Set(namedIds).size).toBe(2500);
+
+            });
+
+            describe('a SELECT of every recipe field, sent in the address of a GET (#720)', () => {
+
+                const wideContact = (fieldCount: number): IRecipeCockpitUpdaterTreeObject => ({
+                    ...contactTreeObject,
+                    fieldApiNames: Array.from({ length: fieldCount }, (_unused, fieldIndex) => `Long_Custom_Field_Name_Number_${fieldIndex}__c`)
+                });
+                const requestOf = (wideTreeObject: IRecipeCockpitUpdaterTreeObject) => ({ ...contactRequest, fieldApiNames: [...wideTreeObject.fieldApiNames] });
+                const parentIds = Array.from({ length: 400 }, (_unused, parentIndex) => accountId(parentIndex + 1));
+                const queriesOf = (wideTreeObject: IRecipeCockpitUpdaterTreeObject) => {
+                    const build = RecipeCockpitTreeUpdaterQuery.buildNarrowedQueries(wideTreeObject, requestOf(wideTreeObject), parentIds);
+                    if ( 'refusal' in build ) { throw new Error(build.refusal); }
+                    return build.queries;
+                };
+
+                it('names fewer parent Ids a query when its SELECT is long, so every query fits what an org accepts and every Id is still named once', () => {
+
+                    const wideTreeObject = wideContact(320);
+                    const queries = queriesOf(wideTreeObject);
+
+                    expect(queries.length).toBeGreaterThan(Math.ceil(parentIds.length / RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE));
+                    queries.forEach(query => expect(encodeURIComponent(query).length).toBeLessThanOrEqual(RECIPE_COCKPIT_UPDATER_QUERY_ENCODED_MAX_LENGTH));
+                    expect(queries.flatMap(query => query.match(/'001\w{15}'/g) ?? [])).toEqual(parentIds.map(parentId => `'${parentId}'`));
+                    expect(RecipeCockpitTreeUpdaterQuery.findTooLongQueryReason(wideTreeObject, requestOf(wideTreeObject), queries)).toBeUndefined();
+
+                });
+
+                it('keeps the usual 150 Ids a query for a SELECT of ordinary length', () => {
+
+                    expect(queriesOf(wideContact(20))).toHaveLength(Math.ceil(parentIds.length / RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE));
+
+                });
+
+                it('says an object\'s SELECT is too long even one Id at a time, naming its field count and what to do', () => {
+
+                    const wideTreeObject = wideContact(600);
+                    const queries = queriesOf(wideTreeObject);
+                    const reason = RecipeCockpitTreeUpdaterQuery.findTooLongQueryReason(wideTreeObject, requestOf(wideTreeObject), queries);
+
+                    // ONE Id A QUERY: IT WENT AS FAR AS IT COULD BEFORE SAYING SO
+                    expect(queries).toHaveLength(parentIds.length);
+                    expect(reason).toMatch(/^its query names 603 fields and is \d+ characters once sent, more than the 14000 an org accepts in one request\./);
+                    expect(reason).toContain('Customize and create new recipe');
+                    expect(reason).toContain('Contact fields you do not need');
+
+                });
 
             });
 

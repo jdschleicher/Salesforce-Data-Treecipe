@@ -28,6 +28,7 @@ export interface IAdapterJourney {
     run(journey: RecipeCockpitJourney): Promise<void>;
 }
 
+const ONE_TIME_FRONTDOOR_URI = 'https://acme--qa.sandbox.my.salesforce.com/secur/frontdoor.jsp?otp=ONE-TIME-CODE';
 const ORG_WRITE_CALL = /^connection\.sobject\(.+\)\.(update|insert|create)$/;
 const confirmationTitle = (journey: RecipeCockpitJourney) => {
     const screen = journey.screen();
@@ -56,13 +57,13 @@ const writtenSnapshotPath = (journey: RecipeCockpitJourney) => {
 export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
 
     {
-        name: 'load, generate, update and restore: one SELECT per object narrowed to the parents, a preview of current and new values, the snapshot before any request, PATCHes of 200, the adapted data set and recipe, and the old values sent back',
+        name: 'load, generate, update and restore: one SELECT per object narrowed to the parents with every recipe field, a paged table with clickable lookups, Change parent object asking first, a preview of current and new values, the snapshot before any request, PATCHes of 200, the adapted data set and recipe, and the old values sent back',
         run: async journey => {
 
             await chooseParentAndFields(journey);
-            await journey.step('step 2 names the parent\'s WHERE and counts the fields chosen', () => {
+            await journey.step('step 2 names the parent and its WHERE beside Change parent object, and counts the fields chosen', () => {
                 const lines = adapterPanelLines(journey);
-                expectEqual(lines.includes(`  text "Parent records: WHERE ${PARENT_WHERE}"`) && lines.includes('  text "2 fields chosen on 2 objects"'), true, `The Adapter tab: ${lines.slice(0, 12).join(' | ')}`);
+                expectEqual(lines.includes(`  text "Parent: Account · WHERE ${PARENT_WHERE}"`) && lines.includes('  button "Change parent object"') && lines.includes('  text "2 fields chosen on 2 objects"'), true, `The Adapter tab: ${lines.slice(0, 12).join(' | ')}`);
             });
 
             await journey.click('button', 'Load records');
@@ -72,11 +73,65 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 const queries = loadQueriesSent(journey);
                 const inList = (accountIds: string[]) => accountIds.map(accountId => `'${accountId}'`).join(', ');
                 expectEqual(queries.length, 4, `The load queries: ${JSON.stringify(queries.map(query => query.slice(0, 120)))}`);
-                expectEqual(queries[0], `SELECT Id, Region__c FROM Account WHERE ${PARENT_WHERE}`, 'The parent query');
-                expectEqual(queries[1], `SELECT Id, AccountId, Title__c FROM Contact WHERE AccountId IN (${inList(ACCOUNT_IDS.slice(0, 150))})`, 'The Contact query for the first 150 Accounts');
-                expectEqual(queries[2], `SELECT Id, AccountId, Title__c FROM Contact WHERE AccountId IN (${inList(ACCOUNT_IDS.slice(150))})`, 'The Contact query for the other 51');
-                expectEqual(queries[3], `SELECT Id, Contact__c FROM Visit__c WHERE Contact__c IN ('${CONTACT_ID}')`, 'The Visit__c query');
+                // EVERY FIELD THE TREECIPE LISTS IS READ (#720), WHATEVER IS TICKED: Id, THE LOOKUPS, THEN THE REST
+                const selectedFieldsOf = (query: string) => /^SELECT (.+?) FROM /.exec(query)![1].split(', ');
+                const fromOf = (query: string) => query.slice(query.indexOf(' FROM '));
+                expectEqual(fromOf(queries[0]), ` FROM Account WHERE ${PARENT_WHERE}`, 'The parent query');
+                expectEqual(fromOf(queries[1]), ` FROM Contact WHERE AccountId IN (${inList(ACCOUNT_IDS.slice(0, 150))})`, 'The Contact query for the first 150 Accounts');
+                expectEqual(fromOf(queries[2]), ` FROM Contact WHERE AccountId IN (${inList(ACCOUNT_IDS.slice(150))})`, 'The Contact query for the other 51');
+                expectEqual(fromOf(queries[3]), ` FROM Visit__c WHERE Contact__c IN ('${CONTACT_ID}')`, 'The Visit__c query');
+                expectEqual(selectedFieldsOf(queries[0])[0] === 'Id' && selectedFieldsOf(queries[0]).includes('Region__c') && selectedFieldsOf(queries[0]).length > 3, true, `The Account fields read: ${JSON.stringify(selectedFieldsOf(queries[0]))}`);
+                expectEqual(selectedFieldsOf(queries[1]).slice(0, 2), ['Id', 'AccountId'], 'The Contact query starts with its Id and its lookup to the parent');
+                expectEqual(selectedFieldsOf(queries[1]).includes('Title__c'), true, `The Contact fields read: ${JSON.stringify(selectedFieldsOf(queries[1]))}`);
+                expectEqual(new Set(selectedFieldsOf(queries[0])).size, selectedFieldsOf(queries[0]).length, 'Each Account field is read once');
                 expectEqual(journey.notifications.map(notification => notification.text), [`Loaded ${ACCOUNT_COUNT + 1} records of ${TREE_NAME} from qa · qa@example.com.qa.`], 'The notifications');
+            });
+
+            await journey.step('each object\'s records are a table of 50 to a page with its page count, Id first, and the chip counts the parents loaded', () => {
+                const screen = journey.screen();
+                const adapterPanel = screen.get('tabpanel', ADAPTER_TAB_NAME);
+                screen.get('text', `Parent: Account · WHERE ${PARENT_WHERE} · ${ACCOUNT_COUNT} records`, adapterPanel);
+                screen.get('text', 'Page 1 of 5', adapterPanel);
+                screen.get('text', 'Page 1 of 1', adapterPanel);
+                const tables = screen.findAll('table', undefined, adapterPanel);
+                expectEqual(tables.map(table => screen.findAll('columnheader', undefined, table)[0].name), ['Id', 'Id'], 'The first column of the Account and Contact tables');
+                expectEqual(screen.findAll('row', undefined, tables[0]).filter(row => screen.findAll('cell', undefined, row).length > 0).length, 50, 'The Account rows on page 1');
+                expectEqual(screen.findAll('button', ACCOUNT_IDS[49], tables[0]).length + screen.findAll('button', ACCOUNT_IDS[50], tables[0]).length, 1, 'Page 1 ends at the 50th Account');
+            });
+
+            await journey.click('button', 'Next page of Account records');
+            await journey.step('Next shows the 51st to the 100th Account, read from the records already loaded', () => {
+                const screen = journey.screen();
+                const adapterPanel = screen.get('tabpanel', ADAPTER_TAB_NAME);
+                screen.get('text', 'Page 2 of 5', adapterPanel);
+                const [accountTable] = screen.findAll('table', undefined, adapterPanel);
+                screen.get('button', ACCOUNT_IDS[50], accountTable);
+                screen.get('button', ACCOUNT_IDS[99], accountTable);
+                expectEqual(screen.findAll('button', ACCOUNT_IDS[0], accountTable), [], 'The first Account on page 2');
+                expectEqual(loadQueriesSent(journey).length, 4, 'Queries after paging');
+            });
+
+            // THE FIRST ACCOUNT IS NO LONGER IN ITS OWN TABLE (PAGE 2), SO THE ONLY LINK NAMED BY ITS Id IS THE CONTACT'S LOOKUP TO IT
+            journey.org.callAnswer = (_username, call) => call === 'connection.requestGet' ? { frontdoor_uri: ONE_TIME_FRONTDOOR_URI } : undefined;
+            await journey.click('button', ACCOUNT_IDS[0]);
+            await journey.step('a lookup cell holding a whole Id opens that parent record in the org it was loaded from, through the one-time address', () => {
+                const openedAddresses = journey.hostCalls.filter(hostCall => hostCall.call === 'env.openExternal').map(hostCall => String(hostCall.args[0]));
+                expectEqual(openedAddresses, [`${ONE_TIME_FRONTDOOR_URI}&retURL=%2F${ACCOUNT_IDS[0]}`], 'The addresses opened');
+            });
+
+            await journey.click('button', 'Change parent object');
+            await journey.waitForConfirmation();
+            await journey.step('Change parent object asks before letting the loaded records go', () => {
+                expectEqual(confirmationTitle(journey), [`Change the parent object of ${TREE_NAME}?`], 'The confirmation');
+                journey.screen().get('text', `The ${ACCOUNT_COUNT + 1} loaded records are let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`);
+            });
+            await journey.answerConfirmation('Cancel');
+            await journey.step('Cancel keeps step 2 and its records as they were', () => {
+                const screen = journey.screen();
+                const adapterPanel = screen.get('tabpanel', ADAPTER_TAB_NAME);
+                screen.get('text', 'Page 2 of 5', adapterPanel);
+                screen.get('text', `Parent: Account · WHERE ${PARENT_WHERE} · ${ACCOUNT_COUNT} records`, adapterPanel);
+                expectEqual(screen.findAll('button', 'Next', adapterPanel), [], 'Step 1 on screen');
             });
 
             await journey.click('button', 'Generate values');

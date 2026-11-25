@@ -115,7 +115,8 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             const primaryClassNames = Array.from(panelScript.matchAll(/createButton\(['"]primary['"], ['"]([A-Za-z ]+)['"]/g), match => match[1]);
 
             // customTreecipeSave AND customTreecipeConfirmSave ARE THE "Customize and create new recipe" MODAL'S OWN (#677): A DIALOG OWNS THEM
-            expect([...new Set(primaryClassNames)].sort()).toEqual(['adapterChildGenerate', 'customTreecipeConfirmSave', 'customTreecipeSave', 'dataOrgAuthorize', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
+            // updaterChangeParent IS STEP 2'S WAY BACK TO THE PARENT AND WHERE ITS RECORDS CAME FROM (#720): HIGHLIGHTED SO IT IS NOT MISSED
+            expect([...new Set(primaryClassNames)].sort()).toEqual(['updaterChangeParent', 'adapterChildGenerate', 'customTreecipeConfirmSave', 'customTreecipeSave', 'dataOrgAuthorize', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
 
         });
 

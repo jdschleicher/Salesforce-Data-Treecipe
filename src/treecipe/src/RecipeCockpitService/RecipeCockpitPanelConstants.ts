@@ -100,7 +100,7 @@ export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockp
     runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
     exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as JSON.' },
     exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as CSV.' },
-    loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with the chosen fields, from the selected sandbox. It only reads.' },
+    loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with every field the treecipe lists, from the selected sandbox. It only reads.' },
     generateUpdaterValues: { verb: 'generateData', why: 'Make a new value for each chosen field of every loaded record. Nothing is written yet.' },
     updateUpdaterRecords: { verb: 'update', why: 'Write the new values to the loaded records by Id. Their old values are saved first.' }
 });

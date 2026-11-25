@@ -44,7 +44,8 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { RecipeCockpitService } from '../RecipeCockpitService';
 import {
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
-    RECIPE_COCKPIT_UPDATER_LOADING_LABEL
+    RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
+    RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON
 } from '../RecipeCockpitAdapterConstants';
 import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
@@ -55,7 +56,7 @@ import {
     RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON,
     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT,
+    RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
     RecipeCockpitAdapterRecords
 } from '../RecipeCockpitAdapterRecords';
 import { RecipeCockpitAdapterState } from '../RecipeCockpitAdapterState';
@@ -88,9 +89,9 @@ const loadRequest = (renderSequence: number, overrides: Record<string, unknown> 
     treeKey: ACCOUNT_TREE_KEY,
     renderSequence: renderSequence,
     objects: [
-        { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c'], whereClause: '' },
-        { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: 'LastName != null' },
-        { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+        { objectApiName: 'Account', whereClause: '' },
+        { objectApiName: 'Contact', whereClause: 'LastName != null' },
+        { objectApiName: 'OtherChildObject__c', whereClause: '' }
     ],
     ...overrides
 });
@@ -124,7 +125,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
         const notRunning = (treeKey: string = ACCOUNT_TREE_KEY) => ({ command: 'updaterLoadState', isRunning: false, treeKey: treeKey });
 
-        it('routes a load of the card\'s objects from the selected sandbox, with each object\'s fields and WHERE', () => {
+        it('routes a load of the card\'s objects from the selected sandbox, with every field the tree lists for each and its WHERE (#720)', () => {
 
             expect(RecipeCockpitService.routePanelMessage(loadRequest(3), withSandbox(buildPanelState()))).toEqual({
                 kind: 'loadUpdaterRecords',
@@ -132,9 +133,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 renderSequence: 3,
                 isOrgPrompted: false,
                 requests: [
-                    { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c'], whereClause: '' },
-                    { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: 'LastName != null', narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } },
-                    { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '', narrowingLookup: { fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' } }
+                    { objectApiName: 'Account', fieldApiNames: ['Name', 'Legacy_Code__c', 'Annual_Budget__c', 'Rating__c', 'Sub_Rating__c', 'Regions__c', 'ParentId', 'OwnerId'], whereClause: '' },
+                    { objectApiName: 'Contact', fieldApiNames: ['LastName', 'AccountId'], whereClause: 'LastName != null', narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } },
+                    { objectApiName: 'OtherChildObject__c', fieldApiNames: ['Score__c', 'Ratio__c', 'Contact__c'], whereClause: '', narrowingLookup: { fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' } }
                 ]
             });
 
@@ -349,15 +350,15 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             expect(connectionSpy).toHaveBeenCalledTimes(1);
             expect(connectionSpy).toHaveBeenCalledWith(SANDBOX_ORG.username);
             expect(sentQueries).toHaveLength(3);
-            expect(sentQueries[0]).toMatch(/^SELECT Id, (\w+, )*Legacy_Code__c FROM Account$/);
-            expect(sentQueries[0]).toContain('ParentId');
+            // Id, THE LOOKUPS, THEN EVERY OTHER RECIPE FIELD IN RECIPE ORDER (#720)
+            expect(sentQueries[0]).toBe('SELECT Id, ParentId, OwnerId, Name, Legacy_Code__c, Annual_Budget__c, Rating__c, Sub_Rating__c, Regions__c FROM Account');
             // EACH LEVEL BELOW THE PARENT READS ONLY UNDER THE RECORDS THE LEVEL ABOVE LOADED (#444)
             expect(sentQueries[1]).toBe(`SELECT Id, AccountId, LastName FROM Contact WHERE (LastName != null) AND AccountId IN ('${fakeRecordId('Account', 0)}', '${fakeRecordId('Account', 1)}')`);
-            expect(sentQueries[2]).toBe(`SELECT Id, Contact__c FROM OtherChildObject__c WHERE Contact__c IN (${Array.from({ length: 25 }, (_value, recordIndex) => `'${fakeRecordId('Contact', recordIndex)}'`).join(', ')})`);
+            expect(sentQueries[2]).toBe(`SELECT Id, Contact__c, Score__c, Ratio__c FROM OtherChildObject__c WHERE Contact__c IN (${Array.from({ length: 25 }, (_value, recordIndex) => `'${fakeRecordId('Contact', recordIndex)}'`).join(', ')})`);
 
         });
 
-        it('holds the records on the host and posts only counts and a preview, then says how it went once', async () => {
+        it('holds the records on the host and posts only counts and the first page of each table, then says how it went once', async () => {
 
             await openCockpit();
             selectSandbox();
@@ -368,18 +369,308 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             const [recordsMessage] = postedNamed('updaterRecords');
             expect(recordsMessage).toMatchObject({ command: 'updaterRecords', renderSequence: lastRenderSequence(), treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa · qa@example.com.qa' });
             const contactRecords = recordsMessage.objects.find((loadedObject: any) => loadedObject.objectApiName === 'Contact');
-            expect(contactRecords).toMatchObject({ totalSize: 25, recordCount: 25, isTruncated: false, columns: ['Id', 'Name'], hiddenColumnCount: 0 });
-            expect(contactRecords.rows).toHaveLength(RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
-            expect(contactRecords.rows[0]).toEqual([fakeRecordId('Contact', 0), 'Contact 0']);
+            expect(contactRecords).toMatchObject({ totalSize: 25, recordCount: 25, isTruncated: false, columns: ['Id', 'AccountId', 'LastName'], hiddenColumnCount: 0, pageCount: 1 });
+            expect(contactRecords.rows).toHaveLength(25);
+            expect(contactRecords.rows[0]).toEqual([fakeRecordId('Contact', 0), '', '']);
             expect(JSON.stringify(recordsMessage)).not.toContain('attributes');
             // EACH SHOWN ROW'S OWN Id OPENS ITS RECORD (#556), POSTED AS POSITIONS ONLY
-            expect(contactRecords.recordLinks).toEqual({ columnIndex: 0, rowIndexes: Array.from({ length: RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT }, (_unused, rowIndex) => rowIndex) });
+            expect(contactRecords.recordLinks).toEqual({ columnIndex: 0, rowIndexes: Array.from({ length: 25 }, (_unused, rowIndex) => rowIndex) });
             expect(recordsMessage.recordLinkSequence).toEqual(expect.any(Number));
             expect(panelState().pendingOpenableRecordPreviews.get(recordsMessage.recordLinkSequence)?.recordIdsByObjectApiName.get('Contact')?.[0]).toBe(fakeRecordId('Contact', 0));
 
             expect(postedNamed('updaterLoadState').map(stateMessage => stateMessage.isRunning)).toEqual([true, false]);
             expect(informations()).toEqual(['Loaded 29 records of Account-thru-OtherChildObject__c from qa · qa@example.com.qa.']);
             expect(warnings()).toEqual([]);
+
+        });
+
+        describe('every recipe field, in a table of pages (#720)', () => {
+
+            const describedFieldsOf: Record<string, string[]> = {
+                Account: ['Id', 'Name', 'ParentId', 'OwnerId', 'Annual_Budget__c', 'Rating__c', 'Sub_Rating__c', 'Regions__c']
+            };
+
+            const describingConnection = () => jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
+                query: async (soql: string) => { sentQueries.push(soql); return await queryAnswer(soql); },
+                queryMore: async () => { throw new Error('no more pages'); },
+                describe: async (objectApiName: string) => {
+                    if ( !describedFieldsOf[objectApiName] ) { throw new Error(`sObject type '${objectApiName}' is not supported.`); }
+                    return { name: objectApiName, label: objectApiName, fields: describedFieldsOf[objectApiName].map(fieldApiName => ({ name: fieldApiName, label: fieldApiName, type: 'string' })) };
+                }
+            }) as any);
+
+            const loadedObject = (objectApiName: string) => postedNamed('updaterRecords')[0].objects.find((objectRecords: any) => objectRecords.objectApiName === objectApiName);
+
+            const pageRequest = (overrides: Record<string, unknown> = {}) => ({ command: 'loadUpdaterRecordsPage', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), objectApiName: 'Contact', pageIndex: 1, ...overrides });
+
+            it('leaves a field the org does not describe out of the query, names it, and still loads the other fields', async () => {
+
+                describingConnection();
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries[0]).toBe('SELECT Id, ParentId, OwnerId, Name, Annual_Budget__c, Rating__c, Sub_Rating__c, Regions__c FROM Account');
+                expect(loadedObject('Account')).toMatchObject({ recordCount: 2, unreadFieldApiNames: ['Legacy_Code__c'] });
+                expect(loadedObject('Account').columns).toEqual(['Id', 'ParentId', 'OwnerId', 'Name', 'Annual_Budget__c', 'Rating__c', 'Sub_Rating__c', 'Regions__c']);
+                // A VALUE IS GENERATED ONLY FOR A FIELD WHOSE CURRENT VALUE WAS READ (#417)
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords?.loadedFieldApiNamesByObjectApiName.get('Account')).not.toContain('Legacy_Code__c');
+                expect(informations()).toEqual(['Loaded 29 records of Account-thru-OtherChildObject__c from qa · qa@example.com.qa.']);
+
+            });
+
+            it('asks for an object the org did not describe whole, and names no field of an object it read whole', async () => {
+
+                describingConnection();
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries[1]).toContain('SELECT Id, AccountId, LastName FROM Contact');
+                expect(loadedObject('Contact')).not.toHaveProperty('unreadFieldApiNames');
+
+            });
+
+            it('posts the first 50 records of an object with its page count, and each further page only when asked', async () => {
+
+                queryAnswer = async (soql: string) => {
+                    const objectApiName = /FROM (\w+)/.exec(soql)![1];
+                    const records = recordsOf(objectApiName, objectApiName === 'Contact' ? 120 : 2);
+                    return { totalSize: records.length, done: true, records: records };
+                };
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(loadedObject('Contact')).toMatchObject({ recordCount: 120, pageCount: 3 });
+                expect(loadedObject('Contact').rows).toHaveLength(RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE);
+                expect(loadedObject('Account')).toMatchObject({ recordCount: 2, pageCount: 1 });
+
+                await send(pageRequest({ pageIndex: 2 }));
+
+                const [lastPage] = postedNamed('updaterRecordsPage');
+                expect(lastPage).toMatchObject({ command: 'updaterRecordsPage', renderSequence: lastRenderSequence(), treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', pageIndex: 2 });
+                expect(lastPage.rows).toHaveLength(20);
+                expect(lastPage.rows[0][0]).toBe(fakeRecordId('Contact', 100));
+                expect(lastPage.recordLinks).toEqual({ columnIndex: 0, rowIndexes: Array.from({ length: 20 }, (_unused, rowIndex) => rowIndex) });
+                expect(lastPage).not.toHaveProperty('columns');
+                // NO QUERY IS SENT FOR A PAGE: IT IS CUT FROM THE RECORDS THE HOST HOLDS
+                expect(sentQueries).toHaveLength(3);
+
+            });
+
+            it.each([
+                ['a page past the last', { pageIndex: 3 }],
+                ['a negative page', { pageIndex: -1 }],
+                ['a page that is not a whole number', { pageIndex: 1.5 }],
+                ['a page that is not a number', { pageIndex: '1' }],
+                ['an object the load did not read', { objectApiName: 'Lead' }],
+                ['an object named __proto__', { objectApiName: '__proto__' }],
+                ['a card the load was not for', { treeKey: 'Lead-ONLY' }],
+                ['another model', { renderSequence: -1 }]
+            ])('posts no page for %s', async (_description, overrides) => {
+
+                queryAnswer = async (soql: string) => {
+                    const records = recordsOf(/FROM (\w+)/.exec(soql)![1], 120);
+                    return { totalSize: records.length, done: true, records: records.slice(0, soql.includes('FROM Contact') ? 120 : 1) };
+                };
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                await send(pageRequest(overrides));
+
+                expect(postedNamed('updaterRecordsPage')).toEqual([]);
+                expect(warnings()).toEqual([]);
+
+            });
+
+            it('posts no page once the records are let go', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                RecipeCockpitAdapterState.clearHeldUpdaterRecords();
+                await send(pageRequest({ pageIndex: 0 }));
+
+                expect(postedNamed('updaterRecordsPage')).toEqual([]);
+
+            });
+
+            it('goes back to step 1 at once with nothing loaded, and asks before letting loaded records go', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                const changeRequest = () => ({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+
+                await send(changeRequest());
+                expect(postedNamed('confirmRequest')).toEqual([]);
+                expect(postedNamed('updaterParentChange')).toEqual([{ command: 'updaterParentChange', renderSequence: lastRenderSequence(), treeKey: ACCOUNT_TREE_KEY }]);
+
+                await send(loadRequest(lastRenderSequence()));
+                // THE ACTION WAITS ON THE CONFIRMATION, SO THE CLICK IS NOT AWAITED
+                const ask = async () => { void receivedMessageHandler(changeRequest()); await flushAsyncWork(); };
+                await ask();
+
+                const [confirmRequest] = postedNamed('confirmRequest');
+                expect(confirmRequest.title).toBe('Change the parent object of Account-thru-OtherChildObject__c?');
+                expect(confirmRequest.summary).toEqual(['The 29 loaded records are let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.']);
+                expect(confirmRequest.buttons).toEqual(['Change parent object']);
+
+                // CANCEL KEEPS THE RECORDS AND STEP 2
+                await send({ command: 'confirmResponse', confirmationId: confirmRequest.confirmationId, choice: null });
+                expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(29);
+                expect(postedNamed('updaterParentChange')).toHaveLength(1);
+
+                await ask();
+                await send({ command: 'confirmResponse', confirmationId: postedNamed('confirmRequest')[1].confirmationId, choice: 0 });
+
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBeUndefined();
+                expect(panelState().updaterRecordsMessage).toBeUndefined();
+                expect(postedNamed('updaterParentChange')).toHaveLength(2);
+                expect(sentQueries).toHaveLength(3);
+
+            });
+
+            it('lets nothing go when the records were replaced, or a run began, while the confirmation was open', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                const ask = async () => { void receivedMessageHandler({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() }); await flushAsyncWork(); };
+                const answerYes = () => send({ command: 'confirmResponse', confirmationId: postedNamed('confirmRequest').at(-1).confirmationId, choice: 0 });
+
+                // A NEWER LOAD'S RECORDS TOOK THEIR PLACE
+                await ask();
+                const newerRecords = { ...RecipeCockpitAdapterState.heldUpdaterRecords! };
+                RecipeCockpitAdapterState.heldUpdaterRecords = newerRecords;
+                await answerYes();
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBe(newerRecords);
+                expect(panelState().updaterRecordsMessage).toBeDefined();
+
+                // A RUN ON THE RECORDS BEGAN
+                await ask();
+                (RecipeCockpitAdapterState as any).isUpdaterLoadInFlight = true;
+                await answerYes();
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBe(newerRecords);
+
+                expect(postedNamed('updaterParentChange')).toEqual([]);
+
+            });
+
+            it('says "is" for one loaded record', async () => {
+
+                queryAnswer = async (soql: string) => {
+                    const records = soql.includes('FROM Account') ? recordsOf('Account', 1) : [];
+                    return { totalSize: records.length, done: true, records: records };
+                };
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                void receivedMessageHandler({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+                await flushAsyncWork();
+
+                expect(postedNamed('confirmRequest')[0].summary[0]).toMatch(/^The 1 loaded record is let go, /);
+
+            });
+
+            it('leaves another card\'s loaded records alone, on the host and on the screen', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                await send({ command: 'changeUpdaterParent', treeKey: 'Lead-ONLY', renderSequence: lastRenderSequence() });
+
+                expect(postedNamed('confirmRequest')).toEqual([]);
+                expect(postedNamed('updaterParentChange')).toEqual([]);
+                expect(RecipeCockpitAdapterState.readHeldUpdaterRecordCount()).toBe(29);
+
+            });
+
+            it('refuses the whole load, with no query sent, for a recipe field that is no api name on an object the org did not describe', async () => {
+
+                const listTreeObjects = RecipeCockpitAdapterState.listUpdaterTreeObjects.bind(RecipeCockpitAdapterState);
+                jest.spyOn(RecipeCockpitAdapterState, 'listUpdaterTreeObjects').mockImplementation((...listArguments) => listTreeObjects(...listArguments)
+                    .map(treeObject => treeObject.objectApiName === 'Contact' ? { ...treeObject, fieldApiNames: [...treeObject.fieldApiNames, 'Name FROM User --'] } : treeObject));
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries).toEqual([]);
+                expect(warnings()).toEqual(['Records were not loaded: Contact.Name FROM User -- is not a field api name.']);
+                expect(postedNamed('updaterRecords')).toEqual([]);
+                expect(RecipeCockpitAdapterState.heldUpdaterRecords).toBeUndefined();
+
+            });
+
+            it('says an object whose query is too long for the org could not be read, sends none of it, and still reads the others', async () => {
+
+                const listTreeObjects = RecipeCockpitAdapterState.listUpdaterTreeObjects.bind(RecipeCockpitAdapterState);
+                jest.spyOn(RecipeCockpitAdapterState, 'listUpdaterTreeObjects').mockImplementation((...listArguments) => listTreeObjects(...listArguments)
+                    .map(treeObject => treeObject.objectApiName === 'Contact'
+                        ? { ...treeObject, fieldApiNames: [...treeObject.fieldApiNames, ...Array.from({ length: 600 }, (_unused, fieldIndex) => `Long_Custom_Field_Name_Number_${fieldIndex}__c`)] }
+                        : treeObject));
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries.map(soql => /FROM (\w+)/.exec(soql)![1])).toEqual(['Account']);
+                expect(loadedObject('Account')).toMatchObject({ recordCount: 2 });
+                expect(loadedObject('Contact').failureMessage).toMatch(/^its query names 603 fields and is \d+ characters once sent/);
+                expect(loadedObject('OtherChildObject__c').skippedReason).toContain('Contact records were not read');
+                expect(warnings()).toEqual([expect.stringContaining('Contact could not be read')]);
+
+            });
+
+            it('stops a load cancelled while the org is described, keeping nothing', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
+                    query: async (soql: string) => { sentQueries.push(soql); return await queryAnswer(soql); },
+                    queryMore: async () => { throw new Error('no more pages'); },
+                    describe: async () => { cancellationToken.isCancellationRequested = true; throw new Error('not reached again'); }
+                }) as any);
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+
+                expect(sentQueries).toEqual([]);
+                expect(warnings()).toEqual([expect.stringMatching(/was cancelled, so none were kept\.$/)]);
+
+            });
+
+            it('opens no record from a load the host has let go, and reads none of its records', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(loadRequest(lastRenderSequence()));
+                const { recordLinkSequence } = postedNamed('updaterRecords')[0];
+                await send({ command: 'recordLinksRendered', renderSequence: lastRenderSequence(), recordLinkSequence });
+                const click = () => RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: lastRenderSequence(), recordLinkSequence, objectApiName: 'Contact', rowIndex: 0, pageIndex: 0 } as any, panelState());
+
+                expect(click()).toMatchObject({ kind: 'openPreviewRecord', recordId: fakeRecordId('Contact', 0) });
+
+                RecipeCockpitAdapterState.clearHeldUpdaterRecords();
+                expect(click()).toBeUndefined();
+
+            });
+
+            it('changes no parent for another card or model, nor while a run holds the records', async () => {
+
+                await openCockpit();
+                selectSandbox();
+
+                await send({ command: 'changeUpdaterParent', treeKey: 'No-Such-Tree', renderSequence: lastRenderSequence() });
+                await send({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: -1 });
+                panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+                await send({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+
+                expect(postedNamed('updaterParentChange')).toEqual([]);
+
+            });
 
         });
 
@@ -895,7 +1186,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             ...overrides
         });
 
-        it('posts every object with its chosen fields and the WHERE typed, and holds every Load records button until the host answers', () => {
+        it('posts every object with the WHERE typed and no field list, whatever is ticked, and holds every Load records button until the host answers', () => {
 
             const { panel, updaterPanel } = renderUpdater();
             const accountObject = objectNamed(panel, updaterPanel, 'Account');
@@ -921,9 +1212,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: 1,
                 objects: [
-                    { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c'], whereClause: '' },
-                    { objectApiName: 'Contact', fieldApiNames: [], whereClause: 'LastName != null' },
-                    { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+                    { objectApiName: 'Account', whereClause: '' },
+                    { objectApiName: 'Contact', whereClause: 'LastName != null' },
+                    { objectApiName: 'OtherChildObject__c', whereClause: '' }
                 ]
             }]);
             expect(loadButton.disabled).toBe(true);
@@ -964,7 +1255,126 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             expand(panel, contactObject);
             expect(panel.findAll(contactObject, 'updaterRecordsFailure')[0].textContent).toBe('Could not be read: No such column');
             expand(panel, otherObject);
-            expect(panel.findAll(otherObject, 'updaterRecordsSummary')[0].textContent).toBe('50 records, the first of 900 it matched. Showing the first 10');
+            expect(panel.findAll(otherObject, 'updaterRecordsSummary')[0].textContent).toBe('50 records, the first of 900 it matched');
+
+        });
+
+        describe('an object\'s record table (#720)', () => {
+
+            const pagedMessage = () => recordsMessage({ objects: [
+                {
+                    objectApiName: 'Account', totalSize: 120, recordCount: 120, isTruncated: false, hiddenColumnCount: 0, pageCount: 3,
+                    columns: ['Id', 'ParentId', 'Name'], rows: [['001A', '001P', 'Acme'], ['001B', '', 'Globex']],
+                    recordLinks: { columnIndex: 0, rowIndexes: [0, 1] }, lookupLinks: [{ columnIndex: 1, rowIndexes: [0] }],
+                    unreadFieldApiNames: ['Legacy_Code__c', '<i>Odd</i>']
+                },
+                { objectApiName: 'Contact', totalSize: 1, recordCount: 1, isTruncated: false, hiddenColumnCount: 0, pageCount: 1, columns: ['Id'], rows: [['003A']] },
+                { objectApiName: 'OtherChildObject__c', totalSize: 0, recordCount: 0, isTruncated: false, hiddenColumnCount: 0, pageCount: 0, columns: ['Id'], rows: [] }
+            ], recordLinkSequence: 9 });
+
+            const drawn = () => {
+                const rendered = renderUpdater();
+                const accountObject = objectNamed(rendered.panel, rendered.updaterPanel, 'Account');
+                expand(rendered.panel, accountObject);
+                rendered.panel.postToPanel(pagedMessage());
+                return { ...rendered, accountObject, accountRecords: rendered.panel.findAll(accountObject, 'updaterRecords')[0] };
+            };
+
+            const pagePosts = (panel: any) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadUpdaterRecordsPage');
+            const pageLabelOf = (panel: any, recordsElement: any) => panel.findAll(recordsElement, 'updaterRecordsPageLabel')[0].textContent;
+
+            it('shows the page count with Previous and Next, named for the object, and asks the host for a page by object name and index', () => {
+
+                const { panel, accountRecords } = drawn();
+                const previousButton = () => panel.findAll(accountRecords, 'updaterRecordsPrevious')[0];
+                const nextButton = () => panel.findAll(accountRecords, 'updaterRecordsNext')[0];
+
+                expect(pageLabelOf(panel, accountRecords)).toBe('Page 1 of 3');
+                expect(previousButton().disabled).toBe(true);
+                expect(nextButton().disabled).toBe(false);
+                expect(nextButton().attributes['aria-label']).toBe('Next page of Account records');
+                expect(previousButton().className).toContain('sdtButton-secondary');
+
+                nextButton().dispatch('click');
+                expect(pagePosts(panel)).toEqual([{ command: 'loadUpdaterRecordsPage', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1, objectApiName: 'Account', pageIndex: 1 }]);
+                // HELD UNTIL THE HOST ANSWERS, SO TWO PAGES ARE NEVER ASKED FOR AT ONCE
+                expect(nextButton().disabled).toBe(true);
+                nextButton().dispatch('click');
+                expect(pagePosts(panel)).toHaveLength(1);
+
+                panel.postToPanel({ command: 'updaterRecordsPage', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', pageIndex: 1, rows: [['001C', '', '<b>Initech</b>']], recordLinks: { columnIndex: 0, rowIndexes: [0] } });
+
+                expect(pageLabelOf(panel, accountRecords)).toBe('Page 2 of 3');
+                expect(panel.findAll(accountRecords, 'treeQueryRow').map((rowElement: any) => rowElement.children.map((cellElement: any) => cellElement.children.length > 0 ? `[${cellElement.children[0].textContent}]` : cellElement.textContent))).toEqual([['[001C]', '', '<b>Initech</b>']]);
+                expect(panel.findAll(accountRecords, 'b')).toEqual([]);
+                expect(previousButton().disabled).toBe(false);
+
+                previousButton().dispatch('click');
+                expect(pagePosts(panel).at(-1)).toMatchObject({ pageIndex: 0 });
+
+            });
+
+            it('shows the page count alone for a one-page table, and no table or pager for 0 records', () => {
+
+                const { panel, updaterPanel } = drawn();
+                const contactObject = objectNamed(panel, updaterPanel, 'Contact');
+                const otherObject = objectNamed(panel, updaterPanel, 'OtherChildObject__c');
+                expand(panel, contactObject);
+                expand(panel, otherObject);
+
+                expect(pageLabelOf(panel, contactObject)).toBe('Page 1 of 1');
+                expect(panel.findAll(contactObject, 'updaterRecordsNext')).toEqual([]);
+                expect(panel.findAll(otherObject, 'updaterRecordsSummary')[0].textContent).toBe('0 records');
+                expect(panel.findAll(otherObject, 'treeQueryTable')).toEqual([]);
+                expect(panel.findAll(otherObject, 'updaterRecordsPageLabel')).toEqual([]);
+
+            });
+
+            it('draws the table through buildRowTable, so it scrolls sideways inside its own section', () => {
+
+                const { panel, accountRecords } = drawn();
+
+                expect(panel.findAll(accountRecords, 'sdtRowTableWrap')).toHaveLength(1);
+                expect(panel.findAll(accountRecords, 'sdtRowTable')[0].className).toContain('treeQueryTable');
+
+            });
+
+            it('names each recipe field the org left out, as text, with what to do about it', () => {
+
+                const { panel, accountRecords } = drawn();
+
+                expect(panel.findAll(accountRecords, 'updaterRecordsUnread').map((noteElement: any) => noteElement.textContent)).toEqual([
+                    `Account.Legacy_Code__c was not read: ${RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON}`,
+                    `Account.<i>Odd</i> was not read: ${RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON}`
+                ]);
+                expect(panel.findAll(accountRecords, 'i')).toEqual([]);
+
+            });
+
+            it('ignores a page for another model, card or object, and one that is no page', () => {
+
+                const { panel, accountRecords } = drawn();
+                const page = (overrides: Record<string, unknown>) => ({ command: 'updaterRecordsPage', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', pageIndex: 1, rows: [['001Z', '', 'Forged']], ...overrides });
+
+                [{ renderSequence: 2 }, { treeKey: 'Lead-ONLY' }, { objectApiName: 'Lead' }, { pageIndex: -1 }, { pageIndex: 'x' }].forEach(overrides => panel.postToPanel(page(overrides)));
+
+                expect(pageLabelOf(panel, accountRecords)).toBe('Page 1 of 3');
+                expect(panel.findAll(accountRecords, 'treeQueryRow')).toHaveLength(2);
+
+            });
+
+            it('goes back to page 1 when the records are loaded again', () => {
+
+                const { panel, accountRecords } = drawn();
+                panel.findAll(accountRecords, 'updaterRecordsNext')[0].dispatch('click');
+                panel.postToPanel({ command: 'updaterRecordsPage', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', pageIndex: 1, rows: [['001C', '', 'Initech']] });
+
+                panel.postToPanel(pagedMessage());
+
+                expect(pageLabelOf(panel, accountRecords)).toBe('Page 1 of 3');
+                expect(panel.findAll(accountRecords, 'updaterRecordsNext')[0].disabled).toBe(false);
+
+            });
 
         });
 

@@ -24,6 +24,21 @@ export interface IRecipeCockpitOpenableRecordPreview {
     orgUsername: string;
     heldSourceToken: number;
     recordIdsByObjectApiName: Map<string, (string | undefined)[]>;
+    // SET FOR THE ADAPTER'S PAGED RECORD TABLES ONLY (#720)
+    tablePages?: IRecipeCockpitOpenableTablePages;
+}
+
+/*
+    A load's record tables (#720): a click names its object, page, row and column, and the Id
+    opened is read from the held record at that position (readCellRecordId, the Adapter's), so
+    no page's Ids are kept twice and a row of an older page never opens another page's record.
+    Only a page the host posted answers.
+*/
+export interface IRecipeCockpitOpenableTablePages {
+    pageSize: number;
+    postedPageIndexesByObjectApiName: ReadonlyMap<string, ReadonlySet<number>>;
+    // undefined FOR A RECORD NOT HELD, A COLUMN THAT IS NOT Id OR A LOOKUP, AND A CELL THAT IS NOT A WHOLE Id
+    readCellRecordId(objectApiName: string, recordIndex: number, columnIndex: number): string | undefined;
 }
 
 export class RecipeCockpitRecordLinks {

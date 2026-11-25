@@ -113,6 +113,31 @@ export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
     skippedReason?: string;
     // THE ROWS WHOSE Id OPENS THE RECORD (#556)
     recordLinks?: IRecipeCockpitPreviewRecordLinks;
+    // HOW MANY PAGES ITS TABLE HAS (#720); rows IS PAGE 0, AND THE REST ARE ASKED FOR WITH loadUpdaterRecordsPage
+    pageCount: number;
+    // PER LOOKUP COLUMN, THE ROWS WHOSE CELL HOLDS A WHOLE RECORD Id (#720)
+    lookupLinks?: IRecipeCockpitPreviewRecordLinks[];
+    // RECIPE FIELDS THE ORG DOES NOT DESCRIBE TO THIS USER, LEFT OUT OF THE QUERY (#720)
+    unreadFieldApiNames?: string[];
+}
+
+// ONE MORE PAGE OF ONE OBJECT'S TABLE (#720): ITS ROWS AND LINKS ONLY, SINCE THE COLUMNS ARE THE LOAD'S
+export interface IRecipeCockpitUpdaterRecordsPageMessage {
+    command: 'updaterRecordsPage';
+    renderSequence: number;
+    treeKey: string;
+    objectApiName: string;
+    pageIndex: number;
+    rows: string[][];
+    recordLinks?: IRecipeCockpitPreviewRecordLinks;
+    lookupLinks?: IRecipeCockpitPreviewRecordLinks[];
+}
+
+// THE HOST LET THE LOADED RECORDS GO, OR HELD NONE: THE PANEL GOES BACK TO STEP 1 (#720)
+export interface IRecipeCockpitUpdaterParentChangeMessage {
+    command: 'updaterParentChange';
+    renderSequence: number;
+    treeKey: string;
 }
 
 /*
@@ -289,6 +314,8 @@ export const RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL = 'Nothing was restored
 // THE PANEL COMMANDS AND ACTION KINDS THIS HOST OWNS: THE HUB HANDS EACH ONE HERE, AND NO OTHER FILE NAMES IT
 export const RECIPE_COCKPIT_ADAPTER_COMMANDS = [
     'loadUpdaterRecords',
+    'loadUpdaterRecordsPage',
+    'changeUpdaterParent',
     'retrieveAdapterMetadata',
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
@@ -301,6 +328,8 @@ export const RECIPE_COCKPIT_ADAPTER_COMMANDS = [
 
 export const RECIPE_COCKPIT_ADAPTER_ACTION_KINDS = [
     'loadUpdaterRecords',
+    'postUpdaterRecordsPage',
+    'changeUpdaterParent',
     'retrieveAdapterMetadata',
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
@@ -314,6 +343,8 @@ export const RECIPE_COCKPIT_ADAPTER_ACTION_KINDS = [
 
 export type RecipeCockpitAdapterPanelAction =
     | { kind: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; requests: IRecipeCockpitUpdaterObjectRequest[]; isOrgPrompted: boolean }
+    | { kind: 'postUpdaterRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number }
+    | { kind: 'changeUpdaterParent'; treeKey: string; renderSequence: number }
     | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
     | { kind: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; objectApiNames: string[]; isOrgPrompted: boolean }
     | { kind: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: number }
@@ -407,6 +438,56 @@ export class RecipeCockpitAdapterHost {
                 planned as the load plans them -- and so is the org: the Target Org Manager
                 selection once it answered it is a sandbox, or, with none, the load's own prompt.
             */
+            /*
+                Another page of an object's table (#720): only an object and a page of the records
+                on screen, which the host still holds for this card and model. The panel names the
+                object and the page, never a record.
+            */
+            case 'loadUpdaterRecordsPage': {
+
+                const { treeKey, renderSequence, objectApiName, pageIndex } = panelMessage;
+                const recordsMessage = panelState.updaterRecordsMessage;
+                const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+                const loadedObject = recordsMessage?.objects.find(objectRecords => objectRecords.objectApiName === objectApiName);
+
+                if ( typeof treeKey !== 'string'
+                        || !recordsMessage
+                        || !loadedObject
+                        || !heldRecords
+                        || recordsMessage.treeKey !== treeKey
+                        || recordsMessage.renderSequence !== renderSequence
+                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || heldRecords.workspaceRoot !== panelState.workspaceRoot
+                        || heldRecords.renderSequence !== renderSequence
+                        || typeof pageIndex !== 'number'
+                        || !Number.isInteger(pageIndex)
+                        || pageIndex < 0
+                        || pageIndex >= loadedObject.pageCount ) {
+                    return undefined;
+                }
+
+                return { kind: 'postUpdaterRecordsPage', treeKey: treeKey, renderSequence: renderSequence, objectApiName: loadedObject.objectApiName, pageIndex: pageIndex };
+
+            }
+
+            // "Change parent object" WITH RECORDS ON SCREEN (#720): THE CARD'S KEY ONLY, AND NEVER WHILE A RUN HOLDS THOSE RECORDS
+            case 'changeUpdaterParent': {
+
+                const { treeKey, renderSequence } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || typeof renderSequence !== 'number'
+                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || panelState.updaterLoadStateMessage?.isRunning ) {
+                    return undefined;
+                }
+
+                return { kind: 'changeUpdaterParent', treeKey: treeKey, renderSequence: renderSequence };
+
+            }
+
             case 'retrieveAdapterMetadata': {
 
                 const { treeKey, renderSequence, parentObjectApiName } = panelMessage;
@@ -789,6 +870,16 @@ export class RecipeCockpitAdapterHost {
             case 'loadUpdaterRecords':
 
                 await RecipeCockpitAdapterRecords.loadUpdaterRecordsFromPanel(hub, cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'postUpdaterRecordsPage':
+
+                RecipeCockpitAdapterRecords.postUpdaterRecordsPage(hub, cockpitPanel, panelAction);
+                return;
+
+            case 'changeUpdaterParent':
+
+                await RecipeCockpitAdapterRecords.changeUpdaterParentFromPanel(hub, cockpitPanel, panelState, panelAction);
                 return;
 
             case 'retrieveAdapterMetadata':

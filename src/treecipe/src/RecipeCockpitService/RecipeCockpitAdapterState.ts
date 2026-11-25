@@ -73,6 +73,10 @@ export class RecipeCockpitAdapterState {
         // THE OBJECT THE LOAD STARTED FROM AND EACH OBJECT'S WHERE AS TYPED, WHICH AN ADAPTED DATA SET RECORDS (#448)
         parentObjectApiName: string;
         whereClausesByObjectApiName: Map<string, string>;
+        // EACH OBJECT'S TABLE (#720): ITS COLUMNS IN ORDER, WHICH OF THEM ARE LOOKUPS, AND THE PAGES POSTED SO FAR
+        columnFieldApiNamesByObjectApiName: Map<string, string[]>;
+        lookupFieldApiNamesByObjectApiName: Map<string, string[]>;
+        postedPageIndexesByObjectApiName: Map<string, Set<number>>;
     } | undefined;
 
     /*
@@ -167,16 +171,20 @@ export class RecipeCockpitAdapterState {
                                   orgOnlyFieldApiNamesByObjectApiName?: ReadonlyMap<string, readonly string[]>): IRecipeCockpitUpdaterTreeObject[] {
 
         const fieldApiNamesByObjectApiName = new Map<string, string[]>();
+        const otherLookupFieldApiNamesByObjectApiName = new Map<string, string[]>();
         recipe.objects.forEach(object => {
             if ( !fieldApiNamesByObjectApiName.has(object.objectApiName) ) {
                 fieldApiNamesByObjectApiName.set(object.objectApiName, [
                     ...object.fields.map(field => field.fieldApiName),
                     ...( orgOnlyFieldApiNamesByObjectApiName?.get(object.objectApiName) ?? [] )
                 ]);
+                otherLookupFieldApiNamesByObjectApiName.set(object.objectApiName, object.fields
+                    .filter(field => RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.includes(String(field.fieldType)))
+                    .map(field => field.fieldApiName));
             }
         });
 
-        return RecipeCockpitTreeUpdaterQuery.listTreeObjects(tree.objects, fieldApiNamesByObjectApiName);
+        return RecipeCockpitTreeUpdaterQuery.listTreeObjects(tree.objects, fieldApiNamesByObjectApiName, otherLookupFieldApiNamesByObjectApiName);
 
     }
 

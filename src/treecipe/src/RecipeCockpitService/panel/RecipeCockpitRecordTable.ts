@@ -15,7 +15,7 @@ const vscodeApi: { postMessage(message: RecordLinkPanelMessage): void } = cockpi
 
 // WHAT A PREVIEW POSTS; THE HOST'S ROUTER CHECKS EACH FIELD AGAIN (routePanelMessage)
 type RecordLinkPanelMessage =
-    | { command: 'openPreviewRecord'; renderSequence: number; recordLinkSequence: unknown; rowIndex: number; objectApiName?: string }
+    | { command: 'openPreviewRecord'; renderSequence: number; recordLinkSequence: unknown; rowIndex: number; objectApiName?: string; pageIndex?: number; columnIndex?: number }
     | { command: 'recordLinksRendered'; renderSequence: number; recordLinkSequence: number };
 
 // WHICH ROWS OF A PREVIEW OPEN THEIR RECORD, AS THE HOST SENT IT (#556); READ AS UNTRUSTED
@@ -24,16 +24,31 @@ interface IRecordLinks {
     rowIndexes?: unknown;
 }
 
+// ONE PAGE OF AN ADAPTER RECORD TABLE (#720): WHICH PAGE IT IS, AND ITS LOOKUP CELLS THAT HOLD A WHOLE RECORD Id
+export interface IRecordTablePage {
+    pageIndex: number;
+    lookupLinks?: unknown;
+}
+
 /*
-    A row whose own Id opens its record (#556) draws that cell as a link. The click posts the
-    preview's sequence and the row's position -- never the Id, a URL or an org -- and the host
-    opens the Id it keeps for that row, in the org it was read from.
+    A row whose own Id opens its record (#556) draws that cell as a link, and so does a lookup
+    cell of an Adapter record table (#720). The click posts the preview's sequence and the cell's
+    position -- row, and for those tables page and lookup column -- never the Id, a URL or an org,
+    and the host opens the Id it keeps at that position, in the org it was read from.
 */
-export function buildRecordTable(columns: string[], rows: unknown[], recordLinks?: unknown, recordLinkSequence?: unknown, objectApiName?: string): HTMLElement {
+export function buildRecordTable(columns: string[], rows: unknown[], recordLinks?: unknown, recordLinkSequence?: unknown, objectApiName?: string, tablePage?: IRecordTablePage): HTMLElement {
 
     const links = recordLinks as IRecordLinks | null | undefined;
     const linkColumnIndex = links && typeof recordLinkSequence === 'number' && Number.isInteger(links.columnIndex) ? links.columnIndex as number : -1;
-    const linkedRowIndexes = new Set<unknown>(linkColumnIndex !== -1 && links && Array.isArray(links.rowIndexes) ? links.rowIndexes : []);
+    const linkedRowIndexesByColumnIndex = new Map<number, Set<unknown>>();
+    if (linkColumnIndex !== -1 && links && Array.isArray(links.rowIndexes)) { linkedRowIndexesByColumnIndex.set(linkColumnIndex, new Set<unknown>(links.rowIndexes)); }
+    if (tablePage && typeof recordLinkSequence === 'number' && Array.isArray(tablePage.lookupLinks)) {
+        (tablePage.lookupLinks as Array<IRecordLinks | null>).forEach(function (lookupLinks) {
+            if (lookupLinks && Number.isInteger(lookupLinks.columnIndex) && Array.isArray(lookupLinks.rowIndexes)) {
+                linkedRowIndexesByColumnIndex.set(lookupLinks.columnIndex as number, new Set<unknown>(lookupLinks.rowIndexes));
+            }
+        });
+    }
 
     const rowTable = buildRowTable({
         className: 'treeQueryTable',
@@ -43,7 +58,8 @@ export function buildRecordTable(columns: string[], rows: unknown[], recordLinks
         const rowElement = createElement('tr', 'treeQueryRow');
         columns.forEach(function (_column, columnIndex) {
             const cellText = Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : '';
-            if (columnIndex !== linkColumnIndex || !linkedRowIndexes.has(rowIndex) || cellText === '') {
+            const linkedRowIndexes = linkedRowIndexesByColumnIndex.get(columnIndex);
+            if (!linkedRowIndexes || !linkedRowIndexes.has(rowIndex) || cellText === '') {
                 rowElement.appendChild(createElement('td', '', cellText));
                 return;
             }
@@ -54,6 +70,8 @@ export function buildRecordTable(columns: string[], rows: unknown[], recordLinks
                 if (renderedSequence === null) { return; }
                 const openMessage: RecordLinkPanelMessage = { command: 'openPreviewRecord', renderSequence: renderedSequence, recordLinkSequence: recordLinkSequence, rowIndex: rowIndex };
                 if (typeof objectApiName === 'string') { openMessage.objectApiName = objectApiName; }
+                if (tablePage) { openMessage.pageIndex = tablePage.pageIndex; }
+                if (columnIndex !== linkColumnIndex) { openMessage.columnIndex = columnIndex; }
                 vscodeApi.postMessage(openMessage);
             });
             cellElement.appendChild(recordLinkElement);
