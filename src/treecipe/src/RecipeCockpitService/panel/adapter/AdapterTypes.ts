@@ -121,9 +121,14 @@ export interface IUpdaterNewRecordsPageMessage {
 
 // THE "Generate new records" TAB OF ONE OBJECT: ITS OWN TICKS, TYPED VALUES AND COUNT, AND THE PAGE OF ITS PREVIEW ON SCREEN
 export interface IUpdaterNewRecordsState {
+    objectApiName: string;
+    // WHAT THE NEW RECORDS GO UNDER, AS THE LAST LOAD (OR, FOR AN ORG-ONLY CHILD, ITS BLOCK) SAYS; null WHEN NOTHING DOES
+    readParent: () => { parentObjectApiName: string; parentRecordCount: number } | null;
+    readUnreadFieldApiNames: () => string[];
     selectedTab: UpdaterRecordTab;
-    tabElements: Record<UpdaterRecordTab, HTMLButtonElement>;
-    panelElements: Record<UpdaterRecordTab, HTMLElement>;
+    // SET FOR A TREE OBJECT, WHICH HAS THE TWO TABS; AN ORG-ONLY CHILD'S BLOCK HAS NONE
+    tabElements?: Record<UpdaterRecordTab, HTMLButtonElement>;
+    panelElements?: Record<UpdaterRecordTab, HTMLElement>;
     fieldTreeState: IUpdaterFieldTreeState;
     fieldStates: IUpdaterFieldRowState[];
     fieldObjectState: IUpdaterFieldObjectState;
@@ -263,17 +268,6 @@ export interface IAdapterChildBlockMessage {
     unreadableFieldCount?: unknown;
 }
 
-export interface IAdapterChildPreviewMessage {
-    renderSequence: unknown;
-    treeKey: unknown;
-    childObjectApiName?: unknown;
-    columns?: unknown;
-    rows?: unknown;
-    recordCount?: unknown;
-    hiddenColumnCount?: unknown;
-    countPerParent?: unknown;
-}
-
 // A PREVIEW THAT CAN OPEN ITS RECORDS (#556): ITS ACK IS THE ONLY THING THAT MAKES THEM ROUTABLE
 export interface IRecordLinksMessage {
     renderSequence?: unknown;
@@ -390,13 +384,9 @@ export interface IAdapterChild {
     parentObjectApiName: string;
     childObjectApiName: string;
     lookupFieldApiName: string;
-    childTreeState: IUpdaterFieldTreeState;
-    fieldStates: IUpdaterFieldRowState[];
     editorElement: HTMLElement;
-    countInputElement: HTMLInputElement;
-    refusalElement: HTMLElement;
-    generateElement: HTMLButtonElement;
-    previewElement: HTMLElement;
+    // THE SAME PANEL A TREE OBJECT'S "Generate new records" TAB HOLDS (#722)
+    newRecords: IUpdaterNewRecordsState;
 }
 
 export interface IUpdaterSnapshotButton {
@@ -426,7 +416,6 @@ export interface IAdapterTreeState extends IUpdaterFieldTreeState {
     adapterChangesMessage: IAdapterChangesMessage | null;
     adapterChild: IAdapterChild | null;
     adapterChildBlockMessage: IAdapterChildBlockMessage | null;
-    adapterChildPreviewMessage: IAdapterChildPreviewMessage | null;
     isUpdaterSnapshotsWanted?: boolean;
     updaterParentStepElement: HTMLElement;
     updaterStructureStepElement: HTMLElement;
@@ -473,6 +462,5 @@ export type AdapterPanelMessage =
     | { command: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; parentObjectApiName: string }
     | { command: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: unknown }
     | { command: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }
-    | { command: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fields: IAdapterChildFieldRequest[] }
     | { command: 'generateUpdaterNewRecords'; treeKey: string; renderSequence: number; objectApiName: string; countPerParent: number; fields: IAdapterChildFieldRequest[] }
     | { command: 'loadUpdaterNewRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number };

@@ -24,7 +24,7 @@ import {
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
 } from '../../RecipeCockpitAdapterConstants';
 import type { IActionCardView } from '../RecipeCockpitPanelBuilders';
-import { clearUpdaterNewRecords, drawNewRecordsControls } from './AdapterNewRecords';
+import { clearUpdaterNewRecords, drawNewRecordsControls, listNewRecordsStates } from './AdapterNewRecords';
 import { buildEditableRecordSection, drawUpdaterEditControls, focusEditButton, readEditSummary } from './AdapterRecordEdit';
 import { clearAdapterChildren, drawAdapterChildControls } from './AdapterChild';
 import { countAdapterFileChanges } from './AdapterRetrieve';
@@ -243,7 +243,7 @@ export function drawUpdaterLoadButtons(): void {
         });
 
         updaterObjectStates.forEach(drawUpdaterEditControls);
-        updaterObjectStates.forEach(function (updaterObjectState) { drawNewRecordsControls(treeState, updaterObjectState); });
+        listNewRecordsStates(treeState).forEach(function (newRecordsState) { drawNewRecordsControls(treeState, newRecordsState); });
 
         if (!treeState.updaterUpdateCard) { return; }
         const editTotals = sumUpdaterEdits(treeState);

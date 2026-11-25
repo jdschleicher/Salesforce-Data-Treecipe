@@ -1,5 +1,27 @@
 # Change Log
 
+## [3.214.0] - Recipe Cockpit: Add to data set opens the same Generate new records panel (#722, part 2)
+
+**Add to data set**, for a child object only the org has, had a block of its own beside the new **Generate new records** tab: its own button, its own confirmation and a preview of 10 rows. Two ways to do one thing.
+
+### Treecipe Adapter tab
+
+- **Add to data set now opens the Generate new records panel** under the child's row: the same heading, count per loaded record, fields with a box each, **Generate records** and preview as a tree object's tab.
+- **Its preview is paged**, 50 to a page with **Previous** and **Next**, where it showed the first 10 rows.
+- **Its button reads Generate records** (it read Generate preview), and its confirmation and notification are worded as the tab's.
+- **A typed value that is the block's own nickname is refused with the tab's wording**, and a field with no expression and nothing typed says to type a value or untick it.
+- **Adding a child again lets the last one's preview go.**
+- **Add to data set is refused for a child the last load read as part of the treecipe**, saying to use that object's Generate new records tab. A retrieve lists a child against the parent chosen then, and after another parent and a load the same object can be one the load read.
+- The confirmation shows a field's faker expression as written, without the quotes a recipe wraps it in.
+
+### For contributors
+
+- `generateAdapterChild`, the `adapterChildPreview` message, `heldAdapterChild.generatedRecords` and `readHeldAdapterChildRecords` are gone. `RecipeCockpitAdapterNewRecords.resolveTarget` answers for a tree object and for the prepared child; `panel/adapter/AdapterNewRecords.ts` exports `buildNewRecordsPanel`, which `AdapterChild.ts` builds its block with.
+
+### Not in this change
+
+- A field only the org holds is still not listed in a tree object's Generate new records tab. The host accepts one; the tab's rows do not yet follow a retrieve.
+
 ## [3.213.0] - Recipe Cockpit: the Treecipe Adapter generates new records of an object under the loaded parents (#722, part 1)
 
 The only way to add records under loaded parents was **Add to data set**, which works only for a child object that exists only in the org. You could not add more Contacts under the Accounts you had just loaded. This is slice C of the Adapter record table (#719). Part 2 moves **Add to data set** into the same tab.

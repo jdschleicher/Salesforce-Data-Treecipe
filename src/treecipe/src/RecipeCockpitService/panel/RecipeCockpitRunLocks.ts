@@ -24,7 +24,7 @@ export const runLocks = {
     metadataDeployRunningKey: null as string | null,
     // THE QUERY TAB'S RUN (#367)
     isTreeQueryRunning: false,
-    // THE TREECIPE ADAPTER'S RUN (#416): THE CARD CLICKED, AND WHICH RUN -- 'load', 'generate' (#417), 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'
+    // THE TREECIPE ADAPTER'S RUN (#416): THE CARD CLICKED, AND WHICH RUN -- 'load', 'generate' (#417), 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateNew'
     updaterLoadRunningTreeKey: null as string | null,
     updaterRunKind: '',
     // THE OBJECT WHOSE "Generate records" (#722) IS RUNNING, SO ONLY ITS BUTTON SAYS "Generating…"

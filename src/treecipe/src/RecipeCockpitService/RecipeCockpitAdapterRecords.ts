@@ -93,11 +93,8 @@ import { RecipeCockpitDrawnModel } from './RecipeCockpitDrawnModel';
 export const RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL = 'Open data set';
 export const RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL = 'Open adapted recipe';
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE = 'Fixed value only: this recipe\'s faker backend writes no expression for its type in the org. Type a value in its editor.';
-export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org';
 // THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGER HAS SELECTED
 export const RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to load this tree\'s records from';
-// HOW MANY ROWS OF A NEW CHILD OBJECT'S PREVIEW THE PANEL IS SENT (#447); THE REST STAY ON THE HOST
-export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
 export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
 // AN OBJECT UNDER THE PARENT IS READ ONLY UNDER RECORDS LOADED A LEVEL ABOVE (#444); WHEN THERE ARE NONE, IT SENDS NO QUERY
 export const RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX = 'Not read: ';
@@ -141,7 +138,6 @@ export class RecipeCockpitAdapterRecords {
         RecipeCockpitAdapterState.clearHeldUpdaterRecords();
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterChildBlockMessage = undefined;
-        panelState.adapterChildPreviewMessage = undefined;
         panelState.updaterNewRecordsMessages = undefined;
         RecipeCockpitAdapterState.setUpdaterLoadState(hub, { command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
 
@@ -642,7 +638,6 @@ export class RecipeCockpitAdapterRecords {
             RecipeCockpitAdapterState.clearHeldUpdaterRecords();
             panelState.updaterRecordsMessage = undefined;
             panelState.adapterChildBlockMessage = undefined;
-            panelState.adapterChildPreviewMessage = undefined;
             panelState.updaterNewRecordsMessages = undefined;
     
         }
@@ -686,7 +681,6 @@ export class RecipeCockpitAdapterRecords {
                 RecipeCockpitAdapterState.clearHeldUpdaterRecords();
                 panelState.updaterRecordsMessage = undefined;
                 panelState.adapterChildBlockMessage = undefined;
-                panelState.adapterChildPreviewMessage = undefined;
                 panelState.updaterNewRecordsMessages = undefined;
                     }
             RecipeCockpitAdapterState.setUpdaterLoadState(hub, isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
@@ -1029,7 +1023,6 @@ export class RecipeCockpitAdapterRecords {
                 RecipeCockpitAdapterState.clearHeldUpdaterRecords();
                 panelState.updaterRecordsMessage = undefined;
                 panelState.adapterChildBlockMessage = undefined;
-                panelState.adapterChildPreviewMessage = undefined;
                 panelState.updaterNewRecordsMessages = undefined;
                     }
             RecipeCockpitAdapterState.setUpdaterLoadState(hub, isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);

@@ -21,7 +21,10 @@ import type {
     IRecipeCockpitUpdaterNewRecordsPageMessage,
     RecipeCockpitAdapterPanelAction
 } from './RecipeCockpitAdapterHost';
-import type { RecipeCockpitUpdaterValueGenerator } from './RecipeCockpitAdapterEdits';
+import type {
+    IRecipeCockpitUpdaterColumnPlan,
+    RecipeCockpitUpdaterValueGenerator
+} from './RecipeCockpitAdapterEdits';
 import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
 
 /*
@@ -38,6 +41,7 @@ import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
 
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_CONFIRM_LABEL = 'Generate records';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOTE = RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE;
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_FIXED_ONLY_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org.';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it. Type a value for it, or untick it.';
 
 type GenerateNewRecordsAction = Extract<RecipeCockpitAdapterPanelAction, { kind: 'generateUpdaterNewRecords' }>;
@@ -52,6 +56,14 @@ interface IPlannedNewRecordField {
     // THE SCALAR A ONE-OBJECT RECIPE GENERATES FROM; ABSENT FOR A FIXED VALUE, WHICH NO BACKEND RUNS FOR
     valueText?: string;
     fixedValue?: unknown;
+}
+
+// WHAT NEW RECORDS OF ONE OBJECT GO UNDER AND WHAT EACH FIELD IS HELD TO
+export interface IRecipeCockpitNewRecordsTarget {
+    parentObjectApiName: string;
+    lookupFieldApiName: string;
+    parentRecordIds: string[];
+    columnPlans: IRecipeCockpitUpdaterColumnPlan[];
 }
 
 const SOURCE_LABELS: Record<PlannedFieldSource, string> = {
@@ -74,6 +86,50 @@ export class RecipeCockpitAdapterNewRecords {
             const parentRecordId = RecipeCockpitQuery.readLinkedRecordId(parentRecord, 'Id');
             return parentRecordId === undefined ? [] : [parentRecordId];
         });
+    }
+
+    /*
+        What new records of an object go under and are generated from, or undefined when none can
+        be: a TREE object the load read below the parent (the lookup it was narrowed by, the loaded
+        records above it and the column plans of #721), or the ORG-ONLY child Add to data set
+        prepared for this card and this load (#447: its lookup, the parents it was prepared under,
+        and its retrieved fields as plans). One answer for the router and the run.
+    */
+    static resolveTarget(objectApiName: string, treeKey: string): IRecipeCockpitNewRecordsTarget | undefined {
+
+        const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+        if ( !heldRecords ) {
+            return undefined;
+        }
+
+        const narrowingLookup = heldRecords.narrowingLookupsByObjectApiName.get(objectApiName);
+        const columnPlans = heldRecords.columnPlansByObjectApiName.get(objectApiName);
+        if ( narrowingLookup && columnPlans ) {
+            return { parentObjectApiName: narrowingLookup.parentObjectApiName, lookupFieldApiName: narrowingLookup.fieldApiName, parentRecordIds: this.listParentRecordIds(objectApiName) ?? [], columnPlans: columnPlans };
+        }
+
+        const heldChild = RecipeCockpitAdapterState.heldAdapterChild;
+        if ( !heldChild || heldChild.resultKey !== heldRecords.resultKey || heldChild.treeKey !== treeKey || heldChild.childObjectApiName !== objectApiName ) {
+            return undefined;
+        }
+
+        // A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT: THE CHILD'S BLOCK HAS ONE OF ITS OWN
+        const recipeNicknames = [`${objectApiName}_Adapter_NickName`];
+        return {
+            parentObjectApiName: heldChild.parentObjectApiName,
+            lookupFieldApiName: heldChild.lookupFieldApiName,
+            parentRecordIds: heldChild.parentRecordIds,
+            columnPlans: [...heldChild.fields.values()].map((offeredField): IRecipeCockpitUpdaterColumnPlan => offeredField.lockReason !== undefined
+                ? { fieldApiName: offeredField.fieldViewModel.fieldApiName, lockReason: offeredField.lockReason }
+                : {
+                    fieldApiName: offeredField.fieldViewModel.fieldApiName,
+                    typing: { fieldViewModel: offeredField.fieldViewModel, declaredPicklistValues: offeredField.picklistValues.length > 0 ? offeredField.picklistValues : undefined, recipeNicknames: recipeNicknames, isOrgOnly: true },
+                    ...( offeredField.expression !== undefined
+                        ? { generation: { source: 'orgExpression' as const, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: offeredField.expression, kind: 'expression' }), isOrgOnly: true as const } }
+                        : {} )
+                })
+        };
+
     }
 
     static async generateFromPanel(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
@@ -108,13 +164,14 @@ export class RecipeCockpitAdapterNewRecords {
         const { treeKey, renderSequence, objectApiName, countPerParent, fieldRequests } = generateAction;
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
         const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
-        const narrowingLookup = heldRecords?.narrowingLookupsByObjectApiName.get(objectApiName);
-        const columnPlans = heldRecords?.columnPlansByObjectApiName.get(objectApiName);
+        const target = this.resolveTarget(objectApiName, treeKey);
         const refuse = (reason: string) => VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`No new ${objectApiName} records were generated: ${reason}`));
 
-        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !heldRecords || heldRecords.renderSequence !== renderSequence || !narrowingLookup || !columnPlans ) {
+        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !heldRecords || heldRecords.renderSequence !== renderSequence || !target ) {
             return;
         }
+
+        const { columnPlans, parentObjectApiName, lookupFieldApiName, parentRecordIds } = target;
 
         const fakerService = hub.readTreeFakerService(panelState, treeKey);
         if ( !fakerService ) {
@@ -142,7 +199,7 @@ export class RecipeCockpitAdapterNewRecords {
                 }
                 plannedFields.push(generation.source === 'recipeFixed'
                     ? { fieldApiName: columnPlan.fieldApiName, source: 'recipeFixed', shownValue: generation.valueText, fixedValue: generation.fixedValue }
-                    : { fieldApiName: columnPlan.fieldApiName, source: generation.source, shownValue: generation.valueText, valueText: generation.valueText });
+                    : { fieldApiName: columnPlan.fieldApiName, source: generation.source, shownValue: this.readScalarText(generation.valueText), valueText: generation.valueText });
                 continue;
             }
 
@@ -157,7 +214,7 @@ export class RecipeCockpitAdapterNewRecords {
             const valueKind = hub.resolveFixedValueKind(fieldRequest.value, columnPlan.typing.fieldViewModel);
             // AS Add to data set REFUSES IT (#447): A TYPE THE BACKEND WRITES NO EXPRESSION FOR IN THE ORG TAKES A FIXED VALUE ONLY
             if ( valueKind === 'expression' && columnPlan.typing.isOrgOnly && !columnPlan.generation ) {
-                refuse(`${fieldLabel} takes a fixed value only, since this recipe's faker backend writes no expression for its type in the org.`);
+                refuse(`${fieldLabel}: ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_FIXED_ONLY_REFUSAL}`);
                 return;
             }
             plannedFields.push(valueKind === 'expression'
@@ -166,8 +223,6 @@ export class RecipeCockpitAdapterNewRecords {
 
         }
 
-        const parentObjectApiName = narrowingLookup.parentObjectApiName;
-        const parentRecordIds = this.listParentRecordIds(objectApiName) ?? [];
         const parentRecordIdsByRecord = RecipeCockpitRecordCreation.spreadParentIds(parentRecordIds, countPerParent);
         if ( !parentRecordIdsByRecord ) {
             refuse(RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON);
@@ -193,7 +248,7 @@ export class RecipeCockpitAdapterNewRecords {
                         title: 'Fields',
                         count: plannedFields.length + 1,
                         lines: [
-                            `  ${narrowingLookup.fieldApiName} -- the Id of a loaded ${parentObjectApiName} record, ${countPerParent} in a row`,
+                            `  ${lookupFieldApiName} -- the Id of a loaded ${parentObjectApiName} record, ${countPerParent} in a row`,
                             ...plannedFields.map(plannedField => `  ${plannedField.fieldApiName} -- ${SOURCE_LABELS[plannedField.source]}: ${plannedField.shownValue}`)
                         ]
                     }
@@ -222,8 +277,9 @@ export class RecipeCockpitAdapterNewRecords {
                 location: vscode.ProgressLocation.Notification,
                 title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating ${describeRecords(recordCount, `new ${objectApiName}`)} with ${fakerService}`),
                 cancellable: true
-            }, async (_progress, cancellationToken) => {
-                generation = await generateValues(fakerService, objectApiName, recordCount, generatedFields, () => cancellationToken.isCancellationRequested);
+            }, async (progress, cancellationToken) => {
+                generation = await generateValues(fakerService, objectApiName, recordCount, generatedFields, () => cancellationToken.isCancellationRequested,
+                                                  (generatedCount: number) => progress.report({ message: `${generatedCount} of ${recordCount}` }));
             });
         }
 
@@ -252,7 +308,7 @@ export class RecipeCockpitAdapterNewRecords {
         records.forEach((record, recordIndex) => {
             const attributes = record.attributes && typeof record.attributes === 'object' ? record.attributes as Record<string, unknown> : {};
             record.attributes = { ...attributes, referenceId: `${objectApiName}_Adapter_Reference_${recordIndex + 1}` };
-            record[narrowingLookup.fieldApiName] = parentRecordIdsByRecord[recordIndex];
+            record[lookupFieldApiName] = parentRecordIdsByRecord[recordIndex];
             plannedFields.forEach(plannedField => {
                 // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
                 record[plannedField.fieldApiName] = plannedField.valueText === undefined ? plannedField.fixedValue : record[plannedField.fieldApiName] ?? null;
@@ -264,9 +320,9 @@ export class RecipeCockpitAdapterNewRecords {
         }
         RecipeCockpitAdapterState.heldUpdaterNewRecords.byObjectApiName.set(objectApiName, {
             parentObjectApiName: parentObjectApiName,
-            lookupFieldApiName: narrowingLookup.fieldApiName,
+            lookupFieldApiName: lookupFieldApiName,
             countPerParent: countPerParent,
-            columnFieldApiNames: [narrowingLookup.fieldApiName, ...plannedFields.map(plannedField => plannedField.fieldApiName)],
+            columnFieldApiNames: [lookupFieldApiName, ...plannedFields.map(plannedField => plannedField.fieldApiName)],
             records: records
         });
 
@@ -293,6 +349,16 @@ export class RecipeCockpitAdapterNewRecords {
         VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(
             `Generated ${describeRecords(records.length, `new ${objectApiName}`)}, ${countPerParent} per loaded ${parentObjectApiName} record. Nothing was written to the org.`));
 
+    }
+
+    // AN EXPRESSION IS PLANNED AS THE DOUBLE-QUOTED SCALAR A RECIPE HOLDS IT AS; A CONFIRMATION SHOWS THE EXPRESSION ITSELF
+    private static readScalarText(valueText: string): string {
+        try {
+            const scalarValue: unknown = JSON.parse(valueText);
+            return typeof scalarValue === 'string' ? scalarValue : valueText;
+        } catch {
+            return valueText;
+        }
     }
 
     // ONE PAGE OF AN OBJECT'S NEW RECORDS, CUT FROM THE RECORDS THE HOST HOLDS: THE PARENT'S Id FIRST, THEN THE FIELDS FILLED

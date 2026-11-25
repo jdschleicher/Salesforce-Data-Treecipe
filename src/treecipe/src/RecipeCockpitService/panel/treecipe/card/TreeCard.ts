@@ -105,7 +105,6 @@ function renderTree(tree: ICardTree, objectsByApiName: Record<string, ICardObjec
         // THE NEW CHILD OBJECT BEING ADDED UNDER THE LOADED RECORDS (#447), ITS BLOCK'S STATE AND ELEMENTS
         adapterChild: null,
         adapterChildBlockMessage: null,
-        adapterChildPreviewMessage: null,
         // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
         updaterEditedValues: Object.create(null),
         isDatasetFavoritesOnly: false,

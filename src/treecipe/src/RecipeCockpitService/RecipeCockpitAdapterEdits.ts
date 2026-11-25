@@ -159,7 +159,8 @@ export type RecipeCockpitUpdaterValueGenerator = (fakerService: 'faker-js' | 'sn
                                                   objectApiName: string,
                                                   valueCount: number,
                                                   fields: readonly { fieldApiName: string; valueText: string }[],
-                                                  isCancelled: () => boolean) => Promise<{ records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true }>;
+                                                  isCancelled: () => boolean,
+                                                  reportProgress?: (generatedCount: number) => void) => Promise<{ records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true }>;
 
 type HeldUpdaterRecords = NonNullable<typeof RecipeCockpitAdapterState.heldUpdaterRecords>;
 

@@ -151,13 +151,6 @@ const TAB_HOSTS: ITabHost[] = [
             },
             {
                 pureModuleFileName: 'RecipeCockpitQuery.ts',
-                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
-                importedNames: ['RecipeCockpitQuery'],
-                members: ['buildPreview'],
-                reason: 'Add to data set previews its child records with the same preview'
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitQuery.ts',
                 hostFileName: 'RecipeCockpitAdapterRecords.ts',
                 importedNames: ['RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN', 'RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
                 members: ['buildTablePage', 'countValues', 'fetchQueryRecords', 'readLinkedRecordId'],
@@ -421,17 +414,10 @@ const TAB_HOSTS: ITabHost[] = [
         sharedWithHosts: [
             {
                 pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
-                hostFileName: 'RecipeCockpitAdapterMetadata.ts',
-                importedNames: ['RecipeCockpitRecordCreation'],
-                members: ['spreadParentIds'],
-                reason: 'Add to data set spreads its new child records over their parents as the tree insert does'
-            },
-            {
-                pureModuleFileName: 'RecipeCockpitRecordCreation.ts',
                 hostFileName: 'RecipeCockpitAdapterNewRecords.ts',
                 importedNames: ['RecipeCockpitRecordCreation'],
                 members: ['spreadParentIds'],
-                reason: 'Generate new records (#722) spreads an object\'s new records over the loaded parents as the tree insert does'
+                reason: 'Generate new records (#722), which Add to data set also runs, spreads an object\'s new records over the loaded parents as the tree insert does'
             },
             {
                 pureModuleFileName: 'RecipeCockpitRecordCreation.ts',

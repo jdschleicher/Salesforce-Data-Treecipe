@@ -42,15 +42,16 @@ const vscodeApi: { postMessage(message: AdapterPanelMessage): void } = cockpitVs
 
 /*
     "Generate new records" (#722): the second tab of every object below the chosen parent, beside
-    "Edit existing records". The reader ticks the object's fields, may type a value for one, sets
-    a count per loaded parent record and presses Generate records; the host generates the records
-    under the loaded parents and answers with a preview. The ticks, the typed values and the
-    count are this tab's own and are posted only with Generate records; the records, and what a
-    field generates from, are the host's.
+    "Edit existing records", and the block "Add to data set" opens for a child object only the org
+    holds (#447). The reader ticks the object's fields, may type a value for one, sets a count per
+    loaded parent record and presses Generate records; the host generates the records under the
+    loaded parents and answers with a preview. The ticks, the typed values and the count are this
+    panel's own and are posted only with Generate records; the records, and what a field
+    generates from, are the host's.
 */
 
 // WHAT THE LAST LOAD SAID OF THE OBJECT NEW RECORDS GO UNDER, READ AS UNTRUSTED
-function readNewRecordsParent(updaterObjectState: IUpdaterObjectState): { parentObjectApiName: string; parentRecordCount: number } | null {
+function readLoadedParent(updaterObjectState: IUpdaterObjectState): INewRecordsParent | null {
     const loadedRecords = updaterObjectState.loadedRecords;
     const newRecordsParent = (loadedRecords && loadedRecords.newRecordsParent && typeof loadedRecords.newRecordsParent === 'object' ? loadedRecords.newRecordsParent : null) as { parentObjectApiName?: unknown; parentRecordCount?: unknown } | null;
     return newRecordsParent && typeof newRecordsParent.parentObjectApiName === 'string'
@@ -58,15 +59,28 @@ function readNewRecordsParent(updaterObjectState: IUpdaterObjectState): { parent
         : null;
 }
 
+// EVERY Generate new records PANEL OF A CARD: EACH BUILT OBJECT BELOW THE PARENT, AND THE ORG-ONLY CHILD Add to data set OPENED
+export function listNewRecordsStates(treeState: IAdapterTreeState): IUpdaterNewRecordsState[] {
+    const newRecordsStates = (treeState.updaterObjectStates || []).flatMap(function (updaterObjectState) { return updaterObjectState.newRecords ? [updaterObjectState.newRecords] : []; });
+    return treeState.adapterChild ? newRecordsStates.concat([treeState.adapterChild.newRecords]) : newRecordsStates;
+}
+
+function findNewRecordsState(treeState: IAdapterTreeState, objectApiName: unknown): IUpdaterNewRecordsState | undefined {
+    return listNewRecordsStates(treeState).find(function (newRecordsState) { return newRecordsState.objectApiName === objectApiName; });
+}
+
 function selectRecordTab(newRecordsState: IUpdaterNewRecordsState, recordTab: UpdaterRecordTab): void {
+    const tabElements = newRecordsState.tabElements;
+    const panelElements = newRecordsState.panelElements;
+    if (!tabElements || !panelElements) { return; }
     newRecordsState.selectedTab = recordTab;
     (['edit', 'new'] as UpdaterRecordTab[]).forEach(function (candidateTab) {
         const isSelected = candidateTab === recordTab;
-        const tabElement = newRecordsState.tabElements[candidateTab];
+        const tabElement = tabElements[candidateTab];
         if (isSelected) { tabElement.classList.add('selected'); } else { tabElement.classList.remove('selected'); }
         tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         tabElement.setAttribute('tabindex', isSelected ? '0' : '-1');
-        setShown(newRecordsState.panelElements[candidateTab], isSelected);
+        setShown(panelElements[candidateTab], isSelected);
     });
 }
 
@@ -83,31 +97,93 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
     stripElement.setAttribute('role', 'tablist');
     stripElement.setAttribute('aria-label', objectApiName + ' records');
 
-    const buildTab = function (recordTab: UpdaterRecordTab, label: string): { tabElement: HTMLButtonElement; panelElement: HTMLElement } {
+    const buildTab = function (recordTab: UpdaterRecordTab, label: string, panelElement: HTMLElement): { tabElement: HTMLButtonElement; panelElement: HTMLElement } {
         const tabElement = createButton('secondary', 'troubleshootingSubTab updaterRecordTab updaterRecordTab-' + recordTab, label);
-        const panelElement = createElement('div', 'updaterRecordTabPanel updaterRecordTabPanel-' + recordTab);
         tabElement.setAttribute('data-label', label);
         tabElement.setAttribute('role', 'tab');
         panelElement.setAttribute('role', 'tabpanel');
         panelElement.setAttribute('aria-label', label + ' of ' + objectApiName);
         tabElement.addEventListener('click', function () { selectRecordTab(newRecordsState, recordTab); });
+        tabElements[recordTab] = tabElement;
         // LEFT AND RIGHT MOVE BETWEEN THE TWO TABS, AS A TAB LIST DOES
         tabElement.addEventListener('keydown', function (event) {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') { return; }
             event.preventDefault();
             const otherTab: UpdaterRecordTab = recordTab === 'edit' ? 'new' : 'edit';
             selectRecordTab(newRecordsState, otherTab);
-            focusElement(newRecordsState.tabElements[otherTab]);
+            focusElement(tabElements[otherTab]);
         });
         stripElement.appendChild(tabElement);
         return { tabElement: tabElement, panelElement: panelElement };
     };
 
-    const editTab = buildTab('edit', RECIPE_COCKPIT_UPDATER_EDIT_HEADING);
-    const newTab = buildTab('new', RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL);
+    const tabElements = {} as Record<UpdaterRecordTab, HTMLButtonElement>;
+    const newPanelElement = createElement('div', 'updaterRecordTabPanel updaterRecordTabPanel-new');
+    // BUILT FIRST, SO THE TABS BELOW CAN NAME IT
+    const newRecordsState = buildNewRecordsPanel(treeState, {
+        objectApiName: objectApiName,
+        containerElement: newPanelElement,
+        fieldRows: updaterObjectState.fieldStates.map(function (recipeFieldState) {
+            const fieldState: IUpdaterFieldRowState = {
+                fieldChange: null, childObject: null, field: recipeFieldState.field, fieldKey: recipeFieldState.fieldKey,
+                lockReason: recipeFieldState.lockReason === RECIPE_COCKPIT_UPDATER_LOOKUP_REASON ? RECIPE_COCKPIT_UPDATER_NEW_RECORDS_LOOKUP_REASON : recipeFieldState.lockReason,
+                orgChange: null, orgChipElement: null, isMatch: true, rowElement: null, chooseElement: null, editButtonElement: null, editBadgeElement: null,
+                editedValueElement: null, expressionRowElement: null, editorElement: null, isEditorOpen: false
+            };
+            // A FIELD THE HOST CAN GENERATE STARTS TICKED, AS THE TREECIPE TAB'S FIELDS DO: ONE WITH AN EXPRESSION LINE, OR A VALUE FIXED ON THE TREECIPE TAB.
+            // ANY OTHER (A TODO, A LITERAL TYPED INTO THE RECIPE) WAITS FOR A VALUE
+            const hasExpression = String(fieldState.field.recipeValue || '').split('\n').some(function (valueLine) { return isExpressionValue(valueLine.trim()); });
+            return { fieldState: fieldState, isTicked: hasExpression || findFixedValue(treeState.tree, objectApiName, fieldState.field.fieldApiName, undefined) !== null };
+        }),
+        fixedValues: treeState.tree.fixedValues,
+        readParent: function () { return readLoadedParent(updaterObjectState); },
+        readUnreadFieldApiNames: function () {
+            const loadedRecords = updaterObjectState.loadedRecords;
+            return loadedRecords && Array.isArray(loadedRecords.unreadFieldApiNames) ? loadedRecords.unreadFieldApiNames.map(String) : [];
+        }
+    });
 
+    const editTab = buildTab('edit', RECIPE_COCKPIT_UPDATER_EDIT_HEADING, createElement('div', 'updaterRecordTabPanel updaterRecordTabPanel-edit'));
+    const newTab = buildTab('new', RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL, newPanelElement);
+    editTab.panelElement.appendChild(recordsElement);
+    newRecordsState.tabElements = tabElements;
+    newRecordsState.panelElements = { edit: editTab.panelElement, new: newTab.panelElement };
+    updaterObjectState.newRecords = newRecordsState;
+
+    tabsElement.appendChild(stripElement);
+    tabsElement.appendChild(editTab.panelElement);
+    tabsElement.appendChild(newTab.panelElement);
+    selectRecordTab(newRecordsState, 'edit');
+
+    return tabsElement;
+
+}
+
+export interface INewRecordsParent {
+    parentObjectApiName: string;
+    parentRecordCount: number;
+}
+
+// WHAT ONE Generate new records PANEL IS BUILT FROM: THE OBJECT, ITS FIELD ROWS AND WHICH START TICKED, AND WHERE IT READS WHAT A LOAD SAID
+export interface INewRecordsPanelOptions {
+    objectApiName: string;
+    containerElement: HTMLElement;
+    fieldRows: Array<{ fieldState: IUpdaterFieldRowState; isTicked: boolean; decorateRow?: (rowElement: HTMLElement) => void }>;
+    fixedValues: IAdapterTreeState['tree']['fixedValues'];
+    readParent: () => INewRecordsParent | null;
+    readUnreadFieldApiNames: () => string[];
+}
+
+/*
+    The panel itself: a heading, the count per loaded parent record, the object's fields with a
+    box each, Generate records and the preview. The same for a tree object's tab and for an
+    org-only child's block, which differ only in where their fields and their parent come from.
+*/
+export function buildNewRecordsPanel(treeState: IAdapterTreeState, panelOptions: INewRecordsPanelOptions): IUpdaterNewRecordsState {
+
+    const objectApiName = panelOptions.objectApiName;
     const fieldTreeState: IUpdaterFieldTreeState = {
-        tree: { treeKey: treeState.tree.treeKey, fixedValues: treeState.tree.fixedValues },
+        tree: { treeKey: treeState.tree.treeKey, fixedValues: panelOptions.fixedValues },
         updaterChosenFieldKeys: Object.create(null),
         isFieldChoiceOffered: true,
         updaterEditedValues: Object.create(null),
@@ -130,17 +206,9 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
     countRowElement.appendChild(fieldObjectState.countElement);
 
     const fieldsElement = createElement('div', 'updaterNewRecordsFields');
-    const fieldStates = updaterObjectState.fieldStates.map(function (recipeFieldState) {
-        const fieldState: IUpdaterFieldRowState = {
-            fieldChange: null, childObject: null, field: recipeFieldState.field, fieldKey: recipeFieldState.fieldKey,
-            lockReason: recipeFieldState.lockReason === RECIPE_COCKPIT_UPDATER_LOOKUP_REASON ? RECIPE_COCKPIT_UPDATER_NEW_RECORDS_LOOKUP_REASON : recipeFieldState.lockReason,
-            orgChange: null, orgChipElement: null, isMatch: true, rowElement: null, chooseElement: null, editButtonElement: null, editBadgeElement: null,
-            editedValueElement: null, expressionRowElement: null, editorElement: null, isEditorOpen: false
-        };
-        // A FIELD THE HOST CAN GENERATE STARTS TICKED, AS THE TREECIPE TAB'S FIELDS DO: ONE WITH AN EXPRESSION LINE, OR A VALUE FIXED ON THE TREECIPE TAB.
-        // ANY OTHER (A TODO, A LITERAL TYPED INTO THE RECIPE) WAITS FOR A VALUE
-        const hasExpression = String(fieldState.field.recipeValue || '').split('\n').some(function (valueLine) { return isExpressionValue(valueLine.trim()); });
-        if (!fieldState.lockReason && (hasExpression || findFixedValue(treeState.tree, objectApiName, fieldState.field.fieldApiName, undefined) !== null)) {
+    const fieldStates = panelOptions.fieldRows.map(function (fieldRow) {
+        const fieldState = fieldRow.fieldState;
+        if (!fieldState.lockReason && fieldRow.isTicked) {
             fieldTreeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
             fieldObjectState.chosenFieldCount++;
         }
@@ -148,6 +216,7 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
         const rowElement = buildUpdaterFieldRow(fieldTreeState, fieldObjectState, fieldState);
         rowElement.classList.remove('updaterField');
         rowElement.classList.add('updaterNewRecordsField');
+        if (fieldRow.decorateRow) { fieldRow.decorateRow(rowElement); }
         fieldsElement.appendChild(rowElement);
         return fieldState;
     });
@@ -163,13 +232,13 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
     const previewElement = createElement('div', 'updaterNewRecordsPreview hidden');
 
     [headingElement, countRowElement, fieldsElement, refusalElement, actionRowElement, createElement('div', 'adapterChildPreviewNote muted', RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE), previewElement]
-        .forEach(function (childElement) { newTab.panelElement.appendChild(childElement); });
-    editTab.panelElement.appendChild(recordsElement);
+        .forEach(function (childElement) { panelOptions.containerElement.appendChild(childElement); });
 
     const newRecordsState: IUpdaterNewRecordsState = {
+        objectApiName: objectApiName,
+        readParent: panelOptions.readParent,
+        readUnreadFieldApiNames: panelOptions.readUnreadFieldApiNames,
         selectedTab: 'edit',
-        tabElements: { edit: editTab.tabElement, new: newTab.tabElement },
-        panelElements: { edit: editTab.panelElement, new: newTab.panelElement },
         fieldTreeState: fieldTreeState,
         fieldStates: fieldStates,
         fieldObjectState: fieldObjectState,
@@ -185,45 +254,37 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
         previewRows: null,
         isPageRequested: false
     };
-    updaterObjectState.newRecords = newRecordsState;
 
-    generateElement.addEventListener('click', function () { requestNewRecords(treeState, updaterObjectState); });
+    generateElement.addEventListener('click', function () { requestNewRecords(treeState, newRecordsState); });
     countInputElement.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') { event.preventDefault(); requestNewRecords(treeState, updaterObjectState); }
+        if (event.key === 'Enter') { event.preventDefault(); requestNewRecords(treeState, newRecordsState); }
     });
 
-    tabsElement.appendChild(stripElement);
-    tabsElement.appendChild(editTab.panelElement);
-    tabsElement.appendChild(newTab.panelElement);
-    selectRecordTab(newRecordsState, 'edit');
-    drawNewRecordsControls(treeState, updaterObjectState);
-    drawNewRecordsPreview(treeState, updaterObjectState);
+    drawNewRecordsControls(treeState, newRecordsState);
+    drawNewRecordsPreview(treeState, newRecordsState);
 
-    return tabsElement;
+    return newRecordsState;
 
 }
 
 // WHY Generate records CANNOT RUN NOW, OR '': THE HOST HOLDS A REQUEST TO THE SAME RULES
-function findNewRecordsReason(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState): string {
+function findNewRecordsReason(treeState: IAdapterTreeState, newRecordsState: IUpdaterNewRecordsState): string {
     if (runLocks.updaterLoadRunningTreeKey !== null) { return 'Records are being loaded, generated, updated or restored.'; }
     if (!treeState.updaterRecordsMessage) { return RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_LOADED_REASON; }
-    const newRecordsParent = readNewRecordsParent(updaterObjectState);
+    const newRecordsParent = newRecordsState.readParent();
     if (!newRecordsParent) { return RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_READ_REASON; }
     if (newRecordsParent.parentRecordCount === 0) { return RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON; }
     return '';
 }
 
 // THE HEADING, THE COUNT'S LABEL AND THE BUTTON, AS THE LAST LOAD AND THE RUN IN FLIGHT LEAVE THEM; drawUpdaterLoadButtons CALLS THIS FOR EVERY OBJECT
-export function drawNewRecordsControls(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState): void {
+export function drawNewRecordsControls(treeState: IAdapterTreeState, newRecordsState: IUpdaterNewRecordsState): void {
 
-    const newRecordsState = updaterObjectState.newRecords;
-    if (!newRecordsState) { return; }
-
-    const objectApiName = updaterObjectState.object.objectApiName;
-    const newRecordsParent = readNewRecordsParent(updaterObjectState);
+    const objectApiName = newRecordsState.objectApiName;
+    const newRecordsParent = newRecordsState.readParent();
     const parentName = newRecordsParent ? newRecordsParent.parentObjectApiName : 'parent';
     const countLabel = objectApiName + ' records per loaded ' + parentName + ' record';
-    const reason = findNewRecordsReason(treeState, updaterObjectState);
+    const reason = findNewRecordsReason(treeState, newRecordsState);
     const isGenerating = runLocks.updaterRunKind === 'generateNew' && runLocks.updaterLoadRunningTreeKey === treeState.tree.treeKey && runLocks.updaterNewRecordsObjectApiName === objectApiName;
 
     newRecordsState.headingElement.textContent = newRecordsParent
@@ -238,8 +299,7 @@ export function drawNewRecordsControls(treeState: IAdapterTreeState, updaterObje
     newRecordsState.reasonElement.textContent = isGenerating ? '' : reason;
 
     // A FIELD THE LAST LOAD LEFT OUT IS LOCKED AND UNTICKED UNTIL A LOAD READS IT: THE HOST WOULD REFUSE THE WHOLE REQUEST FOR IT
-    const loadedRecords = updaterObjectState.loadedRecords;
-    const unreadFieldApiNames: string[] = loadedRecords && Array.isArray(loadedRecords.unreadFieldApiNames) ? loadedRecords.unreadFieldApiNames.map(String) : [];
+    const unreadFieldApiNames = newRecordsState.readUnreadFieldApiNames();
     newRecordsState.fieldStates.forEach(function (fieldState, fieldIndex) {
         const lockReason = unreadFieldApiNames.indexOf(fieldState.field.fieldApiName) !== -1 ? RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON : newRecordsState.baseLockReasons[fieldIndex];
         if (lockReason === fieldState.lockReason) { return; }
@@ -261,12 +321,11 @@ export function drawNewRecordsControls(treeState: IAdapterTreeState, updaterObje
 
 }
 
-function requestNewRecords(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState): void {
+function requestNewRecords(treeState: IAdapterTreeState, newRecordsState: IUpdaterNewRecordsState): void {
 
-    const newRecordsState = updaterObjectState.newRecords;
-    if (!newRecordsState || renderedSequence === null || findNewRecordsReason(treeState, updaterObjectState) !== '') { return; }
+    if (renderedSequence === null || findNewRecordsReason(treeState, newRecordsState) !== '') { return; }
 
-    const objectApiName = updaterObjectState.object.objectApiName;
+    const objectApiName = newRecordsState.objectApiName;
     const countText = String(newRecordsState.countInputElement.value || '').trim();
     const countPerParent = Number(countText);
 
@@ -294,10 +353,6 @@ function requestNewRecords(treeState: IAdapterTreeState, updaterObjectState: IUp
 
 }
 
-function findObjectState(treeState: IAdapterTreeState, objectApiName: unknown): IUpdaterObjectState | undefined {
-    return (treeState.updaterObjectStates || []).find(function (candidateObjectState) { return candidateObjectState.object.objectApiName === objectApiName; });
-}
-
 // AN OBJECT'S NEW RECORDS ARE DRAWN ONLY ON THE MODEL THEY WERE GENERATED ON; A TAB NOT YET BUILT DRAWS THEM WHEN IT IS
 export function renderUpdaterNewRecords(newRecordsMessage: IUpdaterNewRecordsMessage): void {
 
@@ -307,12 +362,12 @@ export function renderUpdaterNewRecords(newRecordsMessage: IUpdaterNewRecordsMes
     if (!treeState) { return; }
 
     treeState.updaterNewRecordsMessages[newRecordsMessage.objectApiName] = newRecordsMessage;
-    const updaterObjectState = findObjectState(treeState, newRecordsMessage.objectApiName);
-    if (updaterObjectState && updaterObjectState.newRecords) {
-        updaterObjectState.newRecords.previewPageIndex = 0;
-        updaterObjectState.newRecords.previewRows = null;
-        updaterObjectState.newRecords.isPageRequested = false;
-        drawNewRecordsPreview(treeState, updaterObjectState);
+    const newRecordsState = findNewRecordsState(treeState, newRecordsMessage.objectApiName);
+    if (newRecordsState) {
+        newRecordsState.previewPageIndex = 0;
+        newRecordsState.previewRows = null;
+        newRecordsState.isPageRequested = false;
+        drawNewRecordsPreview(treeState, newRecordsState);
     }
 
 }
@@ -322,17 +377,16 @@ export function renderUpdaterNewRecordsPage(pageMessage: IUpdaterNewRecordsPageM
     if (renderedSequence === null || pageMessage.renderSequence !== renderedSequence) { return; }
 
     const treeState = findTreeState(pageMessage.treeKey);
-    const updaterObjectState = treeState ? findObjectState(treeState, pageMessage.objectApiName) : undefined;
-    const newRecordsState = updaterObjectState ? updaterObjectState.newRecords : undefined;
+    const newRecordsState = treeState ? findNewRecordsState(treeState, pageMessage.objectApiName) : undefined;
     const pageIndex = Number(pageMessage.pageIndex);
 
-    if (!treeState || !updaterObjectState || !newRecordsState || !Number.isInteger(pageIndex) || pageIndex < 0 || !Array.isArray(pageMessage.rows)) { return; }
+    if (!treeState || !newRecordsState || !Number.isInteger(pageIndex) || pageIndex < 0 || !Array.isArray(pageMessage.rows)) { return; }
 
     const isMovingForward = pageIndex > newRecordsState.previewPageIndex;
     newRecordsState.previewPageIndex = pageIndex;
     newRecordsState.previewRows = pageMessage.rows;
     newRecordsState.isPageRequested = false;
-    drawNewRecordsPreview(treeState, updaterObjectState);
+    drawNewRecordsPreview(treeState, newRecordsState);
 
     // THE PAGER WAS REDRAWN WITH THE TABLE, SO THE KEYBOARD'S PLACE GOES BACK TO THE BUTTON PRESSED, OR TO THE OTHER AT AN END
     const pagerElements = newRecordsState.pagerElements;
@@ -346,21 +400,17 @@ export function renderUpdaterNewRecordsPage(pageMessage: IUpdaterNewRecordsPageM
 export function clearUpdaterNewRecords(): void {
     treeStates.forEach(function (treeState) {
         treeState.updaterNewRecordsMessages = Object.create(null);
-        (treeState.updaterObjectStates || []).forEach(function (updaterObjectState) {
-            if (!updaterObjectState.newRecords) { return; }
-            updaterObjectState.newRecords.previewRows = null;
-            updaterObjectState.newRecords.previewPageIndex = 0;
-            drawNewRecordsPreview(treeState, updaterObjectState);
+        listNewRecordsStates(treeState).forEach(function (newRecordsState) {
+            newRecordsState.previewRows = null;
+            newRecordsState.previewPageIndex = 0;
+            drawNewRecordsPreview(treeState, newRecordsState);
         });
     });
 }
 
-function drawNewRecordsPreview(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState): void {
+function drawNewRecordsPreview(treeState: IAdapterTreeState, newRecordsState: IUpdaterNewRecordsState): void {
 
-    const newRecordsState = updaterObjectState.newRecords;
-    if (!newRecordsState) { return; }
-
-    const objectApiName = updaterObjectState.object.objectApiName;
+    const objectApiName = newRecordsState.objectApiName;
     const previewElement = newRecordsState.previewElement;
     const previewMessage = hasOwnKey(treeState.updaterNewRecordsMessages, objectApiName) ? treeState.updaterNewRecordsMessages[objectApiName] : null;
     previewElement.textContent = '';
@@ -394,7 +444,7 @@ function drawNewRecordsPreview(treeState: IAdapterTreeState, updaterObjectState:
         const requestPage = function (requestedPageIndex: number): void {
             if (renderedSequence === null || newRecordsState.isPageRequested || runLocks.updaterLoadRunningTreeKey !== null) { return; }
             newRecordsState.isPageRequested = true;
-            drawNewRecordsControls(treeState, updaterObjectState);
+            drawNewRecordsControls(treeState, newRecordsState);
             vscodeApi.postMessage({ command: 'loadUpdaterNewRecordsPage', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objectApiName: objectApiName, pageIndex: requestedPageIndex });
         };
         previousElement.addEventListener('click', function () { requestPage(pageIndex - 1); });
@@ -409,6 +459,6 @@ function drawNewRecordsPreview(treeState: IAdapterTreeState, updaterObjectState:
 
     previewElement.appendChild(pagerElement);
     setShown(previewElement, true);
-    drawNewRecordsControls(treeState, updaterObjectState);
+    drawNewRecordsControls(treeState, newRecordsState);
 
 }

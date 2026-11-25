@@ -4,7 +4,8 @@ import {
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
-    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL
 } from './RecipeCockpitAdapterConstants';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
@@ -89,7 +90,7 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     treeKey: string;
     // A VALUE GENERATION (#417), AN UPDATE (#418), A RESTORE (#419) AND A METADATA RETRIEVE (#445) SHARE THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
     // A NEW CHILD OBJECT'S RETRIEVE AND ITS GENERATION (#447) SHARE IT TOO
-    runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply' | 'prepareChild' | 'generateChild' | 'generateNew';
+    runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply' | 'prepareChild' | 'generateNew';
     // AN UPDATE OR A RESTORE THAT SENT A REQUEST ENDS WITH THIS: THE LOADED RECORDS AND THEIR VALUES ARE SPENT, SO THE PANEL LETS THEM GO
     isRecordsSpent?: true;
     // generateNew ONLY: THE OBJECT WHOSE NEW RECORDS ARE BEING GENERATED (#722), SO A REOPENED PANEL KNOWS WHICH BUTTON IS RUNNING
@@ -248,19 +249,6 @@ export interface IRecipeCockpitAdapterChildBlockMessage {
     unreadableFieldCount: number;
 }
 
-// THE NEW CHILD RECORDS GENERATED (#447), AS THE PANEL IS SENT THEM: THE COUNT AND A PREVIEW AS TEXT, THE LOOKUP TO THE PARENT FIRST
-export interface IRecipeCockpitAdapterChildPreviewMessage {
-    command: 'adapterChildPreview';
-    renderSequence: number;
-    treeKey: string;
-    childObjectApiName: string;
-    countPerParent: number;
-    recordCount: number;
-    columns: string[];
-    rows: string[][];
-    hiddenColumnCount: number;
-}
-
 // ONE FIELD OF A NEW CHILD'S BLOCK AS THE PANEL POSTED IT: value ABSENT IS THE EXPRESSION THE RECIPE'S BACKEND WRITES FOR ITS TYPE
 export interface IRecipeCockpitAdapterChildFieldRequest {
     fieldApiName: string;
@@ -335,7 +323,6 @@ export const RECIPE_COCKPIT_ADAPTER_COMMANDS = [
     'retrieveAdapterMetadata',
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
-    'generateAdapterChild',
     'generateUpdaterNewRecords',
     'loadUpdaterNewRecordsPage',
     'editUpdaterRecords',
@@ -351,7 +338,6 @@ export const RECIPE_COCKPIT_ADAPTER_ACTION_KINDS = [
     'retrieveAdapterMetadata',
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
-    'generateAdapterChild',
     'generateUpdaterNewRecords',
     'postUpdaterNewRecordsPage',
     'editUpdaterRecords',
@@ -369,7 +355,6 @@ export type RecipeCockpitAdapterPanelAction =
     | { kind: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; objectApiNames: string[]; isOrgPrompted: boolean }
     | { kind: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: number }
     | { kind: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }
-    | { kind: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
     | { kind: 'updateUpdaterRecords'; treeKey: string }
     | { kind: 'generateUpdaterNewRecords'; treeKey: string; renderSequence: number; objectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
     | { kind: 'postUpdaterNewRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number }
@@ -654,6 +639,11 @@ export class RecipeCockpitAdapterHost {
                 if ( ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] ).length === 0 ) {
                     return refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON);
                 }
+                // A RETRIEVE LISTS A CHILD AGAINST THE PARENT CHOSEN THEN. AFTER ANOTHER PARENT AND A LOAD, THE SAME OBJECT CAN BE ONE THE LOAD READ:
+                // ITS NEW RECORDS ARE ITS OWN TAB'S, UNDER THE RECORDS IT WAS LOADED UNDER, AND ONE NAME CANNOT MEAN BOTH (#722)
+                if ( heldRecords.columnPlansByObjectApiName.has(childObjectApiName) || heldRecords.narrowingLookupsByObjectApiName.has(childObjectApiName) ) {
+                    return refuse(`the last load read ${childObjectApiName} as part of this treecipe. Use its ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL} tab.`);
+                }
 
                 // THE CHILD IS READ FROM THE SANDBOX ITS PARENTS CAME FROM, AND NO OTHER
                 const dataOrgSelection = panelState.dataOrgSelection;
@@ -662,68 +652,6 @@ export class RecipeCockpitAdapterHost {
                 }
 
                 return { kind: 'prepareAdapterChild', treeKey: treeKey, renderSequence: renderSequence, parentObjectApiName: parentObjectApiName, childObjectApiName: childObjectApiName, lookupFieldApiName: lookupFieldApiName };
-
-            }
-
-            /*
-                "Generate preview" (#447): only for the child prepared on the model and records on
-                screen, a count per parent the Treecipe tab would take, and fields it offered and
-                did not lock, each once, a value only as a string its editor holds. The executor
-                checks every value again.
-            */
-            case 'generateAdapterChild': {
-
-                const { treeKey, renderSequence, childObjectApiName, countPerParent, fields } = panelMessage;
-                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'generateChild' };
-
-                if ( panelState.updaterLoadStateMessage?.isRunning ) {
-                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
-                }
-
-                const heldChild = RecipeCockpitAdapterState.heldAdapterChild;
-                const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
-
-                if ( typeof treeKey !== 'string'
-                        || !heldChild
-                        || !heldRecords
-                        || heldChild.treeKey !== treeKey
-                        || heldChild.childObjectApiName !== childObjectApiName
-                        || heldChild.resultKey !== heldRecords.resultKey
-                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
-                        || heldRecords.renderSequence !== renderSequence
-                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
-                }
-
-                const refuse = (reason: string) => ({ kind: 'refuseUpdaterLoad' as const, refusalText: `No ${heldChild.childObjectApiName} records were generated: ${reason}`, hostMessage: notRunning });
-
-                if ( !RecipeCockpitRecipeWriter.isRecordCount(countPerParent) ) {
-                    return refuse('the count per parent record must be a whole number of one or more.');
-                }
-                if ( countPerParent * heldChild.parentRecordIds.length > RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT ) {
-                    return refuse(`${countPerParent} per record under ${heldChild.parentRecordIds.length} ${heldChild.parentObjectApiName} records is more than the ${RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT} one block generates.`);
-                }
-                if ( !Array.isArray(fields) ) {
-                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
-                }
-
-                const fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] = [];
-                for ( const candidateField of fields as unknown[] ) {
-                    const fieldRecord = candidateField && typeof candidateField === 'object' ? candidateField as Record<string, unknown> : undefined;
-                    const fieldApiName = fieldRecord?.fieldApiName;
-                    const value = fieldRecord?.value;
-                    const offeredField = typeof fieldApiName === 'string' ? heldChild.fields.get(fieldApiName) : undefined;
-                    if ( typeof fieldApiName !== 'string'
-                            || !offeredField
-                            || offeredField.lockReason !== undefined
-                            || fieldRequests.some(fieldRequest => fieldRequest.fieldApiName === fieldApiName)
-                            || ( value !== undefined && ( typeof value !== 'string' || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) ) {
-                        return refuse(`${typeof fieldApiName === 'string' ? `${heldChild.childObjectApiName}.${fieldApiName}` : 'a field'} is not one this block offers to fill.`);
-                    }
-                    fieldRequests.push(value === undefined ? { fieldApiName: fieldApiName } : { fieldApiName: fieldApiName, value: value as string });
-                }
-
-                return { kind: 'generateAdapterChild', treeKey: treeKey, renderSequence: renderSequence, childObjectApiName: heldChild.childObjectApiName, countPerParent: countPerParent, fieldRequests: fieldRequests };
 
             }
 
@@ -746,15 +674,13 @@ export class RecipeCockpitAdapterHost {
 
                 const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
                 const recordsMessage = panelState.updaterRecordsMessage;
-                const narrowingLookup = typeof objectApiName === 'string' ? heldRecords?.narrowingLookupsByObjectApiName.get(objectApiName) : undefined;
-                const columnPlans = typeof objectApiName === 'string' ? heldRecords?.columnPlansByObjectApiName.get(objectApiName) : undefined;
+                const target = typeof objectApiName === 'string' && typeof treeKey === 'string' ? RecipeCockpitAdapterNewRecords.resolveTarget(objectApiName, treeKey) : undefined;
 
                 if ( typeof treeKey !== 'string'
                         || typeof objectApiName !== 'string'
                         || !heldRecords
                         || !recordsMessage
-                        || !narrowingLookup
-                        || !columnPlans
+                        || !target
                         || recordsMessage.treeKey !== treeKey
                         || recordsMessage.renderSequence !== renderSequence
                         || renderSequence !== panelState.recipeDataMessage?.renderSequence
@@ -765,7 +691,7 @@ export class RecipeCockpitAdapterHost {
                 }
 
                 const refuse = (reason: string) => ({ kind: 'refuseUpdaterLoad' as const, refusalText: `No new ${objectApiName} records were generated: ${reason}`, hostMessage: notRunning });
-                const parentRecordCount = RecipeCockpitAdapterNewRecords.listParentRecordIds(objectApiName)?.length ?? 0;
+                const parentRecordCount = target.parentRecordIds.length;
 
                 if ( !RecipeCockpitRecipeWriter.isRecordCount(countPerParent) ) {
                     return refuse('the count per parent record must be a whole number of one or more.');
@@ -774,7 +700,7 @@ export class RecipeCockpitAdapterHost {
                     return refuse(RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON);
                 }
                 if ( countPerParent * parentRecordCount > RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT ) {
-                    return refuse(`${countPerParent} per record under ${parentRecordCount} ${narrowingLookup.parentObjectApiName} records is more than the ${RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT} one block generates.`);
+                    return refuse(`${countPerParent} per record under ${parentRecordCount} ${target.parentObjectApiName} records is more than the ${RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT} one block generates.`);
                 }
                 if ( !Array.isArray(fields) ) {
                     return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
@@ -785,13 +711,13 @@ export class RecipeCockpitAdapterHost {
                     const fieldRecord = candidateField && typeof candidateField === 'object' ? candidateField as Record<string, unknown> : undefined;
                     const fieldApiName = fieldRecord?.fieldApiName;
                     const value = fieldRecord?.value;
-                    const columnPlan = typeof fieldApiName === 'string' ? columnPlans.find(candidatePlan => candidatePlan.fieldApiName === fieldApiName) : undefined;
+                    const columnPlan = typeof fieldApiName === 'string' ? target.columnPlans.find(candidatePlan => candidatePlan.fieldApiName === fieldApiName) : undefined;
                     if ( typeof fieldApiName !== 'string'
                             || !columnPlan
                             || columnPlan.lockReason !== undefined
                             || fieldRequests.some(fieldRequest => fieldRequest.fieldApiName === fieldApiName)
                             || ( value !== undefined && ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) ) {
-                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.`);
+                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} cannot be filled: it was not read from the org, or it is a field the Adapter does not set. Untick it.`);
                     }
                     fieldRequests.push(value === undefined ? { fieldApiName: fieldApiName } : { fieldApiName: fieldApiName, value: value as string });
                 }
@@ -1051,15 +977,10 @@ export class RecipeCockpitAdapterHost {
                 await RecipeCockpitAdapterMetadata.prepareAdapterChildFromPanel(hub, cockpitPanel, panelState, panelAction);
                 return;
 
-            case 'generateAdapterChild':
-
-                await RecipeCockpitAdapterMetadata.generateAdapterChildFromPanel(hub, cockpitPanel, panelState, panelAction);
-                return;
-
             case 'generateUpdaterNewRecords':
 
                 await RecipeCockpitAdapterNewRecords.generateFromPanel(hub, cockpitPanel, panelState, panelAction,
-                    (fakerService, objectApiName, valueCount, fields, isCancelled) => RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, fakerService, objectApiName, valueCount, fields, isCancelled, undefined, 'adapterChild'));
+                    (fakerService, objectApiName, valueCount, fields, isCancelled, reportProgress) => RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, fakerService, objectApiName, valueCount, fields, isCancelled, reportProgress, 'adapterChild'));
                 return;
 
             case 'postUpdaterNewRecordsPage':
