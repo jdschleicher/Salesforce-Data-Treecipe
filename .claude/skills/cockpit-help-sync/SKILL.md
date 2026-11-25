@@ -1,6 +1,6 @@
 ---
 name: cockpit-help-sync
-description: Keeps the Recipe Cockpit's ? help section and docs/RECIPE-COCKPIT-GUIDE.md in step with what the cockpit does. Reads the cockpit changes since the guide last changed, rewrites the affected notes in plain words in both places, re-takes the screenshots, and reports what changed and why. Run after any change to the Recipe Cockpit.
+description: Keeps the Recipe Cockpit's ? help section and docs/RECIPE-COCKPIT-GUIDE.md in step with what the cockpit does. Reads the cockpit changes since the guide last changed, rewrites the affected notes in plain words in both places, names any screenshot that no longer matches, and reports what changed and why. Run after any change to the Recipe Cockpit.
 ---
 
 # /cockpit-help-sync
@@ -58,18 +58,12 @@ Write in plain words for someone who has never opened the cockpit:
 
 Edit `RECIPE_COCKPIT_HELP_SECTIONS` and the matching section of `docs/RECIPE-COCKPIT-GUIDE.md` in the same change, so the two say the same thing. The guide may use Markdown emphasis and code formatting; the panel text is plain. If you add, remove or rename a section, change its heading in both places and keep the order the same. Each guide section keeps exactly one screenshot, and its alt text describes what the picture shows.
 
-## Step 4: Re-take the screenshots
+## Step 4: Check the screenshots
 
-```bash
-node developmentSupportScripts/recipe-cockpit-screenshots/captureRecipeCockpitScreenshots.js
-```
+The guide's pictures in `docs/images/recipe-cockpit/` are taken by hand; nothing in the repository re-takes them. For each section whose text you changed, and for any visual change from Step 2, open its picture and check it still shows what the section and its alt text say.
 
-The script renders the real cockpit shell, fed a model built from `RecipeCockpitService/tests/mocks/historyWorkspace`, in headless Chromium at a fixed 900×640 viewport. It writes a picture only when its bytes changed, and prints `written` or `unchanged` for each.
-
-- It needs Playwright installed outside the project (`playwright-core` or `playwright`, global or local). It never downloads a browser: Chromium comes from `PLAYWRIGHT_BROWSERS_PATH`, or from `CHROMIUM_EXECUTABLE_PATH` when set. If neither is available, say so in the report and leave the pictures as they are. Don't add Playwright to `package.json`.
-- If a section now needs a different picture (a new button to show), change the steps for that shot in the script's `run()`. Use fixture names only: no real org, username, alias or local path ever appears in a picture.
-- Open each written picture and check it shows what its section and alt text say.
-- A picture over 200 KB makes the script fail: shoot a smaller element rather than compressing.
+- If a picture no longer matches, leave it and name it in the report, with what is now different, so a person can re-take it. Never edit a picture or its alt text to paper over the difference.
+- A new picture uses fixture names only: no real org, username, alias or local path. It stays under 200 KB; shoot a smaller element rather than compressing.
 
 ## Step 5: Verify
 
@@ -92,7 +86,7 @@ Output one short table, then the verification result:
 | Section | What changed | Why (source) |
 |---------|--------------|--------------|
 | What does edit the YAML | Added "Copy recipe" | CHANGELOG 3.92.0; `RECIPE_COCKPIT_COPY_RECIPE_ACTION_LABEL` |
-| (screenshots) | what-edits-the-yaml.png re-taken | The card's header gained a button |
+| (screenshots) | what-edits-the-yaml.png needs re-taking | The card's header gained a button |
 | — | No change: the run list's colours | Visual only, already in the screenshot |
 
 Verification: help test ✅ · compile ✅ · lint ✅ · jest ✅

@@ -66,7 +66,7 @@ If the diff adds a new list that uses a row type, add its case to `RecipeCockpit
 
 ## Step 4: Screenshots
 
-If any row's look changed, run `/cockpit-help-sync` so the guide's pictures and words match.
+If any row's look changed, run `/cockpit-help-sync`, which names the guide pictures that need re-taking.
 
 ## Step 5: Report
 
@@ -79,7 +79,7 @@ If any row's look changed, run `/cockpit-help-sync` so the guide's pictures and 
 | <new list> | <function> | <type> | ❌ <what to change> |
 
 Follow-ups (outside this PR): <lists not yet on the standard>
-Screenshots: <re-taken by /cockpit-help-sync | no visible change>
+Screenshots: <named by /cockpit-help-sync for re-taking | no visible change>
 ```
 
 When this skill runs inside a PR flow, post the report as a PR comment ending with the attribution footer, and have `/pr-body` link it.

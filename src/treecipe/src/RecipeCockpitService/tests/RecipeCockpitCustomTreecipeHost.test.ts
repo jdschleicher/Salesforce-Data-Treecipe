@@ -123,6 +123,26 @@ describe('RecipeCockpitService, "Customize and create new recipe" (#677)', () =>
 
         });
 
+        it('keeps a grandchild and the path up to the root when only one field and the lookups linking it are left (#715)', async () => {
+
+            const recipeDataMessage = await openAndDraw();
+            const removedFieldsOf = (objectApiName: string, fieldApiNames: string[]) => fieldApiNames.map(fieldApiName => ({ objectApiName: objectApiName, fieldApiName: fieldApiName }));
+
+            await receivedMessageHandler({
+                command: 'previewCustomTreecipe', treeKey: SOURCE_TREE_KEY, renderSequence: recipeDataMessage.renderSequence, previewSequence: 1,
+                ...removal({ removedFields: [
+                    ...removedFieldsOf('Account', ['Legacy_Code__c', 'Annual_Budget__c', 'Rating__c', 'Sub_Rating__c', 'Regions__c', 'ParentId', 'OwnerId']),
+                    ...removedFieldsOf('Contact', ['LastName']),
+                    ...removedFieldsOf('OtherChildObject__c', ['Ratio__c'])
+                ] })
+            });
+
+            const preview = lastPosted('customTreecipePreview');
+            expect(preview.objectSelection.exclusions).toEqual([]);
+            expect(preview.keptObjectCount).toBe(3);
+
+        });
+
         it.each([
             ['an object the card does not draw', removal({ removedObjectApiNames: ['Opportunity'] })],
             ['a field the card does not draw', removal({ removedFields: [{ objectApiName: 'Contact', fieldApiName: 'Email' }] })],

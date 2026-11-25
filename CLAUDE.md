@@ -103,12 +103,11 @@ Someone who knows Salesforce metadata, Treecipe recipes and VS Code, but not thi
 ## Project Structure
 
 ```
-.claude/skills/cockpit-help-sync/            # Keeps the cockpit's ? help and docs/RECIPE-COCKPIT-GUIDE.md in step, re-takes its screenshots
+.claude/skills/cockpit-help-sync/            # Keeps the cockpit's ? help and docs/RECIPE-COCKPIT-GUIDE.md in step, names screenshots that no longer match
 .claude/skills/cockpit-row-style/            # Holds every cockpit list to the row presentation standard (#558): two-line row header, bordered row box, column table
 .claude/skills/readable-code/                # Readability review of a diff for a human and an agent: CLAUDE.md's Human-Readable Code rules, token cost of where code and guidance are added (from salesforce-to-git)
 .claude/skills/readability-gauge/            # Scores a file or area for a human and an agent on nine dimensions (read size and feedback loop included) plus a guidance budget, measures tokens and seconds per change, and proposes refactors (from salesforce-to-git)
 docs/RECIPE-COCKPIT-GUIDE.md                 # The guide the cockpit's "Open the full guide" opens; pictures in docs/images/recipe-cockpit/
-developmentSupportScripts/recipe-cockpit-screenshots/ # Renders the real cockpit shell from the historyWorkspace fixture and writes the guide's pictures
 jestSetup/                                   # Jest harness only — outside tsconfig rootDir, never packaged
 ├── CoreModuleIsolation.ts                   # Restores fs / fs.promises functions a test replaced
 ├── setupCoreModuleIsolation.ts              # setupFilesAfterEnv entry that registers the afterEach
