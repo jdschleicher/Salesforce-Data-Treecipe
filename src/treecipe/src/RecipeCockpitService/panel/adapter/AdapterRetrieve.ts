@@ -161,20 +161,6 @@ export function applyAdapterMetadataChanges(treeState: IAdapterTreeState): void 
         const moreNewChildObjectCount = objectChanges ? Number(objectChanges.moreNewChildObjectCount) || 0 : 0;
         updaterObjectState.moreNewChildObjectCount = moreNewChildObjectCount;
 
-        // A CHOICE IS KEPT ONLY ON A FIELD THIS OBJECT STILL OFFERS; THE COUNT IS MADE AGAIN FROM WHAT IS CHOSEN
-        const choosableFieldKeys: Record<string, true> = Object.create(null);
-        listUpdaterChoosableFieldStates(updaterObjectState).forEach(function (fieldState) {
-            if (!fieldState.lockReason) { choosableFieldKeys[fieldState.fieldKey] = true; }
-        });
-        updaterObjectState.chosenFieldCount = 0;
-        Object.keys(treeState.updaterChosenFieldKeys).forEach(function (fieldKey) {
-            if (fieldKey.split('\n')[0] !== updaterObjectState.object.objectApiName) { return; }
-            if (hasOwnKey(choosableFieldKeys, fieldKey)) {
-                updaterObjectState.chosenFieldCount++;
-            } else {
-                delete treeState.updaterChosenFieldKeys[fieldKey];
-            }
-        });
         drawUpdaterObjectCount(updaterObjectState);
 
         const objectNewCount = fieldChanges.filter(function (fieldChange) { return fieldChange.status === 'new'; }).length;

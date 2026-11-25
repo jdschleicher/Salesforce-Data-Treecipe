@@ -50,7 +50,7 @@ import {
     RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE,
     RECIPE_COCKPIT_UPDATER_INTRO,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
-    RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN,
+    RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED,
     RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON,
     RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
@@ -136,7 +136,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
             expect(panel.isHidden(updaterPanelOf(panel, accountCard))).toBe(false);
             expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterIntro')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_INTRO);
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN);
+            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED);
 
         });
 
@@ -190,52 +190,25 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
     });
 
-    describe('choosing a field', () => {
+    describe('a field\'s row (#721: fields are changed in the record table, so a row only describes its field)', () => {
 
-        it('ticks and unticks a field, says what is chosen, and posts no command for it', () => {
+        it('draws no box to tick and no editor on a field\'s row, and says no row is marked until one is', () => {
 
             const { panel, accountCard } = openUpdater();
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
-            const commandsBefore = commandsOf(panel).length;
+            const legacyRow = updaterRowNamed(panel, accountObject, 'Legacy_Code__c');
 
-            const chooseBox = chooseBoxOf(panel, updaterRowNamed(panel, accountObject, 'Legacy_Code__c'));
-            expect(chooseBox.attributes.role).toBe('checkbox');
-            expect(chooseBox.attributes['aria-checked']).toBe('false');
-            expect(chooseBox.className).toContain('sdtButton-check');
-
-            chooseBox.dispatch('click');
-
-            expect(chooseBox.attributes['aria-checked']).toBe('true');
-            expect(chooseBox.textContent).toBe('✓');
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
-            expect(panel.findAll(accountObject.children[0], 'updaterObjectCount')[0].textContent).toMatch(/· 1 chosen$/);
-
-            chooseBox.dispatch('click');
-
-            expect(chooseBox.attributes['aria-checked']).toBe('false');
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN);
-            expect(commandsOf(panel).slice(commandsBefore).every((command: string) => command === 'savePlace')).toBe(true);
+            expect(chooseBoxOf(panel, legacyRow)).toBeUndefined();
+            expect(panel.findAll(legacyRow, 'updaterFieldEdit')).toEqual([]);
+            expect(panel.findAll(legacyRow, 'expression').map((expressionElement: any) => expressionElement.textContent)).toEqual(['${{fake.Word}}']);
+            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED);
+            expect(panel.findAll(accountObject.children[0], 'updaterObjectCount')[0].textContent).not.toMatch(/chosen/);
 
         });
 
-        it('counts the fields chosen across objects', () => {
 
-            const { panel, accountCard } = openUpdater();
-            const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
-            const otherObject = updaterObjectNamed(panel, accountCard, 'OtherChildObject__c');
-            expandUpdaterObject(panel, accountObject);
-            expandUpdaterObject(panel, otherObject);
-
-            chooseBoxOf(panel, updaterRowNamed(panel, accountObject, 'Legacy_Code__c')).dispatch('click');
-            chooseBoxOf(panel, updaterRowNamed(panel, accountObject, 'Annual_Budget__c')).dispatch('click');
-            chooseBoxOf(panel, updaterRowNamed(panel, otherObject, 'Score__c')).dispatch('click');
-
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe('3 fields chosen on 2 objects');
-
-        });
-
-        it('disables the box of a lookup, a dependent picklist, RecordTypeId and a field read only from the recipe file, saying why', () => {
+        it('says on its row why a lookup, a dependent picklist and a field read only from the recipe file cannot be changed', () => {
 
             const { panel, accountCard } = openUpdater();
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
@@ -244,12 +217,8 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             expandUpdaterObject(panel, contactObject);
 
             const expectLocked = (rowElement: any, reason: string) => {
-                const chooseBox = chooseBoxOf(panel, rowElement);
-                expect(chooseBox.disabled).toBe(true);
-                expect(chooseBox.attributes.title).toBe('Cannot be chosen: ' + reason);
+                expect(chooseBoxOf(panel, rowElement)).toBeUndefined();
                 expect(panel.findAll(rowElement, 'updaterFieldNote')[0].textContent).toBe(reason);
-                chooseBox.dispatch('click');
-                expect(chooseBox.attributes['aria-checked']).toBe('false');
             };
 
             expectLocked(updaterRowNamed(panel, accountObject, 'ParentId'), RECIPE_COCKPIT_UPDATER_LOOKUP_REASON);
@@ -262,8 +231,6 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             const recipeOnlyField = accountModel.fields.find((field: any) => field.isOnlyInRecipeFile && field.fieldApiName !== 'RecordTypeId');
             expect(recipeOnlyField).toBeDefined();
             expectLocked(updaterRowNamed(panel, accountObject, recipeOnlyField.fieldApiName), RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON);
-
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN);
 
         });
 
@@ -282,7 +249,6 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
             ['Account_Number__c', 'Total_Score__c'].forEach(fieldApiName => {
                 const rowElement = updaterRowNamed(panel, accountObject, fieldApiName);
-                expect(chooseBoxOf(panel, rowElement).disabled).toBe(true);
                 expect(panel.findAll(rowElement, 'updaterFieldNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON);
             });
 
@@ -324,7 +290,6 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             const recordTypeRows = panel.findAll(accountObject, 'updaterField')
                 .filter((rowElement: any) => panel.findAll(rowElement, 'updaterFieldName')[0].textContent === 'RecordTypeId');
             const wrapperRecordTypeRow = recordTypeRows[recordTypeRows.length - 1];
-            expect(chooseBoxOf(panel, wrapperRecordTypeRow).disabled).toBe(true);
             expect(panel.findAll(wrapperRecordTypeRow, 'updaterFieldNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON);
 
         });
@@ -364,26 +329,15 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
 
+            // EACH IS A ROW OF ITS OWN, NAMED AS TEXT, AND THE PLACE SAVES THE OPENED OBJECT WITH NOTHING ADDED
             ['__proto__', 'constructor'].forEach(fieldApiName => {
-                const chooseBox = chooseBoxOf(panel, updaterRowNamed(panel, accountObject, fieldApiName));
-                expect(chooseBox.attributes['aria-checked']).toBe('false');
-                chooseBox.dispatch('click');
-                expect(chooseBox.attributes['aria-checked']).toBe('true');
+                expect(panel.findAll(updaterRowNamed(panel, accountObject, fieldApiName), 'updaterFieldName')[0].textContent).toBe(fieldApiName);
             });
             expect(({} as any).polluted).toBeUndefined();
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe('2 fields chosen on 1 object');
 
-            const savedPlace = panel.savedState();
-            const savedTree = savedPlace.trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
-            expect(savedTree.updaterChosenFieldKeys).toEqual(['Account\n__proto__', 'Account\nconstructor']);
-            savedTree.updaterExpandedObjectKeys = ['__proto__', 'constructor', 'Account'];
-
-            const restoredPanel = drawRecipe(recipe, { savedState: savedPlace });
-            const restoredCard = accountCardOf(restoredPanel);
-            const restoredAccount = updaterObjectNamed(restoredPanel, restoredCard, 'Account');
-            expect(restoredPanel.isHidden(restoredAccount.children[1])).toBe(false);
-            expect(chooseBoxOf(restoredPanel, updaterRowNamed(restoredPanel, restoredAccount, '__proto__')).attributes['aria-checked']).toBe('true');
-            expect(updaterObjectsOf(restoredPanel, restoredCard)).toHaveLength(3);
+            const savedTree = panel.savedState().trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
+            expect(savedTree.updaterExpandedObjectKeys).toEqual(['Account']);
+            expect(savedTree).not.toHaveProperty('updaterChosenFieldKeys');
 
         });
 
@@ -415,7 +369,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
         });
 
-        it('opens and closes nothing when a box is ticked during a search, so a row the reader closed stays closed', () => {
+        it('keeps a row the reader closed during a search closed when records arrive', () => {
 
             const { panel, accountCard } = openUpdater();
 
@@ -428,11 +382,10 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             expandUpdaterObject(panel, otherObject);
             expect(panel.isHidden(otherObject.children[1])).toBe(true);
 
-            chooseBoxOf(panel, updaterRowNamed(panel, accountObject, 'Legacy_Code__c')).dispatch('click');
+            panel.postToPanel({ command: 'updaterRecords', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa', objects: [{ objectApiName: 'Account', totalSize: 1, recordCount: 1, isTruncated: false, columns: ['Id'], rows: [['001A']], hiddenColumnCount: 0, pageCount: 1 }] });
 
             expect(panel.isHidden(otherObject.children[1])).toBe(true);
-            expect(panel.findAll(accountObject.children[0], 'updaterObjectCount')[0].textContent).toMatch(/ · 1 chosen$/);
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+            expect(panel.isHidden(accountObject.children[1])).toBe(false);
 
         });
 
@@ -468,55 +421,46 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
     describe('the place', () => {
 
-        it('saves the tab, its search, the chosen fields and the opened objects, and restores them in the next document', () => {
+        it('saves the tab, its search and the opened objects, and restores them in the next document', () => {
 
             const { panel, accountCard } = openUpdater();
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
-            chooseBoxOf(panel, updaterRowNamed(panel, accountObject, 'Legacy_Code__c')).dispatch('click');
             panel.typeIntoTabSearch(accountCard, 'treeUpdater', 'legacy');
 
             const savedPlace = panel.savedState();
             const savedTree = savedPlace.trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
-            expect(savedTree).toMatchObject({
-                selectedTab: 'updater',
-                updaterChosenFieldKeys: ['Account\nLegacy_Code__c'],
-                updaterExpandedObjectKeys: ['Account']
-            });
+            expect(savedTree).toMatchObject({ selectedTab: 'updater', updaterExpandedObjectKeys: ['Account'] });
+            expect(savedTree).not.toHaveProperty('updaterChosenFieldKeys');
             expect(savedTree.searchQueries.updater).toBe('legacy');
 
             const restoredPanel = drawRecipe(loadTreeRecipe(), { savedState: savedPlace });
             const restoredCard = accountCardOf(restoredPanel);
-            const restoredAccount = updaterObjectNamed(restoredPanel, restoredCard, 'Account');
 
             expect(restoredPanel.isHidden(updaterPanelOf(restoredPanel, restoredCard))).toBe(false);
-            expect(chooseBoxOf(restoredPanel, updaterRowNamed(restoredPanel, restoredAccount, 'Legacy_Code__c')).attributes['aria-checked']).toBe('true');
             expect(restoredPanel.findAll(updaterPanelOf(restoredPanel, restoredCard), 'tabSearchInput')[0].value).toBe('legacy');
-            expect(restoredPanel.findAll(updaterPanelOf(restoredPanel, restoredCard), 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+            expect(restoredPanel.isHidden(updaterObjectNamed(restoredPanel, restoredCard, 'Account').children[1])).toBe(false);
 
         });
 
-        it('drops a saved choice of a field whose box is locked, or that the tree no longer has, and an opened object the tree no longer has', () => {
+        it('reads no chosen field from a place saved before #721, and drops an opened object the tree no longer has', () => {
 
             const { panel } = openUpdater();
             const savedPlace = panel.savedState();
             const savedTree = savedPlace.trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
             savedTree.updaterChosenFieldKeys = ['Account\nParentId', 'Account\nGone__c', 'Contact\nLastName'];
-            savedTree.updaterExpandedObjectKeys = ['Gone__c'];
+            savedTree.updaterExpandedObjectKeys = ['Gone__c', 'Contact'];
 
             const restoredPanel = drawRecipe(loadTreeRecipe(), { savedState: savedPlace });
             const restoredCard = accountCardOf(restoredPanel);
 
-            expect(restoredPanel.findAll(updaterPanelOf(restoredPanel, restoredCard), 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
-            const restoredAccount = updaterObjectNamed(restoredPanel, restoredCard, 'Account');
+            expect(restoredPanel.findAll(updaterPanelOf(restoredPanel, restoredCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED);
             const restoredContact = updaterObjectNamed(restoredPanel, restoredCard, 'Contact');
-            expandUpdaterObject(restoredPanel, restoredAccount);
-            expandUpdaterObject(restoredPanel, restoredContact);
-            expect(chooseBoxOf(restoredPanel, updaterRowNamed(restoredPanel, restoredAccount, 'ParentId')).attributes['aria-checked']).toBe('false');
-            expect(chooseBoxOf(restoredPanel, updaterRowNamed(restoredPanel, restoredContact, 'LastName')).attributes['aria-checked']).toBe('true');
+            expect(restoredPanel.findAll(restoredContact.children[0], 'updaterObjectCount')[0].textContent).not.toMatch(/chosen/);
+            expandUpdaterObject(restoredPanel, updaterObjectNamed(restoredPanel, restoredCard, 'Account'));
             const restoredTree = restoredPanel.savedState().trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
-            expect(restoredTree.updaterChosenFieldKeys).toEqual(['Contact\nLastName']);
-            expect(restoredTree.updaterExpandedObjectKeys).toEqual(['Account', 'Contact']);
+            expect(restoredTree).not.toHaveProperty('updaterChosenFieldKeys');
+            expect(restoredTree.updaterExpandedObjectKeys).toEqual(['Contact', 'Account']);
 
         });
 
@@ -529,19 +473,19 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
                 trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'updater', searchQueries: { treecipe: '', datasets: '', updater: 'score' }, expandedObjectKeys: [], openPicklistKeys: [], ...extraFields }]
             });
 
+            // A PLACE SAVED BEFORE #721 NAMES CHOSEN FIELDS, WHICH THE HOST NO LONGER KEEPS
             const normalizedTree = RecipeCockpitPanelPlace.normalize(treePlace({
-                updaterChosenFieldKeys: ['Account\nLegacy_Code__c', 7, ''],
-                updaterExpandedObjectKeys: ['Account']
+                updaterChosenFieldKeys: ['Account\nLegacy_Code__c'],
+                updaterExpandedObjectKeys: ['Account', 7, '']
             }))?.trees[0];
             expect(normalizedTree).toMatchObject({
                 selectedTab: 'updater',
                 searchQueries: { updater: 'score' },
-                updaterChosenFieldKeys: ['Account\nLegacy_Code__c'],
                 updaterExpandedObjectKeys: ['Account']
             });
+            expect(normalizedTree).not.toHaveProperty('updaterChosenFieldKeys');
 
-            const olderTree = RecipeCockpitPanelPlace.normalize(treePlace({ updaterChosenFieldKeys: 'Account\nLegacy_Code__c', updaterExpandedObjectKeys: [] }))?.trees[0];
-            expect(olderTree).not.toHaveProperty('updaterChosenFieldKeys');
+            const olderTree = RecipeCockpitPanelPlace.normalize(treePlace({ updaterExpandedObjectKeys: 'Account' }))?.trees[0];
             expect(olderTree).not.toHaveProperty('updaterExpandedObjectKeys');
 
             const withoutSearch = RecipeCockpitPanelPlace.normalize(treePlace({}));
@@ -643,13 +587,11 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
         });
 
-        it('goes back to step 1 with Change parent, keeping the parent and the WHERE typed, and keeps a choice on an object step 2 no longer draws', () => {
+        it('goes back to step 1 with Change parent object, keeping the parent and the WHERE typed, and an object opened before is open again', () => {
 
             const { panel, accountCard } = openParentStep();
             chooseParent(panel, accountCard, 'Account', 'Name LIKE \'Acme%\'');
-            const contactObject = updaterObjectNamed(panel, accountCard, 'Contact');
-            expandUpdaterObject(panel, contactObject);
-            chooseBoxOf(panel, updaterRowNamed(panel, contactObject, 'LastName')).dispatch('click');
+            expandUpdaterObject(panel, updaterObjectNamed(panel, accountCard, 'Contact'));
 
             panel.findAll(structureStepOf(panel, accountCard), 'updaterChangeParent')[0].dispatch('click');
 
@@ -657,12 +599,8 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             expect(parentSelectOf(panel, accountCard).value).toBe('0');
             expect(parentWhereOf(panel, accountCard).value).toBe('Name LIKE \'Acme%\'');
 
-            chooseParent(panel, accountCard, 'OtherChildObject__c');
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN);
-
-            panel.findAll(structureStepOf(panel, accountCard), 'updaterChangeParent')[0].dispatch('click');
             chooseParent(panel, accountCard, 'Account');
-            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+            expect(panel.isHidden(updaterObjectNamed(panel, accountCard, 'Contact').children[1])).toBe(false);
 
         });
 
@@ -828,7 +766,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
         });
 
-        it('disables Generate values and Update records with the reason when the last load read 0 records (#444)', () => {
+        it('disables Update records with the reason when the last load read 0 records (#444)', () => {
 
             const { panel, accountCard } = openParentStep();
             chooseParent(panel, accountCard, 'Account', 'Name = \'Nobody\'');
@@ -837,11 +775,10 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
                 objects: ['Account', 'Contact', 'OtherChildObject__c'].map(objectApiName => ({ objectApiName, totalSize: 0, recordCount: 0, isTruncated: false, columns: [], rows: [], hiddenColumnCount: 0 }))
             });
 
-            ['updaterGenerate', 'updaterUpdate'].forEach(cardClassName => {
-                const cardElement = panel.findAll(updaterPanelOf(panel, accountCard), cardClassName)[0];
-                expect(cardElement.disabled).toBe(true);
-                expect(panel.findAll(cardElement, 'actionCardReason')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON);
-            });
+            const cardElement = panel.findAll(updaterPanelOf(panel, accountCard), 'updaterUpdate')[0];
+            expect(cardElement.disabled).toBe(true);
+            expect(panel.findAll(cardElement, 'actionCardReason')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON);
+            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterGenerate')).toEqual([]);
 
         });
 

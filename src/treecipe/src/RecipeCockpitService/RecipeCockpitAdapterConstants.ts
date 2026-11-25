@@ -4,7 +4,7 @@
     the webview can reach vscode or Node; every importer reads its names here (#671).
 */
 
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Mark the rows to change with ✎, then 🎲 makes a new value for a cell or a whole column from the field\'s faker expression, and ↺ puts a loaded value back. Update records writes only the changed cells of the marked rows, by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
 
 /*
@@ -34,6 +34,8 @@ export const RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL = 'changed in org';
 export const RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL = 'not retrieved from the org';
 // A FIELD ONLY THE ORG HOLDS IS DRAWN, NOT FILLED: FILLING IT IS #446
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE = 'Only in the org: this project has no file for it yet.';
+// THE CARD'S RECORD TABLE HAS NO 🎲 FOR SUCH A FIELD (#721), SO ITS ROW SAYS WHY
+export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE = 'No 🎲 in the record table: this recipe\'s faker backend writes no expression for its type in the org.';
 // A CHILD OBJECT ONLY THE ORG HOLDS IS DRAWN, NOT ADDED: ADDING IT IS #447
 export const RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL = 'new child object in org';
 export const RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE = 'Only in the org: this treecipe has no block for it yet.';
@@ -54,6 +56,8 @@ export const RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON = 'No field file is new
 
 // WHY A FIELD'S BOX IS LOCKED, AND WHAT THE SUMMARY SAYS WITH NONE CHOSEN
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
+// THE CARD'S SUMMARY BEFORE ANY ROW OF ITS RECORD TABLES IS MARKED (#721)
+export const RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED = 'No rows marked to update';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
 export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another record, which the Adapter does not change';
@@ -71,8 +75,16 @@ export const RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL = 'Next';
 export const RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON = 'the org does not have it, or does not let this user read it. Check the field and its field-level security in the org, then load again.';
 export const RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = 'The last load read 0 records: change the parent\'s WHERE in step 1, or the WHERE under an object, and load again.';
 
-// GENERATE VALUES (#417) AND THE PENCIL'S HINT
-export const RECIPE_COCKPIT_UPDATER_GENERATE_LABEL = 'Generate values';
+// "Edit existing records" (#721): THE TABLE'S HEADING, ITS BUTTONS' GLYPHS AND WHY UPDATE HAS NOTHING TO WRITE YET
+export const RECIPE_COCKPIT_UPDATER_EDIT_HEADING = 'Edit existing records';
+export const RECIPE_COCKPIT_UPDATER_MARK_COLUMN_LABEL = 'Update';
+export const RECIPE_COCKPIT_UPDATER_MARK_GLYPH = '✎';
+export const RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH = '🎲';
+export const RECIPE_COCKPIT_UPDATER_RESET_GLYPH = '↺';
+export const RECIPE_COCKPIT_UPDATER_LOCKED_GLYPH = '🔒';
+export const RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL = 'Reset all';
+export const RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON = 'Mark a row first: the ✎ at the start of a row marks it to update.';
+export const RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON = 'Change a cell in a marked row first: 🎲 makes a new value for it.';
 export const RECIPE_COCKPIT_UPDATER_GENERATING_LABEL = 'Generating…';
 export const RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = 'Keeps this value in the Treecipe Adapter only: nothing is written to the recipe or to the org.';
 

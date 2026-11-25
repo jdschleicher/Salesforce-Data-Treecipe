@@ -1,7 +1,7 @@
 import { connectConfirmDialog, renderConfirmRequest } from '../../CockpitKit/panel/CockpitConfirmDialogPanel';
 import { RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH, RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX } from '../RecipeCockpitPanelConstants';
 import { clearAdapterChildPreviews, clearAdapterChildren, renderAdapterChildBlock, renderAdapterChildPreview } from './adapter/AdapterChild';
-import { clearUpdaterRecords, clearUpdaterValues, drawUpdaterLoadButtons, renderUpdaterParentChange, renderUpdaterRecords, renderUpdaterRecordsPage, renderUpdaterSnapshots, renderUpdaterValues } from './adapter/AdapterLoadAndUpdate';
+import { clearUpdaterRecords, drawUpdaterLoadButtons, renderUpdaterParentChange, renderUpdaterRecords, renderUpdaterRecordsPage, renderUpdaterSnapshots } from './adapter/AdapterLoadAndUpdate';
 import { renderAdapterMetadataChanges } from './adapter/AdapterRetrieve';
 import { renderDatasetJourney } from './datasets/DatasetJourney';
 import { renderDatasetRecordCounts } from './datasets/DatasetRow';
@@ -287,19 +287,16 @@ function routeHostMessage(hostMessage: any): void {
         const updaterRunKind = runLocks.updaterRunKind;
         if (updaterRunKind !== 'prepareChild') { runLocks.adapterChildPreparingKey = ''; }
         if (updaterRunKind !== 'restore') { runLocks.updaterRestoringSnapshotName = ''; }
-        // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS VALUES WITH IT; A GENERATION LETS ONLY THE VALUES GO
+        // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS MARKS AND CHANGES WITH IT
         if (hostMessage.isRunning) {
             if (updaterRunKind === 'load') { clearUpdaterRecords(); }
             // A NEW CHILD (#447) BELONGS TO THE RECORDS IT IS ADDED UNDER; A NEW ONE REPLACES IT, AND A GENERATION ITS PREVIEW
             if (updaterRunKind === 'load' || updaterRunKind === 'prepareChild') { clearAdapterChildren(); }
             if (updaterRunKind === 'generateChild') { clearAdapterChildPreviews(); }
-            // AN UPDATE (#418) KEEPS THE PREVIEW ON SCREEN WHILE ITS CONFIRMATION ASKS ABOUT IT, AND A METADATA RETRIEVE (#445) TOUCHES NO RECORD
-            if (['update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'].indexOf(updaterRunKind) === -1) { clearUpdaterValues(); }
         }
         // AN UPDATE THAT SENT A REQUEST SPENT THE LOADED RECORDS: THEIR "current" VALUES ARE NO LONGER CURRENT
         if (!hostMessage.isRunning && hostMessage.isRecordsSpent === true) {
             clearUpdaterRecords();
-            clearUpdaterValues();
             clearAdapterChildren();
         }
         drawUpdaterLoadButtons();
@@ -339,12 +336,6 @@ function routeHostMessage(hostMessage: any): void {
 
     if (hostMessage.command === 'updaterSnapshots') {
         renderUpdaterSnapshots(hostMessage);
-        return;
-    }
-
-    if (hostMessage.command === 'updaterValues') {
-        renderUpdaterValues(hostMessage);
-        acknowledgeRecordLinks(hostMessage);
         return;
     }
 

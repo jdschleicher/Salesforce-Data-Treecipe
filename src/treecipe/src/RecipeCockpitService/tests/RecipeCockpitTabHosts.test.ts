@@ -24,6 +24,7 @@ import * as RecipeCockpitDatasetsHostModule from '../RecipeCockpitDatasetsHost';
 import * as RecipeCockpitAdapterHostModule from '../RecipeCockpitAdapterHost';
 import * as RecipeCockpitAdapterMetadataModule from '../RecipeCockpitAdapterMetadata';
 import * as RecipeCockpitAdapterRecordsModule from '../RecipeCockpitAdapterRecords';
+import * as RecipeCockpitAdapterEditsModule from '../RecipeCockpitAdapterEdits';
 import * as RecipeCockpitAdapterStateModule from '../RecipeCockpitAdapterState';
 import * as RecipeCockpitRecordLinksHostModule from '../RecipeCockpitRecordLinksHost';
 import * as RecipeCockpitRecordLinksModule from '../RecipeCockpitRecordLinks';
@@ -158,8 +159,15 @@ const TAB_HOSTS: ITabHost[] = [
                 pureModuleFileName: 'RecipeCockpitQuery.ts',
                 hostFileName: 'RecipeCockpitAdapterRecords.ts',
                 importedNames: ['RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN', 'RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
-                members: ['buildPreview', 'buildTablePage', 'countValues', 'fetchQueryRecords', 'readLinkedRecordId'],
+                members: ['buildTablePage', 'countValues', 'fetchQueryRecords', 'readLinkedRecordId'],
                 reason: 'the Adapter\'s load, update and restore read records through the same pages, limits and preview, and its record tables (#720) are cut from the same cell text and Id rule'
+            },
+            {
+                pureModuleFileName: 'RecipeCockpitQuery.ts',
+                hostFileName: 'RecipeCockpitAdapterEdits.ts',
+                importedNames: ['IRecipeCockpitPreviewRecordLinks', 'RecipeCockpitQuery'],
+                members: ['buildTablePage', 'readLinkedRecordId'],
+                reason: 'a page of the Adapter\'s record table as it reads after an edit (#721) is cut with the same cell text and Id rule'
             }
         ]
     },
@@ -299,8 +307,8 @@ const TAB_HOSTS: ITabHost[] = [
     {
         tabName: 'Treecipe Adapter',
         hostClassName: 'RecipeCockpitAdapterHost',
-        hostFileNames: ['RecipeCockpitAdapterHost.ts', 'RecipeCockpitAdapterMetadata.ts', 'RecipeCockpitAdapterRecords.ts', 'RecipeCockpitAdapterState.ts'],
-        hostModules: [RecipeCockpitAdapterHostModule, RecipeCockpitAdapterMetadataModule, RecipeCockpitAdapterRecordsModule, RecipeCockpitAdapterStateModule],
+        hostFileNames: ['RecipeCockpitAdapterHost.ts', 'RecipeCockpitAdapterMetadata.ts', 'RecipeCockpitAdapterRecords.ts', 'RecipeCockpitAdapterEdits.ts', 'RecipeCockpitAdapterState.ts'],
+        hostModules: [RecipeCockpitAdapterHostModule, RecipeCockpitAdapterMetadataModule, RecipeCockpitAdapterRecordsModule, RecipeCockpitAdapterEditsModule, RecipeCockpitAdapterStateModule],
         commands: RECIPE_COCKPIT_ADAPTER_COMMANDS,
         actionKinds: RECIPE_COCKPIT_ADAPTER_ACTION_KINDS,
         routePanelMessage: (panelMessage, panelState) => RecipeCockpitAdapterHost.routePanelMessage(panelMessage, panelState, RecipeCockpitService),

@@ -54,14 +54,20 @@ import type {
     IRecipeCockpitHubForAdapterTab,
     IRecipeCockpitUpdaterLoadStateMessage,
     IRecipeCockpitUpdaterObjectRecordsViewModel,
-    IRecipeCockpitUpdaterObjectValuesViewModel,
     IRecipeCockpitUpdaterRecordsMessage,
     IRecipeCockpitUpdaterRecordValues,
     IRecipeCockpitUpdaterRestoreTarget,
     IRecipeCockpitUpdaterSendResult,
-    IRecipeCockpitUpdaterSnapshotsMessage,
-    IRecipeCockpitUpdaterValuesMessage
+    IRecipeCockpitUpdaterSnapshotsMessage
 } from './RecipeCockpitAdapterHost';
+import {
+    RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
+    RecipeCockpitAdapterEdits
+} from './RecipeCockpitAdapterEdits';
+import type {
+    IRecipeCockpitUpdaterColumnPlan,
+    IRecipeCockpitUpdaterUpdatePlan
+} from './RecipeCockpitAdapterEdits';
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 import { RecipeCockpitRecordLinks } from './RecipeCockpitRecordLinks';
 import {
@@ -91,10 +97,8 @@ export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE = 'Fixed value onl
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org';
 // THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGER HAS SELECTED
 export const RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to load this tree\'s records from';
-// HOW MANY ROWS OF AN OBJECT'S NEW VALUES THE PANEL IS SENT; THE REST STAY ON THE HOST
+// HOW MANY ROWS OF A NEW CHILD OBJECT'S PREVIEW THE PANEL IS SENT (#447); THE REST STAY ON THE HOST
 export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
-// HOW MANY OF AN OBJECT'S LOADED RECORDS ONE PAGE OF ITS TABLE HOLDS (#720); EVERY PAGE IS READ FROM THE RECORDS THE HOST KEEPS
-export const RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE = 50;
 export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
 // AN OBJECT UNDER THE PARENT IS READ ONLY UNDER RECORDS LOADED A LEVEL ABOVE (#444); WHEN THERE ARE NONE, IT SENDS NO QUERY
 export const RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX = 'Not read: ';
@@ -107,7 +111,8 @@ export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no fa
 export const RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE = 2000;
 // THE UPDATE (#418): THE GENERATED VALUES WRITTEN TO THE LOADED RECORDS BY Id, IN THE SANDBOX THEY WERE LOADED FROM
 export const RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL = 'Update records';
-export const RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL = 'Nothing was updated: generate values for the loaded records first. The update writes the values the last Generate values made.';
+export const RECIPE_COCKPIT_UPDATER_NOT_LOADED_FOR_UPDATE_REFUSAL = 'Nothing was updated: load this tree\'s records first, then mark the rows to change.';
+export const RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL = 'Nothing was updated: no marked row holds a changed value. Mark a row with its pencil, then change a cell in it.';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE = 'A picklist value is the field\'s default list, not its record type\'s: a record whose record type does not allow the value is rejected by the org, and its error is in the results file.';
 export const RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE = RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE;
 export const RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL = 'Nothing was updated: the old values could not be saved to RunArtifacts in the tree folder, and an update never runs without them.';
@@ -141,7 +146,6 @@ export class RecipeCockpitAdapterRecords {
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterChildBlockMessage = undefined;
         panelState.adapterChildPreviewMessage = undefined;
-        RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
         RecipeCockpitAdapterState.setUpdaterLoadState(hub, { command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
 
         try {
@@ -212,6 +216,7 @@ export class RecipeCockpitAdapterRecords {
         const recordIdsByObjectApiName = new Map<string, (string | undefined)[]>();
         const columnFieldApiNamesByObjectApiName = new Map<string, string[]>();
         const lookupFieldApiNamesByObjectApiName = new Map<string, string[]>();
+        const columnPlansByObjectApiName = new Map<string, IRecipeCockpitUpdaterColumnPlan[]>();
         // WHAT IS READ ONCE THE ORG'S DESCRIBES LEFT OUT THE FIELDS IT WOULD REFUSE (#720)
         const readRequests: IRecipeCockpitUpdaterObjectRequest[] = [];
         let queryRefusal: string | undefined;
@@ -392,6 +397,8 @@ export class RecipeCockpitAdapterRecords {
                     const columnFieldApiNames = RecipeCockpitTreeUpdaterQuery.listSelectedFieldApiNames(treeObject, request.fieldApiNames);
                     const unreadFieldApiNames = unreadFieldApiNamesByObjectApiName.get(request.objectApiName) ?? [];
                     const firstPage = RecipeCockpitQuery.buildTablePage(records, columnFieldApiNames, treeObject.lookupFieldApiNames, 0, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE);
+                    const columnPlans = RecipeCockpitAdapterEdits.planColumns(panelState, clickedRecipeDataMessage.recipe, tree, request.objectApiName, columnFieldApiNames);
+                    columnPlansByObjectApiName.set(request.objectApiName, columnPlans);
                     columnFieldApiNamesByObjectApiName.set(request.objectApiName, columnFieldApiNames);
                     lookupFieldApiNamesByObjectApiName.set(request.objectApiName, [...treeObject.lookupFieldApiNames]);
                     // PAGE 0'S OWN Ids ONLY SAY WHETHER ANY ROW LINKS A RECORD: A CLICK'S Id IS READ FROM THE HELD RECORD (tablePages BELOW)
@@ -407,7 +414,12 @@ export class RecipeCockpitAdapterRecords {
                         pageCount: Math.ceil(records.length / RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE),
                         ...( firstPage.recordLinks ? { recordLinks: firstPage.recordLinks } : {} ),
                         ...( firstPage.lookupLinks ? { lookupLinks: firstPage.lookupLinks } : {} ),
-                        ...( unreadFieldApiNames.length > 0 ? { unreadFieldApiNames: unreadFieldApiNames } : {} )
+                        ...( unreadFieldApiNames.length > 0 ? { unreadFieldApiNames: unreadFieldApiNames } : {} ),
+                        // A NEW LOAD STARTS WITH NO ROW MARKED AND NO CELL CHANGED (#721)
+                        columnEdits: RecipeCockpitAdapterEdits.toColumnEditViews(columnPlans),
+                        markedRowIndexes: [],
+                        changedCells: [],
+                        editSummary: { markedRecordCount: 0, updatableRecordCount: 0, changedFieldApiNames: [], hasUnmarkedChanges: false }
                     });
                 } catch (queryError) {
                     // ONE OBJECT THE ORG REFUSES (A FIELD IT LACKS, A WHERE IT CANNOT READ) IS THAT OBJECT'S, NOT THE LOAD'S
@@ -464,7 +476,8 @@ export class RecipeCockpitAdapterRecords {
             columnFieldApiNamesByObjectApiName: columnFieldApiNamesByObjectApiName,
             lookupFieldApiNamesByObjectApiName: lookupFieldApiNamesByObjectApiName,
             // PAGE 0 OF EVERY OBJECT READ GOES WITH THE MESSAGE BELOW
-            postedPageIndexesByObjectApiName: new Map([...columnFieldApiNamesByObjectApiName.keys()].map(objectApiName => [objectApiName, new Set([0])] as const))
+            postedPageIndexesByObjectApiName: new Map([...columnFieldApiNamesByObjectApiName.keys()].map(objectApiName => [objectApiName, new Set([0])] as const)),
+            columnPlansByObjectApiName: columnPlansByObjectApiName
         };
         RecipeCockpitAdapterState.heldUpdaterRecords = heldUpdaterRecords;
 
@@ -558,31 +571,11 @@ export class RecipeCockpitAdapterRecords {
 
     }
 
-    // ONE MORE PAGE OF AN OBJECT'S HELD RECORDS (#720): THE ROUTER MATCHED THE OBJECT AND THE PAGE AGAINST THE RECORDS ON SCREEN
-    static postUpdaterRecordsPage(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
+    // ONE MORE PAGE OF AN OBJECT'S HELD RECORDS (#720), AS IT READS NOW (#721): THE ROUTER MATCHED THE OBJECT AND THE PAGE AGAINST THE RECORDS ON SCREEN
+    static postUpdaterRecordsPage(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState,
                                   pageAction: Extract<RecipeCockpitPanelAction, { kind: 'postUpdaterRecordsPage' }>) {
 
-        const { treeKey, renderSequence, objectApiName, pageIndex } = pageAction;
-        const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
-        const records = heldRecords?.recordsByObjectApiName.get(objectApiName);
-        const columnFieldApiNames = heldRecords?.columnFieldApiNamesByObjectApiName.get(objectApiName);
-
-        if ( !heldRecords || !records || !columnFieldApiNames ) {
-            return;
-        }
-
-        const tablePage = RecipeCockpitQuery.buildTablePage(records, columnFieldApiNames, heldRecords.lookupFieldApiNamesByObjectApiName.get(objectApiName) ?? [], pageIndex, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE);
-        heldRecords.postedPageIndexesByObjectApiName.get(objectApiName)?.add(pageIndex);
-        hub.postToPanel(cockpitPanel, {
-            command: 'updaterRecordsPage',
-            renderSequence: renderSequence,
-            treeKey: treeKey,
-            objectApiName: objectApiName,
-            pageIndex: pageIndex,
-            rows: tablePage.rows,
-            ...( tablePage.recordLinks ? { recordLinks: tablePage.recordLinks } : {} ),
-            ...( tablePage.lookupLinks ? { lookupLinks: tablePage.lookupLinks } : {} )
-        });
+        RecipeCockpitAdapterEdits.postEditedPage(hub, cockpitPanel, panelState, { treeKey: pageAction.treeKey, renderSequence: pageAction.renderSequence, objectApiName: pageAction.objectApiName, pageIndex: pageAction.pageIndex });
 
     }
 
@@ -612,12 +605,13 @@ export class RecipeCockpitAdapterRecords {
         if ( isHeldForThisTree ) {
 
             const recordCount = RecipeCockpitAdapterState.readHeldUpdaterRecordCount();
-            const heldText = `${recordCount} loaded ${recordCount === 1 ? 'record' : 'records'}${RecipeCockpitAdapterState.heldUpdaterValues ? ' and the new values generated for them, which were not written to the org' : ''}`;
+            const hasUnwrittenChanges = [...( RecipeCockpitAdapterState.heldUpdaterEdits?.editsByObjectApiName.values() ?? [] )].some(objectEdits => objectEdits.changedValuesByRecordId.size > 0);
+            const heldText = `${recordCount} loaded ${recordCount === 1 ? 'record' : 'records'}${hasUnwrittenChanges ? ' and the changes made to them, which were not written to the org' : ''}`;
             const answer = recordCount === 0
                 ? RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
                 : await hub.confirmInPanel(
                     `Change the parent object of ${tree.customName ?? tree.title}?`,
-                    { summary: [`The ${heldText} ${recordCount === 1 && !RecipeCockpitAdapterState.heldUpdaterValues ? 'is' : 'are'} let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
+                    { summary: [`The ${heldText} ${recordCount === 1 && !hasUnwrittenChanges ? 'is' : 'are'} let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
                     RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
                 );
 
@@ -634,8 +628,7 @@ export class RecipeCockpitAdapterRecords {
             panelState.updaterRecordsMessage = undefined;
             panelState.adapterChildBlockMessage = undefined;
             panelState.adapterChildPreviewMessage = undefined;
-            RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
-
+    
         }
 
         hub.postToPanel(cockpitPanel, { command: 'updaterParentChange', renderSequence: renderSequence, treeKey: treeKey });
@@ -648,391 +641,8 @@ export class RecipeCockpitAdapterRecords {
     }
 
     /*
-        "Generate values" (#417): one run per window, shared with the load. Each chosen field's new
-        value for every record the last load read: a value typed in the Updater's editor that is not
-        an expression is that value for every record, and anything else -- the recipe's own
-        expression, or one the reader edited -- is generated by the recipe's OWN backend from a
-        one-object recipe in a temporary folder outside the workspace, then paired with the loaded
-        Ids in order. Every value is shown in the panel's confirmation before anything runs. The new
-        values stay on the host; a preview is posted. Nothing is written to the org or the recipe.
-    */
-    static async generateUpdaterValuesFromPanel(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
-                                                        panelState: IRecipeCockpitPanelState,
-                                                        generateAction: Extract<RecipeCockpitPanelAction, { kind: 'generateUpdaterValues' }>) {
-
-        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: generateAction.treeKey, runKind: 'generate' };
-
-        if ( RecipeCockpitAdapterState.isUpdaterLoadInFlight ) {
-            hub.postToPanel(cockpitPanel, RecipeCockpitAdapterState.updaterLoadRunStateMessage ?? notRunning);
-            return;
-        }
-
-        RecipeCockpitAdapterState.isUpdaterLoadInFlight = true;
-        // A GENERATION REPLACES THE LAST ONE FROM ITS START, AS A LOAD DOES
-        RecipeCockpitAdapterState.clearHeldUpdaterValues();
-        RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
-        RecipeCockpitAdapterState.setUpdaterLoadState(hub, { command: 'updaterLoadState', isRunning: true, treeKey: generateAction.treeKey, runKind: 'generate' });
-
-        try {
-            await this.performUpdaterGenerate(hub, cockpitPanel, panelState, generateAction);
-        } finally {
-            RecipeCockpitAdapterState.isUpdaterLoadInFlight = false;
-            RecipeCockpitAdapterState.setUpdaterLoadState(hub, notRunning);
-        }
-
-    }
-
-    private static async performUpdaterGenerate(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
-                                                panelState: IRecipeCockpitPanelState,
-                                                generateAction: Extract<RecipeCockpitPanelAction, { kind: 'generateUpdaterValues' }>) {
-
-        const { treeKey, renderSequence, fieldRequests } = generateAction;
-        const clickedRecipeDataMessage = panelState.recipeDataMessage;
-        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
-        const refuse = (refusalText: string) => { VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`No values were generated: ${refusalText}`)); };
-
-        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree?.folderName ) {
-            return;
-        }
-
-        const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
-        if ( !heldRecords || heldRecords.workspaceRoot !== panelState.workspaceRoot || heldRecords.renderSequence !== renderSequence || heldRecords.folderName !== tree.folderName ) {
-            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL);
-            return;
-        }
-
-        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
-        if ( !recipeFilePath || !hub.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
-            refuse('this card has no single recipe file to read its backend from.');
-            return;
-        }
-
-        const generatedRecipesFolderPath = path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
-        const fakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath);
-        if ( !fakerService ) {
-            refuse('the faker backend this card\'s recipe was written for could not be told from its path.');
-            return;
-        }
-
-        let recipeNicknames: Set<string>;
-        try {
-            const recipeText = fs.readFileSync(recipeFilePath, 'utf8');
-            recipeNicknames = new Set(RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines).flatMap(scannedObject => scannedObject.nicknames));
-        } catch {
-            refuse('this card\'s recipe file could not be read.');
-            return;
-        }
-
-        // EACH FIELD CHECKED AGAIN AGAINST THE MODEL ON SCREEN AND THE RECORDS LOADED, IN THE ORDER POSTED
-        // valueText IS WHAT THE RECIPE GETS; shownValue IS WHAT THE CONFIRMATION SHOWS -- THE READER'S OWN TEXT FOR AN EDIT
-        type PlannedFieldSource = 'recipe' | 'recipeEdit' | 'recipeFixed' | 'orgExpression' | 'expression' | 'fixed';
-        // recipeValueText IS THE SCALAR THE ADAPTED RECIPE WRITES (#448): A FIXED VALUE AS ITS KIND IS WRITTEN
-        interface IPlannedField { objectApiName: string; fieldApiName: string; source: PlannedFieldSource; valueText: string; shownValue: string; fixedValue?: unknown; isOrgOnly?: true; recipeValueText?: string }
-        const plannedFields: IPlannedField[] = [];
-        const objectViewModelsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
-        clickedRecipeDataMessage.recipe.objects.forEach(object => {
-            if ( !objectViewModelsByApiName.has(object.objectApiName) ) {
-                objectViewModelsByApiName.set(object.objectApiName, object);
-            }
-        });
-        // A FIELD EDITED ON THE TREECIPE TAB (#342, #356) HOLDS ITS EDIT IN THE RECIPE FILE, WHICH WINS OVER THE WRAPPER'S EXPRESSION
-        // THE OBJECT'S FIRST OCCURRENCE'S EDIT: A LATER OCCURRENCE'S OWN (#467) IS NOT WHAT THE ADAPTER'S ONE ROW PER OBJECT SHOWS
-        const recipeFileEditsByFieldKey = new Map(( tree.fixedValues ?? [] )
-            .filter(fixedValue => fixedValue.nickname === undefined || fixedValue.nickname === objectViewModelsByApiName.get(fixedValue.objectApiName)?.nickname)
-            .map(fixedValue => [`${fixedValue.objectApiName}\n${fixedValue.fieldApiName}`, fixedValue] as const));
-
-        for ( const fieldRequest of fieldRequests ) {
-
-            const fieldLabel = `${fieldRequest.objectApiName}.${fieldRequest.fieldApiName}`;
-            const objectViewModel = objectViewModelsByApiName.get(fieldRequest.objectApiName);
-            const recipeFieldViewModel = objectViewModel?.fields.find(field => field.fieldApiName === fieldRequest.fieldApiName);
-            // A FIELD ONLY THE ORG HOLDS (#446) IS ONE THE LAST RETRIEVE OFFERED FOR THIS CARD, READ FROM ITS STAGED FILE
-            const orgOnlyField = recipeFieldViewModel ? undefined : RecipeCockpitAdapterState.findAdapterOrgOnlyField(panelState, treeKey, fieldRequest.objectApiName, fieldRequest.fieldApiName);
-            const fieldViewModel = recipeFieldViewModel ?? orgOnlyField?.fieldViewModel;
-            const orgOnlyMark: { isOrgOnly?: true } = orgOnlyField ? { isOrgOnly: true } : {};
-
-            if ( !objectViewModel || !fieldViewModel ) {
-                refuse(`${fieldLabel} is not a field of this treecipe.`);
-                return;
-            }
-
-            const lockReason = orgOnlyField ? orgOnlyField.lockReason : RecipeCockpitAdapterState.findUpdaterFieldLockReason(tree, fieldRequest.objectApiName, fieldViewModel);
-            if ( lockReason !== undefined ) {
-                refuse(`${fieldLabel} cannot be filled: ${lockReason}.`);
-                return;
-            }
-
-            if ( !( heldRecords.loadedFieldApiNamesByObjectApiName.get(fieldRequest.objectApiName) ?? [] ).includes(fieldRequest.fieldApiName) ) {
-                refuse(`${fieldLabel} was not read by the last Load records, so its current value is not known: the org does not have it, or does not let this user read it. Check the field in the org, then load again.`);
-                return;
-            }
-
-            if ( fieldRequest.value === undefined && orgOnlyField ) {
-                if ( orgOnlyField.expression === undefined ) {
-                    refuse(`${fieldLabel}: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE}`);
-                    return;
-                }
-                plannedFields.push({
-                    objectApiName: fieldRequest.objectApiName,
-                    fieldApiName: fieldRequest.fieldApiName,
-                    source: 'orgExpression',
-                    valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: orgOnlyField.expression, kind: 'expression' }),
-                    shownValue: orgOnlyField.expression,
-                    isOrgOnly: true
-                });
-                continue;
-            }
-
-            if ( fieldRequest.value === undefined ) {
-                const recipeFileEdit = recipeFileEditsByFieldKey.get(`${fieldRequest.objectApiName}\n${fieldRequest.fieldApiName}`);
-                if ( recipeFileEdit && recipeFileEdit.kind !== 'expression' ) {
-                    plannedFields.push({ objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'recipeFixed', valueText: recipeFileEdit.value, shownValue: recipeFileEdit.value, fixedValue: RecipeCockpitAdapterState.toUpdaterFixedValue(recipeFileEdit.value, recipeFileEdit.kind),
-                                         recipeValueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: recipeFileEdit.value, kind: recipeFileEdit.kind }) });
-                    continue;
-                }
-                const expression = recipeFileEdit ? recipeFileEdit.value : RecipeCockpitDrawnModel.findRecipeExpression(fieldViewModel.recipeValue);
-                if ( expression === undefined ) {
-                    refuse(`${fieldLabel}: ${RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON}.`);
-                    return;
-                }
-                plannedFields.push({
-                    objectApiName: fieldRequest.objectApiName,
-                    fieldApiName: fieldRequest.fieldApiName,
-                    source: recipeFileEdit ? 'recipeEdit' : 'recipe',
-                    // DOUBLE-QUOTED, SO ": " OR "#" IN THE EXPRESSION IS NEVER READ AS YAML; IT LOADS AS THE SAME STRING
-                    valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: expression, kind: 'expression' }),
-                    shownValue: expression
-                });
-                continue;
-            }
-
-            const declaredPicklistValues = orgOnlyField
-                ? ( orgOnlyField.picklistValues.length > 0 ? orgOnlyField.picklistValues : undefined )
-                : RecipeCockpitDrawnModel.listDeclaredPicklistValues(panelState, fieldRequest.objectApiName, fieldRequest.fieldApiName);
-            const valueRefusal = hub.validateFixedValueInput(fieldRequest.value, fieldViewModel, declaredPicklistValues);
-            if ( valueRefusal !== undefined ) {
-                refuse(`${fieldLabel}: ${valueRefusal}`);
-                return;
-            }
-
-            const kind = hub.resolveFixedValueKind(fieldRequest.value, fieldViewModel);
-
-            // AN EXPRESSION IS OFFERED ONLY WHERE THE RECIPE'S BACKEND WRITES ONE FOR THE FIELD'S TYPE IN THE ORG
-            if ( orgOnlyField && kind === 'expression' && orgOnlyField.expression === undefined ) {
-                refuse(`${fieldLabel}: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL}.`);
-                return;
-            }
-
-            // AS A PIN IS: A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT
-            if ( kind !== 'expression' && recipeNicknames.has(fieldRequest.value) ) {
-                refuse(`${fieldLabel}: "${fieldRequest.value}" is a nickname in this card's recipe, which is read as a reference to a record, not as text.`);
-                return;
-            }
-
-            plannedFields.push(kind === 'expression'
-                ? { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'expression', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), shownValue: fieldRequest.value, ...orgOnlyMark }
-                : { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: RecipeCockpitAdapterState.toUpdaterFixedValue(fieldRequest.value, kind),
-                    recipeValueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), ...orgOnlyMark });
-
-        }
-
-        const objectApiNames = [...new Set(plannedFields.map(plannedField => plannedField.objectApiName))];
-        const isFixedSource = (plannedField: IPlannedField) => plannedField.source === 'fixed' || plannedField.source === 'recipeFixed';
-        const recordsOf = (objectApiName: string) => heldRecords.recordsByObjectApiName.get(objectApiName) ?? [];
-        const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
-        const treeTitle = tree.customName ?? tree.title;
-
-        if ( objectApiNames.every(objectApiName => recordsOf(objectApiName).length === 0) ) {
-            refuse(`the last load read no records of ${objectApiNames.join(', ')}.`);
-            return;
-        }
-
-        // EVERY VALUE IS SHOWN BEFORE IT RUNS: AN EDITED EXPRESSION IS CODE THE BACKEND RUNS, AND ONLY THE READER'S EDITOR SUPPLIES ONE
-        const sourceLabels: Record<PlannedFieldSource, string> = {
-            recipe: 'recipe expression',
-            recipeEdit: 'expression edited in the recipe file',
-            recipeFixed: 'fixed value in the recipe file',
-            orgExpression: 'expression the recipe\'s backend writes for its type in the org',
-            expression: 'edited expression',
-            fixed: 'fixed value'
-        };
-        const objectSections = objectApiNames.map(objectApiName => {
-            const recordCount = recordsOf(objectApiName).length;
-            return {
-                title: `${objectApiName}: ${describeRecords(recordCount)}${recordCount === 0 ? ', so nothing is generated' : ''}`,
-                lines: plannedFields
-                    .filter(plannedField => plannedField.objectApiName === objectApiName)
-                    .map(plannedField => `  ${plannedField.fieldApiName}${plannedField.isOrgOnly ? ' (only in the org)' : ''} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`)
-            };
-        });
-        // AN EDITED EXPRESSION IS CODE THE BACKEND RUNS, SO IT STAYS ON SCREEN RATHER THAN FOLDED IN ITS OBJECT'S SECTION
-        const editedExpressionLines = plannedFields
-            .filter(plannedField => plannedField.source === 'expression')
-            .map(plannedField => `Runs the edited expression ${plannedField.objectApiName}.${plannedField.fieldApiName}: ${plannedField.shownValue}`);
-
-        const answer = await hub.confirmInPanel(
-            `Generate new values for ${plannedFields.length} ${plannedFields.length === 1 ? 'field' : 'fields'} of ${treeTitle}?`,
-            {
-                summary: [`Generated by the recipe's own backend, ${fakerService}. Nothing is written to the org or the recipe file.`],
-                warnings: editedExpressionLines,
-                sections: objectSections
-            },
-            RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL
-        );
-
-        const isStillCurrent = () => hub.recipeCockpitPanel === cockpitPanel
-                                    && hub.recipeCockpitPanelState === panelState
-                                    && panelState.recipeDataMessage === clickedRecipeDataMessage
-                                    && RecipeCockpitAdapterState.heldUpdaterRecords === heldRecords;
-
-        if ( answer !== RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL || !isStillCurrent() ) {
-            return;
-        }
-
-        const valuesByObjectApiName = new Map<string, IRecipeCockpitUpdaterRecordValues[]>();
-        let generationRefusal: string | undefined;
-        let isCancelled = false;
-
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating new values for ${treeTitle} with ${fakerService}`),
-            cancellable: true
-        }, async (progress, cancellationToken) => {
-
-            for ( const objectApiName of objectApiNames ) {
-
-                const records = recordsOf(objectApiName);
-                if ( records.length === 0 ) {
-                    continue;
-                }
-
-                progress.report({ message: objectApiName });
-
-                const objectFields = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName);
-                const generatedFields = objectFields.filter(plannedField => !isFixedSource(plannedField));
-                let generatedRecords: Record<string, unknown>[] = [];
-
-                if ( generatedFields.length > 0 ) {
-                    const generation = await this.generateUpdaterObjectValues(hub, 
-                        fakerService,
-                        objectApiName,
-                        records.length,
-                        generatedFields.map(plannedField => ({ fieldApiName: plannedField.fieldApiName, valueText: plannedField.valueText })),
-                        () => cancellationToken.isCancellationRequested,
-                        (generatedCount: number) => progress.report({ message: `${objectApiName}: ${generatedCount} of ${records.length}` })
-                    );
-                    if ( 'isCancelled' in generation ) {
-                        isCancelled = true;
-                        return;
-                    }
-                    if ( 'refusal' in generation ) {
-                        generationRefusal = generation.refusal;
-                        return;
-                    }
-                    generatedRecords = generation.records;
-                }
-
-                valuesByObjectApiName.set(objectApiName, records.map((record, recordIndex) => ({
-                    recordId: String(record.Id),
-                    fieldValues: Object.fromEntries(objectFields.map(plannedField => [
-                        plannedField.fieldApiName,
-                        // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
-                        isFixedSource(plannedField) ? plannedField.fixedValue : generatedRecords[recordIndex][plannedField.fieldApiName] ?? null
-                    ]))
-                })));
-
-            }
-
-        });
-
-        if ( generationRefusal !== undefined ) {
-            refuse(generationRefusal);
-            return;
-        }
-
-        if ( isCancelled ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Generating new values for ${treeTitle} was cancelled, so none were kept.`));
-            return;
-        }
-
-        if ( !isStillCurrent() ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The values for ${treeTitle} were not kept: the run on screen or its records changed while they were generated. Generate them again.`));
-            return;
-        }
-
-        const orgOnlyFieldApiNamesByObjectApiName = new Map<string, string[]>();
-        plannedFields.filter(plannedField => plannedField.isOrgOnly && valuesByObjectApiName.has(plannedField.objectApiName)).forEach(plannedField => {
-            orgOnlyFieldApiNamesByObjectApiName.set(plannedField.objectApiName, [...( orgOnlyFieldApiNamesByObjectApiName.get(plannedField.objectApiName) ?? [] ), plannedField.fieldApiName]);
-        });
-        // THE RECIPE ALREADY HOLDS A VALUE THAT CAME FROM IT, SO ITS LINES ARE ONLY MARKED; ANY OTHER IS WRITTEN AS THE ONE LINE IT WAS GENERATED FROM
-        const adaptedRecipeFields: IAdaptedRecipeField[] = plannedFields.filter(plannedField => valuesByObjectApiName.has(plannedField.objectApiName)).map(plannedField => ({
-            objectApiName: plannedField.objectApiName,
-            fieldApiName: plannedField.fieldApiName,
-            valueText: plannedField.recipeValueText ?? plannedField.valueText,
-            ...( plannedField.source === 'recipe' || plannedField.source === 'recipeEdit' || plannedField.source === 'recipeFixed' ? { isRecipeValue: true as const } : {} ),
-            ...( plannedField.isOrgOnly ? { isOrgOnly: true as const } : {} )
-        }));
-        const heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName, orgOnlyFieldApiNamesByObjectApiName: orgOnlyFieldApiNamesByObjectApiName, adaptedRecipeFields: adaptedRecipeFields };
-        RecipeCockpitAdapterState.heldUpdaterValues = heldUpdaterValues;
-        const previewRecordIdsByObjectApiName = new Map<string, (string | undefined)[]>();
-
-        const objectViewModels: IRecipeCockpitUpdaterObjectValuesViewModel[] = objectApiNames.map(objectApiName => {
-            const fieldApiNames = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).map(plannedField => plannedField.fieldApiName);
-            const records = recordsOf(objectApiName);
-            // AN OBJECT WITH NO RECORDS LOADED HAS NO VALUES, AND IS LISTED SO THE PANEL CAN SAY SO
-            const recordValues = valuesByObjectApiName.get(objectApiName) ?? [];
-            const previewRecords = recordValues.slice(0, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT).map((recordValue, recordIndex) => {
-                const previewRecord: Record<string, unknown> = { Id: recordValue.recordId };
-                fieldApiNames.forEach(fieldApiName => {
-                    previewRecord[`${fieldApiName} (current)`] = RecipeCockpitDrawnModel.readRecordFieldValue(records[recordIndex], fieldApiName) ?? null;
-                    previewRecord[`${fieldApiName} (new)`] = recordValue.fieldValues[fieldApiName];
-                });
-                return previewRecord;
-            });
-            const preview = RecipeCockpitQuery.buildPreview(previewRecords, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
-            if ( preview.recordIds ) {
-                previewRecordIdsByObjectApiName.set(objectApiName, preview.recordIds);
-            }
-            return {
-                objectApiName: objectApiName,
-                recordCount: recordValues.length,
-                fieldApiNames: fieldApiNames,
-                columns: preview.columns,
-                rows: preview.rows,
-                hiddenColumnCount: preview.hiddenColumnCount,
-                ...( preview.recordLinks ? { recordLinks: preview.recordLinks } : {} )
-            };
-        });
-
-        const valuesMessage: IRecipeCockpitUpdaterValuesMessage = {
-            command: 'updaterValues',
-            renderSequence: renderSequence,
-            treeKey: treeKey,
-            objects: objectViewModels,
-            valuesSequence: ++RecipeCockpitAdapterState.updaterValuesSequence
-        };
-        const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, {
-            previewKind: 'updaterValues',
-            renderSequence: renderSequence,
-            treeKey: treeKey,
-            orgUsername: heldRecords.orgUsername,
-            heldSource: heldUpdaterValues,
-            recordIdsByObjectApiName: previewRecordIdsByObjectApiName
-        });
-        if ( recordLinkSequence !== undefined ) {
-            valuesMessage.recordLinkSequence = recordLinkSequence;
-        }
-        RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, valuesMessage);
-        hub.postToPanel(cockpitPanel, valuesMessage);
-
-        const recordCount = objectViewModels.reduce((total, objectViewModel) => total + objectViewModel.recordCount, 0);
-        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`Generated new values for ${describeRecords(recordCount)} of ${treeTitle}. Nothing was written to the org.`));
-
-    }
-
-    /*
-        "Update records" (#418): the values the last Generate values made, written to the records the
-        last Load records read, by Id, in the sandbox they were read from. It shares the load's one
+        "Update records" (#418): the changed cells of the rows the reader marked (#721), written to the
+        records the last Load records read, by Id, in the sandbox they were read from. It shares the load's one
         run per window (runKind 'update'), and holds the org selection while it runs. Once a request
         has been sent the loaded records and their values are spent -- their "current" values are no
         longer current -- so they are let go and the panel is told so.
@@ -1061,8 +671,7 @@ export class RecipeCockpitAdapterRecords {
                 panelState.updaterRecordsMessage = undefined;
                 panelState.adapterChildBlockMessage = undefined;
                 panelState.adapterChildPreviewMessage = undefined;
-                RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
-            }
+                    }
             RecipeCockpitAdapterState.setUpdaterLoadState(hub, isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
             // AN UPDATE THAT SAVED A SNAPSHOT LISTS IT FOR RESTORE (#419)
             this.refreshUpdaterSnapshots(hub, cockpitPanel, panelState, updateAction.treeKey);
@@ -1085,15 +694,13 @@ export class RecipeCockpitAdapterRecords {
         }
 
         const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
-        const heldValues = RecipeCockpitAdapterState.heldUpdaterValues;
+        const heldEdits = RecipeCockpitAdapterState.heldUpdaterEdits;
 
         if ( !heldRecords
-                || !heldValues
-                || heldValues.resultKey !== heldRecords.resultKey
                 || heldRecords.workspaceRoot !== panelState.workspaceRoot
                 || heldRecords.renderSequence !== clickedRecipeDataMessage.renderSequence
                 || heldRecords.folderName !== tree.folderName ) {
-            return refuse(RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL);
+            return refuse(RECIPE_COCKPIT_UPDATER_NOT_LOADED_FOR_UPDATE_REFUSAL);
         }
 
         const dataOrgSelection = panelState.dataOrgSelection;
@@ -1113,29 +720,12 @@ export class RecipeCockpitAdapterRecords {
             return refuse(`Nothing was updated: the records of ${treeTitle} were loaded from ${heldRecords.orgUsername}, not ${orgLabel}. Load them again from the org selected now.`);
         }
 
-        // PARENTS FIRST: THE CARD'S OBJECTS ARE IN INSERT ORDER, WHICH IS RELATIONSHIP LEVEL ORDER
-        const plannedObjects = RecipeCockpitAdapterState.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree).flatMap(treeObject => {
-            const recordValues = heldValues.valuesByObjectApiName.get(treeObject.objectApiName) ?? [];
-            const loadedRecords = heldRecords.recordsByObjectApiName.get(treeObject.objectApiName) ?? [];
-            if ( recordValues.length === 0 || recordValues.length !== loadedRecords.length ) {
-                return [];
-            }
-            return [{
-                objectApiName: treeObject.objectApiName,
-                fieldApiNames: Object.keys(recordValues[0].fieldValues),
-                recordValues: recordValues,
-                loadedRecords: loadedRecords
-            }];
-        }).filter(plannedObject => plannedObject.fieldApiNames.length > 0);
+        // PARENTS FIRST: THE CARD'S OBJECTS ARE IN INSERT ORDER, WHICH IS RELATIONSHIP LEVEL ORDER. ONLY MARKED ROWS, AND OF THOSE ONLY THE CELLS CHANGED (#721)
+        const updatePlan = RecipeCockpitAdapterEdits.planUpdate(heldRecords, RecipeCockpitAdapterState.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree).map(treeObject => treeObject.objectApiName));
+        const plannedObjects = updatePlan.plannedObjects;
 
         if ( plannedObjects.length === 0 ) {
-            return refuse(`Nothing was updated: there are no new values for the loaded records of ${treeTitle}.`);
-        }
-
-        // A FIELD MISSING FROM ONE RECORD'S VALUES WOULD BE SENT AS null AND CLEAR IT IN THE ORG, SO THE WHOLE UPDATE IS REFUSED
-        const incompleteObject = plannedObjects.find(plannedObject => !RecipeCockpitRecordUpdate.hasEveryField(plannedObject.recordValues, plannedObject.fieldApiNames));
-        if ( incompleteObject ) {
-            return refuse(`Nothing was updated: the new values for ${incompleteObject.objectApiName} do not cover every record. Generate them again.`);
+            return refuse(RECIPE_COCKPIT_UPDATER_NOTHING_MARKED_REFUSAL);
         }
 
         const recordTotal = plannedObjects.reduce((total, plannedObject) => total + plannedObject.recordValues.length, 0);
@@ -1174,7 +764,8 @@ export class RecipeCockpitAdapterRecords {
                     {
                         title: 'Records and fields',
                         count: plannedObjects.length,
-                        lines: plannedObjects.map(plannedObject => `${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`)
+                        // A MARKED ROW WITH NO CHANGED CELL IS COUNTED AND NOT WRITTEN
+                        lines: plannedObjects.map(plannedObject => `${plannedObject.objectApiName}: ${plannedObject.markedRecordCount} marked, ${describeRecords(plannedObject.recordValues.length)} to update -- ${plannedObject.fieldApiNames.join(', ')}`)
                     },
                     { title: 'How it can be undone', lines: ['Each record is updated by its Id.', `The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`] }
                 ],
@@ -1198,10 +789,10 @@ export class RecipeCockpitAdapterRecords {
                                 && panelState.recipeDataMessage === clickedRecipeDataMessage
                                 && panelState.dataOrgSelection === dataOrgSelection
                                 && RecipeCockpitAdapterState.heldUpdaterRecords === heldRecords
-                                && RecipeCockpitAdapterState.heldUpdaterValues === heldValues;
+                                && RecipeCockpitAdapterState.heldUpdaterEdits === heldEdits;
 
         if ( !isStillCurrent ) {
-            return refuse(`Nothing was updated: the run, the org selection or the loaded records changed after ${orgLabel} was confirmed. Load and generate again.`);
+            return refuse(`Nothing was updated: the run, the org selection or the loaded records changed after ${orgLabel} was confirmed. Load the records and make the changes again.`);
         }
 
         // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE UPDATE RELIES ON, ON THE CONNECTION IT UPDATES WITH
@@ -1212,8 +803,10 @@ export class RecipeCockpitAdapterRecords {
 
         const startedAt = new Date();
         const runArtifactsLocation = hub.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree);
+        // EACH RECORD'S OLD VALUES OF THE FIELDS CHANGED ON IT, AND OF NO OTHER (#721)
         const snapshotObjects = plannedObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.loadedRecords,
-                                                                                                                  heldValues.orgOnlyFieldApiNamesByObjectApiName.get(plannedObject.objectApiName)));
+                                                                                                                  updatePlan.orgOnlyFieldApiNamesByObjectApiName.get(plannedObject.objectApiName),
+                                                                                                                  new Map(plannedObject.recordValues.map(recordValue => [recordValue.recordId, Object.keys(recordValue.fieldValues)] as const))));
         const attemptFiles = runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
@@ -1241,7 +834,7 @@ export class RecipeCockpitAdapterRecords {
             objects: sendResult.objectResults
         });
 
-        const adaptedRun = await this.writeAdaptedRunAfterUpdate(panelState, treeKey, tree.folderName, heldRecords, heldValues, sendResult, orgDetail, startedAt);
+        const adaptedRun = await this.writeAdaptedRunAfterUpdate(panelState, treeKey, tree.folderName, heldRecords, updatePlan, sendResult, orgDetail, startedAt);
 
         this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'update', adaptedRun, runArtifactsLocation);
 
@@ -1268,7 +861,7 @@ export class RecipeCockpitAdapterRecords {
                                       treeKey: string,
                                       treeFolderName: string,
                                       heldRecords: NonNullable<typeof RecipeCockpitAdapterState.heldUpdaterRecords>,
-                                      heldValues: NonNullable<typeof RecipeCockpitAdapterState.heldUpdaterValues>,
+                                      heldValues: Pick<IRecipeCockpitUpdaterUpdatePlan, 'valuesByObjectApiName' | 'orgOnlyFieldApiNamesByObjectApiName' | 'adaptedRecipeFields'>,
                                       sendResult: IRecipeCockpitUpdaterSendResult,
                                       orgDetail: IAuthenticatedOrgDetail,
                                       adaptedAt: Date): Promise<RecipeCockpitAdaptedRunWrite | undefined> {
@@ -1415,8 +1008,7 @@ export class RecipeCockpitAdapterRecords {
                 panelState.updaterRecordsMessage = undefined;
                 panelState.adapterChildBlockMessage = undefined;
                 panelState.adapterChildPreviewMessage = undefined;
-                RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
-            }
+                    }
             RecipeCockpitAdapterState.setUpdaterLoadState(hub, isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
             // THE RESTORE SAVED A SNAPSHOT OF ITS OWN, WHICH IS LISTED TOO: A RESTORE CAN BE UNDONE THE SAME WAY
             this.refreshUpdaterSnapshots(hub, cockpitPanel, panelState, restoreAction.treeKey);
@@ -1621,8 +1213,10 @@ export class RecipeCockpitAdapterRecords {
 
         const startedAt = new Date();
         const runArtifactsLocation = hub.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree);
+        // WHAT EACH RECORD HOLDS NOW IN THE FIELDS THIS RESTORE WRITES ON IT, AND IN NO OTHER (#721)
         const currentSnapshotObjects = restoredObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.currentRecords,
-                                                                                                                            snapshotObjects.find(snapshotObject => snapshotObject.objectApiName === plannedObject.objectApiName)?.orgOnlyFieldApiNames));
+                                                                                                                            snapshotObjects.find(snapshotObject => snapshotObject.objectApiName === plannedObject.objectApiName)?.orgOnlyFieldApiNames,
+                                                                                                                            new Map(plannedObject.recordValues.map(recordValue => [recordValue.recordId, Object.keys(recordValue.fieldValues)] as const))));
         const attemptFiles = runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,

@@ -93,6 +93,8 @@ export interface IRowTableView {
     wrapElement: HTMLElement;
     bodyElement: HTMLElement;
     sortButtons: Record<string, HTMLButtonElement>;
+    // EACH COLUMN'S th, IN ORDER, FOR A CALLER THAT ADDS A CONTROL TO ONE (#721)
+    headerElements: HTMLElement[];
 }
 
 /*
@@ -111,6 +113,7 @@ export function buildRowTable(tableOptions: IRowTableOptions): IRowTableView {
     const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
     const sortButtons: Record<string, HTMLButtonElement> = Object.create(null);
     const columnClassName = typeof tableOptions.columnClassName === 'string' ? tableOptions.columnClassName : '';
+    const headerElements: HTMLElement[] = [];
 
     tableOptions.columns.forEach(function (column) {
         const headerElement = createElement('th', columnClassName ? columnClassName + 'Header ' + columnClassName + 'Header-' + column.key : '');
@@ -127,6 +130,7 @@ export function buildRowTable(tableOptions: IRowTableOptions): IRowTableView {
             headerElement.appendChild(sortButton);
         }
         headRowElement.appendChild(headerElement);
+        headerElements.push(headerElement);
     });
 
     headElement.appendChild(headRowElement);
@@ -134,7 +138,7 @@ export function buildRowTable(tableOptions: IRowTableOptions): IRowTableView {
     tableElement.appendChild(bodyElement);
     wrapElement.appendChild(tableElement);
 
-    return { wrapElement: wrapElement, bodyElement: bodyElement, sortButtons: sortButtons };
+    return { wrapElement: wrapElement, bodyElement: bodyElement, sortButtons: sortButtons, headerElements: headerElements };
 
 }
 

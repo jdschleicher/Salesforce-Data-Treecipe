@@ -19,7 +19,6 @@ describe('RecipeCockpitPanelPlace (#670)', () => {
         todosView: 'removed',
         removedTodosSearchText: 'email',
         troubleshootingHistorySort: { column: 'step', isDescending: false },
-        updaterChosenFieldKeys: ['Account\nName'],
         updaterExpandedObjectKeys: ['Account'],
         updaterStep: 'structure',
         updaterParentObjectApiName: 'Account',

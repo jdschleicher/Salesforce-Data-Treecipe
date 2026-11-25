@@ -23,6 +23,11 @@ import {
     IRecipeCockpitUpdaterTreeObject,
     RecipeCockpitTreeUpdaterQuery
 } from './RecipeCockpitTreeUpdaterQuery';
+// TYPES ONLY: THE EDITS FILE LOADS THIS ONE
+import type {
+    IRecipeCockpitUpdaterColumnPlan,
+    IRecipeCockpitUpdaterObjectEdits
+} from './RecipeCockpitAdapterEdits';
 import {
     IOrgChangeHints,
     IOrgObjectChanges,
@@ -31,10 +36,7 @@ import {
 import type {
     IRecipeCockpitAdapterOrgOnlyField,
     IRecipeCockpitHubForAdapterTab,
-    IRecipeCockpitUpdaterFieldValueRequest,
-    IRecipeCockpitUpdaterLoadStateMessage,
-    IRecipeCockpitUpdaterRecordValues,
-    IRecipeCockpitUpdaterValuesMessage
+    IRecipeCockpitUpdaterLoadStateMessage
 } from './RecipeCockpitAdapterHost';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
 import type {
@@ -77,21 +79,19 @@ export class RecipeCockpitAdapterState {
         columnFieldApiNamesByObjectApiName: Map<string, string[]>;
         lookupFieldApiNamesByObjectApiName: Map<string, string[]>;
         postedPageIndexesByObjectApiName: Map<string, Set<number>>;
+        // EACH COLUMN'S LOCK OR THE SOURCE ITS 🎲 GENERATES FROM (#721), PLANNED AT THE LOAD FROM THE MODEL ON SCREEN
+        columnPlansByObjectApiName: Map<string, IRecipeCockpitUpdaterColumnPlan[]>;
     } | undefined;
 
     /*
-        The last generation's new values (#417), per object and in the loaded records' order, for the
-        slice that writes them (#418). They belong to the records they were generated for, so they
-        go whenever those records go.
+        What the reader marked and changed on the held records (#721): per object, the marked record
+        Ids, each changed cell's new value and the values a run made that no cell has taken. They
+        belong to the records they were made on, so they go whenever those records go.
     */
-    static heldUpdaterValues: {
-        // THE HELD RECORDS' resultKey THEY WERE GENERATED FOR
+    static heldUpdaterEdits: {
+        // THE HELD RECORDS' resultKey THEY WERE MADE ON
         resultKey: string;
-        valuesByObjectApiName: Map<string, IRecipeCockpitUpdaterRecordValues[]>;
-        // THE FIELDS ONLY THE ORG HOLDS (#446) AMONG THEM, BY OBJECT, WHICH THE SNAPSHOT AND THE RESULTS RECORD
-        orgOnlyFieldApiNamesByObjectApiName: Map<string, string[]>;
-        // EACH FIELD AS THE ADAPTED RECIPE WRITES IT (#448): THE SCALAR ITS VALUES CAME FROM, AND WHETHER THE RECIPE ALREADY HOLDS IT
-        adaptedRecipeFields: IAdaptedRecipeField[];
+        editsByObjectApiName: Map<string, IRecipeCockpitUpdaterObjectEdits>;
     } | undefined;
 
     /*
@@ -114,29 +114,12 @@ export class RecipeCockpitAdapterState {
 
     static clearHeldUpdaterRecords() {
         this.heldUpdaterRecords = undefined;
-        this.heldUpdaterValues = undefined;
+        this.heldUpdaterEdits = undefined;
         this.heldAdapterChild = undefined;
     }
 
     static readHeldAdapterChildRecords(): Record<string, unknown>[] | undefined {
         return this.heldAdapterChild?.generatedRecords?.records;
-    }
-
-    static clearHeldUpdaterValues() {
-        this.heldUpdaterValues = undefined;
-    }
-
-    // THE ONE PLACE THE VALUES ON SCREEN CHANGE (#418): "Update records" IS OFFERED ONLY ON THE ONES POSTED LAST, ONCE THE PANEL SAYS IT DREW THEM
-    static setUpdaterValuesMessage(panelState: IRecipeCockpitPanelState, valuesMessage: IRecipeCockpitUpdaterValuesMessage | undefined) {
-        panelState.updaterValuesMessage = valuesMessage;
-        panelState.pendingUpdatableTreeKeys = valuesMessage ? new Set([valuesMessage.treeKey]) : new Set();
-        panelState.updatableTreeKeys = new Set();
-    }
-
-    static updaterValuesSequence = 0;
-
-    static readHeldUpdaterValues(objectApiName: string): IRecipeCockpitUpdaterRecordValues[] | undefined {
-        return this.heldUpdaterValues?.valuesByObjectApiName.get(objectApiName);
     }
 
     static readHeldUpdaterRecordCount(): number {
@@ -280,51 +263,6 @@ export class RecipeCockpitAdapterState {
                 ? { childObjectsNote: `${undescribedCount === 1 ? '1 object' : `${undescribedCount} objects`} could not be described in the org, so ${undescribedCount === 1 ? 'its' : 'their'} new child objects are not listed.` }
                 : {} )
         };
-
-    }
-
-    /*
-        The panel's "Generate values" request (#417), untrusted: a list of the card's fields, each at
-        most once, each naming an object and a field its model lists, and a value -- typed in the
-        Updater's editor -- only as a string the editor could have held. Anything else refuses the
-        WHOLE request.
-    */
-    static readUpdaterFieldValueRequests(candidateFields: unknown, treeObjects: readonly IRecipeCockpitUpdaterTreeObject[]): { requests: IRecipeCockpitUpdaterFieldValueRequest[] } | { refusal: string } {
-
-        const treeObjectsByApiName = new Map(treeObjects.map(treeObject => [treeObject.objectApiName, treeObject] as const));
-        const fieldCount = treeObjects.reduce((total, treeObject) => total + treeObject.fieldApiNames.length, 0);
-
-        if ( !Array.isArray(candidateFields) || candidateFields.length === 0 || candidateFields.length > fieldCount ) {
-            return { refusal: 'the fields chosen are not fields of this treecipe.' };
-        }
-
-        const requestedFieldKeys = new Set<string>();
-        const requests: IRecipeCockpitUpdaterFieldValueRequest[] = [];
-
-        for ( const candidateField of candidateFields ) {
-
-            if ( !candidateField || typeof candidateField !== 'object' || Array.isArray(candidateField) ) {
-                return { refusal: 'the fields chosen are not fields of this treecipe.' };
-            }
-
-            const { objectApiName, fieldApiName, value } = candidateField as Record<string, unknown>;
-            const treeObject = typeof objectApiName === 'string' ? treeObjectsByApiName.get(objectApiName) : undefined;
-            const fieldKey = `${String(objectApiName)}\n${String(fieldApiName)}`;
-
-            if ( !treeObject || typeof fieldApiName !== 'string' || !treeObject.fieldApiNames.includes(fieldApiName) || requestedFieldKeys.has(fieldKey) ) {
-                return { refusal: 'the fields chosen are not fields of this treecipe.' };
-            }
-
-            if ( value !== undefined && ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) {
-                return { refusal: `the value typed for ${treeObject.objectApiName}.${fieldApiName} is not one the editor holds.` };
-            }
-
-            requestedFieldKeys.add(fieldKey);
-            requests.push({ objectApiName: treeObject.objectApiName, fieldApiName: fieldApiName, ...( typeof value === 'string' ? { value: value } : {} ) });
-
-        }
-
-        return { requests: requests };
 
     }
 

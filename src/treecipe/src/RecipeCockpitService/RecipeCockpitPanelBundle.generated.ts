@@ -526,12 +526,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     exportQueryJson: { verb: "export", why: "Write every record the last run returned to RunArtifacts in the tree folder as JSON." },
     exportQueryCsv: { verb: "export", why: "Write every record the last run returned to RunArtifacts in the tree folder as CSV." },
     loadUpdaterRecords: { verb: "retrieve", why: "Read this tree's records, with every field the treecipe lists, from the selected sandbox. It only reads." },
-    generateUpdaterValues: { verb: "generateData", why: "Make a new value for each chosen field of every loaded record. Nothing is written yet." },
-    updateUpdaterRecords: { verb: "update", why: "Write the new values to the loaded records by Id. Their old values are saved first." }
+    updateUpdaterRecords: { verb: "update", why: "Write the changed cells of the marked rows by Id. Their old values are saved first." }
   });
 
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitAdapterConstants.ts
-  var RECIPE_COCKPIT_UPDATER_INTRO = "Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field's faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.";
+  var RECIPE_COCKPIT_UPDATER_INTRO = "Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Mark the rows to change with ✎, then 🎲 makes a new value for a cell or a whole column from the field's faker expression, and ↺ puts a loaded value back. Update records writes only the changed cells of the marked rows, by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.";
   var RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = "Filter by fields & objects to add";
   var RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING = "1. Choose the parent object, and query for the parent records you expect";
   var RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL = "Parent object";
@@ -551,6 +550,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL = "changed in org";
   var RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL = "not retrieved from the org";
   var RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE = "Only in the org: this project has no file for it yet.";
+  var RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE = "No 🎲 in the record table: this recipe's faker backend writes no expression for its type in the org.";
   var RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL = "new child object in org";
   var RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE = "Only in the org: this treecipe has no block for it yet.";
   var RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL = "Add to data set";
@@ -568,6 +568,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_ADAPTER_APPLY_TITLE = "Copy the field files the org changed or added into this project: a changed field over its project file, a new field into the default package directory. Asks first.";
   var RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON = "No field file is new or changed against this project, so there is nothing to apply.";
   var RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = "No fields chosen";
+  var RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED = "No rows marked to update";
   var RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = "read from the recipe file, so its type is not known";
   var RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = "the record type is not changed here";
   var RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = "a lookup points to another record, which the Adapter does not change";
@@ -580,7 +581,15 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL = "Next";
   var RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON = "the org does not have it, or does not let this user read it. Check the field and its field-level security in the org, then load again.";
   var RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = "The last load read 0 records: change the parent's WHERE in step 1, or the WHERE under an object, and load again.";
-  var RECIPE_COCKPIT_UPDATER_GENERATE_LABEL = "Generate values";
+  var RECIPE_COCKPIT_UPDATER_EDIT_HEADING = "Edit existing records";
+  var RECIPE_COCKPIT_UPDATER_MARK_COLUMN_LABEL = "Update";
+  var RECIPE_COCKPIT_UPDATER_MARK_GLYPH = "✎";
+  var RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH = "🎲";
+  var RECIPE_COCKPIT_UPDATER_RESET_GLYPH = "↺";
+  var RECIPE_COCKPIT_UPDATER_LOCKED_GLYPH = "🔒";
+  var RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL = "Reset all";
+  var RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON = "Mark a row first: the ✎ at the start of a row marks it to update.";
+  var RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON = "Change a cell in a marked row first: 🎲 makes a new value for it.";
   var RECIPE_COCKPIT_UPDATER_GENERATING_LABEL = "Generating…";
   var RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = "Keeps this value in the Treecipe Adapter only: nothing is written to the recipe or to the org.";
   var RECIPE_COCKPIT_UPDATER_UPDATE_LABEL = "Update records";
@@ -1050,6 +1059,353 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_QUERY_TAB_LABEL = "Query";
   var RECIPE_COCKPIT_UPDATER_TAB_LABEL = "Treecipe Adapter";
 
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelConnection.ts
+  var acquiredVsCodeApi = null;
+  var vscodeApi = {
+    postMessage(message) {
+      acquiredVsCodeApi.postMessage(message);
+    },
+    // A HOST THAT GIVES NO STATE API GIVES THE PANEL NO PLACE TO KEEP OR READ: THE PLACE MODULE CHECKS FOR EACH
+    get getState() {
+      const getState = acquiredVsCodeApi ? acquiredVsCodeApi.getState : void 0;
+      return typeof getState === "function" ? getState.bind(acquiredVsCodeApi) : void 0;
+    },
+    get setState() {
+      const setState = acquiredVsCodeApi ? acquiredVsCodeApi.setState : void 0;
+      return typeof setState === "function" ? setState.bind(acquiredVsCodeApi) : void 0;
+    }
+  };
+  var loadStatusElement = null;
+  var cockpitBodyElement = null;
+  var cockpitMetaElement = null;
+  var cockpitDialogHostElement = null;
+  function connectPanel() {
+    acquiredVsCodeApi = acquireVsCodeApi();
+    loadStatusElement = document.getElementById("loadStatus");
+    cockpitBodyElement = document.getElementById("cockpitBody");
+    cockpitMetaElement = document.getElementById("cockpitMeta");
+    cockpitDialogHostElement = document.getElementById("cockpitDialogHost");
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelShared.ts
+  function setTextShown(element, text) {
+    if (element.textContent !== text) {
+      element.textContent = text;
+    }
+    if (text) {
+      element.classList.remove("hidden");
+    } else {
+      element.classList.add("hidden");
+    }
+  }
+  function drawActionCardState(actionCard, reason, title) {
+    const detail = actionCard.detailElement.textContent;
+    actionCard.buttonElement.disabled = reason !== "";
+    actionCard.buttonElement.setAttribute("title", (reason || title) + (detail && detail !== reason ? "\\n" + detail : ""));
+    setTextShown(actionCard.reasonElement, reason === detail ? "" : reason);
+  }
+  function setLoadStatus(statusMessage, isFailure) {
+    if (!loadStatusElement) {
+      return;
+    }
+    if (!statusMessage) {
+      loadStatusElement.classList.add("hidden");
+      return;
+    }
+    loadStatusElement.textContent = String(statusMessage);
+    loadStatusElement.classList.remove("hidden");
+    if (isFailure) {
+      loadStatusElement.classList.add("failed");
+    } else {
+      loadStatusElement.classList.remove("failed");
+    }
+  }
+  function pluralize(count, singular, plural) {
+    return count + " " + (count === 1 ? singular : plural);
+  }
+  function buildSourceLink(className, labelText, filePath, lineNumber) {
+    if (!filePath || !lineNumber) {
+      return createElement("span", className, labelText);
+    }
+    const sourceLinkElement = createButton("link", className + " sourceLink", labelText);
+    sourceLinkElement.setAttribute("title", "Open in the recipe file");
+    sourceLinkElement.addEventListener("click", function() {
+      vscodeApi.postMessage({ command: "openSource", filePath, lineNumber });
+    });
+    return sourceLinkElement;
+  }
+  function toStringSet(candidateList) {
+    const stringSet = /* @__PURE__ */ Object.create(null);
+    if (Array.isArray(candidateList)) {
+      candidateList.forEach(function(candidate) {
+        if (typeof candidate === "string") {
+          stringSet[candidate] = true;
+        }
+      });
+    }
+    return stringSet;
+  }
+  function hasString(stringSet, candidate) {
+    return Object.prototype.hasOwnProperty.call(stringSet, candidate);
+  }
+  function hasAnyString(stringSet) {
+    return Object.keys(stringSet).length > 0;
+  }
+
+  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitRunLocks.ts
+  var runLocks = {
+    // THE TREE WHOSE INSERT IS RUNNING; A DATA SET ROW'S Insert… (#541) HOLDS '' HERE AND ITS DATA SET BELOW
+    insertRunningTreeKey: null,
+    insertRunningDatasetFolderName: null,
+    // WHETHER A FRIEND IS BEING ADDED, AND "Wire to…" / "Wire TODO lookups" (#151)
+    isAddFriendRunning: false,
+    isWireLookupRunning: false,
+    // "+ New scratch org" (#200): HOLDS THE PICKER AND EVERY INSERT DISABLED; HOW IT ENDED IS A NOTIFICATION'S (#301)
+    isScratchOrgRunning: false,
+    // THE LOGIN (#630) SHARES THE SCRATCH ORG RUN'S LOCK, AND ONLY ITS OWN BUTTON SAYS IT IS RUNNING
+    isOrgAuthorizeRunning: false,
+    // "Assign permission sets to me…" (#274, #302): HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
+    isPermissionSetAssignRunning: false,
+    // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382) AND DEPLOYS (#346); THE KEY NAMES THE CARD AND THE KIND CLICKED
+    isMetadataRetrieveRunning: false,
+    metadataRetrieveRunningKey: null,
+    isMetadataDeployRunning: false,
+    metadataDeployRunningKey: null,
+    // THE QUERY TAB'S RUN (#367)
+    isTreeQueryRunning: false,
+    // THE TREECIPE ADAPTER'S RUN (#416): THE CARD CLICKED, AND WHICH RUN -- 'load', 'generate' (#417), 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'
+    updaterLoadRunningTreeKey: null,
+    updaterRunKind: "",
+    // THE NEW CHILD WHOSE "Add to data set" (#447) IS RETRIEVING: PARENT, CHILD AND LOOKUP
+    adapterChildPreparingKey: "",
+    // THE SNAPSHOT A RESTORE (#419) WAS ASKED FOR, SO ONLY ITS BUTTON SAYS "Restoring…"
+    updaterRestoringSnapshotName: "",
+    // "Open in browser" (#279)
+    isOrgOpenRunning: false
+  };
+
+  // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterRecordEdit.ts
+  var vscodeApi2 = vscodeApi;
+  function readColumnEdits(candidateColumnEdits, columnCount) {
+    const columnEdits = Array.isArray(candidateColumnEdits) ? candidateColumnEdits : [];
+    return Array.from({ length: columnCount }, function(_unused, columnIndex) {
+      const columnEdit = columnEdits[columnIndex];
+      if (!columnEdit || typeof columnEdit !== "object") {
+        return { lockReason: " ", canGenerate: false };
+      }
+      return { lockReason: typeof columnEdit.lockReason === "string" ? columnEdit.lockReason : "", canGenerate: columnEdit.canGenerate === true };
+    });
+  }
+  function readEditSummary(candidateSummary) {
+    const summary = candidateSummary && typeof candidateSummary === "object" ? candidateSummary : {};
+    return {
+      markedRecordCount: Number(summary.markedRecordCount) || 0,
+      updatableRecordCount: Number(summary.updatableRecordCount) || 0,
+      changedFieldApiNames: Array.isArray(summary.changedFieldApiNames) ? summary.changedFieldApiNames.map(String) : [],
+      hasUnmarkedChanges: summary.hasUnmarkedChanges === true
+    };
+  }
+  function requestUpdaterEdit(treeState, updaterObjectState, editKind, position) {
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) {
+      return;
+    }
+    vscodeApi2.postMessage({
+      command: "editUpdaterRecords",
+      treeKey: treeState.tree.treeKey,
+      renderSequence: renderedSequence,
+      objectApiName: updaterObjectState.object.objectApiName,
+      pageIndex: updaterObjectState.loadedRecordsPageIndex,
+      editKind,
+      ...position
+    });
+  }
+  function drawUpdaterEditControls(updaterObjectState) {
+    const isHeld = runLocks.updaterLoadRunningTreeKey !== null;
+    (updaterObjectState.editButtonElements || []).forEach(function(editButton) {
+      editButton.element.disabled = isHeld || editButton.isDisabledByEdits;
+    });
+  }
+  function readFocusedEditKey(updaterObjectState) {
+    const focusedButton = (updaterObjectState.editButtonElements || []).find(function(editButton) {
+      return editButton.element === document.activeElement;
+    });
+    return focusedButton ? focusedButton.editKey : null;
+  }
+  function focusEditButton(updaterObjectState, editKey) {
+    const [editKind, firstIndex] = editKey.split(":");
+    const candidateKeys = [editKey, editKey.replace(/^reset(Cell|Column)/, "generate$1")].concat(editKind.endsWith("Cell") ? ["markRow:" + firstIndex] : []);
+    const editButtons = updaterObjectState.editButtonElements || [];
+    for (const candidateKey of candidateKeys) {
+      const editButton = editButtons.find(function(candidateButton) {
+        return candidateButton.editKey === candidateKey && !candidateButton.element.disabled;
+      });
+      if (editButton) {
+        focusElement(editButton.element);
+        return;
+      }
+    }
+  }
+  function describeEditSummary(editSummary) {
+    if (editSummary.markedRecordCount === 0) {
+      return "No row marked. Mark the rows to change with " + RECIPE_COCKPIT_UPDATER_MARK_GLYPH + "." + (editSummary.hasUnmarkedChanges ? " The changes on rows that are not marked are not written." : "");
+    }
+    const markedText = pluralize(editSummary.markedRecordCount, "row", "rows") + " marked";
+    return (editSummary.updatableRecordCount === 0 ? markedText + ", none changed yet. Change a cell with " + RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH + "." : markedText + " · " + pluralize(editSummary.updatableRecordCount, "record", "records") + " to update: " + editSummary.changedFieldApiNames.join(", ")) + (editSummary.hasUnmarkedChanges ? " The changes on rows that are not marked are not written." : "");
+  }
+  function buildEditableRecordSection(treeState, updaterObjectState) {
+    const loadedRecords = updaterObjectState.loadedRecords || {};
+    const objectApiName = updaterObjectState.object.objectApiName;
+    const columns = Array.isArray(loadedRecords.columns) ? loadedRecords.columns.map(String) : [];
+    const rows = Array.isArray(loadedRecords.rows) ? loadedRecords.rows : [];
+    const columnEdits = readColumnEdits(loadedRecords.columnEdits, columns.length);
+    const editSummary = readEditSummary(loadedRecords.editSummary);
+    const pageIndex = updaterObjectState.loadedRecordsPageIndex;
+    const recordLinkSequence = updaterObjectState.loadedRecordsLinkSequence;
+    const markedRowIndexes = new Set(Array.isArray(loadedRecords.markedRowIndexes) ? loadedRecords.markedRowIndexes : []);
+    const changedCellKeys = new Set((Array.isArray(loadedRecords.changedCells) ? loadedRecords.changedCells : []).filter(function(changedCell) {
+      return Array.isArray(changedCell);
+    }).map(function(changedCell) {
+      return changedCell[0] + ":" + changedCell[1];
+    }));
+    const editButtonElements = [];
+    updaterObjectState.editButtonElements = editButtonElements;
+    const editButton = function(editKey, className, glyph, label, isDisabledByEdits, onClick) {
+      const buttonElement = createButton("icon", className, glyph, "compact");
+      buttonElement.setAttribute("aria-label", label);
+      buttonElement.setAttribute("title", label);
+      buttonElement.addEventListener("click", onClick);
+      editButtonElements.push({ element: buttonElement, isDisabledByEdits, editKey });
+      return buttonElement;
+    };
+    const linkedRowIndexesByColumnIndex = /* @__PURE__ */ new Map();
+    if (typeof recordLinkSequence === "number") {
+      [loadedRecords.recordLinks].concat(Array.isArray(loadedRecords.lookupLinks) ? loadedRecords.lookupLinks : []).forEach(function(links) {
+        if (links && Number.isInteger(links.columnIndex) && Array.isArray(links.rowIndexes)) {
+          linkedRowIndexesByColumnIndex.set(links.columnIndex, new Set(links.rowIndexes));
+        }
+      });
+    }
+    const idColumnIndex = loadedRecords.recordLinks && Number.isInteger(loadedRecords.recordLinks.columnIndex) ? loadedRecords.recordLinks.columnIndex : 0;
+    const sectionElement = createElement("div", "updaterRecordEdit");
+    const toolbarElement = createElement("div", "updaterRecordEditToolbar");
+    toolbarElement.appendChild(createElement("span", "updaterRecordEditHeading", RECIPE_COCKPIT_UPDATER_EDIT_HEADING));
+    toolbarElement.appendChild(createElement("span", "updaterRecordEditSummary muted", describeEditSummary(editSummary)));
+    const hasChanges = editSummary.updatableRecordCount > 0 || editSummary.hasUnmarkedChanges;
+    const resetAllElement = createButton("secondary", "updaterResetAll", RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL, "compact");
+    resetAllElement.setAttribute("aria-label", RECIPE_COCKPIT_UPDATER_RESET_ALL_LABEL + " changes of " + objectApiName);
+    resetAllElement.addEventListener("click", function() {
+      requestUpdaterEdit(treeState, updaterObjectState, "resetObject", {});
+    });
+    editButtonElements.push({ element: resetAllElement, isDisabledByEdits: !hasChanges, editKey: "resetObject" });
+    toolbarElement.appendChild(resetAllElement);
+    sectionElement.appendChild(toolbarElement);
+    const rowTable = buildRowTable({
+      className: "treeQueryTable",
+      columns: [{ key: "mark", label: RECIPE_COCKPIT_UPDATER_MARK_COLUMN_LABEL }].concat(columns.map(function(column, columnIndex) {
+        return { key: String(columnIndex), label: column };
+      }))
+    });
+    columns.forEach(function(column, columnIndex) {
+      const headerElement = rowTable.headerElements[columnIndex + 1];
+      const columnEdit = columnEdits[columnIndex];
+      if (columnEdit.lockReason.trim()) {
+        const lockElement = createElement("span", "updaterColumnLock muted", RECIPE_COCKPIT_UPDATER_LOCKED_GLYPH);
+        lockElement.setAttribute("title", "Cannot be changed: " + columnEdit.lockReason);
+        lockElement.setAttribute("role", "img");
+        lockElement.setAttribute("aria-label", column + " cannot be changed: " + columnEdit.lockReason);
+        headerElement.appendChild(lockElement);
+        return;
+      }
+      if (columnEdit.lockReason) {
+        return;
+      }
+      if (columnEdit.canGenerate) {
+        headerElement.appendChild(editButton(
+          "generateColumn:" + columnIndex,
+          "updaterColumnGenerate",
+          RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH,
+          "Generate " + column + " for every marked " + objectApiName + " row",
+          editSummary.markedRecordCount === 0,
+          function() {
+            requestUpdaterEdit(treeState, updaterObjectState, "generateColumn", { columnIndex });
+          }
+        ));
+      }
+      headerElement.appendChild(editButton(
+        "resetColumn:" + columnIndex,
+        "updaterColumnReset",
+        RECIPE_COCKPIT_UPDATER_RESET_GLYPH,
+        "Put back the loaded " + column + " of every " + objectApiName + " row",
+        editSummary.changedFieldApiNames.indexOf(column) === -1 && !editSummary.hasUnmarkedChanges,
+        function() {
+          requestUpdaterEdit(treeState, updaterObjectState, "resetColumn", { columnIndex });
+        }
+      ));
+    });
+    rows.forEach(function(row, rowIndex) {
+      const isMarked = markedRowIndexes.has(rowIndex);
+      const rowName = Array.isArray(row) && row[idColumnIndex] ? String(row[idColumnIndex]) : "row " + (rowIndex + 1);
+      const rowElement = createElement("tr", isMarked ? "treeQueryRow updaterMarkedRow" : "treeQueryRow");
+      const markCellElement = createElement("td", "updaterMarkCell");
+      const markElement = editButton(
+        "markRow:" + rowIndex,
+        "updaterRowMark",
+        RECIPE_COCKPIT_UPDATER_MARK_GLYPH,
+        (isMarked ? "Marked to update — click to leave " : "Mark to update ") + objectApiName + " " + rowName,
+        false,
+        function() {
+          requestUpdaterEdit(treeState, updaterObjectState, isMarked ? "unmarkRow" : "markRow", { rowIndex });
+        }
+      );
+      markElement.setAttribute("aria-pressed", isMarked ? "true" : "false");
+      markCellElement.appendChild(markElement);
+      rowElement.appendChild(markCellElement);
+      columns.forEach(function(column, columnIndex) {
+        const cellText = Array.isArray(row) && row[columnIndex] !== void 0 ? String(row[columnIndex]) : "";
+        const columnEdit = columnEdits[columnIndex];
+        const isChanged = changedCellKeys.has(rowIndex + ":" + columnIndex);
+        const cellElement = createElement("td", isChanged ? "updaterChangedCell" : "");
+        const linkedRowIndexes = linkedRowIndexesByColumnIndex.get(columnIndex);
+        if (linkedRowIndexes && linkedRowIndexes.has(rowIndex) && cellText !== "") {
+          cellElement.appendChild(buildRecordLinkElement(cellText, { recordLinkSequence, rowIndex, objectApiName, pageIndex, columnIndex: columnIndex === idColumnIndex ? void 0 : columnIndex }));
+        } else {
+          cellElement.appendChild(createElement("span", "updaterCellValue", cellText));
+        }
+        if (!columnEdit.lockReason) {
+          if (isMarked && columnEdit.canGenerate) {
+            cellElement.appendChild(editButton(
+              "generateCell:" + rowIndex + ":" + columnIndex,
+              "updaterCellGenerate",
+              RECIPE_COCKPIT_UPDATER_GENERATE_GLYPH,
+              "Generate a value for " + column + " of " + objectApiName + " " + rowName,
+              false,
+              function() {
+                requestUpdaterEdit(treeState, updaterObjectState, "generateCell", { rowIndex, columnIndex });
+              }
+            ));
+          }
+          if (isChanged) {
+            cellElement.appendChild(editButton(
+              "resetCell:" + rowIndex + ":" + columnIndex,
+              "updaterCellReset",
+              RECIPE_COCKPIT_UPDATER_RESET_GLYPH,
+              "Put back the loaded " + column + " of " + objectApiName + " " + rowName,
+              false,
+              function() {
+                requestUpdaterEdit(treeState, updaterObjectState, "resetCell", { rowIndex, columnIndex });
+              }
+            ));
+          }
+        }
+        rowElement.appendChild(cellElement);
+      });
+      rowTable.bodyElement.appendChild(rowElement);
+    });
+    sectionElement.appendChild(rowTable.wrapElement);
+    drawUpdaterEditControls(updaterObjectState);
+    return sectionElement;
+  }
+
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitTreecipeFieldEditorConstants.ts
   var RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ["Number", "Currency", "Percent"];
   var RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
@@ -1236,68 +1592,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     "Opportunity.IsWon": true
   }));
 
-  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelConnection.ts
-  var acquiredVsCodeApi = null;
-  var vscodeApi = {
-    postMessage(message) {
-      acquiredVsCodeApi.postMessage(message);
-    },
-    // A HOST THAT GIVES NO STATE API GIVES THE PANEL NO PLACE TO KEEP OR READ: THE PLACE MODULE CHECKS FOR EACH
-    get getState() {
-      const getState = acquiredVsCodeApi ? acquiredVsCodeApi.getState : void 0;
-      return typeof getState === "function" ? getState.bind(acquiredVsCodeApi) : void 0;
-    },
-    get setState() {
-      const setState = acquiredVsCodeApi ? acquiredVsCodeApi.setState : void 0;
-      return typeof setState === "function" ? setState.bind(acquiredVsCodeApi) : void 0;
-    }
-  };
-  var loadStatusElement = null;
-  var cockpitBodyElement = null;
-  var cockpitMetaElement = null;
-  var cockpitDialogHostElement = null;
-  function connectPanel() {
-    acquiredVsCodeApi = acquireVsCodeApi();
-    loadStatusElement = document.getElementById("loadStatus");
-    cockpitBodyElement = document.getElementById("cockpitBody");
-    cockpitMetaElement = document.getElementById("cockpitMeta");
-    cockpitDialogHostElement = document.getElementById("cockpitDialogHost");
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitRunLocks.ts
-  var runLocks = {
-    // THE TREE WHOSE INSERT IS RUNNING; A DATA SET ROW'S Insert… (#541) HOLDS '' HERE AND ITS DATA SET BELOW
-    insertRunningTreeKey: null,
-    insertRunningDatasetFolderName: null,
-    // WHETHER A FRIEND IS BEING ADDED, AND "Wire to…" / "Wire TODO lookups" (#151)
-    isAddFriendRunning: false,
-    isWireLookupRunning: false,
-    // "+ New scratch org" (#200): HOLDS THE PICKER AND EVERY INSERT DISABLED; HOW IT ENDED IS A NOTIFICATION'S (#301)
-    isScratchOrgRunning: false,
-    // THE LOGIN (#630) SHARES THE SCRATCH ORG RUN'S LOCK, AND ONLY ITS OWN BUTTON SAYS IT IS RUNNING
-    isOrgAuthorizeRunning: false,
-    // "Assign permission sets to me…" (#274, #302): HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
-    isPermissionSetAssignRunning: false,
-    // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382) AND DEPLOYS (#346); THE KEY NAMES THE CARD AND THE KIND CLICKED
-    isMetadataRetrieveRunning: false,
-    metadataRetrieveRunningKey: null,
-    isMetadataDeployRunning: false,
-    metadataDeployRunningKey: null,
-    // THE QUERY TAB'S RUN (#367)
-    isTreeQueryRunning: false,
-    // THE TREECIPE ADAPTER'S RUN (#416): THE CARD CLICKED, AND WHICH RUN -- 'load', 'generate' (#417), 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'
-    updaterLoadRunningTreeKey: null,
-    updaterRunKind: "",
-    // THE NEW CHILD WHOSE "Add to data set" (#447) IS RETRIEVING: PARENT, CHILD AND LOOKUP
-    adapterChildPreparingKey: "",
-    // THE SNAPSHOT A RESTORE (#419) WAS ASKED FOR, SO ONLY ITS BUTTON SAYS "Restoring…"
-    updaterRestoringSnapshotName: "",
-    // "Open in browser" (#279)
-    isOrgOpenRunning: false
-  };
-
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/LookupWiring.ts
-  var vscodeApi2 = vscodeApi;
+  var vscodeApi3 = vscodeApi;
   var addFriendButtonElements = [];
   var wireLookupButtonElements = [];
   var lookupDecisions = [];
@@ -1337,7 +1633,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
           return;
         }
         setAddFriendRunning(true);
-        vscodeApi2.postMessage({
+        vscodeApi3.postMessage({
           command: "addIterationFriend",
           treeKey,
           objectApiName: object.objectApiName,
@@ -1393,7 +1689,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (wiring.objectNickname) {
         wireMessage.objectNickname = wiring.objectNickname;
       }
-      vscodeApi2.postMessage(wireMessage);
+      vscodeApi3.postMessage(wireMessage);
     });
     wireElement.disabled = runLocks.isWireLookupRunning;
     wireLookupButtonElements.push(wireElement);
@@ -1447,7 +1743,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (emptyLookup.objectNickname) {
         decisionMessage.objectNickname = emptyLookup.objectNickname;
       }
-      vscodeApi2.postMessage(decisionMessage);
+      vscodeApi3.postMessage(decisionMessage);
     };
     createParentElement.setAttribute("aria-label", "Create " + emptyLookup.parentObjectApiName + " in the recipe for " + fieldLabel);
     createParentElement.addEventListener("click", function() {
@@ -1523,7 +1819,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         return;
       }
       setWireLookupRunning(true);
-      vscodeApi2.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
+      vscodeApi3.postMessage({ command: "wireAllLookups", treeKey: tree.treeKey });
     });
     wireAllElement.disabled = runLocks.isWireLookupRunning;
     wireLookupButtonElements.push(wireAllElement);
@@ -1538,7 +1834,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRowValidationRule.ts
-  var vscodeApi3 = vscodeApi;
+  var vscodeApi4 = vscodeApi;
   function hasSwitchableValidationRules(field) {
     return !!field.lineNumber && !!field.validationRules && Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0;
   }
@@ -1615,7 +1911,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (object.nickname) {
         message.nickname = object.nickname;
       }
-      vscodeApi3.postMessage(message);
+      vscodeApi4.postMessage(message);
     });
     controlElement.appendChild(buttonElement);
     fieldState.validationRuleElement = buttonElement;
@@ -1630,71 +1926,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return notAppliedRule.ruleName + (notAppliedRule.reason ? " — " + notAppliedRule.reason : "");
     }).join("\\n"));
     return noteElement;
-  }
-
-  // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitPanelShared.ts
-  function setTextShown(element, text) {
-    if (element.textContent !== text) {
-      element.textContent = text;
-    }
-    if (text) {
-      element.classList.remove("hidden");
-    } else {
-      element.classList.add("hidden");
-    }
-  }
-  function drawActionCardState(actionCard, reason, title) {
-    const detail = actionCard.detailElement.textContent;
-    actionCard.buttonElement.disabled = reason !== "";
-    actionCard.buttonElement.setAttribute("title", (reason || title) + (detail && detail !== reason ? "\\n" + detail : ""));
-    setTextShown(actionCard.reasonElement, reason === detail ? "" : reason);
-  }
-  function setLoadStatus(statusMessage, isFailure) {
-    if (!loadStatusElement) {
-      return;
-    }
-    if (!statusMessage) {
-      loadStatusElement.classList.add("hidden");
-      return;
-    }
-    loadStatusElement.textContent = String(statusMessage);
-    loadStatusElement.classList.remove("hidden");
-    if (isFailure) {
-      loadStatusElement.classList.add("failed");
-    } else {
-      loadStatusElement.classList.remove("failed");
-    }
-  }
-  function pluralize(count, singular, plural) {
-    return count + " " + (count === 1 ? singular : plural);
-  }
-  function buildSourceLink(className, labelText, filePath, lineNumber) {
-    if (!filePath || !lineNumber) {
-      return createElement("span", className, labelText);
-    }
-    const sourceLinkElement = createButton("link", className + " sourceLink", labelText);
-    sourceLinkElement.setAttribute("title", "Open in the recipe file");
-    sourceLinkElement.addEventListener("click", function() {
-      vscodeApi.postMessage({ command: "openSource", filePath, lineNumber });
-    });
-    return sourceLinkElement;
-  }
-  function toStringSet(candidateList) {
-    const stringSet = /* @__PURE__ */ Object.create(null);
-    if (Array.isArray(candidateList)) {
-      candidateList.forEach(function(candidate) {
-        if (typeof candidate === "string") {
-          stringSet[candidate] = true;
-        }
-      });
-    }
-    return stringSet;
-  }
-  function hasString(stringSet, candidate) {
-    return Object.prototype.hasOwnProperty.call(stringSet, candidate);
-  }
-  function hasAnyString(stringSet) {
-    return Object.keys(stringSet).length > 0;
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/datasets/DatasetsTab.ts
@@ -1929,7 +2160,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/query/QueryTab.ts
-  var vscodeApi4 = vscodeApi;
+  var vscodeApi5 = vscodeApi;
   function buildQueryTab(treeState, panelElement) {
     const querySearch = buildTabSearch(treeState, "query", "Search queries", applyQueryFilter);
     treeState.querySearch = querySearch;
@@ -1948,7 +2179,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return;
     }
     treeState.isTreeQueriesWanted = false;
-    vscodeApi4.postMessage({ command: "loadTreeQueries", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+    vscodeApi5.postMessage({ command: "loadTreeQueries", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
   }
   function renderTreeQueries(queriesMessage) {
     if (renderedSequence === null || queriesMessage.renderSequence !== renderedSequence) {
@@ -2045,7 +2276,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         return;
       }
       queryState.savedText = textElement.value;
-      vscodeApi4.postMessage({ command: "saveTreeQueryEdit", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value === generatedText ? "" : textElement.value });
+      vscodeApi5.postMessage({ command: "saveTreeQueryEdit", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value === generatedText ? "" : textElement.value });
     };
     textElement.addEventListener("input", function() {
       drawEdited();
@@ -2069,7 +2300,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       saveEdit();
       runLocks.isTreeQueryRunning = true;
       drawTreeQueryButtons();
-      vscodeApi4.postMessage({ command: "runTreeQuery", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value });
+      vscodeApi5.postMessage({ command: "runTreeQuery", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value });
     });
     resetButtonElement.addEventListener("click", function() {
       if (resetButtonElement.disabled) {
@@ -2088,7 +2319,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         if (exportButtonElement.disabled || renderedSequence === null) {
           return;
         }
-        vscodeApi4.postMessage({ command: "exportTreeQueryResult", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, exportFormat: exportEntry[0] });
+        vscodeApi5.postMessage({ command: "exportTreeQueryResult", treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, exportFormat: exportEntry[0] });
       });
     });
     controlsElement.appendChild(resetButtonElement);
@@ -4059,7 +4290,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldScope.ts
-  var vscodeApi5 = vscodeApi;
+  var vscodeApi6 = vscodeApi;
   function drawObjectFieldSelection(treeObjectState) {
     const tree = treeObjectState.tree;
     const objectApiName = treeObjectState.object.objectApiName;
@@ -4115,7 +4346,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (fieldScope) {
         message.fieldScope = fieldScope;
       }
-      vscodeApi5.postMessage(message);
+      vscodeApi6.postMessage(message);
     };
     toggleElement.addEventListener("click", toggleFields);
     labelElement.addEventListener("click", toggleFields);
@@ -6647,6 +6878,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       searchTexts: { treecipe: "", datasets: "", troubleshooting: "", query: "", updater: "" },
       // THE TREECIPE UPDATER TAB (#415): CHOSEN FIELDS BY OBJECT AND FIELD NAME, AND OBJECTS THE READER OPENED, BOTH NAME-KEYED
       updaterChosenFieldKeys: /* @__PURE__ */ Object.create(null),
+      isFieldChoiceOffered: false,
       updaterExpandedObjectKeys: /* @__PURE__ */ Object.create(null),
       updaterObjectStates: null,
       // THE ADAPTER'S STEP (#443): 'parent' (STEP 1) OR 'structure' (STEP 2), THE PARENT IT CHOSE AND ITS WHERE, ALL KEPT IN THE PLACE
@@ -6664,7 +6896,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       adapterChildPreviewMessage: null,
       // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
       updaterEditedValues: /* @__PURE__ */ Object.create(null),
-      updaterValuesMessage: null,
       isDatasetFavoritesOnly: false,
       expandedJourneyDatasetFolderNames: /* @__PURE__ */ Object.create(null),
       datasetFavoritesToggleElement: null,
@@ -7051,10 +7282,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (historySort) {
       hasSearch = true;
     }
-    const updaterChosenFieldKeys = Object.keys(treeState.updaterChosenFieldKeys);
     const updaterExpandedObjectKeys = Object.keys(treeState.updaterExpandedObjectKeys);
     const isUpdaterStructureStep = treeState.updaterStep === "structure" && !!treeState.updaterParentObjectApiName;
-    if (updaterChosenFieldKeys.length > 0 || updaterExpandedObjectKeys.length > 0) {
+    if (updaterExpandedObjectKeys.length > 0) {
       hasSearch = true;
     }
     if (isUpdaterStructureStep || treeState.updaterParentObjectApiName || treeState.updaterParentWhereText) {
@@ -7111,9 +7341,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     if (historySort) {
       treePlace.troubleshootingHistorySort = { column: historySort.column, isDescending: historySort.isDescending };
-    }
-    if (updaterChosenFieldKeys.length > 0) {
-      treePlace.updaterChosenFieldKeys = updaterChosenFieldKeys;
     }
     if (updaterExpandedObjectKeys.length > 0) {
       treePlace.updaterExpandedObjectKeys = updaterExpandedObjectKeys;
@@ -7322,13 +7549,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       });
       treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
       treeState.isTodosOnly = savedTree.isTodosOnly === true;
-      treeState.updaterChosenFieldKeys = /* @__PURE__ */ Object.create(null);
       treeState.updaterExpandedObjectKeys = /* @__PURE__ */ Object.create(null);
-      (Array.isArray(savedTree.updaterChosenFieldKeys) ? savedTree.updaterChosenFieldKeys : []).forEach(function(fieldKey) {
-        if (typeof fieldKey === "string") {
-          treeState.updaterChosenFieldKeys[fieldKey] = true;
-        }
-      });
       (Array.isArray(savedTree.updaterExpandedObjectKeys) ? savedTree.updaterExpandedObjectKeys : []).forEach(function(objectKey) {
         if (typeof objectKey === "string") {
           treeState.updaterExpandedObjectKeys[objectKey] = true;
@@ -8334,7 +8555,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RecipeCockpitFakerValueExample = _RecipeCockpitFakerValueExample;
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRowFakerValueTest.ts
-  var vscodeApi6 = vscodeApi;
+  var vscodeApi7 = vscodeApi;
   var pendingExampleRowsByKey = /* @__PURE__ */ Object.create(null);
   function buildExampleKey(treeKey, objectApiName, nickname, fieldApiName) {
     return JSON.stringify([treeKey, objectApiName, nickname || "", fieldApiName]);
@@ -8383,7 +8604,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (object.nickname) {
         message.nickname = object.nickname;
       }
-      vscodeApi6.postMessage(message);
+      vscodeApi7.postMessage(message);
     });
     return { buttonElement, exampleElement };
   }
@@ -8407,7 +8628,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/FieldRow.ts
-  var vscodeApi7 = vscodeApi;
+  var vscodeApi8 = vscodeApi;
   var fieldSearchTexts = /* @__PURE__ */ new Map();
   function resetFieldSearchTexts() {
     fieldSearchTexts = /* @__PURE__ */ new Map();
@@ -8503,7 +8724,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (object.nickname) {
         message.nickname = object.nickname;
       }
-      vscodeApi7.postMessage(message);
+      vscodeApi8.postMessage(message);
     });
     fieldState.includeElement = includeElement;
     return includeElement;
@@ -8714,7 +8935,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldRows/SelectionCascade.ts
-  var vscodeApi8 = vscodeApi;
+  var vscodeApi9 = vscodeApi;
   function buildIncludeElement(treeObjectState, treeKey) {
     const includeElement = createButton("icon", "treeObjectInclude");
     const object = treeObjectState.object;
@@ -8729,7 +8950,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (object.nickname) {
         message.nickname = object.nickname;
       }
-      vscodeApi8.postMessage(message);
+      vscodeApi9.postMessage(message);
     });
   }
   var exclusionIndexesBySelection = /* @__PURE__ */ new WeakMap();
@@ -9166,7 +9387,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/PicklistTiles.ts
-  var vscodeApi9 = vscodeApi;
+  var vscodeApi10 = vscodeApi;
   var pendingPicklistValueElements = /* @__PURE__ */ Object.create(null);
   function resetPicklistValueRequests() {
     pendingPicklistValueElements = /* @__PURE__ */ Object.create(null);
@@ -9193,7 +9414,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (nickname) {
       message.nickname = nickname;
     }
-    vscodeApi9.postMessage(message);
+    vscodeApi10.postMessage(message);
   }
   function renderPicklistValues(picklistValuesMessage) {
     if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== "string") {
@@ -9316,7 +9537,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       drawChoice();
       fieldState.isPicklistExpanded = false;
       savePanelPlace();
-      vscodeApi9.postMessage(message);
+      vscodeApi10.postMessage(message);
     });
     if (resetElement) {
       resetElement.setAttribute("title", "Put back the lines " + field.fieldApiName + " had before it was edited, after a confirmation");
@@ -9340,7 +9561,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         drawChoice();
         fieldState.isPicklistExpanded = false;
         savePanelPlace();
-        vscodeApi9.postMessage(message);
+        vscodeApi10.postMessage(message);
       });
     }
     cancelElement.addEventListener("click", function(event) {
@@ -9401,7 +9622,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/treecipe/fieldEditor/FieldEditor.ts
-  var vscodeApi10 = vscodeApi;
+  var vscodeApi11 = vscodeApi;
   function toggleFieldEditor(treeObjectState, fieldState, edit) {
     const isSameEditOpen = fieldState.editorEdit === edit;
     closeFieldEditor(fieldState);
@@ -9513,7 +9734,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
       refusalElement.textContent = "";
       refusalElement.classList.add("hidden");
-      vscodeApi10.postMessage(message);
+      vscodeApi11.postMessage(message);
     };
     const actionsElement = createElement("div", "fieldEditorActions");
     const saveElement = createButton("primary", "fieldEditorSave", "Save", "compact");
@@ -9851,12 +10072,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       requestUpdaterRecords(treeState);
     });
     treeState.updaterLoadNoteElement = createElement("span", "updaterLoadNote muted");
-    const generateCard = buildActionCard("generateUpdaterValues", "updaterGenerate", RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
-    treeState.updaterGenerateCard = generateCard;
-    treeState.updaterGenerateButtonElement = generateCard.buttonElement;
-    treeState.updaterGenerateButtonElement.addEventListener("click", function() {
-      requestUpdaterValues(treeState);
-    });
     const updateCard = buildActionCard("updateUpdaterRecords", "updaterUpdate", RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
     treeState.updaterUpdateCard = updateCard;
     treeState.updaterUpdateButtonElement = updateCard.buttonElement;
@@ -9864,7 +10079,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       requestUpdaterUpdate(treeState);
     });
     cardsElement.appendChild(loadButtonElement);
-    cardsElement.appendChild(treeState.updaterGenerateButtonElement);
     cardsElement.appendChild(treeState.updaterUpdateButtonElement);
     loadRowElement.appendChild(treeState.updaterLoadNoteElement);
     structureElement.appendChild(cardsElement);
@@ -9999,26 +10213,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       drawnObjectApiNames[objectApiName] = true;
       updaterObjectStates.push(buildUpdaterObjectState(treeState, treeObjectState));
     });
-    const chosenFieldKeys = /* @__PURE__ */ Object.create(null);
-    const choosableOrgOnlyFieldKeys = listAdapterChoosableOrgOnlyFieldKeys(treeState);
-    Object.keys(treeState.updaterChosenFieldKeys).forEach(function(fieldKey) {
-      const objectApiName = fieldKey.split("\\n")[0];
-      if (!hasOwnKey(drawnObjectApiNames, objectApiName) && treeState.updaterCardObjectApiNames.indexOf(objectApiName) !== -1) {
-        chosenFieldKeys[fieldKey] = true;
-      }
-      if (hasOwnKey(drawnObjectApiNames, objectApiName) && hasOwnKey(choosableOrgOnlyFieldKeys, fieldKey)) {
-        chosenFieldKeys[fieldKey] = true;
-      }
-    });
-    updaterObjectStates.forEach(function(updaterObjectState) {
-      updaterObjectState.fieldStates.forEach(function(fieldState) {
-        if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
-          chosenFieldKeys[fieldState.fieldKey] = true;
-          updaterObjectState.chosenFieldCount++;
-        }
-      });
-    });
-    treeState.updaterChosenFieldKeys = chosenFieldKeys;
     const expandedObjectKeys = /* @__PURE__ */ Object.create(null);
     updaterObjectStates.forEach(function(updaterObjectState) {
       if (updaterObjectState.isExpandedByReader) {
@@ -10036,9 +10230,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     drawUpdaterLoadButtons();
     if (treeState.updaterRecordsMessage) {
       applyUpdaterRecords(treeState, treeState.updaterRecordsMessage);
-    }
-    if (treeState.updaterValuesMessage) {
-      applyUpdaterValues(treeState, treeState.updaterValuesMessage);
     }
     applyAdapterMetadataChanges(treeState);
     if (treeState.adapterChildBlockMessage && !treeState.adapterChild) {
@@ -10100,9 +10291,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       loadedRecordsPageIndex: 0,
       requestedRecordsPageIndex: null,
       recordsElement: null,
-      // WHAT THE LAST GENERATION MADE FOR THIS OBJECT (#417), AND ITS SECTION ONCE THE BODY IS BUILT
-      generatedValues: null,
-      valuesElement: null,
       fieldStates: object.fields.map(function(field) {
         return {
           field,
@@ -10149,6 +10337,17 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     objectElement.appendChild(updaterObjectState.bodyElement);
     return updaterObjectState;
   }
+  function openUpdaterObject(treeState, objectApiName) {
+    treeState.updaterExpandedObjectKeys[objectApiName] = true;
+    const updaterObjectState = (treeState.updaterObjectStates || []).find(function(candidateObjectState) {
+      return candidateObjectState.object.objectApiName === objectApiName;
+    });
+    if (!updaterObjectState || updaterObjectState.isExpanded) {
+      return;
+    }
+    updaterObjectState.isExpandedByReader = true;
+    setUpdaterObjectExpanded(treeState, updaterObjectState, true, false);
+  }
   function setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, isAnimated) {
     if (isExpanded && !updaterObjectState.isBodyBuilt) {
       if (updaterObjectState.object.objectApiName !== treeState.updaterParentObjectApiName) {
@@ -10157,9 +10356,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       updaterObjectState.recordsElement = createElement("div", "updaterRecords hidden");
       updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
       drawUpdaterObjectRecords(treeState, updaterObjectState);
-      updaterObjectState.valuesElement = createElement("div", "updaterValues hidden");
-      updaterObjectState.bodyElement.appendChild(updaterObjectState.valuesElement);
-      drawUpdaterObjectValues(updaterObjectState);
       updaterObjectState.fieldStates.forEach(function(fieldState) {
         const rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
         setShown(rowElement, fieldState.isMatch);
@@ -10179,6 +10375,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const isOrgOnlyField = !!fieldState.fieldChange;
     const rowElement = createElement("div", isOrgOnlyField ? "updaterField updaterOrgOnlyField" : "updaterField");
     const headerElement = createElement("div", "updaterFieldHeader");
+    const isFieldChoiceOffered = treeState.isFieldChoiceOffered;
     const chooseElement = createButton("check", "updaterFieldChoose");
     chooseElement.setAttribute("role", "checkbox");
     chooseElement.addEventListener("click", function() {
@@ -10198,10 +10395,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       drawUpdaterLoadButtons();
       savePanelPlace();
     });
-    fieldState.chooseElement = chooseElement;
-    headerElement.appendChild(chooseElement);
-    if (!fieldState.lockReason) {
-      headerElement.appendChild(buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState));
+    if (isFieldChoiceOffered) {
+      fieldState.chooseElement = chooseElement;
+      headerElement.appendChild(chooseElement);
+      if (!fieldState.lockReason) {
+        headerElement.appendChild(buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState));
+      }
     }
     headerElement.appendChild(createElement("span", "updaterFieldName", field.fieldApiName));
     if (field.fieldLabel && field.fieldLabel !== field.fieldApiName) {
@@ -10222,7 +10421,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (isOrgOnlyField) {
       headerElement.appendChild(createElement("span", "updaterFieldNote muted", RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE));
       if (fieldState.orgOnlyNote) {
-        headerElement.appendChild(createElement("span", "updaterFieldNote updaterOrgOnlyFixedNote muted", fieldState.orgOnlyNote));
+        headerElement.appendChild(createElement("span", "updaterFieldNote updaterOrgOnlyFixedNote muted", isFieldChoiceOffered ? fieldState.orgOnlyNote : RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE));
       }
     }
     rowElement.appendChild(headerElement);
@@ -10255,22 +10454,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   function isChoosableOrgOnlyRow(orgOnlyRowState) {
     return !!orgOnlyRowState.field;
   }
-  function listUpdaterChoosableFieldStates(updaterObjectState) {
-    const recipeFieldStates = updaterObjectState.fieldStates;
-    return recipeFieldStates.concat(updaterObjectState.orgOnlyFieldStates.filter(isChoosableOrgOnlyRow));
-  }
-  function listAdapterChoosableOrgOnlyFieldKeys(treeState) {
-    const fieldKeys = /* @__PURE__ */ Object.create(null);
-    const changesMessage = treeState.adapterChangesMessage;
-    (changesMessage && Array.isArray(changesMessage.objects) ? changesMessage.objects : []).forEach(function(objectChanges) {
-      (objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges : []).forEach(function(fieldChange) {
-        if (fieldChange && fieldChange.orgOnly && typeof fieldChange.orgOnly === "object" && !fieldChange.orgOnly.lockReason) {
-          fieldKeys[updaterFieldKeyOf(String(objectChanges?.objectApiName), String(fieldChange.fieldApiName))] = true;
-        }
-      });
-    });
-    return fieldKeys;
-  }
   function drawUpdaterObjectCount(updaterObjectState) {
     const loadedRecords = updaterObjectState.loadedRecords;
     updaterObjectState.countElement.textContent = updaterObjectState.countText + (updaterObjectState.chosenFieldCount > 0 ? " · " + updaterObjectState.chosenFieldCount + " chosen" : "") + (!loadedRecords ? "" : loadedRecords.failureMessage || loadedRecords.skippedReason ? " · not read" : " · " + pluralize(Number(loadedRecords.recordCount) || 0, "record", "records"));
@@ -10293,6 +10476,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
   function drawUpdaterSummary(treeState) {
     if (!treeState.updaterSummaryElement || !treeState.updaterObjectStates) {
+      return;
+    }
+    if (!treeState.isFieldChoiceOffered) {
+      const editTotals = sumUpdaterEdits(treeState);
+      treeState.updaterSummaryElement.textContent = editTotals.markedRecordCount === 0 ? RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED : pluralize(editTotals.markedRecordCount, "row", "rows") + " marked · " + pluralize(editTotals.updatableRecordCount, "record", "records") + " to update";
       return;
     }
     let chosenFieldCount = 0;
@@ -10361,7 +10549,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterRetrieve.ts
-  var vscodeApi11 = vscodeApi;
+  var vscodeApi12 = vscodeApi;
   function requestAdapterMetadataRetrieve(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterParentObjectApiName) {
       return;
@@ -10369,7 +10557,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "retrieve";
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "retrieveAdapterMetadata", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
+    vscodeApi12.postMessage({ command: "retrieveAdapterMetadata", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
   }
   function requestAdapterRetrievedFilesApply(treeState) {
     if (renderedSequence === null || !treeState.adapterChangesMessage || runLocks.updaterLoadRunningTreeKey !== null) {
@@ -10378,7 +10566,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "apply";
     drawUpdaterLoadButtons();
-    vscodeApi11.postMessage({ command: "applyAdapterRetrievedFiles", treeKey: treeState.tree.treeKey, renderSequence: treeState.adapterChangesMessage.renderSequence });
+    vscodeApi12.postMessage({ command: "applyAdapterRetrievedFiles", treeKey: treeState.tree.treeKey, renderSequence: treeState.adapterChangesMessage.renderSequence });
   }
   function countAdapterFileChanges(treeState) {
     const changesMessage = treeState.adapterChangesMessage;
@@ -10468,23 +10656,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }));
       const moreNewChildObjectCount = objectChanges ? Number(objectChanges.moreNewChildObjectCount) || 0 : 0;
       updaterObjectState.moreNewChildObjectCount = moreNewChildObjectCount;
-      const choosableFieldKeys = /* @__PURE__ */ Object.create(null);
-      listUpdaterChoosableFieldStates(updaterObjectState).forEach(function(fieldState) {
-        if (!fieldState.lockReason) {
-          choosableFieldKeys[fieldState.fieldKey] = true;
-        }
-      });
-      updaterObjectState.chosenFieldCount = 0;
-      Object.keys(treeState.updaterChosenFieldKeys).forEach(function(fieldKey) {
-        if (fieldKey.split("\\n")[0] !== updaterObjectState.object.objectApiName) {
-          return;
-        }
-        if (hasOwnKey(choosableFieldKeys, fieldKey)) {
-          updaterObjectState.chosenFieldCount++;
-        } else {
-          delete treeState.updaterChosenFieldKeys[fieldKey];
-        }
-      });
       drawUpdaterObjectCount(updaterObjectState);
       const objectNewCount = fieldChanges.filter(function(fieldChange) {
         return fieldChange.status === "new";
@@ -10692,7 +10863,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterLoadAndUpdate.ts
-  var vscodeApi12 = vscodeApi;
+  var vscodeApi13 = vscodeApi;
   function requestUpdaterRecords(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) {
       return;
@@ -10710,7 +10881,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "load";
     drawUpdaterLoadButtons();
-    vscodeApi12.postMessage({ command: "loadUpdaterRecords", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects });
+    vscodeApi13.postMessage({ command: "loadUpdaterRecords", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects });
   }
   function requestUpdaterParentChange(treeState) {
     if (runLocks.updaterLoadRunningTreeKey !== null) {
@@ -10720,7 +10891,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       showUpdaterParentStep(treeState);
       return;
     }
-    vscodeApi12.postMessage({ command: "changeUpdaterParent", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+    vscodeApi13.postMessage({ command: "changeUpdaterParent", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
   }
   function renderUpdaterParentChange(changeMessage) {
     if (renderedSequence === null || changeMessage.renderSequence !== renderedSequence) {
@@ -10731,45 +10902,19 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return;
     }
     clearUpdaterRecords();
-    clearUpdaterValues();
     clearAdapterChildren();
     if (treeState.updaterObjectStates) {
       showUpdaterParentStep(treeState);
     }
   }
-  function requestUpdaterValues(treeState) {
-    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) {
-      return;
-    }
-    const fields = [];
-    treeState.updaterObjectStates.forEach(function(updaterObjectState) {
-      listUpdaterChoosableFieldStates(updaterObjectState).forEach(function(fieldState) {
-        if (fieldState.lockReason || !hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
-          return;
-        }
-        const fieldRequest = { objectApiName: updaterObjectState.object.objectApiName, fieldApiName: fieldState.field.fieldApiName };
-        if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) {
-          fieldRequest.value = treeState.updaterEditedValues[fieldState.fieldKey];
-        }
-        fields.push(fieldRequest);
-      });
-    });
-    if (fields.length === 0) {
-      return;
-    }
-    runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
-    runLocks.updaterRunKind = "generate";
-    drawUpdaterLoadButtons();
-    vscodeApi12.postMessage({ command: "generateUpdaterValues", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields });
-  }
   function requestUpdaterUpdate(treeState) {
-    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) {
+    if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterRecordsMessage) {
       return;
     }
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "update";
     drawUpdaterLoadButtons();
-    vscodeApi12.postMessage({ command: "updateUpdaterRecords", treeKey: treeState.tree.treeKey });
+    vscodeApi13.postMessage({ command: "updateUpdaterRecords", treeKey: treeState.tree.treeKey });
   }
   function requestUpdaterSnapshots(treeState) {
     if (renderedSequence === null) {
@@ -10777,7 +10922,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return;
     }
     treeState.isUpdaterSnapshotsWanted = false;
-    vscodeApi12.postMessage({ command: "loadUpdaterSnapshots", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+    vscodeApi13.postMessage({ command: "loadUpdaterSnapshots", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
   }
   function renderUpdaterSnapshots(snapshotsMessage) {
     if (renderedSequence === null || snapshotsMessage.renderSequence !== renderedSequence) {
@@ -10814,7 +10959,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       listElement.appendChild(createElement("div", "updaterSnapshotsNote muted", hiddenSnapshotCount + " older not shown: they are in RunArtifacts/UpdateAttempts in the tree folder, or in treecipe/UpdateAttempts for updates made before it."));
     }
     drawUpdaterLoadButtons();
-    vscodeApi12.postMessage({ command: "updaterSnapshotsRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, snapshotsSequence: snapshotsMessage.snapshotsSequence });
+    vscodeApi13.postMessage({ command: "updaterSnapshotsRendered", renderSequence: renderedSequence, treeKey: treeState.tree.treeKey, snapshotsSequence: snapshotsMessage.snapshotsSequence });
   }
   function requestUpdaterRestore(treeState, snapshotName) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null) {
@@ -10824,80 +10969,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterRunKind = "restore";
     runLocks.updaterRestoringSnapshotName = snapshotName;
     drawUpdaterLoadButtons();
-    vscodeApi12.postMessage({ command: "restoreUpdaterSnapshot", treeKey: treeState.tree.treeKey, snapshotName });
+    vscodeApi13.postMessage({ command: "restoreUpdaterSnapshot", treeKey: treeState.tree.treeKey, snapshotName });
   }
-  function countUpdaterValueRecords(valuesMessage) {
-    return (Array.isArray(valuesMessage.objects) ? valuesMessage.objects : []).reduce(function(total, generatedObject) {
-      return total + (generatedObject ? Number(generatedObject.recordCount) || 0 : 0);
-    }, 0);
-  }
-  function renderUpdaterValues(valuesMessage) {
-    if (renderedSequence === null || valuesMessage.renderSequence !== renderedSequence) {
-      return;
-    }
-    const treeState = findTreeState(valuesMessage.treeKey);
-    if (!treeState) {
-      return;
-    }
-    treeState.updaterValuesMessage = valuesMessage;
-    if (treeState.updaterObjectStates) {
-      applyUpdaterValues(treeState, valuesMessage);
-    }
-    drawUpdaterLoadButtons();
-    vscodeApi12.postMessage({ command: "updaterValuesRendered", renderSequence: renderedSequence, valuesSequence: valuesMessage.valuesSequence });
-  }
-  function applyUpdaterValues(treeState, valuesMessage) {
-    const generatedObjects = Array.isArray(valuesMessage.objects) ? valuesMessage.objects : [];
-    (treeState.updaterObjectStates || []).forEach(function(updaterObjectState) {
-      updaterObjectState.generatedValues = generatedObjects.find(function(generatedObject) {
-        return generatedObject && generatedObject.objectApiName === updaterObjectState.object.objectApiName;
-      }) || null;
-      updaterObjectState.generatedValuesLinkSequence = valuesMessage.recordLinkSequence;
-      drawUpdaterObjectValues(updaterObjectState);
-    });
-  }
-  function clearUpdaterValues() {
-    treeStates.forEach(function(treeState) {
-      if (!treeState.updaterValuesMessage) {
-        return;
-      }
-      treeState.updaterValuesMessage = null;
-      if (!treeState.updaterObjectStates) {
-        return;
-      }
-      treeState.updaterObjectStates.forEach(function(updaterObjectState) {
-        updaterObjectState.generatedValues = null;
-        drawUpdaterObjectValues(updaterObjectState);
-      });
-    });
-  }
-  function drawUpdaterObjectValues(updaterObjectState) {
-    const valuesElement = updaterObjectState.valuesElement;
-    if (!valuesElement) {
-      return;
-    }
-    valuesElement.textContent = "";
-    const generatedValues = updaterObjectState.generatedValues;
-    if (!generatedValues) {
-      valuesElement.classList.add("hidden");
-      return;
-    }
-    const columns = Array.isArray(generatedValues.columns) ? generatedValues.columns.map(String) : [];
-    const rows = Array.isArray(generatedValues.rows) ? generatedValues.rows : [];
-    const recordCount = Number(generatedValues.recordCount) || 0;
-    const hiddenColumnCount = Number(generatedValues.hiddenColumnCount) || 0;
-    let summaryText = recordCount === 0 ? "No new values: the last load read no records of this object" : "New values for " + pluralize(recordCount, "record", "records") + ", not written to the org yet";
-    if (rows.length < recordCount) {
-      summaryText += ". Showing the first " + rows.length;
-    }
-    if (hiddenColumnCount > 0) {
-      summaryText += (rows.length < recordCount ? ", " : ". Showing ") + pluralize(columns.length, "column", "columns") + ", " + hiddenColumnCount + " more not shown";
-    }
-    valuesElement.appendChild(createElement("div", "updaterValuesSummary muted", summaryText));
-    if (columns.length > 0 && rows.length > 0) {
-      valuesElement.appendChild(buildRecordTable(columns, rows, generatedValues.recordLinks, updaterObjectState.generatedValuesLinkSequence, updaterObjectState.object.objectApiName));
-    }
-    valuesElement.classList.remove("hidden");
+  function sumUpdaterEdits(treeState) {
+    const loadedObjects = treeState.updaterRecordsMessage && Array.isArray(treeState.updaterRecordsMessage.objects) ? treeState.updaterRecordsMessage.objects : [];
+    return loadedObjects.reduce(function(totals, loadedObject) {
+      const editSummary = readEditSummary(loadedObject ? loadedObject.editSummary : void 0);
+      return { markedRecordCount: totals.markedRecordCount + editSummary.markedRecordCount, updatableRecordCount: totals.updatableRecordCount + editSummary.updatableRecordCount };
+    }, { markedRecordCount: 0, updatableRecordCount: 0 });
   }
   function countUpdaterLoadedRecords(recordsMessage) {
     return (Array.isArray(recordsMessage.objects) ? recordsMessage.objects : []).reduce(function(total, loadedObject) {
@@ -10940,31 +11019,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         snapshotButton.element.textContent = isThisRestoring ? RECIPE_COCKPIT_UPDATER_RESTORING_LABEL : RECIPE_COCKPIT_UPDATER_RESTORE_LABEL;
         snapshotButton.element.setAttribute("title", "Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to RunArtifacts in the tree folder first.");
       });
-      if (!treeState.updaterGenerateCard) {
-        return;
-      }
-      const hasChosenField = updaterObjectStates.some(function(updaterObjectState) {
-        return updaterObjectState.chosenFieldCount > 0;
-      });
-      const generateReason = !treeState.updaterRecordsMessage ? "Load records first: new values are generated for the records the last load read." : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON : !hasChosenField ? "Choose a field to fill first." : "";
-      setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === "generate" ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL : RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
-      drawActionCardState(
-        treeState.updaterGenerateCard,
-        generateReason || busyReason,
-        "Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org."
-      );
+      updaterObjectStates.forEach(drawUpdaterEditControls);
       if (!treeState.updaterUpdateCard) {
         return;
       }
-      const valueRecordCount = treeState.updaterValuesMessage ? countUpdaterValueRecords(treeState.updaterValuesMessage) : 0;
+      const editTotals = sumUpdaterEdits(treeState);
       const orgLabel = treeState.updaterRecordsMessage ? String(treeState.updaterRecordsMessage.orgLabel || "") : "";
-      const updateReason = treeState.updaterRecordsMessage && countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON : !treeState.updaterValuesMessage ? "Generate values first: the update writes the values the last Generate values made." : valueRecordCount === 0 ? "There are no new values to write: the last load read no records." : "";
-      setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === "update" ? RECIPE_COCKPIT_UPDATER_UPDATING_LABEL : valueRecordCount > 0 ? "Update " + pluralize(valueRecordCount, "record", "records") + (orgLabel ? " in " + orgLabel : "") : RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
+      const updateReason = !treeState.updaterRecordsMessage ? "Load records first: an update writes the changes you make to the records the last load read." : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON : editTotals.markedRecordCount === 0 ? RECIPE_COCKPIT_UPDATER_NO_ROW_MARKED_REASON : editTotals.updatableRecordCount === 0 ? RECIPE_COCKPIT_UPDATER_NO_CELL_CHANGED_REASON : "";
+      setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && runLocks.updaterRunKind === "update" ? RECIPE_COCKPIT_UPDATER_UPDATING_LABEL : isThisCardLoading && runLocks.updaterRunKind === "generate" ? RECIPE_COCKPIT_UPDATER_GENERATING_LABEL : editTotals.updatableRecordCount > 0 ? "Update " + pluralize(editTotals.updatableRecordCount, "record", "records") + (orgLabel ? " in " + orgLabel : "") : RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
       drawActionCardState(
         treeState.updaterUpdateCard,
         updateReason || busyReason,
-        "Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to RunArtifacts in the tree folder first."
+        "Write the changed cells of the marked rows to their records by Id, in the sandbox they were loaded from. Their old values are saved to RunArtifacts in the tree folder first."
       );
+      drawUpdaterSummary(treeState);
     });
   }
   function renderUpdaterRecords(recordsMessage) {
@@ -10976,6 +11044,11 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       return;
     }
     treeState.updaterRecordsMessage = recordsMessage;
+    (Array.isArray(recordsMessage.objects) ? recordsMessage.objects : []).forEach(function(loadedObject) {
+      if (loadedObject && typeof loadedObject.objectApiName === "string" && Number(loadedObject.recordCount) > 0) {
+        openUpdaterObject(treeState, loadedObject.objectApiName);
+      }
+    });
     if (treeState.updaterObjectStates) {
       applyUpdaterRecords(treeState, recordsMessage);
     }
@@ -11029,7 +11102,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       updaterObjectState.recordsPagerElements.previousElement.disabled = true;
       updaterObjectState.recordsPagerElements.nextElement.disabled = true;
     }
-    vscodeApi12.postMessage({ command: "loadUpdaterRecordsPage", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objectApiName: updaterObjectState.object.objectApiName, pageIndex });
+    vscodeApi13.postMessage({ command: "loadUpdaterRecordsPage", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objectApiName: updaterObjectState.object.objectApiName, pageIndex });
   }
   function renderUpdaterRecordsPage(pageMessage) {
     if (renderedSequence === null || pageMessage.renderSequence !== renderedSequence) {
@@ -11043,11 +11116,27 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (!treeState || !updaterObjectState || !updaterObjectState.loadedRecords || !Number.isInteger(pageIndex) || pageIndex < 0) {
       return;
     }
-    updaterObjectState.loadedRecords = Object.assign({}, updaterObjectState.loadedRecords, { rows: pageMessage.rows, recordLinks: pageMessage.recordLinks, lookupLinks: pageMessage.lookupLinks });
+    Object.assign(updaterObjectState.loadedRecords, {
+      rows: pageMessage.rows,
+      recordLinks: pageMessage.recordLinks,
+      lookupLinks: pageMessage.lookupLinks,
+      markedRowIndexes: pageMessage.markedRowIndexes,
+      changedCells: pageMessage.changedCells,
+      editSummary: pageMessage.editSummary
+    });
     const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
+    const isSamePage = pageIndex === updaterObjectState.loadedRecordsPageIndex;
+    const focusedEditKey = isSamePage ? readFocusedEditKey(updaterObjectState) : null;
     updaterObjectState.loadedRecordsPageIndex = pageIndex;
     updaterObjectState.requestedRecordsPageIndex = null;
     drawUpdaterObjectRecords(treeState, updaterObjectState);
+    drawUpdaterLoadButtons();
+    if (isSamePage) {
+      if (focusedEditKey) {
+        focusEditButton(updaterObjectState, focusedEditKey);
+      }
+      return;
+    }
     const pagerElements = updaterObjectState.recordsPagerElements;
     if (!pagerElements) {
       return;
@@ -11074,7 +11163,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     } else {
       const objectApiName = updaterObjectState.object.objectApiName;
       const columns = Array.isArray(loadedRecords.columns) ? loadedRecords.columns.map(String) : [];
-      const rows = Array.isArray(loadedRecords.rows) ? loadedRecords.rows : [];
       const recordCount = Number(loadedRecords.recordCount) || 0;
       const pageCount = Number(loadedRecords.pageCount) || 0;
       const pageIndex = updaterObjectState.loadedRecordsPageIndex;
@@ -11088,7 +11176,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         recordsElement.appendChild(createElement("div", "updaterRecordsUnread muted", objectApiName + "." + fieldApiName + " was not read: " + RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON));
       });
       if (columns.length > 0 && recordCount > 0) {
-        recordsElement.appendChild(buildRecordTable(columns, rows, loadedRecords.recordLinks, updaterObjectState.loadedRecordsLinkSequence, objectApiName, { pageIndex, lookupLinks: loadedRecords.lookupLinks }));
+        recordsElement.appendChild(buildEditableRecordSection(treeState, updaterObjectState));
         recordsElement.appendChild(buildUpdaterRecordsPager(treeState, updaterObjectState, pageIndex, pageCount));
       }
     }
@@ -12662,6 +12750,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const sortColumns = Array.isArray(tableOptions.sortColumns) ? tableOptions.sortColumns : [];
     const sortButtons = /* @__PURE__ */ Object.create(null);
     const columnClassName = typeof tableOptions.columnClassName === "string" ? tableOptions.columnClassName : "";
+    const headerElements = [];
     tableOptions.columns.forEach(function(column) {
       const headerElement = createElement("th", columnClassName ? columnClassName + "Header " + columnClassName + "Header-" + column.key : "");
       headerElement.setAttribute("scope", "col");
@@ -12681,12 +12770,13 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         headerElement.appendChild(sortButton);
       }
       headRowElement.appendChild(headerElement);
+      headerElements.push(headerElement);
     });
     headElement.appendChild(headRowElement);
     tableElement.appendChild(headElement);
     tableElement.appendChild(bodyElement);
     wrapElement.appendChild(tableElement);
-    return { wrapElement, bodyElement, sortButtons };
+    return { wrapElement, bodyElement, sortButtons, headerElements };
   }
   function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
     const searchElement = createElement("div", "tabSearch");
@@ -12765,7 +12855,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitRecordTable.ts
-  var vscodeApi13 = vscodeApi;
+  var vscodeApi14 = vscodeApi;
   function buildRecordTable(columns, rows, recordLinks, recordLinkSequence, objectApiName, tablePage) {
     const links = recordLinks;
     const linkColumnIndex = links && typeof recordLinkSequence === "number" && Number.isInteger(links.columnIndex) ? links.columnIndex : -1;
@@ -12796,40 +12886,49 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
           return;
         }
         const cellElement = createElement("td", "");
-        const recordLinkElement = createButton("link", "treeQueryRecordLink", cellText);
-        recordLinkElement.setAttribute("title", RECIPE_COCKPIT_RECORD_LINK_TITLE);
-        recordLinkElement.addEventListener("click", function() {
-          if (renderedSequence === null) {
-            return;
-          }
-          const openMessage = { command: "openPreviewRecord", renderSequence: renderedSequence, recordLinkSequence, rowIndex };
-          if (typeof objectApiName === "string") {
-            openMessage.objectApiName = objectApiName;
-          }
-          if (tablePage) {
-            openMessage.pageIndex = tablePage.pageIndex;
-          }
-          if (columnIndex !== linkColumnIndex) {
-            openMessage.columnIndex = columnIndex;
-          }
-          vscodeApi13.postMessage(openMessage);
-        });
-        cellElement.appendChild(recordLinkElement);
+        cellElement.appendChild(buildRecordLinkElement(cellText, {
+          recordLinkSequence,
+          rowIndex,
+          objectApiName,
+          pageIndex: tablePage ? tablePage.pageIndex : void 0,
+          columnIndex: columnIndex !== linkColumnIndex ? columnIndex : void 0
+        }));
         rowElement.appendChild(cellElement);
       });
       rowTable.bodyElement.appendChild(rowElement);
     });
     return rowTable.wrapElement;
   }
+  function buildRecordLinkElement(cellText, position) {
+    const recordLinkElement = createButton("link", "treeQueryRecordLink", cellText);
+    recordLinkElement.setAttribute("title", RECIPE_COCKPIT_RECORD_LINK_TITLE);
+    recordLinkElement.addEventListener("click", function() {
+      if (renderedSequence === null) {
+        return;
+      }
+      const openMessage = { command: "openPreviewRecord", renderSequence: renderedSequence, recordLinkSequence: position.recordLinkSequence, rowIndex: position.rowIndex };
+      if (typeof position.objectApiName === "string") {
+        openMessage.objectApiName = position.objectApiName;
+      }
+      if (position.pageIndex !== void 0) {
+        openMessage.pageIndex = position.pageIndex;
+      }
+      if (position.columnIndex !== void 0) {
+        openMessage.columnIndex = position.columnIndex;
+      }
+      vscodeApi14.postMessage(openMessage);
+    });
+    return recordLinkElement;
+  }
   function acknowledgeRecordLinks(previewMessage) {
     if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence || typeof previewMessage.recordLinkSequence !== "number") {
       return;
     }
-    vscodeApi13.postMessage({ command: "recordLinksRendered", renderSequence: renderedSequence, recordLinkSequence: previewMessage.recordLinkSequence });
+    vscodeApi14.postMessage({ command: "recordLinksRendered", renderSequence: renderedSequence, recordLinkSequence: previewMessage.recordLinkSequence });
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/adapter/AdapterChild.ts
-  var vscodeApi14 = vscodeApi;
+  var vscodeApi15 = vscodeApi;
   function isAdapterChildOf(adapterChild, parentObjectApiName, childObject) {
     return !!adapterChild && !!childObject && adapterChild.parentObjectApiName === parentObjectApiName && adapterChild.childObjectApiName === String(childObject.childObjectApiName) && adapterChild.lookupFieldApiName === String(childObject.fieldApiName);
   }
@@ -12889,7 +12988,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterRunKind = "prepareChild";
     runLocks.adapterChildPreparingKey = adapterChildKeyOf(updaterObjectState.object.objectApiName, childObject);
     drawUpdaterLoadButtons();
-    vscodeApi14.postMessage({
+    vscodeApi15.postMessage({
       command: "prepareAdapterChild",
       treeKey: treeState.tree.treeKey,
       renderSequence: renderedSequence,
@@ -12947,6 +13046,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     const childTreeState = {
       tree: { treeKey: treeState.tree.treeKey, fixedValues: [] },
       updaterChosenFieldKeys: /* @__PURE__ */ Object.create(null),
+      isFieldChoiceOffered: true,
       updaterEditedValues: /* @__PURE__ */ Object.create(null),
       updaterObjectStates: [],
       updaterSummaryElement: null
@@ -13094,7 +13194,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterLoadRunningTreeKey = treeState.tree.treeKey;
     runLocks.updaterRunKind = "generateChild";
     drawUpdaterLoadButtons();
-    vscodeApi14.postMessage({
+    vscodeApi15.postMessage({
       command: "generateAdapterChild",
       treeKey: treeState.tree.treeKey,
       renderSequence: renderedSequence,
@@ -13399,13 +13499,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         if (updaterRunKind === "generateChild") {
           clearAdapterChildPreviews();
         }
-        if (["update", "restore", "retrieve", "apply", "prepareChild", "generateChild"].indexOf(updaterRunKind) === -1) {
-          clearUpdaterValues();
-        }
       }
       if (!hostMessage.isRunning && hostMessage.isRecordsSpent === true) {
         clearUpdaterRecords();
-        clearUpdaterValues();
         clearAdapterChildren();
       }
       drawUpdaterLoadButtons();
@@ -13438,11 +13534,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     if (hostMessage.command === "updaterSnapshots") {
       renderUpdaterSnapshots(hostMessage);
-      return;
-    }
-    if (hostMessage.command === "updaterValues") {
-      renderUpdaterValues(hostMessage);
-      acknowledgeRecordLinks(hostMessage);
       return;
     }
     if (hostMessage.command === "metadataRetrieveState") {

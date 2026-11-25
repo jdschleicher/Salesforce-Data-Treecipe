@@ -2,8 +2,9 @@ import { createButton, createElement, drawToggle, setShown, setShownWithMotion }
 import {
     RECIPE_COCKPIT_ADAPTER_APPLY_LABEL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
+    RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE,
     RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL,
-    RECIPE_COCKPIT_UPDATER_GENERATE_LABEL,
+    RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED,
     RECIPE_COCKPIT_UPDATER_INTRO,
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
@@ -32,7 +33,7 @@ import { buildActionCard, buildTabSearch, buildToggleElement } from '../RecipeCo
 import { applyAdapterMetadataChanges, drawAdapterFieldOrgChip, drawAdapterObjectOrgOnlyFields, requestAdapterMetadataRetrieve, requestAdapterRetrievedFilesApply } from './AdapterRetrieve';
 import { buildAdapterChildBlock } from './AdapterChild';
 import { buildUpdaterFieldEditElement, drawUpdaterFieldEdit } from './AdapterFieldEditor';
-import { applyUpdaterRecords, applyUpdaterValues, drawUpdaterLoadButtons, drawUpdaterObjectRecords, drawUpdaterObjectValues, requestUpdaterParentChange, requestUpdaterRecords, requestUpdaterUpdate, requestUpdaterValues } from './AdapterLoadAndUpdate';
+import { applyUpdaterRecords, drawUpdaterLoadButtons, drawUpdaterObjectRecords, requestUpdaterParentChange, requestUpdaterRecords, requestUpdaterUpdate, sumUpdaterEdits } from './AdapterLoadAndUpdate';
 import type {
     AdapterOrgOnlyRowState,
     IAdapterField,
@@ -155,16 +156,11 @@ export function buildUpdaterTab(treeState: IAdapterTreeState, panelElement: HTML
     treeState.updaterLoadButtonElement = loadButtonElement;
     loadButtonElement.addEventListener('click', function () { requestUpdaterRecords(treeState); });
     treeState.updaterLoadNoteElement = createElement('span', 'updaterLoadNote muted');
-    const generateCard = buildActionCard('generateUpdaterValues', 'updaterGenerate', RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
-    treeState.updaterGenerateCard = generateCard;
-    treeState.updaterGenerateButtonElement = generateCard.buttonElement;
-    treeState.updaterGenerateButtonElement.addEventListener('click', function () { requestUpdaterValues(treeState); });
     const updateCard = buildActionCard('updateUpdaterRecords', 'updaterUpdate', RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
     treeState.updaterUpdateCard = updateCard;
     treeState.updaterUpdateButtonElement = updateCard.buttonElement;
     treeState.updaterUpdateButtonElement.addEventListener('click', function () { requestUpdaterUpdate(treeState); });
     cardsElement.appendChild(loadButtonElement);
-    cardsElement.appendChild(treeState.updaterGenerateButtonElement);
     cardsElement.appendChild(treeState.updaterUpdateButtonElement);
     loadRowElement.appendChild(treeState.updaterLoadNoteElement);
     structureElement.appendChild(cardsElement);
@@ -329,28 +325,6 @@ function drawUpdaterStructure(treeState: IAdapterTreeState): void {
         updaterObjectStates.push(buildUpdaterObjectState(treeState, treeObjectState));
     });
 
-    /*
-        A PLACE CAN NAME A FIELD THE TREE NO LONGER HAS, OR ONE WHOSE BOX IS LOCKED NOW; NEITHER STAYS CHOSEN. A CHOICE ON
-        ANOTHER OF THE CARD'S OBJECTS IS KEPT FOR WHEN IT IS DRAWN AGAIN, AND ONE ON AN OBJECT THE CARD NO LONGER LISTS IS NOT
-    */
-    const chosenFieldKeys: Record<string, true> = Object.create(null);
-    const choosableOrgOnlyFieldKeys = listAdapterChoosableOrgOnlyFieldKeys(treeState);
-    Object.keys(treeState.updaterChosenFieldKeys).forEach(function (fieldKey) {
-        const objectApiName = fieldKey.split('\n')[0];
-        if (!hasOwnKey(drawnObjectApiNames, objectApiName) && treeState.updaterCardObjectApiNames.indexOf(objectApiName) !== -1) { chosenFieldKeys[fieldKey] = true; }
-        // A FIELD ONLY THE ORG HOLDS (#446) STAYS CHOSEN WHILE THE LAST RETRIEVE STILL OFFERS IT; applyAdapterMetadataChanges COUNTS IT
-        if (hasOwnKey(drawnObjectApiNames, objectApiName) && hasOwnKey(choosableOrgOnlyFieldKeys, fieldKey)) { chosenFieldKeys[fieldKey] = true; }
-    });
-    updaterObjectStates.forEach(function (updaterObjectState) {
-        updaterObjectState.fieldStates.forEach(function (fieldState) {
-            if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
-                chosenFieldKeys[fieldState.fieldKey] = true;
-                updaterObjectState.chosenFieldCount++;
-            }
-        });
-    });
-    treeState.updaterChosenFieldKeys = chosenFieldKeys;
-
     const expandedObjectKeys: Record<string, true> = Object.create(null);
     updaterObjectStates.forEach(function (updaterObjectState) {
         if (updaterObjectState.isExpandedByReader) { expandedObjectKeys[updaterObjectState.object.objectApiName] = true; }
@@ -365,7 +339,6 @@ function drawUpdaterStructure(treeState: IAdapterTreeState): void {
     applyUpdaterFilter(treeState);
     drawUpdaterLoadButtons();
     if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
-    if (treeState.updaterValuesMessage) { applyUpdaterValues(treeState, treeState.updaterValuesMessage); }
     applyAdapterMetadataChanges(treeState);
     // A BLOCK REPLAYED BEFORE THIS TAB WAS BUILT IS DRAWN NOW; ONE ALREADY DRAWN IS PUT BACK UNDER ITS ROW BY THE LINE ABOVE
     if (treeState.adapterChildBlockMessage && !treeState.adapterChild) { buildAdapterChildBlock(treeState); }
@@ -429,9 +402,6 @@ function buildUpdaterObjectState(treeState: IAdapterTreeState, treeObjectState: 
         loadedRecordsPageIndex: 0,
         requestedRecordsPageIndex: null,
         recordsElement: null,
-        // WHAT THE LAST GENERATION MADE FOR THIS OBJECT (#417), AND ITS SECTION ONCE THE BODY IS BUILT
-        generatedValues: null,
-        valuesElement: null,
         fieldStates: object.fields.map(function (field) {
             return {
                 field: field,
@@ -484,6 +454,15 @@ function buildUpdaterObjectState(treeState: IAdapterTreeState, treeObjectState: 
 
 }
 
+// A LOAD OPENS EACH OBJECT IT READ RECORDS OF (#721): THE TABLE TO EDIT IS IN THE OBJECT'S SECTION, AND STAYS OPEN AS IF THE READER OPENED IT
+export function openUpdaterObject(treeState: IAdapterTreeState, objectApiName: string): void {
+    treeState.updaterExpandedObjectKeys[objectApiName] = true;
+    const updaterObjectState = (treeState.updaterObjectStates || []).find(function (candidateObjectState) { return candidateObjectState.object.objectApiName === objectApiName; });
+    if (!updaterObjectState || updaterObjectState.isExpanded) { return; }
+    updaterObjectState.isExpandedByReader = true;
+    setUpdaterObjectExpanded(treeState, updaterObjectState, true, false);
+}
+
 function setUpdaterObjectExpanded(treeState: IAdapterTreeState, updaterObjectState: IUpdaterObjectState, isExpanded: boolean, isAnimated: boolean): void {
 
     if (isExpanded && !updaterObjectState.isBodyBuilt) {
@@ -494,9 +473,6 @@ function setUpdaterObjectExpanded(treeState: IAdapterTreeState, updaterObjectSta
         updaterObjectState.recordsElement = createElement('div', 'updaterRecords hidden');
         updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
         drawUpdaterObjectRecords(treeState, updaterObjectState);
-        updaterObjectState.valuesElement = createElement('div', 'updaterValues hidden');
-        updaterObjectState.bodyElement.appendChild(updaterObjectState.valuesElement);
-        drawUpdaterObjectValues(updaterObjectState);
         updaterObjectState.fieldStates.forEach(function (fieldState) {
             const rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
             setShown(rowElement, fieldState.isMatch);
@@ -522,6 +498,8 @@ export function buildUpdaterFieldRow(treeState: IUpdaterFieldTreeState, updaterO
     const isOrgOnlyField = !!fieldState.fieldChange;
     const rowElement = createElement('div', isOrgOnlyField ? 'updaterField updaterOrgOnlyField' : 'updaterField');
     const headerElement = createElement('div', 'updaterFieldHeader');
+    // THE CARD'S OWN FIELDS ARE CHANGED IN ITS RECORD TABLE (#721): THEIR ROWS DESCRIBE THE FIELD, WITH NO BOX AND NO EDITOR
+    const isFieldChoiceOffered = treeState.isFieldChoiceOffered;
     const chooseElement = createButton('check', 'updaterFieldChoose');
 
     chooseElement.setAttribute('role', 'checkbox');
@@ -541,10 +519,11 @@ export function buildUpdaterFieldRow(treeState: IUpdaterFieldTreeState, updaterO
         drawUpdaterLoadButtons();
         savePanelPlace();
     });
-    fieldState.chooseElement = chooseElement;
-
-    headerElement.appendChild(chooseElement);
-    if (!fieldState.lockReason) { headerElement.appendChild(buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState)); }
+    if (isFieldChoiceOffered) {
+        fieldState.chooseElement = chooseElement;
+        headerElement.appendChild(chooseElement);
+        if (!fieldState.lockReason) { headerElement.appendChild(buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState)); }
+    }
     headerElement.appendChild(createElement('span', 'updaterFieldName', field.fieldApiName));
 
     if (field.fieldLabel && field.fieldLabel !== field.fieldApiName) {
@@ -568,7 +547,7 @@ export function buildUpdaterFieldRow(treeState: IUpdaterFieldTreeState, updaterO
 
     if (isOrgOnlyField) {
         headerElement.appendChild(createElement('span', 'updaterFieldNote muted', RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE));
-        if (fieldState.orgOnlyNote) { headerElement.appendChild(createElement('span', 'updaterFieldNote updaterOrgOnlyFixedNote muted', fieldState.orgOnlyNote)); }
+        if (fieldState.orgOnlyNote) { headerElement.appendChild(createElement('span', 'updaterFieldNote updaterOrgOnlyFixedNote muted', isFieldChoiceOffered ? fieldState.orgOnlyNote : RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_NOTE)); }
     }
 
     rowElement.appendChild(headerElement);
@@ -667,6 +646,15 @@ function buildUpdaterWhereElement(treeState: IAdapterTreeState, updaterObjectSta
 export function drawUpdaterSummary(treeState: IUpdaterFieldTreeState): void {
 
     if (!treeState.updaterSummaryElement || !treeState.updaterObjectStates) { return; }
+
+    // THE CARD'S OWN SUMMARY IS WHAT ITS RECORD TABLES HOLD (#721), AS THE HOST COUNTS IT
+    if (!treeState.isFieldChoiceOffered) {
+        const editTotals = sumUpdaterEdits(treeState as IAdapterTreeState);
+        treeState.updaterSummaryElement.textContent = editTotals.markedRecordCount === 0
+            ? RECIPE_COCKPIT_UPDATER_NO_ROWS_MARKED
+            : pluralize(editTotals.markedRecordCount, 'row', 'rows') + ' marked · ' + pluralize(editTotals.updatableRecordCount, 'record', 'records') + ' to update';
+        return;
+    }
 
     let chosenFieldCount = 0;
     let chosenObjectCount = 0;

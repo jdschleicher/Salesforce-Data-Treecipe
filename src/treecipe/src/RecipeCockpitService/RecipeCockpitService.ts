@@ -635,8 +635,6 @@ export class RecipeCockpitService {
             treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
             pendingTreeHistoryAllowLists: RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists(),
             treeHistoryAllowLists: RecipeCockpitDrawnModel.buildEmptyTreeHistoryAllowLists(),
-            pendingUpdatableTreeKeys: new Set(),
-            updatableTreeKeys: new Set(),
             pendingOpenableRecordPreviews: new Map(),
             openableRecordPreviews: new Map(),
             pendingRestorableSnapshots: new Map(),
@@ -1188,7 +1186,6 @@ export class RecipeCockpitService {
             this.discardObjectRefreshStaging(panelState);
             panelState.objectRefreshSession = undefined;
         }
-        RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
         RecipeCockpitAdapterState.clearHeldUpdaterRecords();
         // AND EVERY PREVIEW'S RECORD LINKS (#556), WHOSE RECORDS WENT WITH THEM
         panelState.pendingOpenableRecordPreviews = new Map();
@@ -1479,7 +1476,6 @@ export class RecipeCockpitService {
                 panelState.addableParentTargets = new Map();
                 panelState.orgRecordLookupTargets = new Map();
                 panelState.acknowledgedRenderSequence = null;
-                panelState.updatableTreeKeys = new Set();
                 panelState.openableRecordPreviews = new Map();
                 panelState.pendingRestorableSnapshots = new Map();
                 panelState.restorableSnapshots = new Map();
@@ -1544,7 +1540,6 @@ export class RecipeCockpitService {
                     panelState.addableParentTargets = new Map();
                     panelState.orgRecordLookupTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
-                    panelState.updatableTreeKeys = new Set();
                     panelState.pendingOpenableRecordPreviews = new Map();
                     panelState.openableRecordPreviews = new Map();
                     panelState.pendingRestorableSnapshots = new Map();
@@ -1651,11 +1646,6 @@ export class RecipeCockpitService {
                 return;
 
             }
-
-            case 'activateUpdaterValues':
-
-                panelState.updatableTreeKeys = panelState.pendingUpdatableTreeKeys;
-                return;
 
             case 'activateRecordLinks': {
 
@@ -2282,20 +2272,6 @@ export class RecipeCockpitService {
 
                 return { kind: 'activateDatasetActions' };
 
-            // THE PANEL DREW THE LAST GENERATED VALUES (#418), ON THE MODEL IT ACKNOWLEDGED: "Update records" IS OFFERED ON THEM FROM HERE
-            case 'updaterValuesRendered':
-
-                if ( !panelState.recipeDataMessage
-                        || !panelState.updaterValuesMessage
-                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
-                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
-                        || panelState.updaterValuesMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
-                        || panelMessage.valuesSequence !== panelState.updaterValuesMessage.valuesSequence ) {
-                    return undefined;
-                }
-
-                return { kind: 'activateUpdaterValues' };
-
             // THE PANEL DREW A CARD'S SNAPSHOT LIST (#419), ON THE MODEL IT ACKNOWLEDGED: RESTORE IS OFFERED ON THOSE NAMES FROM HERE
             case 'updaterSnapshotsRendered': {
 
@@ -2595,10 +2571,6 @@ export class RecipeCockpitService {
 
         if ( panelState.adapterChildPreviewMessage && panelState.adapterChildPreviewMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.adapterChildPreviewMessage);
-        }
-
-        if ( panelState.updaterValuesMessage && panelState.updaterValuesMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
-            replayMessages.push(panelState.updaterValuesMessage);
         }
 
         if ( panelState.permissionSetAssignStateMessage ) {

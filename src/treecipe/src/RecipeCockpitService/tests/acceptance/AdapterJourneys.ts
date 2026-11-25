@@ -10,7 +10,7 @@ import {
     PARENT_WHERE,
     SNAPSHOT_FILE_PATTERN,
     UPDATE_ATTEMPTS_FOLDER,
-    chooseParentAndFields,
+    chooseParent,
     loadQueriesSent,
     updatesSent
 } from './AdapterWorkspace';
@@ -18,8 +18,8 @@ import { TREE_NAME, expectEqual, readWorkspaceFile } from './TreecipeTabWorkspac
 
 /*
     The Treecipe Adapter's journeys (#580), each on a cockpit of its own: load what an org already holds
-    for a tree, generate new values for the chosen fields, update the records (old values saved first),
-    and restore them -- and the three ways an update, a load and a restore must stop short. #566 moves
+    for a tree, mark the rows to change and generate new values cell by cell (#721), update those
+    records (old values saved first), and restore them -- and the three ways an update, a load and a restore must stop short. #566 moves
     this tab's host code, and these must pass unchanged across it.
 */
 
@@ -38,12 +38,14 @@ const confirmationTitle = (journey: RecipeCockpitJourney) => {
 const fieldsOf = (record: Record<string, unknown>) => Object.fromEntries(Object.entries(record).filter(([fieldName]) => fieldName !== 'attributes'));
 const adapterPanelLines = (journey: RecipeCockpitJourney) => journey.screen().lines(journey.screen().get('tabpanel', ADAPTER_TAB_NAME));
 
-// LOAD AND GENERATE, AS EVERY UPDATE AND RESTORE NEEDS THEM FIRST
-async function loadAndGenerate(journey: RecipeCockpitJourney): Promise<void> {
-    await chooseParentAndFields(journey);
+// LOAD, THEN ONE ACCOUNT AND THE CONTACT MARKED AND GIVEN A NEW VALUE EACH, AS EVERY UPDATE AND RESTORE NEEDS FIRST
+async function loadAndChange(journey: RecipeCockpitJourney): Promise<void> {
+    await chooseParent(journey);
     await journey.click('button', 'Load records');
-    await journey.click('button', 'Generate values');
-    await journey.answerConfirmation('Generate values');
+    await journey.click('button', `Mark to update Account ${ACCOUNT_IDS[0]}`);
+    await journey.click('button', `Generate a value for Region__c of Account ${ACCOUNT_IDS[0]}`);
+    await journey.click('button', `Mark to update Contact ${CONTACT_ID}`);
+    await journey.click('button', `Generate a value for Title__c of Contact ${CONTACT_ID}`);
 }
 
 const writtenSnapshotPath = (journey: RecipeCockpitJourney) => {
@@ -57,13 +59,13 @@ const writtenSnapshotPath = (journey: RecipeCockpitJourney) => {
 export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
 
     {
-        name: 'load, generate, update and restore: one SELECT per object narrowed to the parents with every recipe field, a paged table with clickable lookups, Change parent object asking first, a preview of current and new values, the snapshot before any request, PATCHes of 200, the adapted data set and recipe, and the old values sent back',
+        name: 'load, mark, generate, update and restore: one SELECT per object narrowed to the parents with every recipe field, a paged table with clickable lookups, Change parent object asking first, rows marked and cells given new values or put back, the snapshot of the changed cells before any request, the adapted data set and recipe, and the old values sent back',
         run: async journey => {
 
-            await chooseParentAndFields(journey);
-            await journey.step('step 2 names the parent and its WHERE beside Change parent object, and counts the fields chosen', () => {
+            await chooseParent(journey);
+            await journey.step('step 2 names the parent and its WHERE beside Change parent object, and says no row is marked', () => {
                 const lines = adapterPanelLines(journey);
-                expectEqual(lines.includes(`  text "Parent: Account · WHERE ${PARENT_WHERE}"`) && lines.includes('  button "Change parent object"') && lines.includes('  text "2 fields chosen on 2 objects"'), true, `The Adapter tab: ${lines.slice(0, 12).join(' | ')}`);
+                expectEqual(lines.includes(`  text "Parent: Account · WHERE ${PARENT_WHERE}"`) && lines.includes('  button "Change parent object"') && lines.includes('  text "No rows marked to update"'), true, `The Adapter tab: ${lines.slice(0, 12).join(' | ')}`);
             });
 
             await journey.click('button', 'Load records');
@@ -87,14 +89,14 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 expectEqual(journey.notifications.map(notification => notification.text), [`Loaded ${ACCOUNT_COUNT + 1} records of ${TREE_NAME} from qa · qa@example.com.qa.`], 'The notifications');
             });
 
-            await journey.step('each object\'s records are a table of 50 to a page with its page count, Id first, and the chip counts the parents loaded', () => {
+            await journey.step('each object\'s records are a table of 50 to a page with its page count, the mark column then Id, and the chip counts the parents loaded', () => {
                 const screen = journey.screen();
                 const adapterPanel = screen.get('tabpanel', ADAPTER_TAB_NAME);
                 screen.get('text', `Parent: Account · WHERE ${PARENT_WHERE} · ${ACCOUNT_COUNT} records`, adapterPanel);
                 screen.get('text', 'Page 1 of 5', adapterPanel);
                 screen.get('text', 'Page 1 of 1', adapterPanel);
                 const tables = screen.findAll('table', undefined, adapterPanel);
-                expectEqual(tables.map(table => screen.findAll('columnheader', undefined, table)[0].name), ['Id', 'Id'], 'The first column of the Account and Contact tables');
+                expectEqual(tables.map(table => screen.findAll('columnheader', undefined, table).slice(0, 2).map(header => header.name)), [['Update', 'Id 🔒'], ['Update', 'Id 🔒']], 'The first columns of the Account and Contact tables: the mark, then the Id, which cannot be changed');
                 expectEqual(screen.findAll('row', undefined, tables[0]).filter(row => screen.findAll('cell', undefined, row).length > 0).length, 50, 'The Account rows on page 1');
                 expectEqual(screen.findAll('button', ACCOUNT_IDS[49], tables[0]).length + screen.findAll('button', ACCOUNT_IDS[50], tables[0]).length, 1, 'Page 1 ends at the 50th Account');
             });
@@ -134,26 +136,41 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
                 expectEqual(screen.findAll('button', 'Next', adapterPanel), [], 'Step 1 on screen');
             });
 
-            await journey.click('button', 'Generate values');
-            await journey.waitForConfirmation();
-            await journey.step('the Generate confirmation names the fields and the records it fills, and that nothing is written', () => {
-                expectEqual(confirmationTitle(journey), [`Generate new values for 2 fields of ${TREE_NAME}?`], 'The confirmation');
+            // PAGE 2 IS ON SCREEN: ITS FIRST TWO ACCOUNTS ARE MARKED, THE COLUMN'S 🎲 FILLS BOTH, AND ↺ PUTS ONE BACK
+            const regionCellOf = (accountId: string) => {
                 const screen = journey.screen();
-                screen.get('text', 'Generated by the recipe\'s own backend, faker-js. Nothing is written to the org or the recipe file.');
-                screen.get('button', `Account: ${ACCOUNT_COUNT} records`);
-                screen.get('button', 'Contact: 1 record');
+                const [accountTable] = screen.findAll('table', undefined, screen.get('tabpanel', ADAPTER_TAB_NAME));
+                const headers = screen.findAll('columnheader', undefined, accountTable).map(header => header.name);
+                const accountRow = screen.findAll('row', undefined, accountTable).find(row => screen.findAll('button', accountId, row).length > 0)!;
+                return screen.findAll('cell', undefined, accountRow)[headers.findIndex(header => header.startsWith('Region__c'))].name;
+            };
+            await journey.step('no row offers a new value before it is marked, and the column\'s 🎲 waits for a marked row', () => {
+                const screen = journey.screen();
+                expectEqual(screen.findAll('button', `Generate a value for Region__c of Account ${ACCOUNT_IDS[50]}`), [], 'The 🎲 of a row not marked');
+                expectEqual(screen.get('button', 'Generate Region__c for every marked Account row').states.includes('disabled'), true, 'The column\'s 🎲 with no row marked');
             });
-            await journey.answerConfirmation('Generate values');
 
-            await journey.step('the preview shows each record\'s current and new value, and nothing is sent', () => {
-                const screen = journey.screen();
-                const adapterPanel = screen.get('tabpanel', ADAPTER_TAB_NAME);
-                screen.get('text', `New values for ${ACCOUNT_COUNT} records, not written to the org yet. Showing the first 10`, adapterPanel);
-                const previewHeaders = screen.findAll('columnheader', undefined, adapterPanel).map(header => header.name);
-                expectEqual(previewHeaders.includes('Region__c (current)') && previewHeaders.includes('Region__c (new)') && previewHeaders.includes('Title__c (new)'), true, `The preview columns: ${JSON.stringify(previewHeaders)}`);
-                const firstNewRow = screen.findAll('row', undefined, adapterPanel).map(row => screen.findAll('cell', undefined, row).map(cell => cell.name)).find(cells => cells.length === 3 && cells[0] === ACCOUNT_IDS[0]);
-                expectEqual(firstNewRow !== undefined && firstNewRow[1] === 'EMEA' && firstNewRow[2] !== 'EMEA' && firstNewRow[2] !== '', true, `The first Account's current and new value: ${JSON.stringify(firstNewRow)}`);
+            await journey.click('button', `Mark to update Account ${ACCOUNT_IDS[50]}`);
+            await journey.click('button', `Mark to update Account ${ACCOUNT_IDS[51]}`);
+            await journey.click('button', 'Generate Region__c for every marked Account row');
+            await journey.step('the column\'s 🎲 gives each marked row a new value from the recipe\'s own backend, with no confirmation, and nothing is sent', () => {
+                expectEqual(confirmationTitle(journey), [], 'Confirmations on screen');
+                expectEqual([ACCOUNT_IDS[50], ACCOUNT_IDS[51]].every(accountId => !regionCellOf(accountId).startsWith('EMEA') && regionCellOf(accountId) !== ''), true, `The marked rows' Region__c: ${JSON.stringify([regionCellOf(ACCOUNT_IDS[50]), regionCellOf(ACCOUNT_IDS[51])])}`);
+                expectEqual(regionCellOf(ACCOUNT_IDS[52]).startsWith('EMEA'), true, `A row not marked keeps its value: ${regionCellOf(ACCOUNT_IDS[52])}`);
+                journey.screen().get('text', '2 rows marked · 2 records to update: Region__c');
                 expectEqual(journey.org.calls.filter(orgCall => ORG_WRITE_CALL.test(orgCall.call)), [], 'Writes to the org');
+            });
+
+            await journey.click('button', `Put back the loaded Region__c of Account ${ACCOUNT_IDS[51]}`);
+            await journey.step('↺ puts one cell back as loaded, so its record is no longer one to update', () => {
+                expectEqual(regionCellOf(ACCOUNT_IDS[51]).startsWith('EMEA'), true, `The cell put back: ${regionCellOf(ACCOUNT_IDS[51])}`);
+                journey.screen().get('text', '2 rows marked · 1 record to update: Region__c');
+            });
+
+            await journey.click('button', `Mark to update Contact ${CONTACT_ID}`);
+            await journey.click('button', `Generate a value for Title__c of Contact ${CONTACT_ID}`);
+            await journey.step('the card counts the marked rows and the records an update would write, over both objects', () => {
+                journey.screen().get('text', '3 rows marked · 2 records to update');
             });
 
             // THE SNAPSHOT MUST BE ON DISK BEFORE THE FIRST REQUEST: THE ORG'S ANSWER LOOKS FOR IT AS EACH UPDATE ARRIVES
@@ -167,7 +184,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             await journey.click('button', /^Update \d+ records in qa · qa@example\.com\.qa$/);
             await journey.waitForConfirmation();
             await journey.step('the Update confirmation names the records, the tree and the sandbox', () => {
-                expectEqual(confirmationTitle(journey), [`Update ${ACCOUNT_COUNT + 1} records of ${TREE_NAME} in qa · qa@example.com.qa?`], 'The confirmation');
+                expectEqual(confirmationTitle(journey), [`Update 2 records of ${TREE_NAME} in qa · qa@example.com.qa?`], 'The confirmation');
                 expectEqual(updatesSent(journey), [], 'Updates before the confirmation is answered');
             });
             await journey.answerConfirmation('Update records');
@@ -179,22 +196,23 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
 
             const snapshotPath = writtenSnapshotPath(journey);
 
-            await journey.step('the snapshot holds every old value and was written before any request; the updates go parents first, at most 200 a request', () => {
+            await journey.step('the snapshot holds the old value of each changed cell only and was written before any request; the updates go parents first', () => {
                 expectEqual(snapshotFoundAtEachUpdate.length > 0 && snapshotFoundAtEachUpdate.every(isFound => isFound), true, `The snapshot was on disk at each update: ${JSON.stringify(snapshotFoundAtEachUpdate)}`);
                 const snapshotText = readWorkspaceFile(journey, snapshotPath);
-                expectEqual([ACCOUNT_IDS[0], ACCOUNT_IDS[ACCOUNT_COUNT - 1], CONTACT_ID, OLD_CONTACT_TITLE].every(oldValuePart => snapshotText.includes(oldValuePart)), true, 'The snapshot holds the old values');
+                expectEqual([ACCOUNT_IDS[50], CONTACT_ID, OLD_CONTACT_TITLE].every(oldValuePart => snapshotText.includes(oldValuePart)), true, 'The snapshot holds the old values');
+                expectEqual([ACCOUNT_IDS[0], ACCOUNT_IDS[51]].filter(untouchedId => snapshotText.includes(`"${untouchedId}"`)), [], 'Records in the snapshot that were not changed');
                 const updates = updatesSent(journey);
-                expectEqual(updates.map(update => `${update.objectApiName} × ${update.records.length}`), ['Account × 200', 'Account × 1', 'Contact × 1'], 'The update requests, in order');
+                expectEqual(updates.map(update => `${update.objectApiName} × ${update.records.length}`), ['Account × 1', 'Contact × 1'], 'The update requests, in order');
                 expectEqual(updates.every(update => JSON.stringify(update.options) === JSON.stringify({ allowRecursive: false, allOrNone: true })), true, 'Every request is all-or-none and never split');
-                expectEqual(updates[0].records[0].Id === ACCOUNT_IDS[0] && Object.keys(fieldsOf(updates[0].records[0])).sort().join(',') === 'Id,Region__c', true, `An Account update carries its Id and the chosen field only: ${JSON.stringify(updates[0].records[0])}`);
-                expectEqual(Object.keys(fieldsOf(updates[2].records[0])).sort().join(','), 'Id,Title__c', 'The Contact update carries its Id and the chosen field only');
+                expectEqual(updates[0].records[0].Id === ACCOUNT_IDS[50] && Object.keys(fieldsOf(updates[0].records[0])).sort().join(',') === 'Id,Region__c', true, `An Account update carries its Id and the changed field only: ${JSON.stringify(updates[0].records[0])}`);
+                expectEqual(Object.keys(fieldsOf(updates[1].records[0])).sort().join(','), 'Id,Title__c', 'The Contact update carries its Id and the changed field only');
             });
 
             await journey.step('one notification names the snapshot and the adapted data set and recipe, which are written', () => {
                 const snapshotFileName = path.basename(snapshotPath);
                 const adaptedStamp = snapshotFileName.replace(/-before\.json$/, '');
-                const updateNotification = journey.notifications.find(notification => notification.text.startsWith(`${ACCOUNT_COUNT + 1} records of ${TREE_NAME} were updated`));
-                expectEqual(updateNotification?.text, `${ACCOUNT_COUNT + 1} records of ${TREE_NAME} were updated in qa · qa@example.com.qa. Their old values are in ${snapshotFileName}. The adapted data set is ${TREE_NAME}-adapted-${adaptedStamp}, and the adapted recipe recipe-fakerjs--${TREE_NAME}-2026-10-15T09-00-00-adapted-${adaptedStamp}.yml.`, 'The update notification');
+                const updateNotification = journey.notifications.find(notification => notification.text.startsWith(`2 records of ${TREE_NAME} were updated`));
+                expectEqual(updateNotification?.text, `2 records of ${TREE_NAME} were updated in qa · qa@example.com.qa. Their old values are in ${snapshotFileName}. The adapted data set is ${TREE_NAME}-adapted-${adaptedStamp}, and the adapted recipe recipe-fakerjs--${TREE_NAME}-2026-10-15T09-00-00-adapted-${adaptedStamp}.yml.`, 'The update notification');
                 const adaptedFolder = `treecipe/FakeDataSets/${TREE_NAME}-adapted-${adaptedStamp}`;
                 const adaptedRecipePath = `${adaptedFolder}/BaseArtifactFiles/recipe-fakerjs--${TREE_NAME}-2026-10-15T09-00-00-adapted-${adaptedStamp}.yml`;
                 expectEqual(journey.fileChanges.some(fileChange => fileChange.relativePath === adaptedRecipePath) && journey.fileChanges.some(fileChange => fileChange.relativePath === `${adaptedFolder}/BaseArtifactFiles/datasetSource.json`), true, 'The adapted recipe and data set source are written');
@@ -213,12 +231,12 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
             await journey.answerQuickPick('AllOrNone: TRUE');
             await journey.waitForNotification(/ were restored in qa /, notificationCountBeforeRestore);
 
-            await journey.step('the snapshot\'s old values are sent back, parents first, at most 200 a request, after the values they replace are saved in a snapshot of their own', () => {
-                expectEqual(journey.notifications.slice(-1)[0]?.text.startsWith(`${ACCOUNT_COUNT + 1} records of ${TREE_NAME} were restored in qa · qa@example.com.qa. Their old values are in `), true, `The restore notification: ${JSON.stringify(journey.notifications.slice(-1)[0]?.text)}`);
+            await journey.step('the snapshot\'s old values are sent back, parents first, after the values they replace are saved in a snapshot of their own', () => {
+                expectEqual(journey.notifications.slice(-1)[0]?.text.startsWith(`2 records of ${TREE_NAME} were restored in qa · qa@example.com.qa. Their old values are in `), true, `The restore notification: ${JSON.stringify(journey.notifications.slice(-1)[0]?.text)}`);
                 const restores = updatesSent(journey).slice(updateCountBefore);
-                expectEqual(restores.map(restore => `${restore.objectApiName} × ${restore.records.length}`), ['Account × 200', 'Account × 1', 'Contact × 1'], 'The restore requests, in order');
-                expectEqual(fieldsOf(restores[0].records[0]), { Id: ACCOUNT_IDS[0], Region__c: 'EMEA' }, 'The first Account gets its old value');
-                expectEqual(fieldsOf(restores[2].records[0]), { Id: CONTACT_ID, Title__c: OLD_CONTACT_TITLE }, 'The Contact gets its old value');
+                expectEqual(restores.map(restore => `${restore.objectApiName} × ${restore.records.length}`), ['Account × 1', 'Contact × 1'], 'The restore requests, in order');
+                expectEqual(fieldsOf(restores[0].records[0]), { Id: ACCOUNT_IDS[50], Region__c: 'EMEA' }, 'The changed Account gets its old value');
+                expectEqual(fieldsOf(restores[1].records[0]), { Id: CONTACT_ID, Title__c: OLD_CONTACT_TITLE }, 'The Contact gets its old value');
             });
 
         }
@@ -230,7 +248,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
 
             // A SECOND SANDBOX, SO THE REFUSAL IS THE ADAPTER'S OWN RULE AND NOT THE SANDBOX-ONLY ONE
             journey.org.addAuthorization({ username: 'staging@example.com.staging', aliases: ['staging'], orgId: '00D000000000STGAAA', instanceUrl: 'https://acme--staging.sandbox.my.salesforce.com', isSandbox: true });
-            await loadAndGenerate(journey);
+            await loadAndChange(journey);
             await journey.click('button', 'Refresh orgs: check the org connections again');
             await journey.pickOrg('staging');
 
@@ -254,7 +272,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
         name: 'a load whose WHERE holds FOR UPDATE is refused with the reason, and nothing is queried',
         run: async journey => {
 
-            await chooseParentAndFields(journey, `${PARENT_WHERE} FOR UPDATE`);
+            await chooseParent(journey, `${PARENT_WHERE} FOR UPDATE`);
             await journey.click('button', 'Load records');
 
             await journey.step('the reason is given, and no load query reaches the org', () => {
@@ -272,7 +290,7 @@ export const ADAPTER_JOURNEYS: IAdapterJourney[] = [
         name: 'a restore from a snapshot edited by hand out of shape refuses the whole file, and nothing is sent',
         run: async journey => {
 
-            await loadAndGenerate(journey);
+            await loadAndChange(journey);
             await journey.click('button', /^Update \d+ records in qa · qa@example\.com\.qa$/);
             await journey.answerConfirmation('Update records');
             await journey.answerQuickPick('AllOrNone: TRUE');

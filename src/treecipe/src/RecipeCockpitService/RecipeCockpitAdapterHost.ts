@@ -26,6 +26,16 @@ import {
     RecipeCockpitAdapterMetadata
 } from './RecipeCockpitAdapterMetadata';
 import { RecipeCockpitAdapterRecords } from './RecipeCockpitAdapterRecords';
+import {
+    RECIPE_COCKPIT_UPDATER_EDIT_RULES,
+    RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
+    RecipeCockpitAdapterEdits
+} from './RecipeCockpitAdapterEdits';
+import type {
+    IRecipeCockpitUpdaterColumnEditView,
+    IRecipeCockpitUpdaterEditSummary,
+    RecipeCockpitUpdaterEditKind
+} from './RecipeCockpitAdapterEdits';
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 import type { IRecipeCockpitHubForDatasetsTab } from './RecipeCockpitDatasetsHost';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
@@ -41,9 +51,10 @@ import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 /*
     The Treecipe Adapter tab's host half (moved out of the hub by #668, after #665's pattern): the
     messages it answers and the actions they route to. What a run does is
-    RecipeCockpitAdapterMetadata (retrieve, apply, add child) and RecipeCockpitAdapterRecords (load,
-    generate, update, restore); what they hold between clicks is RecipeCockpitAdapterState. They load
-    one way: this file, then Metadata, then Records, then State. The hub owns the panel, its state and
+    RecipeCockpitAdapterMetadata (retrieve, apply, add child), RecipeCockpitAdapterRecords (load,
+    update, restore) and RecipeCockpitAdapterEdits (marked rows and changed cells, #721); what they
+    hold between clicks is RecipeCockpitAdapterState. They load one way: this file, then Metadata,
+    then Records, then Edits, then State. The hub owns the panel, its state and
     every allow-list, and promotes the lists on the panel's acks.
 */
 
@@ -57,7 +68,6 @@ export type IRecipeCockpitHubForAdapterTab = Readonly<Pick<typeof RecipeCockpitS
     'buildConfirmOrg' |
     'confirmInPanel' |
     'isApplyHeldByAnotherRun' |
-    'isUsableWorkspacePath' |
     'offerStagedField' |
     'postToPanel' |
     'readSourceApiVersion' |
@@ -119,6 +129,11 @@ export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
     lookupLinks?: IRecipeCockpitPreviewRecordLinks[];
     // RECIPE FIELDS THE ORG DOES NOT DESCRIBE TO THIS USER, LEFT OUT OF THE QUERY (#720)
     unreadFieldApiNames?: string[];
+    // "Edit existing records" (#721): PER COLUMN, WHY IT IS LOCKED OR WHETHER IT HAS A 🎲; THEN PAGE 0'S MARKED ROWS AND CHANGED CELLS, AND THE OBJECT'S TOTALS
+    columnEdits?: IRecipeCockpitUpdaterColumnEditView[];
+    markedRowIndexes?: number[];
+    changedCells?: Array<[number, number]>;
+    editSummary?: IRecipeCockpitUpdaterEditSummary;
 }
 
 // ONE MORE PAGE OF ONE OBJECT'S TABLE (#720): ITS ROWS AND LINKS ONLY, SINCE THE COLUMNS ARE THE LOAD'S
@@ -131,6 +146,10 @@ export interface IRecipeCockpitUpdaterRecordsPageMessage {
     rows: string[][];
     recordLinks?: IRecipeCockpitPreviewRecordLinks;
     lookupLinks?: IRecipeCockpitPreviewRecordLinks[];
+    // THE PAGE AS IT READS NOW (#721): ITS MARKED ROWS, ITS CHANGED CELLS AND THE OBJECT'S TOTALS
+    markedRowIndexes: number[];
+    changedCells: Array<[number, number]>;
+    editSummary: IRecipeCockpitUpdaterEditSummary;
 }
 
 // THE HOST LET THE LOADED RECORDS GO, OR HELD NONE: THE PANEL GOES BACK TO STEP 1 (#720)
@@ -217,35 +236,12 @@ export interface IRecipeCockpitAdapterChildFieldRequest {
     value?: string;
 }
 
-// WHAT ONE CHOSEN FIELD'S NEW VALUES COME FROM (#417), AS THE PANEL POSTED IT: value ABSENT IS THE RECIPE'S OWN EXPRESSION
-export interface IRecipeCockpitUpdaterFieldValueRequest {
-    objectApiName: string;
-    fieldApiName: string;
-    value?: string;
-}
-
-// ONE LOADED RECORD'S NEW VALUES (#417), BY FIELD, HELD ON THE HOST FOR THE UPDATE (#418)
+// ONE RECORD'S NEW VALUES, BY FIELD: ONLY THE FIELDS CHANGED ON IT (#721), HELD ON THE HOST FOR THE UPDATE (#418)
 export interface IRecipeCockpitUpdaterRecordValues {
     recordId: string;
     fieldValues: Record<string, unknown>;
 }
 
-// ONE OBJECT'S NEW VALUES AS THE PANEL IS SENT THEM: Id, THEN CURRENT AND NEW PER FIELD, AS TEXT
-export interface IRecipeCockpitUpdaterObjectValuesViewModel {
-    objectApiName: string;
-    recordCount: number;
-    fieldApiNames: string[];
-    columns: string[];
-    rows: string[][];
-    hiddenColumnCount: number;
-    // THE ROWS WHOSE Id OPENS THE RECORD (#556)
-    recordLinks?: IRecipeCockpitPreviewRecordLinks;
-}
-
-/*
-    The values a generation made (#417), as a preview only: the values themselves stay on the host
-    for the slice that writes them (#418). Drawn only on the model it was generated on.
-*/
 // HOW AN UPDATE'S REQUESTS ENDED (#418), WRITTEN TO THE RESULTS FILE AND SAID IN THE NOTIFICATION
 // ONE OBJECT OF A RESTORE (#419): THE SNAPSHOT'S VALUES FOR THE RECORDS THE ORG STILL RETURNS, AND WHAT THOSE RECORDS HOLD NOW
 export interface IRecipeCockpitUpdaterRestoreTarget {
@@ -292,17 +288,6 @@ export interface IRecipeCockpitUpdaterSnapshotsMessage {
     snapshotsSequence: number;
 }
 
-export interface IRecipeCockpitUpdaterValuesMessage {
-    command: 'updaterValues';
-    renderSequence: number;
-    treeKey: string;
-    objects: IRecipeCockpitUpdaterObjectValuesViewModel[];
-    // ECHOED BY THE PANEL'S "updaterValuesRendered" (#418): ONLY THAT ACK OFFERS "Update records" ON THESE VALUES
-    valuesSequence: number;
-    // SET ONLY WHEN AN OBJECT'S PREVIEW LINKS A RECORD (#556)
-    recordLinkSequence?: number;
-}
-
 // THE ADAPTER'S WORDS THE PANEL DRAWS ARE RecipeCockpitAdapterConstants.ts (#641); THESE ARE THE HOST'S
 export const RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL = 'Nothing was retrieved: another run is using the org selection. Try again when it ends.';
 // HOW MANY NEW CHILD RECORDS ONE BLOCK GENERATES AT MOST: AS MANY AS A LOAD READS
@@ -320,7 +305,7 @@ export const RECIPE_COCKPIT_ADAPTER_COMMANDS = [
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
     'generateAdapterChild',
-    'generateUpdaterValues',
+    'editUpdaterRecords',
     'updateUpdaterRecords',
     'loadUpdaterSnapshots',
     'restoreUpdaterSnapshot'
@@ -334,7 +319,7 @@ export const RECIPE_COCKPIT_ADAPTER_ACTION_KINDS = [
     'applyAdapterRetrievedFiles',
     'prepareAdapterChild',
     'generateAdapterChild',
-    'generateUpdaterValues',
+    'editUpdaterRecords',
     'updateUpdaterRecords',
     'loadUpdaterSnapshots',
     'restoreUpdaterSnapshot',
@@ -353,7 +338,7 @@ export type RecipeCockpitAdapterPanelAction =
     | { kind: 'updateUpdaterRecords'; treeKey: string }
     | { kind: 'loadUpdaterSnapshots'; treeKey: string }
     | { kind: 'restoreUpdaterSnapshot'; treeKey: string; snapshotName: string }
-    | { kind: 'generateUpdaterValues'; treeKey: string; renderSequence: number; fieldRequests: IRecipeCockpitUpdaterFieldValueRequest[] };
+    | { kind: 'editUpdaterRecords'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number; editKind: RecipeCockpitUpdaterEditKind; rowIndex?: number; columnIndex?: number };
 
 export class RecipeCockpitAdapterHost {
 
@@ -706,38 +691,62 @@ export class RecipeCockpitAdapterHost {
             }
 
             /*
-                "Generate values" (#417): the card on screen and, per chosen field, its object and
-                field names and the value typed for it, if any. Only the shape and the names are
-                checked here -- every field must be one the card's model lists, each once -- and the
-                executor checks each field and value again against the model and the loaded records.
+                One edit of the records on screen (#721): a row marked or unmarked, a value made for a
+                cell or a column, or a reset. The panel names a position -- object, page, row, column --
+                and never a value. The edit must be one of RECIPE_COCKPIT_UPDATER_EDIT_RULES and carry
+                what its rule needs, the page must be one the host posted, the row a row of it, and the
+                column one that can be changed (and, for a 🎲, one with a value to make). Anything else is
+                dropped without a word, as is every edit while a run holds the records.
             */
-            case 'generateUpdaterValues': {
+            case 'editUpdaterRecords': {
 
-                const { treeKey, renderSequence, fields } = panelMessage;
-                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'generate' };
-
-                if ( panelState.updaterLoadStateMessage?.isRunning ) {
-                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
-                }
-
-                const recipeDataMessage = panelState.recipeDataMessage;
-                const tree = typeof treeKey === 'string' ? recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey) : undefined;
+                const { treeKey, renderSequence, objectApiName, pageIndex, editKind, rowIndex, columnIndex } = panelMessage;
+                const recordsMessage = panelState.updaterRecordsMessage;
+                const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+                const loadedObject = recordsMessage?.objects.find(objectRecords => objectRecords.objectApiName === objectApiName);
+                const editRule = typeof editKind === 'string' && Object.prototype.hasOwnProperty.call(RECIPE_COCKPIT_UPDATER_EDIT_RULES, editKind)
+                    ? RECIPE_COCKPIT_UPDATER_EDIT_RULES[editKind as RecipeCockpitUpdaterEditKind]
+                    : undefined;
+                const isIndex = (candidateIndex: unknown): candidateIndex is number => typeof candidateIndex === 'number' && Number.isInteger(candidateIndex) && candidateIndex >= 0;
 
                 if ( typeof treeKey !== 'string'
-                        || !recipeDataMessage
-                        || !tree
-                        || renderSequence !== recipeDataMessage.renderSequence
-                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                        || !editRule
+                        || !recordsMessage
+                        || !loadedObject
+                        || !heldRecords
+                        || recordsMessage.treeKey !== treeKey
+                        || recordsMessage.renderSequence !== renderSequence
+                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || heldRecords.workspaceRoot !== panelState.workspaceRoot
+                        || heldRecords.renderSequence !== renderSequence
+                        || panelState.updaterLoadStateMessage?.isRunning
+                        || !isIndex(pageIndex)
+                        || !heldRecords.postedPageIndexesByObjectApiName.get(loadedObject.objectApiName)?.has(pageIndex) ) {
+                    return undefined;
                 }
 
-                const fieldRequests = RecipeCockpitAdapterState.readUpdaterFieldValueRequests(fields, RecipeCockpitAdapterState.listUpdaterTreeObjects(recipeDataMessage.recipe, tree, RecipeCockpitAdapterState.readAdapterOrgOnlyFieldApiNames(panelState, treeKey)));
+                const columnEdit = isIndex(columnIndex) ? loadedObject.columnEdits?.[columnIndex] : undefined;
+                const isRowOfPage = isIndex(rowIndex)
+                    && rowIndex < RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE
+                    && pageIndex * RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE + rowIndex < loadedObject.recordCount;
 
-                if ( 'refusal' in fieldRequests ) {
-                    return { kind: 'refuseUpdaterLoad', refusalText: `No values were generated: ${fieldRequests.refusal}`, hostMessage: notRunning };
+                if ( ( editRule.needsRow ? !isRowOfPage : rowIndex !== undefined )
+                        || ( editRule.needsColumn ? ( !columnEdit || columnEdit.lockReason !== undefined ) : columnIndex !== undefined )
+                        || ( editRule.needsGeneration && !columnEdit?.canGenerate ) ) {
+                    return undefined;
                 }
 
-                return { kind: 'generateUpdaterValues', treeKey: treeKey, renderSequence: renderSequence, fieldRequests: fieldRequests.requests };
+                return {
+                    kind: 'editUpdaterRecords',
+                    treeKey: treeKey,
+                    renderSequence: renderSequence,
+                    objectApiName: loadedObject.objectApiName,
+                    pageIndex: pageIndex,
+                    editKind: editKind as RecipeCockpitUpdaterEditKind,
+                    ...( editRule.needsRow ? { rowIndex: rowIndex as number } : {} ),
+                    ...( editRule.needsColumn ? { columnIndex: columnIndex as number } : {} )
+                };
 
             }
 
@@ -758,9 +767,13 @@ export class RecipeCockpitAdapterHost {
                     return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
                 }
 
+                // ONLY THE CARD WHOSE RECORDS ARE ON SCREEN, AND ONLY ONCE A MARKED ROW HOLDS A CHANGE (#721)
                 if ( typeof treeKey !== 'string'
                         || !panelState.recipeDataMessage
-                        || !panelState.updatableTreeKeys.has(treeKey) ) {
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || panelState.updaterRecordsMessage?.treeKey !== treeKey
+                        || panelState.updaterRecordsMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || RecipeCockpitAdapterEdits.countUpdatableRecords() === 0 ) {
                     return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
                 }
 
@@ -874,7 +887,7 @@ export class RecipeCockpitAdapterHost {
 
             case 'postUpdaterRecordsPage':
 
-                RecipeCockpitAdapterRecords.postUpdaterRecordsPage(hub, cockpitPanel, panelAction);
+                RecipeCockpitAdapterRecords.postUpdaterRecordsPage(hub, cockpitPanel, panelState, panelAction);
                 return;
 
             case 'changeUpdaterParent':
@@ -902,9 +915,11 @@ export class RecipeCockpitAdapterHost {
                 await RecipeCockpitAdapterMetadata.generateAdapterChildFromPanel(hub, cockpitPanel, panelState, panelAction);
                 return;
 
-            case 'generateUpdaterValues':
+            case 'editUpdaterRecords':
 
-                await RecipeCockpitAdapterRecords.generateUpdaterValuesFromPanel(hub, cockpitPanel, panelState, panelAction);
+                // THE BACKEND RUN IS THE RECORDS FILE'S, HANDED IN: THE EDITS FILE LOADS BELOW IT
+                await RecipeCockpitAdapterEdits.applyEditFromPanel(hub, cockpitPanel, panelState, panelAction,
+                    (fakerService, objectApiName, valueCount, fields, isCancelled) => RecipeCockpitAdapterRecords.generateUpdaterObjectValues(hub, fakerService, objectApiName, valueCount, fields, isCancelled));
                 return;
 
             case 'updateUpdaterRecords':

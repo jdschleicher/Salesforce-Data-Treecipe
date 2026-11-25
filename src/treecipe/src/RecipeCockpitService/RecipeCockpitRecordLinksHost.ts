@@ -187,9 +187,7 @@ export class RecipeCockpitRecordLinksHost {
                                                     recordId: string,
                                                     orgDetail: IAuthenticatedOrgDetail) {
 
-        const heldSource = preview.previewKind === 'query' ? RecipeCockpitQueryHost.heldResultForRecordLinks()
-            : preview.previewKind === 'updaterRecords' ? RecipeCockpitAdapterState.heldUpdaterRecords
-            : RecipeCockpitAdapterState.heldUpdaterValues;
+        const heldSource = preview.previewKind === 'query' ? RecipeCockpitQueryHost.heldResultForRecordLinks() : RecipeCockpitAdapterState.heldUpdaterRecords;
 
         if ( heldSource === undefined || RecipeCockpitRecordLinks.readHeldSourceToken(heldSource) !== preview.heldSourceToken ) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL));
