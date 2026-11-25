@@ -126,6 +126,9 @@ export interface IUpdaterNewRecordsState {
     panelElements: Record<UpdaterRecordTab, HTMLElement>;
     fieldTreeState: IUpdaterFieldTreeState;
     fieldStates: IUpdaterFieldRowState[];
+    fieldObjectState: IUpdaterFieldObjectState;
+    // EACH FIELD'S LOCK AS ITS ROW WAS BUILT WITH, WHICH A LOAD THAT READS THE FIELD AGAIN PUTS BACK
+    baseLockReasons: string[];
     headingElement: HTMLElement;
     countInputElement: HTMLInputElement;
     countLabelElement: HTMLElement;

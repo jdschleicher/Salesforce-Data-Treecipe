@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
-import { RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE } from './RecipeCockpitAdapterConstants';
+import {
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE
+} from './RecipeCockpitAdapterConstants';
 import { RecipeCockpitQuery } from './RecipeCockpitQuery';
 import { RecipeCockpitRecordCreation } from './RecipeCockpitRecordCreation';
 import {
@@ -35,7 +38,6 @@ import type { IRecipeCockpitPanelState } from './RecipeCockpitViewModel';
 
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_CONFIRM_LABEL = 'Generate records';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOTE = RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE;
-export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON = 'the last load read no records of the object above it, so there is nothing to add under.';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it. Type a value for it, or untick it.';
 
 type GenerateNewRecordsAction = Extract<RecipeCockpitAdapterPanelAction, { kind: 'generateUpdaterNewRecords' }>;
@@ -79,7 +81,7 @@ export class RecipeCockpitAdapterNewRecords {
                                    generateAction: GenerateNewRecordsAction,
                                    generateValues: RecipeCockpitUpdaterValueGenerator) {
 
-        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: generateAction.treeKey, runKind: 'generateNew' };
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: generateAction.treeKey, runKind: 'generateNew', objectApiName: generateAction.objectApiName };
 
         if ( RecipeCockpitAdapterState.isUpdaterLoadInFlight ) {
             hub.postToPanel(cockpitPanel, RecipeCockpitAdapterState.updaterLoadRunStateMessage ?? notRunning);
@@ -153,6 +155,11 @@ export class RecipeCockpitAdapterNewRecords {
             }
 
             const valueKind = hub.resolveFixedValueKind(fieldRequest.value, columnPlan.typing.fieldViewModel);
+            // AS Add to data set REFUSES IT (#447): A TYPE THE BACKEND WRITES NO EXPRESSION FOR IN THE ORG TAKES A FIXED VALUE ONLY
+            if ( valueKind === 'expression' && columnPlan.typing.isOrgOnly && !columnPlan.generation ) {
+                refuse(`${fieldLabel} takes a fixed value only, since this recipe's faker backend writes no expression for its type in the org.`);
+                return;
+            }
             plannedFields.push(valueKind === 'expression'
                 ? { fieldApiName: columnPlan.fieldApiName, source: 'expression', shownValue: fieldRequest.value, valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: valueKind }) }
                 : { fieldApiName: columnPlan.fieldApiName, source: 'fixed', shownValue: fieldRequest.value, fixedValue: RecipeCockpitAdapterState.toUpdaterFixedValue(fieldRequest.value, valueKind) });

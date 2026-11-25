@@ -11,7 +11,8 @@ The only way to add records under loaded parents was **Add to data set**, which 
 - **A count per loaded parent record.** New Contacts go under the loaded Accounts, new Opportunities under the loaded Contacts: the object the load read them under. The lookup to it is set to its Id, in load order; any other lookup is left empty.
 - **Generate records** sits in the object's own section. One confirmation names the count, the parents and the total, and each field with where its value comes from. The recipe's own backend then makes count × parents records, at most 50,000.
 - **The preview is a table of 50 to a page**, the parent's Id first. Nothing is written to the org or the recipe: inserting them is #725.
-- **A new load, Change parent object or an update that was sent lets the new records go** with the loaded ones they were generated under.
+- **A new load, Change parent object or an update that was sent lets the new records go** with the loaded ones they were generated under. The Change parent object and Update records confirmations say how many.
+- **A field the last load could not read is locked and unticked** in the tab, with the reason, so one missing field does not have the whole request refused.
 - **Generate records says why it is disabled**: before a load, for an object the load could not read, and when no record of the object above was loaded.
 
 ### For contributors

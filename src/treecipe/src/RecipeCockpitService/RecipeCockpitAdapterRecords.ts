@@ -619,12 +619,14 @@ export class RecipeCockpitAdapterRecords {
 
             const recordCount = RecipeCockpitAdapterState.readHeldUpdaterRecordCount();
             const hasUnwrittenChanges = [...( RecipeCockpitAdapterState.heldUpdaterEdits?.editsByObjectApiName.values() ?? [] )].some(objectEdits => objectEdits.changedValuesByRecordId.size > 0);
-            const heldText = `${recordCount} loaded ${recordCount === 1 ? 'record' : 'records'}${hasUnwrittenChanges ? ' and the changes made to them, which were not written to the org' : ''}`;
+            const newRecordCount = RecipeCockpitAdapterState.readHeldUpdaterNewRecordCount();
+            const heldText = `${recordCount} loaded ${recordCount === 1 ? 'record' : 'records'}${hasUnwrittenChanges ? ' and the changes made to them, which were not written to the org' : ''}`
+                + ( newRecordCount > 0 ? `, and the ${newRecordCount} new ${newRecordCount === 1 ? 'record' : 'records'} generated under them` : '' );
             const answer = recordCount === 0
                 ? RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
                 : await hub.confirmInPanel(
                     `Change the parent object of ${tree.customName ?? tree.title}?`,
-                    { summary: [`The ${heldText} ${recordCount === 1 && !hasUnwrittenChanges ? 'is' : 'are'} let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
+                    { summary: [`The ${heldText} ${recordCount === 1 && !hasUnwrittenChanges && newRecordCount === 0 ? 'is' : 'are'} let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
                     RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
                 );
 
@@ -771,7 +773,10 @@ export class RecipeCockpitAdapterRecords {
         const answer = await hub.confirmInPanel(
             `Update ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
             {
-                summary: [],
+                // AN UPDATE THAT IS SENT SPENDS THE LOADED RECORDS, AND THE NEW RECORDS GENERATED UNDER THEM (#722) GO WITH THEM
+                summary: RecipeCockpitAdapterState.readHeldUpdaterNewRecordCount() > 0
+                    ? [`The ${RecipeCockpitAdapterState.readHeldUpdaterNewRecordCount()} new records generated under the loaded records are let go when this update is sent: they are a preview and were not inserted.`]
+                    : [],
                 org: hub.buildConfirmOrg(dataOrgSelection.orgDetail),
                 badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.scratchOrgDetail),
                 warnings: hasRecordTypePicklist ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [],

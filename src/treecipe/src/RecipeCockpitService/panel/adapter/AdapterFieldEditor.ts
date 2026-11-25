@@ -86,8 +86,8 @@ function openUpdaterFieldEditor(treeState: IUpdaterFieldTreeState, updaterObject
 
     const describeEdit = function (): string {
         return ( isExpressionValue(String(valueElement.value).trim())
-            ? 'Generated from this faker expression for every loaded record.'
-            : 'This fixed value for every loaded record. ' + describeFixedValueForm(field) + ' Start with ${{ to generate from a faker expression instead.' )
+            ? 'Generated from this faker expression for every new record.'
+            : 'This fixed value for every new record. ' + describeFixedValueForm(field) + ' Start with ${{ to generate from a faker expression instead.' )
             + ' ' + RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT;
     };
     const hintElement = createElement('div', 'fieldEditorHint muted', describeEdit());

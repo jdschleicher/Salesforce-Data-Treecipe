@@ -579,7 +579,7 @@ export function buildUpdaterFieldRow(treeState: IUpdaterFieldTreeState, updaterO
 
 }
 
-function drawUpdaterFieldChoice(treeState: IUpdaterFieldTreeState, updaterObjectState: IUpdaterFieldObjectState, fieldState: IUpdaterFieldRowState): void {
+export function drawUpdaterFieldChoice(treeState: IUpdaterFieldTreeState, updaterObjectState: IUpdaterFieldObjectState, fieldState: IUpdaterFieldRowState): void {
 
     const chooseElement = fieldState.chooseElement;
     if (!chooseElement) { return; }
@@ -587,7 +587,7 @@ function drawUpdaterFieldChoice(treeState: IUpdaterFieldTreeState, updaterObject
     const fieldName = updaterObjectState.object.objectApiName + '.' + fieldState.field.fieldApiName;
     const isChosen = hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
     const title = fieldState.lockReason ? 'Cannot be chosen: ' + fieldState.lockReason
-        : isChosen ? 'Chosen — click to leave this field as it is'
+        : isChosen ? 'Chosen — click to leave this field out of the new records'
         : 'Click to choose this field to fill';
 
     chooseElement.textContent = isChosen ? '✓' : '';

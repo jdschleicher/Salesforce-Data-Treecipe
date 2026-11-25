@@ -17,7 +17,8 @@ import {
     RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_LOADED_REASON,
     RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_READ_REASON,
     RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON,
-    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON
 } from '../RecipeCockpitAdapterConstants';
 import { RECIPE_COCKPIT_UPDATER_TAB_LABEL } from '../RecipeCockpitShellConstants';
 import { RecipeCockpitModelBuild } from '../RecipeCockpitModelBuild';
@@ -145,6 +146,40 @@ describe('the Treecipe Adapter\'s Generate new records tab, in the panel (#722)'
         expect(panel.findAll(rowNamed('AccountId'), 'updaterFieldChoose')[0].disabled).toBe(true);
         // THE SECTION'S OWN ROWS, WHICH DESCRIBE THE FIELDS, ARE NOT THESE: THE FILTER AND ITS COUNTS READ THOSE ONCE
         expect(panel.findAll(newPanelOf(panel, contactObject), 'updaterField')).toEqual([]);
+
+    });
+
+    it('locks and unticks a field the last load did not read, saying why, and leaves it out of what is posted', () => {
+
+        const { panel, open } = openAdapter();
+        const contactObject = open('Contact');
+        const rowNamed = (fieldApiName: string) => panel.findAll(newPanelOf(panel, contactObject), 'updaterNewRecordsField').find((rowElement: any) => panel.findAll(rowElement, 'updaterFieldName')[0].textContent === fieldApiName);
+        const lastNameBox = () => panel.findAll(rowNamed('LastName'), 'updaterFieldChoose')[0];
+        expect([lastNameBox().disabled, lastNameBox().attributes['aria-checked']]).toEqual([false, 'true']);
+
+        panel.postToPanel(loadedMessage({ unreadFieldApiNames: ['LastName'] }));
+
+        expect([lastNameBox().disabled, lastNameBox().attributes['aria-checked']]).toEqual([true, 'false']);
+        expect(lastNameBox().attributes.title).toBe(`Cannot be chosen: ${RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON}`);
+        generateOf(panel, contactObject).dispatch('click');
+        expect(posted(panel, 'generateUpdaterNewRecords')[0].fields.map((field: any) => field.fieldApiName)).not.toContain('LastName');
+
+        // A LOAD THAT READS IT AGAIN GIVES THE BOX BACK, UNTICKED: THE READER CHOOSES
+        panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'generateNew' });
+        panel.postToPanel(loadedMessage());
+        expect([lastNameBox().disabled, lastNameBox().attributes['aria-checked']]).toEqual([false, 'false']);
+
+    });
+
+    it('says which object\'s button is generating to a panel reopened while the run is in flight', () => {
+
+        const { panel, open } = openAdapter();
+        const contactObject = open('Contact');
+        panel.postToPanel(loadedMessage());
+
+        panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generateNew', objectApiName: 'Contact' });
+
+        expect([generateOf(panel, contactObject).disabled, generateOf(panel, contactObject).textContent]).toEqual([true, RECIPE_COCKPIT_UPDATER_NEW_RECORDS_GENERATING_LABEL]);
 
     });
 

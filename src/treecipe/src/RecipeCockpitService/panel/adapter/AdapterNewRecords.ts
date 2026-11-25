@@ -10,12 +10,14 @@ import {
     RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON,
     RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE,
     RECIPE_COCKPIT_UPDATER_NEW_RECORDS_TAB_LABEL,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON,
     RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL,
     RECIPE_COCKPIT_UPDATER_PREVIOUS_PAGE_LABEL
 } from '../../RecipeCockpitAdapterConstants';
 import { buildRecordTable } from '../RecipeCockpitRecordTable';
 import { drawUpdaterLoadButtons } from './AdapterLoadAndUpdate';
-import { buildUpdaterFieldRow, drawUpdaterObjectCount } from './AdapterTab';
+import { buildUpdaterFieldRow, drawUpdaterFieldChoice, drawUpdaterObjectCount } from './AdapterTab';
+import { findFixedValue, isExpressionValue } from '../treecipe/fieldRows/FieldRowFixedValue';
 import type {
     AdapterPanelMessage,
     IAdapterChildFieldRequest,
@@ -135,9 +137,10 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
             orgChange: null, orgChipElement: null, isMatch: true, rowElement: null, chooseElement: null, editButtonElement: null, editBadgeElement: null,
             editedValueElement: null, expressionRowElement: null, editorElement: null, isEditorOpen: false
         };
-        // A FIELD WITH AN EXPRESSION STARTS TICKED, AS THE TREECIPE TAB'S FIELDS DO; ONE WHOSE RECIPE VALUE IS A COMMENT (A TODO) WAITS FOR A VALUE
-        const recipeValue = String(fieldState.field.recipeValue || '');
-        if (!fieldState.lockReason && recipeValue !== '' && recipeValue.charAt(0) !== '#') {
+        // A FIELD THE HOST CAN GENERATE STARTS TICKED, AS THE TREECIPE TAB'S FIELDS DO: ONE WITH AN EXPRESSION LINE, OR A VALUE FIXED ON THE TREECIPE TAB.
+        // ANY OTHER (A TODO, A LITERAL TYPED INTO THE RECIPE) WAITS FOR A VALUE
+        const hasExpression = String(fieldState.field.recipeValue || '').split('\n').some(function (valueLine) { return isExpressionValue(valueLine.trim()); });
+        if (!fieldState.lockReason && (hasExpression || findFixedValue(treeState.tree, objectApiName, fieldState.field.fieldApiName, undefined) !== null)) {
             fieldTreeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
             fieldObjectState.chosenFieldCount++;
         }
@@ -169,6 +172,8 @@ export function buildUpdaterRecordTabs(treeState: IAdapterTreeState, updaterObje
         panelElements: { edit: editTab.panelElement, new: newTab.panelElement },
         fieldTreeState: fieldTreeState,
         fieldStates: fieldStates,
+        fieldObjectState: fieldObjectState,
+        baseLockReasons: fieldStates.map(function (fieldState) { return fieldState.lockReason; }),
         headingElement: headingElement,
         countInputElement: countInputElement,
         countLabelElement: countLabelElement,
@@ -231,6 +236,21 @@ export function drawNewRecordsControls(treeState: IAdapterTreeState, updaterObje
     newRecordsState.generateElement.disabled = reason !== '';
     newRecordsState.generateElement.setAttribute('title', reason);
     newRecordsState.reasonElement.textContent = isGenerating ? '' : reason;
+
+    // A FIELD THE LAST LOAD LEFT OUT IS LOCKED AND UNTICKED UNTIL A LOAD READS IT: THE HOST WOULD REFUSE THE WHOLE REQUEST FOR IT
+    const loadedRecords = updaterObjectState.loadedRecords;
+    const unreadFieldApiNames: string[] = loadedRecords && Array.isArray(loadedRecords.unreadFieldApiNames) ? loadedRecords.unreadFieldApiNames.map(String) : [];
+    newRecordsState.fieldStates.forEach(function (fieldState, fieldIndex) {
+        const lockReason = unreadFieldApiNames.indexOf(fieldState.field.fieldApiName) !== -1 ? RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON : newRecordsState.baseLockReasons[fieldIndex];
+        if (lockReason === fieldState.lockReason) { return; }
+        fieldState.lockReason = lockReason;
+        if (lockReason && hasOwnKey(newRecordsState.fieldTreeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+            delete newRecordsState.fieldTreeState.updaterChosenFieldKeys[fieldState.fieldKey];
+            newRecordsState.fieldObjectState.chosenFieldCount--;
+        }
+        drawUpdaterFieldChoice(newRecordsState.fieldTreeState, newRecordsState.fieldObjectState, fieldState);
+        drawUpdaterObjectCount(newRecordsState.fieldObjectState);
+    });
 
     const pagerElements = newRecordsState.pagerElements;
     if (pagerElements) {

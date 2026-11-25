@@ -379,10 +379,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Generate new records (#7
                 ['a count that is not a whole number of one or more', 0, [{ fieldApiName: 'LastName' }], 'No new Contact records were generated: the count per parent record must be a whole number of one or more.'],
                 ['a count that is text', '2', [{ fieldApiName: 'LastName' }], 'No new Contact records were generated: the count per parent record must be a whole number of one or more.'],
                 ['a count over the limit', 20000, [{ fieldApiName: 'LastName' }], 'No new Contact records were generated: 20000 per record under 3 Account records is more than the 50000 one block generates.'],
-                ['the lookup to the parent, which is set by Id', 1, [{ fieldApiName: 'AccountId' }], 'No new Contact records were generated: Contact.AccountId is not one this tab offers to fill.'],
-                ['a field the load did not read', 1, [{ fieldApiName: 'Gone__c' }], 'No new Contact records were generated: Contact.Gone__c is not one this tab offers to fill.'],
-                ['a field named twice', 1, [{ fieldApiName: 'LastName' }, { fieldApiName: 'LastName' }], 'No new Contact records were generated: Contact.LastName is not one this tab offers to fill.'],
-                ['a value that is not text', 1, [{ fieldApiName: 'LastName', value: 7 }], 'No new Contact records were generated: Contact.LastName is not one this tab offers to fill.']
+                ['the lookup to the parent, which is set by Id', 1, [{ fieldApiName: 'AccountId' }], 'No new Contact records were generated: Contact.AccountId cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.'],
+                ['a field the load did not read', 1, [{ fieldApiName: 'Gone__c' }], 'No new Contact records were generated: Contact.Gone__c cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.'],
+                ['a field named twice', 1, [{ fieldApiName: 'LastName' }, { fieldApiName: 'LastName' }], 'No new Contact records were generated: Contact.LastName cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.'],
+                ['a value that is not text', 1, [{ fieldApiName: 'LastName', value: 7 }], 'No new Contact records were generated: Contact.LastName cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.']
             ])('refuses %s, with the reason, and generates nothing', async (_description: string, countPerParent: unknown, fields: unknown, expectedWarning: string) => {
 
                 await openCockpitAndLoad();
@@ -455,7 +455,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Generate new records (#7
 
                 expect(warnings()).toEqual(['No new Contact records were generated: snowfakery is not installed.']);
                 expect((RecipeCockpitAdapterState as any).isUpdaterLoadInFlight).toBe(false);
-                expect(postedNamed('updaterLoadState').map(stateMessage => [stateMessage.isRunning, stateMessage.runKind]).slice(-2)).toEqual([[true, 'generateNew'], [false, 'generateNew']]);
+                // THE STATE NAMES THE OBJECT, SO A REOPENED PANEL KNOWS WHOSE BUTTON IS RUNNING
+                expect(postedNamed('updaterLoadState').map(stateMessage => [stateMessage.isRunning, stateMessage.runKind, stateMessage.objectApiName]).slice(-2)).toEqual([[true, 'generateNew', 'Contact'], [false, 'generateNew', 'Contact']]);
 
             });
 
@@ -482,6 +483,24 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Generate new records (#7
                 for ( const refusedMessage of [pageMessage(3), pageMessage(-1), pageMessage(0.5), pageMessage('1'), pageMessage(0, { objectApiName: 'Account' }), pageMessage(0, { treeKey: 'Lead-ONLY' }), pageMessage(0, { renderSequence: -1 })] ) {
                     expect(RecipeCockpitService.routePanelMessage(refusedMessage as any, panelState())).toBeUndefined();
                 }
+
+            });
+
+            it('says in the Change parent object and Update records confirmations that the new records are let go too', async () => {
+
+                confirmationAnswers = { 'Generate ': RECIPE_COCKPIT_UPDATER_NEW_RECORDS_CONFIRM_LABEL };
+                await openCockpitAndLoad();
+                await generate('Contact', 1, [{ fieldApiName: 'LastName' }]);
+
+                await send({ command: 'changeUpdaterParent', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+                expect(JSON.stringify(confirmations().at(-1))).toContain('The 5 loaded records, and the 3 new records generated under them are let go');
+
+                await edit('markRow', { rowIndex: 0 });
+                await edit('generateCell', { rowIndex: 0, columnIndex: columnIndexOf('Account', 'Legacy_Code__c') });
+                await send({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY });
+                expect(JSON.stringify(confirmations().at(-1))).toContain('The 3 new records generated under the loaded records are let go when this update is sent: they are a preview and were not inserted.');
+                // BOTH WERE LEFT UNANSWERED, SO THE RECORDS ARE STILL HELD
+                expect(heldNewRecords('Contact')!.records).toHaveLength(3);
 
             });
 

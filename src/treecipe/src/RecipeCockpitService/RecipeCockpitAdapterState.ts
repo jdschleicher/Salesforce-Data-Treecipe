@@ -145,6 +145,15 @@ export class RecipeCockpitAdapterState {
         return recordCount;
     }
 
+    // THE NEW RECORDS GENERATED UNDER THE LOAD HELD NOW (#722), OVER EVERY OBJECT: THEY GO WHEN IT GOES
+    static readHeldUpdaterNewRecordCount(): number {
+        let recordCount = 0;
+        if ( this.heldUpdaterNewRecords && this.heldUpdaterNewRecords.resultKey === this.heldUpdaterRecords?.resultKey ) {
+            this.heldUpdaterNewRecords.byObjectApiName.forEach(objectNewRecords => { recordCount += objectNewRecords.records.length; });
+        }
+        return recordCount;
+    }
+
     static setUpdaterLoadState(hub: IRecipeCockpitHubForAdapterTab, loadStateMessage: IRecipeCockpitUpdaterLoadStateMessage) {
 
         this.updaterLoadRunStateMessage = loadStateMessage.isRunning ? loadStateMessage : undefined;

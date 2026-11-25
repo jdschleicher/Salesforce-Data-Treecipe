@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH } from './RecipeCockpitTreecipeFieldEditorConstants';
 import {
-    RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
     RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON,
-    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX
+    RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON,
+    RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX,
+    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON
 } from './RecipeCockpitAdapterConstants';
 import { RecipeCockpitRecipeWriter } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
@@ -31,10 +32,7 @@ import {
     RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
     RecipeCockpitAdapterEdits
 } from './RecipeCockpitAdapterEdits';
-import {
-    RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON,
-    RecipeCockpitAdapterNewRecords
-} from './RecipeCockpitAdapterNewRecords';
+import { RecipeCockpitAdapterNewRecords } from './RecipeCockpitAdapterNewRecords';
 import type {
     IRecipeCockpitUpdaterColumnEditView,
     IRecipeCockpitUpdaterEditSummary,
@@ -94,6 +92,8 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply' | 'prepareChild' | 'generateChild' | 'generateNew';
     // AN UPDATE OR A RESTORE THAT SENT A REQUEST ENDS WITH THIS: THE LOADED RECORDS AND THEIR VALUES ARE SPENT, SO THE PANEL LETS THEM GO
     isRecordsSpent?: true;
+    // generateNew ONLY: THE OBJECT WHOSE NEW RECORDS ARE BEING GENERATED (#722), SO A REOPENED PANEL KNOWS WHICH BUTTON IS RUNNING
+    objectApiName?: string;
 }
 
 /*
@@ -791,7 +791,7 @@ export class RecipeCockpitAdapterHost {
                             || columnPlan.lockReason !== undefined
                             || fieldRequests.some(fieldRequest => fieldRequest.fieldApiName === fieldApiName)
                             || ( value !== undefined && ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) ) {
-                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} is not one this tab offers to fill.`);
+                        return refuse(`${typeof fieldApiName === 'string' ? `${objectApiName}.${fieldApiName}` : 'a field'} cannot be filled: the last load did not read it, or it is a field the Adapter does not set. Untick it.`);
                     }
                     fieldRequests.push(value === undefined ? { fieldApiName: fieldApiName } : { fieldApiName: fieldApiName, value: value as string });
                 }

@@ -587,6 +587,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_LOOKUP_REASON = "a lookup: the one to the loaded record above is set to that record's Id, and any other is left empty";
   var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_GENERATING_LABEL = "Generating…";
   var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE = "A preview only: nothing is written to the org or the recipe file.";
+  var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON = "the last load did not read it: the org does not have it, or does not let this user read it";
   var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_LOADED_REASON = "Load records first: new records are added under the records a load read.";
   var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_READ_REASON = "The last load did not read this object, so new records of it cannot be generated.";
   var RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON = "The last load read no records of the object above it, so there is nothing to add under.";
@@ -9999,7 +10000,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     editorElement.setAttribute("aria-label", "New value for " + fieldLabel);
     inputsElement.appendChild(valueElement);
     const describeEdit = function() {
-      return (isExpressionValue(String(valueElement.value).trim()) ? "Generated from this faker expression for every loaded record." : "This fixed value for every loaded record. " + describeFixedValueForm(field) + " Start with \${{ to generate from a faker expression instead.") + " " + RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT;
+      return (isExpressionValue(String(valueElement.value).trim()) ? "Generated from this faker expression for every new record." : "This fixed value for every new record. " + describeFixedValueForm(field) + " Start with \${{ to generate from a faker expression instead.") + " " + RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT;
     };
     const hintElement = createElement("div", "fieldEditorHint muted", describeEdit());
     valueElement.addEventListener("input", function() {
@@ -10557,7 +10558,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     }
     const fieldName = updaterObjectState.object.objectApiName + "." + fieldState.field.fieldApiName;
     const isChosen = hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
-    const title = fieldState.lockReason ? "Cannot be chosen: " + fieldState.lockReason : isChosen ? "Chosen — click to leave this field as it is" : "Click to choose this field to fill";
+    const title = fieldState.lockReason ? "Cannot be chosen: " + fieldState.lockReason : isChosen ? "Chosen — click to leave this field out of the new records" : "Click to choose this field to fill";
     chooseElement.textContent = isChosen ? "✓" : "";
     chooseElement.setAttribute("aria-checked", isChosen ? "true" : "false");
     chooseElement.disabled = !!fieldState.lockReason;
@@ -10754,8 +10755,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         editorElement: null,
         isEditorOpen: false
       };
-      const recipeValue = String(fieldState.field.recipeValue || "");
-      if (!fieldState.lockReason && recipeValue !== "" && recipeValue.charAt(0) !== "#") {
+      const hasExpression = String(fieldState.field.recipeValue || "").split("\\n").some(function(valueLine) {
+        return isExpressionValue(valueLine.trim());
+      });
+      if (!fieldState.lockReason && (hasExpression || findFixedValue(treeState.tree, objectApiName, fieldState.field.fieldApiName, void 0) !== null)) {
         fieldTreeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
         fieldObjectState.chosenFieldCount++;
       }
@@ -10784,6 +10787,10 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       panelElements: { edit: editTab.panelElement, new: newTab.panelElement },
       fieldTreeState,
       fieldStates,
+      fieldObjectState,
+      baseLockReasons: fieldStates.map(function(fieldState) {
+        return fieldState.lockReason;
+      }),
       headingElement,
       countInputElement,
       countLabelElement,
@@ -10848,6 +10855,21 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     newRecordsState.generateElement.disabled = reason !== "";
     newRecordsState.generateElement.setAttribute("title", reason);
     newRecordsState.reasonElement.textContent = isGenerating ? "" : reason;
+    const loadedRecords = updaterObjectState.loadedRecords;
+    const unreadFieldApiNames = loadedRecords && Array.isArray(loadedRecords.unreadFieldApiNames) ? loadedRecords.unreadFieldApiNames.map(String) : [];
+    newRecordsState.fieldStates.forEach(function(fieldState, fieldIndex) {
+      const lockReason = unreadFieldApiNames.indexOf(fieldState.field.fieldApiName) !== -1 ? RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON : newRecordsState.baseLockReasons[fieldIndex];
+      if (lockReason === fieldState.lockReason) {
+        return;
+      }
+      fieldState.lockReason = lockReason;
+      if (lockReason && hasOwnKey(newRecordsState.fieldTreeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+        delete newRecordsState.fieldTreeState.updaterChosenFieldKeys[fieldState.fieldKey];
+        newRecordsState.fieldObjectState.chosenFieldCount--;
+      }
+      drawUpdaterFieldChoice(newRecordsState.fieldTreeState, newRecordsState.fieldObjectState, fieldState);
+      drawUpdaterObjectCount(newRecordsState.fieldObjectState);
+    });
     const pagerElements = newRecordsState.pagerElements;
     if (pagerElements) {
       const isHeld = runLocks.updaterLoadRunningTreeKey !== null || newRecordsState.isPageRequested;
@@ -13936,9 +13958,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       if (updaterRunKind !== "prepareChild") {
         runLocks.adapterChildPreparingKey = "";
       }
-      if (updaterRunKind !== "generateNew") {
-        runLocks.updaterNewRecordsObjectApiName = "";
-      }
+      runLocks.updaterNewRecordsObjectApiName = updaterRunKind === "generateNew" && typeof hostMessage.objectApiName === "string" ? hostMessage.objectApiName : "";
       if (updaterRunKind !== "restore") {
         runLocks.updaterRestoringSnapshotName = "";
       }

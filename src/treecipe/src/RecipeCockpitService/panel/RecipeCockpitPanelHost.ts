@@ -287,7 +287,7 @@ function routeHostMessage(hostMessage: any): void {
         runLocks.updaterRunKind = hostMessage.isRunning ? ( ['generate', 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild', 'generateNew'].indexOf(hostMessage.runKind) !== -1 ? hostMessage.runKind : 'load' ) : '';
         const updaterRunKind = runLocks.updaterRunKind;
         if (updaterRunKind !== 'prepareChild') { runLocks.adapterChildPreparingKey = ''; }
-        if (updaterRunKind !== 'generateNew') { runLocks.updaterNewRecordsObjectApiName = ''; }
+        runLocks.updaterNewRecordsObjectApiName = updaterRunKind === 'generateNew' && typeof hostMessage.objectApiName === 'string' ? hostMessage.objectApiName : '';
         if (updaterRunKind !== 'restore') { runLocks.updaterRestoringSnapshotName = ''; }
         // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS MARKS AND CHANGES WITH IT
         if (hostMessage.isRunning) {

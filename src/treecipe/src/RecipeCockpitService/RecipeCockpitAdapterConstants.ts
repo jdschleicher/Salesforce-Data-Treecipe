@@ -84,6 +84,8 @@ export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_GENERATE_LABEL = 'Generate recor
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_LOOKUP_REASON = 'a lookup: the one to the loaded record above is set to that record\'s Id, and any other is left empty';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_GENERATING_LABEL = 'Generating…';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_PREVIEW_NOTE = 'A preview only: nothing is written to the org or the recipe file.';
+// A FIELD THE LAST LOAD LEFT OUT OF ITS QUERY (#720) CANNOT BE FILLED ON A NEW RECORD EITHER: THE ORG DOES NOT HAVE IT, OR DOES NOT LET THIS USER SEE IT
+export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_UNREAD_FIELD_REASON = 'the last load did not read it: the org does not have it, or does not let this user read it';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_LOADED_REASON = 'Load records first: new records are added under the records a load read.';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NOT_READ_REASON = 'The last load did not read this object, so new records of it cannot be generated.';
 export const RECIPE_COCKPIT_UPDATER_NEW_RECORDS_NO_PARENTS_REASON = 'The last load read no records of the object above it, so there is nothing to add under.';
