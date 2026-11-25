@@ -181,6 +181,87 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
 
         });
 
+        describe('an Adapter record table (#720)', () => {
+
+            const PARENT_ACCOUNT_ID = '001000000000009AAA';
+            // 3 CONTACTS, 2 TO A PAGE: COLUMNS Id, AccountId (A LOOKUP) AND LastName
+            const contactRecords: Record<string, unknown>[] = [
+                { Id: CONTACT_ID, AccountId: ACCOUNT_ID, LastName: ACCOUNT_ID },
+                { Id: '003000000000002AAA', AccountId: '001-not-an-id', LastName: 'Two' },
+                { Id: '003000000000003AAA', AccountId: PARENT_ACCOUNT_ID, LastName: 'Three' }
+            ];
+            const columnFieldApiNames = ['Id', 'AccountId', 'LastName'];
+
+            const drawnTable = (postedPageIndexes: number[] = [0, 1]) => {
+                const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
+                panelState.recipeDataMessage = { command: 'recipeData', recipe: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: '' }, renderSequence: 3 };
+                panelState.acknowledgedRenderSequence = 3;
+                panelState.dataOrgDetails = [QA_ORG, UAT_ORG];
+                const recordLinkSequence = RecipeCockpitRecordLinks.registerRecordLinkPreview(panelState, {
+                    ...previewDetail('updaterRecords', {}, 3, new Map([['Contact', contactRecords.map(contactRecord => contactRecord.Id as string)]])),
+                    tablePages: {
+                        pageSize: 2,
+                        postedPageIndexesByObjectApiName: new Map([['Contact', new Set(postedPageIndexes)]]),
+                        readCellRecordId: (objectApiName, recordIndex, columnIndex) => {
+                            const cellValue = objectApiName === 'Contact' && columnIndex < 2 ? contactRecords[recordIndex]?.[columnFieldApiNames[columnIndex]] : undefined;
+                            return typeof cellValue === 'string' && /^[A-Za-z0-9]{18}$/.test(cellValue) ? cellValue : undefined;
+                        }
+                    }
+                })!;
+                panelState.openableRecordPreviews.set(recordLinkSequence, panelState.pendingOpenableRecordPreviews.get(recordLinkSequence)!);
+                const click = (cell: Record<string, unknown>) => RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: 3, recordLinkSequence, objectApiName: 'Contact', ...cell } as any, panelState);
+                return { click };
+            };
+
+            it('opens a row\'s own Id and a lookup cell\'s parent Id from the page, row and column the click names', () => {
+
+                const { click } = drawnTable();
+
+                expect(click({ rowIndex: 0 })).toMatchObject({ kind: 'openPreviewRecord', recordId: CONTACT_ID, orgDetail: QA_ORG });
+                expect(click({ rowIndex: 0, pageIndex: 0, columnIndex: 1 })).toMatchObject({ kind: 'openPreviewRecord', recordId: ACCOUNT_ID });
+                expect(click({ rowIndex: 0, pageIndex: 1 })).toMatchObject({ kind: 'openPreviewRecord', recordId: '003000000000003AAA' });
+                expect(click({ rowIndex: 0, pageIndex: 1, columnIndex: 1 })).toMatchObject({ kind: 'openPreviewRecord', recordId: PARENT_ACCOUNT_ID });
+
+            });
+
+            it('opens nothing for a lookup cell that is not a whole Id, nor for a column that is not a lookup', () => {
+
+                const { click } = drawnTable();
+
+                expect(click({ rowIndex: 1, pageIndex: 0, columnIndex: 1 })).toBeUndefined();
+                // LastName HOLDS A WHOLE Id HERE, AND IS STILL NOT A LOOKUP
+                expect(click({ rowIndex: 0, pageIndex: 0, columnIndex: 2 })).toBeUndefined();
+
+            });
+
+            it('drops a page the host did not post, and a row, page or column that is no index, without a word', () => {
+
+                const { click } = drawnTable([0]);
+
+                expect(click({ rowIndex: 0, pageIndex: 1 })).toBeUndefined();
+                // A ROW PAST ITS PAGE WOULD READ THE NEXT PAGE'S RECORD
+                expect(click({ rowIndex: 2, pageIndex: 0 })).toBeUndefined();
+                [-1, 1.5, '0', null, Number.NaN].forEach(forgedIndex => {
+                    expect(click({ rowIndex: 0, pageIndex: forgedIndex })).toBeUndefined();
+                    expect(click({ rowIndex: 0, columnIndex: forgedIndex })).toBeUndefined();
+                });
+                expect(click({ rowIndex: 0, pageIndex: 0, columnIndex: 9 })).toBeUndefined();
+                // AN OBJECT THE LOAD DID NOT READ
+                expect(click({ objectApiName: 'Lead', rowIndex: 0, pageIndex: 0 })).toBeUndefined();
+
+            });
+
+            it('takes no page or column for a preview that is not a record table', () => {
+
+                const { panelState, recordLinkSequence } = drawn();
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: 3, recordLinkSequence, objectApiName: 'Contact', rowIndex: 0, pageIndex: 0 } as any, panelState)).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'openPreviewRecord', renderSequence: 3, recordLinkSequence, objectApiName: 'Contact', rowIndex: 0, columnIndex: 0 } as any, panelState)).toBeUndefined();
+
+            });
+
+        });
+
         it('refuses a preview for another model, and one a newer preview of its kind replaced, with the fixed stale text', () => {
 
             const { panelState, recordLinkSequence } = drawn();
@@ -618,7 +699,37 @@ describe('RecipeCockpitService, a record Id opened from a preview (#556)', () =>
                 expect(posted(panel, 'recordLinksRendered')).toEqual([{ command: 'recordLinksRendered', renderSequence: 1, recordLinkSequence: 4 }]);
 
                 panel.findAll(recordsElement, 'treeQueryRecordLink')[0].dispatch('click');
-                expect(posted(panel, 'openPreviewRecord')).toEqual([{ command: 'openPreviewRecord', renderSequence: 1, recordLinkSequence: 4, objectApiName: 'Account', rowIndex: 0 }]);
+                expect(posted(panel, 'openPreviewRecord')).toEqual([{ command: 'openPreviewRecord', renderSequence: 1, recordLinkSequence: 4, objectApiName: 'Account', rowIndex: 0, pageIndex: 0 }]);
+
+            });
+
+            it('links a lookup cell that holds a whole Id, and its click names the page and the column too (#720)', () => {
+
+                const { panel, accountObject } = renderUpdater();
+                const PARENT_ID = '001000000000009AAA';
+                panel.postToPanel({
+                    command: 'updaterRecords', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa · qa@example.com.qa', recordLinkSequence: 4,
+                    objects: [{
+                        objectApiName: 'Account', totalSize: 120, recordCount: 120, isTruncated: false, hiddenColumnCount: 0, pageCount: 3,
+                        columns: ['Id', 'ParentId', 'Name'], rows: [[ACCOUNT_ID, PARENT_ID, 'Acme'], ['001000000000002AAA', '', 'Globex']],
+                        recordLinks: { columnIndex: 0, rowIndexes: [0, 1] },
+                        // ROW 1 IS NAMED BUT ITS CELL IS EMPTY, AND COLUMN 7 AND ROW 9 ARE PAST THE TABLE
+                        lookupLinks: [{ columnIndex: 1, rowIndexes: [0, 1, 9] }, { columnIndex: 7, rowIndexes: [0] }, null, { columnIndex: 'x' }]
+                    }]
+                });
+                const recordsElement = panel.findAll(accountObject, 'updaterRecords')[0];
+
+                expect(cellTexts(panel, recordsElement)).toEqual([[`[${ACCOUNT_ID}]`, `[${PARENT_ID}]`, 'Acme'], ['[001000000000002AAA]', '', 'Globex']]);
+
+                panel.findAll(recordsElement, 'treeQueryRecordLink')[1].dispatch('click');
+                expect(posted(panel, 'openPreviewRecord')).toEqual([{ command: 'openPreviewRecord', renderSequence: 1, recordLinkSequence: 4, objectApiName: 'Account', rowIndex: 0, pageIndex: 0, columnIndex: 1 }]);
+
+                // PAGE 2'S CLICKS NAME PAGE 2
+                panel.postToPanel({ command: 'updaterRecordsPage', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', pageIndex: 1, rows: [['001000000000003AAA', PARENT_ID, 'Initech']], lookupLinks: [{ columnIndex: 1, rowIndexes: [0] }] });
+                const linksOnPageTwo = panel.findAll(recordsElement, 'treeQueryRecordLink');
+                expect(linksOnPageTwo).toHaveLength(1);
+                linksOnPageTwo[0].dispatch('click');
+                expect(posted(panel, 'openPreviewRecord').at(-1)).toEqual({ command: 'openPreviewRecord', renderSequence: 1, recordLinkSequence: 4, objectApiName: 'Account', rowIndex: 0, pageIndex: 1, columnIndex: 1 });
 
             });
 

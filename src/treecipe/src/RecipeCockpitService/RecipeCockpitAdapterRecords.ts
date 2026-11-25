@@ -24,6 +24,7 @@ import {
     VSCodeWorkspaceService
 } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
+    RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN,
     RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE,
     RECIPE_COCKPIT_QUERY_RECORD_CAP,
     RECIPE_COCKPIT_QUERY_VALUE_BUDGET,
@@ -44,9 +45,11 @@ import {
     RecipeCockpitRecordUpdate
 } from './RecipeCockpitRecordUpdate';
 import {
+    IRecipeCockpitUpdaterObjectRequest,
     IRecipeCockpitUpdaterTreeObject,
     RecipeCockpitTreeUpdaterQuery
 } from './RecipeCockpitTreeUpdaterQuery';
+import { RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL } from './RecipeCockpitAdapterConstants';
 import type {
     IRecipeCockpitHubForAdapterTab,
     IRecipeCockpitUpdaterLoadStateMessage,
@@ -88,8 +91,10 @@ export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE = 'Fixed value onl
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org';
 // THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGER HAS SELECTED
 export const RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to load this tree\'s records from';
-// HOW MANY ROWS OF EACH OBJECT'S RECORDS THE PANEL IS SENT; THE REST STAY ON THE HOST
+// HOW MANY ROWS OF AN OBJECT'S NEW VALUES THE PANEL IS SENT; THE REST STAY ON THE HOST
 export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
+// HOW MANY OF AN OBJECT'S LOADED RECORDS ONE PAGE OF ITS TABLE HOLDS (#720); EVERY PAGE IS READ FROM THE RECORDS THE HOST KEEPS
+export const RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE = 50;
 export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
 // AN OBJECT UNDER THE PARENT IS READ ONLY UNDER RECORDS LOADED A LEVEL ABOVE (#444); WHEN THERE ARE NONE, IT SENDS NO QUERY
 export const RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX = 'Not read: ';
@@ -117,7 +122,7 @@ export class RecipeCockpitAdapterRecords {
         once it answered it is a sandbox; with none, it is asked for as the insert asks (#375). One
         SELECT per tree object, built from the tree, every page read up to the Query tab's record cap
         and a value budget the whole load shares, cancellable between pages and objects. The records
-        stay on the host; counts and a preview are posted, and how it went is ONE notification.
+        stay on the host; counts and the first page of each object's table are posted (#720), and how it went is ONE notification.
     */
     static async loadUpdaterRecordsFromPanel(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
                                                      panelState: IRecipeCockpitPanelState,
@@ -190,10 +195,12 @@ export class RecipeCockpitAdapterRecords {
         const treeTitle = tree.customName ?? tree.title;
         const treeObjectsByApiName = new Map(RecipeCockpitAdapterState.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree, RecipeCockpitAdapterState.readAdapterOrgOnlyFieldApiNames(panelState, treeKey)).map(treeObject => [treeObject.objectApiName, treeObject] as const));
 
-        // EVERY QUERY IS CHECKED BEFORE ANY RECORD IS READ; A CHILD'S WITH A PLACEHOLDER Id, SINCE ITS PARENT Ids COME FROM THE LOAD
+        // EACH OBJECT AND ITS WHERE ARE CHECKED BEFORE A CONNECTION IS OPENED; ITS FIELDS ONCE THE ORG'S DESCRIBES LEFT OUT THOSE IT WOULD REFUSE (#720)
         for ( const request of requests ) {
             const treeObject = treeObjectsByApiName.get(request.objectApiName);
-            const queryRefusal = treeObject ? RecipeCockpitTreeUpdaterQuery.checkRequestQuery(treeObject, request) : { refusal: `${request.objectApiName} is no longer in this treecipe.` };
+            const queryRefusal = treeObject
+                ? RecipeCockpitTreeUpdaterQuery.checkRequestQuery({ ...treeObject, lookupFieldApiNames: [] }, { ...request, fieldApiNames: [] })
+                : { refusal: `${request.objectApiName} is no longer in this treecipe.` };
             if ( queryRefusal ) {
                 VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${queryRefusal.refusal}`));
                 return;
@@ -202,7 +209,12 @@ export class RecipeCockpitAdapterRecords {
 
         const recordsByObjectApiName = new Map<string, Record<string, unknown>[]>();
         const objectViewModels: IRecipeCockpitUpdaterObjectRecordsViewModel[] = [];
-        const previewRecordIdsByObjectApiName = new Map<string, (string | undefined)[]>();
+        const recordIdsByObjectApiName = new Map<string, (string | undefined)[]>();
+        const columnFieldApiNamesByObjectApiName = new Map<string, string[]>();
+        const lookupFieldApiNamesByObjectApiName = new Map<string, string[]>();
+        // WHAT IS READ ONCE THE ORG'S DESCRIBES LEFT OUT THE FIELDS IT WOULD REFUSE (#720)
+        const readRequests: IRecipeCockpitUpdaterObjectRequest[] = [];
+        let queryRefusal: string | undefined;
         let isConnectionFailed = false;
         let isCancelled = false;
         let isTruncated = false;
@@ -221,6 +233,26 @@ export class RecipeCockpitAdapterRecords {
                 return;
             }
 
+            const describedFieldApiNamesByObjectApiName = await this.describeLoadedObjects(orgUsername, connection, requests.map(request => request.objectApiName));
+            const unreadFieldApiNamesByObjectApiName = new Map<string, string[]>();
+
+            // EVERY QUERY IS CHECKED WHOLE BEFORE ANY RECORD IS READ; A CHILD'S WITH A PLACEHOLDER Id, SINCE ITS PARENT Ids COME FROM THE LOAD
+            for ( const request of requests ) {
+                const treeObject = treeObjectsByApiName.get(request.objectApiName) as IRecipeCockpitUpdaterTreeObject;
+                const describedFieldApiNames = describedFieldApiNamesByObjectApiName.get(request.objectApiName);
+                // AN OBJECT THE ORG DID NOT DESCRIBE IS ASKED FOR WHOLE: ITS QUERY'S OWN ANSWER SAYS WHY IT COULD NOT BE READ
+                const readable = describedFieldApiNames
+                    ? RecipeCockpitTreeUpdaterQuery.leaveOutUnreadFields(treeObject, request, describedFieldApiNames)
+                    : { treeObject: treeObject, request: request, unreadFieldApiNames: [] };
+                queryRefusal = RecipeCockpitTreeUpdaterQuery.checkRequestQuery(readable.treeObject, readable.request)?.refusal;
+                if ( queryRefusal !== undefined ) {
+                    return;
+                }
+                treeObjectsByApiName.set(request.objectApiName, readable.treeObject);
+                readRequests.push(readable.request);
+                unreadFieldApiNamesByObjectApiName.set(request.objectApiName, readable.unreadFieldApiNames);
+            }
+
             // ONE RECORD CAP AND ONE VALUE BUDGET FOR THE WHOLE LOAD, SO A TREE OF MANY OBJECTS IS HELD TO WHAT ONE QUERY RUN IS
             let valueBudgetLeft = RECIPE_COCKPIT_QUERY_VALUE_BUDGET;
             let recordCapLeft = RECIPE_COCKPIT_QUERY_RECORD_CAP;
@@ -228,7 +260,7 @@ export class RecipeCockpitAdapterRecords {
             // THE Ids EACH OBJECT LOADED, WHICH THE LEVEL BELOW IS NARROWED TO; AN OBJECT NOT READ HAS NONE, AND NOTHING UNDER IT IS READ
             const loadedRecordIdsByObjectApiName = new Map<string, string[]>();
 
-            for ( const request of requests ) {
+            for ( const request of readRequests ) {
 
                 if ( cancellationToken.isCancellationRequested ) {
                     isCancelled = true;
@@ -244,6 +276,7 @@ export class RecipeCockpitAdapterRecords {
                     columns: [],
                     rows: [],
                     hiddenColumnCount: 0,
+                    pageCount: 0,
                     skippedReason: skippedReason
                 });
 
@@ -258,6 +291,7 @@ export class RecipeCockpitAdapterRecords {
                         columns: [],
                         rows: [],
                         hiddenColumnCount: 0,
+                        pageCount: 0,
                         skippedReason: RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON
                     });
                     continue;
@@ -278,7 +312,7 @@ export class RecipeCockpitAdapterRecords {
                     const queriesBuild = RecipeCockpitTreeUpdaterQuery.buildNarrowedQueries(treeObject, request, parentRecordIds);
                     if ( 'refusal' in queriesBuild ) {
                         objectViewModels.push({
-                            objectApiName: request.objectApiName, totalSize: 0, recordCount: 0, isTruncated: false, columns: [], rows: [], hiddenColumnCount: 0,
+                            objectApiName: request.objectApiName, totalSize: 0, recordCount: 0, isTruncated: false, columns: [], rows: [], hiddenColumnCount: 0, pageCount: 0,
                             failureMessage: queriesBuild.refusal
                         });
                         continue;
@@ -340,20 +374,25 @@ export class RecipeCockpitAdapterRecords {
                     recordsByObjectApiName.set(request.objectApiName, records);
                     loadedRecordIdsByObjectApiName.set(request.objectApiName, [...recordIds]);
 
-                    const preview = RecipeCockpitQuery.buildPreview(records, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
+                    const columnFieldApiNames = RecipeCockpitTreeUpdaterQuery.listSelectedFieldApiNames(treeObject, request.fieldApiNames);
+                    const unreadFieldApiNames = unreadFieldApiNamesByObjectApiName.get(request.objectApiName) ?? [];
+                    const firstPage = RecipeCockpitQuery.buildTablePage(records, columnFieldApiNames, treeObject.lookupFieldApiNames, 0, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE);
+                    columnFieldApiNamesByObjectApiName.set(request.objectApiName, columnFieldApiNames);
+                    lookupFieldApiNamesByObjectApiName.set(request.objectApiName, [...treeObject.lookupFieldApiNames]);
+                    recordIdsByObjectApiName.set(request.objectApiName, records.map(record => RecipeCockpitQuery.readLinkedRecordId(record, RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN)));
                     objectViewModels.push({
                         objectApiName: request.objectApiName,
                         totalSize: totalSize,
                         recordCount: records.length,
                         isTruncated: isObjectTruncated,
-                        columns: preview.columns,
-                        rows: preview.rows,
-                        hiddenColumnCount: preview.hiddenColumnCount,
-                        ...( preview.recordLinks ? { recordLinks: preview.recordLinks } : {} )
+                        columns: firstPage.columns,
+                        rows: firstPage.rows,
+                        hiddenColumnCount: 0,
+                        pageCount: Math.ceil(records.length / RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE),
+                        ...( firstPage.recordLinks ? { recordLinks: firstPage.recordLinks } : {} ),
+                        ...( firstPage.lookupLinks ? { lookupLinks: firstPage.lookupLinks } : {} ),
+                        ...( unreadFieldApiNames.length > 0 ? { unreadFieldApiNames: unreadFieldApiNames } : {} )
                     });
-                    if ( preview.recordIds ) {
-                        previewRecordIdsByObjectApiName.set(request.objectApiName, preview.recordIds);
-                    }
                 } catch (queryError) {
                     // ONE OBJECT THE ORG REFUSES (A FIELD IT LACKS, A WHERE IT CANNOT READ) IS THAT OBJECT'S, NOT THE LOAD'S
                     objectViewModels.push({
@@ -364,6 +403,7 @@ export class RecipeCockpitAdapterRecords {
                         columns: [],
                         rows: [],
                         hiddenColumnCount: 0,
+                        pageCount: 0,
                         failureMessage: RecipeCockpitUntrustedValue.describeThrown(queryError)
                     });
                 }
@@ -375,6 +415,11 @@ export class RecipeCockpitAdapterRecords {
         // A CONNECTION THAT COULD NOT BE OPENED IS ONE FIXED WARNING: ITS ERROR CAN CARRY AN AUTH URL OR TOKEN TEXT
         if ( isConnectionFailed ) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${orgLabel} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
+            return;
+        }
+
+        if ( queryRefusal !== undefined ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${queryRefusal}`));
             return;
         }
 
@@ -396,10 +441,14 @@ export class RecipeCockpitAdapterRecords {
             folderName: tree.folderName,
             orgUsername: orgUsername,
             recordsByObjectApiName: recordsByObjectApiName,
-            loadedFieldApiNamesByObjectApiName: new Map(requests.map(request => [request.objectApiName, [...request.fieldApiNames]] as const)),
+            loadedFieldApiNamesByObjectApiName: new Map(readRequests.map(request => [request.objectApiName, [...request.fieldApiNames]] as const)),
             // THE LOAD'S PLAN STARTS AT THE PARENT (#444), AND THE ROUTER HOLDS EVERY LOAD TO ITS PLAN
             parentObjectApiName: requests[0].objectApiName,
-            whereClausesByObjectApiName: new Map(requests.map(request => [request.objectApiName, request.whereClause] as const))
+            whereClausesByObjectApiName: new Map(requests.map(request => [request.objectApiName, request.whereClause] as const)),
+            columnFieldApiNamesByObjectApiName: columnFieldApiNamesByObjectApiName,
+            lookupFieldApiNamesByObjectApiName: lookupFieldApiNamesByObjectApiName,
+            // PAGE 0 OF EVERY OBJECT READ GOES WITH THE MESSAGE BELOW
+            postedPageIndexesByObjectApiName: new Map([...columnFieldApiNamesByObjectApiName.keys()].map(objectApiName => [objectApiName, new Set([0])] as const))
         };
         RecipeCockpitAdapterState.heldUpdaterRecords = heldUpdaterRecords;
 
@@ -416,7 +465,19 @@ export class RecipeCockpitAdapterRecords {
             treeKey: treeKey,
             orgUsername: orgUsername,
             heldSource: heldUpdaterRecords,
-            recordIdsByObjectApiName: previewRecordIdsByObjectApiName
+            recordIdsByObjectApiName: recordIdsByObjectApiName,
+            tablePages: {
+                pageSize: RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE,
+                postedPageIndexesByObjectApiName: heldUpdaterRecords.postedPageIndexesByObjectApiName,
+                // THE CELL'S Id AS THE HELD RECORD HOLDS IT NOW: ONLY THE Id COLUMN AND THE LOOKUP COLUMNS OPEN A RECORD
+                readCellRecordId: (objectApiName, recordIndex, columnIndex) => {
+                    const record = recordsByObjectApiName.get(objectApiName)?.[recordIndex];
+                    const columnFieldApiName = columnFieldApiNamesByObjectApiName.get(objectApiName)?.[columnIndex];
+                    const isOpenableColumn = columnFieldApiName === RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN
+                        || ( columnFieldApiName !== undefined && lookupFieldApiNamesByObjectApiName.get(objectApiName)?.includes(columnFieldApiName) );
+                    return record && columnFieldApiName !== undefined && isOpenableColumn ? RecipeCockpitQuery.readLinkedRecordId(record, columnFieldApiName) : undefined;
+                }
+            }
         });
         if ( recordLinkSequence !== undefined ) {
             recordsMessage.recordLinkSequence = recordLinkSequence;
@@ -434,11 +495,119 @@ export class RecipeCockpitAdapterRecords {
         }
 
         if ( isTruncated ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}, and stopped there: a load reads at most ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records and ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values in all. Add a WHERE or choose fewer fields to read them all.`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}, and stopped there: a load reads at most ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records and ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values in all. Add a WHERE to read them all.`));
             return;
         }
 
         VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}.`));
+
+    }
+
+    /*
+        Each object's fields as the org describes them to this user, read afresh since a load follows
+        a change in the org as often as not (#720). An object missing from the answer was not
+        described -- the org lacks it, or the describe failed -- and its query says why.
+    */
+    private static async describeLoadedObjects(orgUsername: string, connection: Connection, objectApiNames: string[]): Promise<Map<string, string[]>> {
+
+        const describedFieldApiNamesByObjectApiName = new Map<string, string[]>();
+        objectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(orgUsername, objectApiName));
+
+        try {
+            const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => connection);
+            describeResult.outcomes.forEach(describeOutcome => {
+                if ( describeOutcome.describe ) {
+                    describedFieldApiNamesByObjectApiName.set(describeOutcome.objectApiName, describeOutcome.describe.fields.map(describedField => describedField.fieldApiName));
+                }
+            });
+        } catch {
+            return new Map();
+        }
+
+        return describedFieldApiNamesByObjectApiName;
+
+    }
+
+    // ONE MORE PAGE OF AN OBJECT'S HELD RECORDS (#720): THE ROUTER MATCHED THE OBJECT AND THE PAGE AGAINST THE RECORDS ON SCREEN
+    static postUpdaterRecordsPage(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
+                                  pageAction: Extract<RecipeCockpitPanelAction, { kind: 'postUpdaterRecordsPage' }>) {
+
+        const { treeKey, renderSequence, objectApiName, pageIndex } = pageAction;
+        const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+        const records = heldRecords?.recordsByObjectApiName.get(objectApiName);
+        const columnFieldApiNames = heldRecords?.columnFieldApiNamesByObjectApiName.get(objectApiName);
+
+        if ( !heldRecords || !records || !columnFieldApiNames ) {
+            return;
+        }
+
+        const tablePage = RecipeCockpitQuery.buildTablePage(records, columnFieldApiNames, heldRecords.lookupFieldApiNamesByObjectApiName.get(objectApiName) ?? [], pageIndex, RECIPE_COCKPIT_UPDATER_RECORDS_PAGE_SIZE);
+        heldRecords.postedPageIndexesByObjectApiName.get(objectApiName)?.add(pageIndex);
+        hub.postToPanel(cockpitPanel, {
+            command: 'updaterRecordsPage',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            objectApiName: objectApiName,
+            pageIndex: pageIndex,
+            rows: tablePage.rows,
+            ...( tablePage.recordLinks ? { recordLinks: tablePage.recordLinks } : {} ),
+            ...( tablePage.lookupLinks ? { lookupLinks: tablePage.lookupLinks } : {} )
+        });
+
+    }
+
+    /*
+        "Change parent object" (#720) with records loaded: they, and any values generated for them,
+        belong to the parent they were loaded under, so the reader is asked once and they are let go
+        on the host before the panel goes back to step 1. Nothing in the org changes.
+    */
+    static async changeUpdaterParentFromPanel(hub: IRecipeCockpitHubForAdapterTab, cockpitPanel: vscode.WebviewPanel,
+                                              panelState: IRecipeCockpitPanelState,
+                                              changeAction: Extract<RecipeCockpitPanelAction, { kind: 'changeUpdaterParent' }>) {
+
+        const { treeKey, renderSequence } = changeAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const heldRecords = RecipeCockpitAdapterState.heldUpdaterRecords;
+        const isHeldForThisTree = heldRecords !== undefined
+            && heldRecords.workspaceRoot === panelState.workspaceRoot
+            && heldRecords.renderSequence === renderSequence
+            && heldRecords.folderName === tree?.folderName;
+
+        if ( !clickedRecipeDataMessage || !tree ) {
+            return;
+        }
+
+        if ( isHeldForThisTree ) {
+
+            const recordCount = RecipeCockpitAdapterState.readHeldUpdaterRecordCount();
+            const heldText = `${recordCount} loaded ${recordCount === 1 ? 'record' : 'records'}${RecipeCockpitAdapterState.heldUpdaterValues ? ' and the new values generated for them, which were not written to the org' : ''}`;
+            const answer = recordCount === 0
+                ? RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
+                : await hub.confirmInPanel(
+                    `Change the parent object of ${tree.customName ?? tree.title}?`,
+                    { summary: [`The ${heldText} are let go, and step 1 opens with the parent object and WHERE as they are. Nothing in the org changes.`] },
+                    RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
+                );
+
+            if ( answer !== RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL
+                    || hub.recipeCockpitPanel !== cockpitPanel
+                    || hub.recipeCockpitPanelState !== panelState
+                    || panelState.recipeDataMessage !== clickedRecipeDataMessage
+                    || RecipeCockpitAdapterState.heldUpdaterRecords !== heldRecords
+                    || RecipeCockpitAdapterState.isUpdaterLoadInFlight ) {
+                return;
+            }
+
+            RecipeCockpitAdapterState.clearHeldUpdaterRecords();
+            panelState.updaterRecordsMessage = undefined;
+            panelState.adapterChildBlockMessage = undefined;
+            panelState.adapterChildPreviewMessage = undefined;
+            RecipeCockpitAdapterState.setUpdaterValuesMessage(panelState, undefined);
+
+        }
+
+        hub.postToPanel(cockpitPanel, { command: 'updaterParentChange', renderSequence: renderSequence, treeKey: treeKey });
 
     }
 
@@ -563,7 +732,7 @@ export class RecipeCockpitAdapterRecords {
             }
 
             if ( !( heldRecords.loadedFieldApiNamesByObjectApiName.get(fieldRequest.objectApiName) ?? [] ).includes(fieldRequest.fieldApiName) ) {
-                refuse(`${fieldLabel} was not chosen when the records were loaded, so its current value was not read. Load records again.`);
+                refuse(`${fieldLabel} was not read by the last Load records, so its current value is not known: the org does not have it, or does not let this user read it. Check the field in the org, then load again.`);
                 return;
             }
 

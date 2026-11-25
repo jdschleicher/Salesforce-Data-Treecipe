@@ -4,7 +4,10 @@ import { RecipeYamlScalar } from '../RecipeYamlScalar/RecipeYamlScalar';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitQueryHost } from './RecipeCockpitQueryHost';
 import { RecipeCockpitRecordLinks } from './RecipeCockpitRecordLinks';
-import type { IRecipeCockpitOpenableRecordPreview } from './RecipeCockpitRecordLinks';
+import type {
+    IRecipeCockpitOpenableRecordPreview,
+    IRecipeCockpitOpenableTablePages
+} from './RecipeCockpitRecordLinks';
 import { RecipeCockpitAdapterState } from './RecipeCockpitAdapterState';
 // TYPES ONLY: THE HUB IMPORTS THIS FILE'S TAB, AND A HOST NEVER LOADS THE HUB'S CODE
 import type { IRecipeCockpitHubForTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
@@ -17,8 +20,8 @@ import { RecipeCockpitTreecipeDataOrgs } from './RecipeCockpitTreecipeDataOrgs';
 
 /*
     Opening a preview row's record (#556; moved out of the hub by #668): the router case and the two
-    actions, shared by the Query and Treecipe Adapter tabs. Only the row's own Id is opened, in the
-    org the preview was read from, and only while the data it was drawn from is still held.
+    actions, shared by the Query and Treecipe Adapter tabs. Only the row's own Id, or in the
+    Adapter's record tables a lookup cell's whole Id (#720), is opened, in the org the preview was read from, and only while the data it was drawn from is still held.
 */
 
 // WHAT OPENING A PREVIEW ROW'S RECORD READS AND CALLS ON THE HUB, AND NOTHING ELSE
@@ -79,13 +82,17 @@ export class RecipeCockpitRecordLinksHost {
             */
             case 'openPreviewRecord': {
 
-                const { recordLinkSequence, objectApiName, rowIndex } = panelMessage;
+                const { recordLinkSequence, objectApiName, rowIndex, pageIndex, columnIndex } = panelMessage;
+                const isIndexOrAbsent = (candidateIndex: unknown) => candidateIndex === undefined
+                    || ( typeof candidateIndex === 'number' && Number.isInteger(candidateIndex) && candidateIndex >= 0 );
 
                 if ( typeof recordLinkSequence !== 'number'
                         || !Number.isInteger(recordLinkSequence)
                         || typeof rowIndex !== 'number'
                         || !Number.isInteger(rowIndex)
                         || rowIndex < 0
+                        || !isIndexOrAbsent(pageIndex)
+                        || !isIndexOrAbsent(columnIndex)
                         || ( objectApiName !== undefined && typeof objectApiName !== 'string' ) ) {
                     return undefined;
                 }
@@ -100,8 +107,11 @@ export class RecipeCockpitRecordLinksHost {
                     return { kind: 'refuseOpenPreviewRecord', refusalText: RECIPE_COCKPIT_RECORD_LINK_STALE_REFUSAL };
                 }
 
-                const recordIds = preview.recordIdsByObjectApiName.get(typeof objectApiName === 'string' ? objectApiName : '');
-                const recordId = recordIds && rowIndex < recordIds.length ? recordIds[rowIndex] : undefined;
+                const previewObjectApiName = typeof objectApiName === 'string' ? objectApiName : '';
+                const recordIds = preview.recordIdsByObjectApiName.get(previewObjectApiName);
+                const recordId = preview.tablePages
+                    ? this.readTablePageRecordId(preview.tablePages, previewObjectApiName, pageIndex as number | undefined, rowIndex, columnIndex as number | undefined)
+                    : pageIndex === undefined && columnIndex === undefined && recordIds && rowIndex < recordIds.length ? recordIds[rowIndex] : undefined;
 
                 if ( recordId === undefined ) {
                     return undefined;
@@ -132,6 +142,18 @@ export class RecipeCockpitRecordLinksHost {
         }
 
         return undefined;
+
+    }
+
+    // undefined FOR A PAGE THE HOST DID NOT POST, A ROW BEYOND ITS PAGE, AND A CELL THE ADAPTER DOES NOT OPEN
+    private static readTablePageRecordId(tablePages: IRecipeCockpitOpenableTablePages, objectApiName: string,
+                                         pageIndex: number = 0, rowIndex: number, columnIndex: number = 0): string | undefined {
+
+        if ( rowIndex >= tablePages.pageSize || !tablePages.postedPageIndexesByObjectApiName.get(objectApiName)?.has(pageIndex) ) {
+            return undefined;
+        }
+
+        return tablePages.readCellRecordId(objectApiName, pageIndex * tablePages.pageSize + rowIndex, columnIndex);
 
     }
 

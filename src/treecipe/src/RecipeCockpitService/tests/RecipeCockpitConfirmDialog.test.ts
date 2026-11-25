@@ -760,7 +760,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             const serviceSource = [SERVICE_SOURCE_PATH, TROUBLESHOOTING_RUNS_SOURCE_PATH, DATASETS_HOST_SOURCE_PATH, ADAPTER_METADATA_SOURCE_PATH, ADAPTER_RECORDS_SOURCE_PATH, TREECIPE_INSERT_SOURCE_PATH, TREECIPE_DATA_ORGS_SOURCE_PATH, TREECIPE_HOST_SOURCE_PATH, TREECIPE_SELECTION_SOURCE_PATH, TREECIPE_OBJECT_REFRESH_SOURCE_PATH, TREECIPE_RECIPE_EDITS_SOURCE_PATH].map(sourcePath => fs.readFileSync(sourcePath, 'utf8')).join('\n');
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
-            expect(serviceSource.match(/(this|hub)\.confirmInPanel\(/g) ?? []).toHaveLength(23);
+            expect(serviceSource.match(/(this|hub)\.confirmInPanel\(/g) ?? []).toHaveLength(24);
             expect(serviceSource.match(/(this|hub)\.confirmInPanelWithCheckbox\(/g) ?? []).toHaveLength(2);
 
         });

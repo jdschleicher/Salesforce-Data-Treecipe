@@ -70,6 +70,27 @@ export interface IUpdaterPreviewObject {
     isTruncated?: unknown;
     totalSize?: unknown;
     recordLinks?: unknown;
+    // A LOAD'S RECORD TABLE (#720): ITS PAGE COUNT, ITS LOOKUP CELLS THAT OPEN A RECORD, AND THE FIELDS LEFT OUT OF ITS QUERY
+    pageCount?: unknown;
+    lookupLinks?: unknown;
+    unreadFieldApiNames?: unknown;
+}
+
+// ONE MORE PAGE OF ONE OBJECT'S RECORD TABLE (#720)
+export interface IUpdaterRecordsPageMessage {
+    renderSequence: unknown;
+    treeKey: unknown;
+    objectApiName?: unknown;
+    pageIndex?: unknown;
+    rows?: unknown;
+    recordLinks?: unknown;
+    lookupLinks?: unknown;
+}
+
+// THE HOST LET THE LOADED RECORDS GO: BACK TO STEP 1 (#720)
+export interface IUpdaterParentChangeMessage {
+    renderSequence: unknown;
+    treeKey: unknown;
 }
 
 export interface IUpdaterRecordsMessage {
@@ -273,6 +294,10 @@ export interface IUpdaterObjectState extends IUpdaterFieldObjectState {
     matchingFieldCount: number;
     recordsElement: HTMLElement | null;
     loadedRecordsLinkSequence?: unknown;
+    // THE PAGE OF ITS RECORD TABLE ON SCREEN, AND THE ONE ASKED FOR AND NOT YET ANSWERED (#720)
+    loadedRecordsPageIndex: number;
+    requestedRecordsPageIndex: number | null;
+    recordsPagerElements?: { previousElement: HTMLButtonElement; nextElement: HTMLButtonElement } | null;
     generatedValues: IUpdaterPreviewObject | null;
     generatedValuesLinkSequence?: unknown;
     valuesElement: HTMLElement | null;
@@ -335,7 +360,8 @@ export interface IAdapterTreeState extends IUpdaterFieldTreeState {
     updaterStructureHeadingElement: HTMLElement;
     updaterParentSelectElement: HTMLSelectElement;
     updaterParentWhereInputElement: HTMLInputElement;
-    updaterParentWhereNoteElement: HTMLElement;
+    updaterParentChipElement: HTMLElement;
+    updaterChangeParentElement?: HTMLButtonElement;
     updaterSearch?: ITabSearchView;
     updaterRetrieveMetadataElement?: HTMLButtonElement;
     updaterOrgChangesNoteElement?: HTMLElement;
@@ -356,7 +382,6 @@ export interface IAdapterTreeState extends IUpdaterFieldTreeState {
 // WHAT THIS TAB POSTS; THE HOST'S ROUTER CHECKS EACH FIELD AGAIN (routePanelMessage)
 export interface IUpdaterObjectRequest {
     objectApiName: string;
-    fieldApiNames: string[];
     whereClause: string;
 }
 
@@ -373,6 +398,8 @@ export interface IAdapterChildFieldRequest {
 
 export type AdapterPanelMessage =
     | { command: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; parentObjectApiName: string; objects: IUpdaterObjectRequest[] }
+    | { command: 'loadUpdaterRecordsPage'; treeKey: string; renderSequence: number; objectApiName: string; pageIndex: number }
+    | { command: 'changeUpdaterParent'; treeKey: string; renderSequence: number }
     | { command: 'generateUpdaterValues'; treeKey: string; renderSequence: number; fields: IUpdaterFieldValueRequest[] }
     | { command: 'updateUpdaterRecords'; treeKey: string }
     | { command: 'loadUpdaterSnapshots'; treeKey: string; renderSequence: number }

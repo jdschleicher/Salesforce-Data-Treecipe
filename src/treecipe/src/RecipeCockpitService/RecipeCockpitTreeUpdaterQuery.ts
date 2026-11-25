@@ -38,12 +38,13 @@ export interface IRecipeCockpitUpdaterTreeLookup {
 export interface IRecipeCockpitUpdaterTreeObject {
     objectApiName: string;
     fieldApiNames: readonly string[];
+    // THE LOOKUPS TO PARENTS IN THE TREE, THEN THE OBJECT'S OTHER LOOKUP FIELDS (#720): THE COLUMNS AFTER Id
     lookupFieldApiNames: readonly string[];
-    // THE SAME LOOKUPS WITH THE PARENT EACH NAMES, A SELF-LOOKUP INCLUDED (#444)
+    // THE TREE'S LOOKUPS WITH THE PARENT EACH NAMES, A SELF-LOOKUP INCLUDED (#444)
     treeLookups: readonly IRecipeCockpitUpdaterTreeLookup[];
 }
 
-// WHAT THE PANEL ASKED TO LOAD FOR ONE OBJECT, ONCE CHECKED AGAINST THE CARD ON SCREEN
+// ONE OBJECT THE PANEL ASKED TO LOAD, ONCE CHECKED AGAINST THE CARD ON SCREEN; ITS FIELDS ARE THE TREE'S, NEVER THE PANEL'S (#720)
 export interface IRecipeCockpitUpdaterObjectRequest {
     objectApiName: string;
     fieldApiNames: string[];
@@ -72,8 +73,8 @@ export type RecipeCockpitUpdaterQueryBuild = { objectQuery: IRecipeCockpitUpdate
 
 /*
     The Treecipe Adapter's load (#416): one SELECT per tree object, built from the TREE -- the
-    record Id, the lookups to parents in the tree and the fields the reader chose -- never from the
-    SOQL templates. Everything the panel posts is matched against the card the host drew; the WHERE
+    record Id, its lookups and every field its recipe lists (#720) -- never from the SOQL
+    templates. Everything the panel posts is matched against the card the host drew; the WHERE
     clause is the reader's own text and is held to the Query tab's one-SELECT rule once the query is
     whole. Imports no vscode.
 */
@@ -81,10 +82,12 @@ export class RecipeCockpitTreeUpdaterQuery {
 
     /*
         Each object of a card once (an iteration is the same object), in the card's order, with the
-        fields its model lists and its lookups to parents the card also lists.
+        fields its model lists, its lookups to parents the card also lists and, after those, the
+        other fields of it that are lookups.
     */
     static listTreeObjects(treeObjects: readonly { objectApiName: string; parentLookups: readonly { fieldApiName: string; parentObjectApiName: string }[]; iterationNickname?: string }[],
-                            fieldApiNamesByObjectApiName: ReadonlyMap<string, readonly string[]>): IRecipeCockpitUpdaterTreeObject[] {
+                            fieldApiNamesByObjectApiName: ReadonlyMap<string, readonly string[]>,
+                            otherLookupFieldApiNamesByObjectApiName?: ReadonlyMap<string, readonly string[]>): IRecipeCockpitUpdaterTreeObject[] {
 
         const treeObjectApiNames = new Set(treeObjects.map(treeObject => treeObject.objectApiName));
         const listedObjectApiNames = new Set<string>();
@@ -105,7 +108,10 @@ export class RecipeCockpitTreeUpdaterQuery {
             updaterTreeObjects.push({
                 objectApiName: treeObject.objectApiName,
                 fieldApiNames: fieldApiNames,
-                lookupFieldApiNames: treeLookups.map(treeLookup => treeLookup.fieldApiName),
+                lookupFieldApiNames: [...new Set([
+                    ...treeLookups.map(treeLookup => treeLookup.fieldApiName),
+                    ...( otherLookupFieldApiNamesByObjectApiName?.get(treeObject.objectApiName) ?? [] )
+                ])],
                 treeLookups: treeLookups
             });
 
@@ -117,8 +123,9 @@ export class RecipeCockpitTreeUpdaterQuery {
 
     /*
         The panel's request, untrusted: a list of objects the card lists, each at most once, each
-        naming only fields its model lists, each field once, and a WHERE clause of bounded text.
-        Anything else refuses the WHOLE request rather than loading part of what was asked for.
+        with a WHERE clause of bounded text. Anything else refuses the WHOLE request rather than
+        loading part of what was asked for. The fields read are every field the tree lists for the
+        object (#720): a field list the panel posts is not read.
     */
     static readRequest(candidateObjects: unknown, treeObjects: readonly IRecipeCockpitUpdaterTreeObject[], candidateParentObjectApiName: unknown): RecipeCockpitUpdaterRequestRead {
 
@@ -142,17 +149,11 @@ export class RecipeCockpitTreeUpdaterQuery {
                 return { refusal: 'The objects to load are not the objects of this treecipe.' };
             }
 
-            const { objectApiName, fieldApiNames, whereClause } = candidateObject as Record<string, unknown>;
+            const { objectApiName, whereClause } = candidateObject as Record<string, unknown>;
             const treeObject = typeof objectApiName === 'string' ? treeObjectsByApiName.get(objectApiName) : undefined;
 
             if ( !treeObject || requestedObjectApiNames.has(treeObject.objectApiName) || !loadPlan.some(loadStep => loadStep.objectApiName === treeObject.objectApiName) ) {
                 return { refusal: 'The objects to load are not the parent and the objects under it.' };
-            }
-
-            if ( !Array.isArray(fieldApiNames)
-                    || fieldApiNames.some(fieldApiName => typeof fieldApiName !== 'string' || !treeObject.fieldApiNames.includes(fieldApiName))
-                    || new Set(fieldApiNames).size !== fieldApiNames.length ) {
-                return { refusal: `The fields chosen on ${treeObject.objectApiName} are not fields of it.` };
             }
 
             if ( whereClause !== undefined && ( typeof whereClause !== 'string' || whereClause.length > RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH ) ) {
@@ -162,7 +163,7 @@ export class RecipeCockpitTreeUpdaterQuery {
             requestedObjectApiNames.add(treeObject.objectApiName);
             requests.push({
                 objectApiName: treeObject.objectApiName,
-                fieldApiNames: fieldApiNames as string[],
+                fieldApiNames: [...treeObject.fieldApiNames],
                 whereClause: typeof whereClause === 'string' ? whereClause : ''
             });
 
@@ -316,10 +317,43 @@ export class RecipeCockpitTreeUpdaterQuery {
 
     }
 
+    // WHAT A LOAD SELECTS, WHICH IS ALSO ITS TABLE'S COLUMNS (#720): Id, THE LOOKUPS, THEN THE OTHER FIELDS IN RECIPE ORDER, EACH ONCE WHATEVER ITS CASE
+    static listSelectedFieldApiNames(treeObject: IRecipeCockpitUpdaterTreeObject, fieldApiNames: readonly string[]): string[] {
+
+        const selectedLowerCaseNames = new Set<string>();
+
+        return ['Id', ...treeObject.lookupFieldApiNames, ...fieldApiNames].filter(fieldApiName => {
+            const isFirstOfItsName = !selectedLowerCaseNames.has(fieldApiName.toLowerCase());
+            selectedLowerCaseNames.add(fieldApiName.toLowerCase());
+            return isFirstOfItsName;
+        });
+
+    }
+
     /*
-        SELECT Id, <lookups to parents in the tree>, <chosen fields> FROM <Object> [WHERE …]. Every
-        name is held to SalesforceApiName (one that fails refuses the object, since a name reaching
-        the query unchecked is how text other than a field gets into it), a field is selected once
+        A field the org does not describe to this user -- one it lacks, or one the user may not
+        read -- fails the WHOLE query, so it is left out and named (#720). The tree's own lookups
+        stay in treeLookups: a narrowing lookup the org lacks is that object's failure, as before.
+    */
+    static leaveOutUnreadFields(treeObject: IRecipeCockpitUpdaterTreeObject,
+                                request: IRecipeCockpitUpdaterObjectRequest,
+                                describedFieldApiNames: readonly string[]): { treeObject: IRecipeCockpitUpdaterTreeObject; request: IRecipeCockpitUpdaterObjectRequest; unreadFieldApiNames: string[] } {
+
+        const describedLowerCaseNames = new Set(describedFieldApiNames.map(fieldApiName => fieldApiName.toLowerCase()));
+        const isDescribed = (fieldApiName: string) => describedLowerCaseNames.has(fieldApiName.toLowerCase());
+
+        return {
+            treeObject: { ...treeObject, lookupFieldApiNames: treeObject.lookupFieldApiNames.filter(isDescribed) },
+            request: { ...request, fieldApiNames: request.fieldApiNames.filter(isDescribed) },
+            unreadFieldApiNames: this.listSelectedFieldApiNames(treeObject, request.fieldApiNames).filter(fieldApiName => fieldApiName !== 'Id' && !isDescribed(fieldApiName))
+        };
+
+    }
+
+    /*
+        SELECT Id, <lookups>, <every other recipe field> FROM <Object> [WHERE …]. Every name is
+        held to SalesforceApiName (one that fails refuses the object, since a name reaching the
+        query unchecked is how text other than a field gets into it), a field is selected once
         whatever its case, and the whole query must pass the Query tab's checkQueryText.
     */
     static buildObjectQuery(treeObject: IRecipeCockpitUpdaterTreeObject, request: IRecipeCockpitUpdaterObjectRequest): RecipeCockpitUpdaterQueryBuild {
@@ -328,20 +362,11 @@ export class RecipeCockpitTreeUpdaterQuery {
             return { refusal: `${treeObject.objectApiName} is not an object api name.` };
         }
 
-        const selectedFieldApiNames: string[] = [];
-        const selectedLowerCaseNames = new Set<string>();
+        const selectedFieldApiNames = this.listSelectedFieldApiNames(treeObject, request.fieldApiNames);
+        const unusableFieldApiName = selectedFieldApiNames.find(fieldApiName => !SalesforceApiName.isApiName(fieldApiName));
 
-        for ( const fieldApiName of ['Id', ...treeObject.lookupFieldApiNames, ...request.fieldApiNames] ) {
-
-            if ( !SalesforceApiName.isApiName(fieldApiName) ) {
-                return { refusal: `${treeObject.objectApiName}.${fieldApiName} is not a field api name.` };
-            }
-
-            if ( !selectedLowerCaseNames.has(fieldApiName.toLowerCase()) ) {
-                selectedLowerCaseNames.add(fieldApiName.toLowerCase());
-                selectedFieldApiNames.push(fieldApiName);
-            }
-
+        if ( unusableFieldApiName !== undefined ) {
+            return { refusal: `${treeObject.objectApiName}.${unusableFieldApiName} is not a field api name.` };
         }
 
         const whereClause = request.whereClause.trim().replace(LEADING_WHERE_KEYWORD_PATTERN, '').trim();

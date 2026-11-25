@@ -157,9 +157,9 @@ const TAB_HOSTS: ITabHost[] = [
             {
                 pureModuleFileName: 'RecipeCockpitQuery.ts',
                 hostFileName: 'RecipeCockpitAdapterRecords.ts',
-                importedNames: ['RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
-                members: ['buildPreview', 'countValues', 'fetchQueryRecords'],
-                reason: 'the Adapter\'s load, update and restore read records through the same pages, limits and preview'
+                importedNames: ['RECIPE_COCKPIT_PREVIEW_RECORD_ID_COLUMN', 'RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE', 'RECIPE_COCKPIT_QUERY_RECORD_CAP', 'RECIPE_COCKPIT_QUERY_VALUE_BUDGET', 'RecipeCockpitQuery'],
+                members: ['buildPreview', 'buildTablePage', 'countValues', 'fetchQueryRecords', 'readLinkedRecordId'],
+                reason: 'the Adapter\'s load, update and restore read records through the same pages, limits and preview, and its record tables (#720) are cut from the same cell text and Id rule'
             }
         ]
     },

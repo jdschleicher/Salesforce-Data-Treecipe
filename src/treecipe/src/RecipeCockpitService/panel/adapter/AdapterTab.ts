@@ -11,8 +11,10 @@ import {
     RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN,
     RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL,
     RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING,
-    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE,
-    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX,
+    RECIPE_COCKPIT_UPDATER_PARENT_CHIP_EVERY_RECORD,
+    RECIPE_COCKPIT_UPDATER_PARENT_CHIP_PREFIX,
+    RECIPE_COCKPIT_UPDATER_PARENT_CHIP_SEPARATOR,
+    RECIPE_COCKPIT_UPDATER_PARENT_CHIP_WHERE_PREFIX,
     RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
@@ -30,7 +32,7 @@ import { buildActionCard, buildTabSearch, buildToggleElement } from '../RecipeCo
 import { applyAdapterMetadataChanges, drawAdapterFieldOrgChip, drawAdapterObjectOrgOnlyFields, requestAdapterMetadataRetrieve, requestAdapterRetrievedFilesApply } from './AdapterRetrieve';
 import { buildAdapterChildBlock } from './AdapterChild';
 import { buildUpdaterFieldEditElement, drawUpdaterFieldEdit } from './AdapterFieldEditor';
-import { applyUpdaterRecords, applyUpdaterValues, drawUpdaterLoadButtons, drawUpdaterObjectRecords, drawUpdaterObjectValues, requestUpdaterRecords, requestUpdaterUpdate, requestUpdaterValues } from './AdapterLoadAndUpdate';
+import { applyUpdaterRecords, applyUpdaterValues, drawUpdaterLoadButtons, drawUpdaterObjectRecords, drawUpdaterObjectValues, requestUpdaterParentChange, requestUpdaterRecords, requestUpdaterUpdate, requestUpdaterValues } from './AdapterLoadAndUpdate';
 import type {
     AdapterOrgOnlyRowState,
     IAdapterField,
@@ -88,7 +90,7 @@ function findUpdaterFieldLockReason(tree: IAdapterTree, objectApiName: string, f
 /*
     The Adapter's two steps (#443). Step 1 chooses the parent object, starting on the card's root,
     and the WHERE for the parent records expected. Step 2 draws the tree rooted at that parent,
-    under the filter, with Change parent back to step 1. The step, the parent and its WHERE are
+    under the filter, with the parent chip and Change parent object back to step 1 (#720). The step, the parent and its WHERE are
     the panel's, kept in the place; moving between the steps posts nothing.
 */
 export function buildUpdaterTab(treeState: IAdapterTreeState, panelElement: HTMLElement): void {
@@ -105,21 +107,18 @@ export function buildUpdaterTab(treeState: IAdapterTreeState, panelElement: HTML
     panelElement.appendChild(treeState.updaterParentStepElement);
 
     const structureElement = createElement('div', 'updaterStructureStep hidden');
-    const headingRowElement = createElement('div', 'updaterStepHeadingRow');
-    treeState.updaterStructureHeadingElement = createElement('div', 'updaterStepHeading');
-    const changeParentElement = createButton('link', 'updaterChangeParent', RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL);
-    changeParentElement.addEventListener('click', function () {
-        treeState.updaterStep = 'parent';
-        drawUpdaterStep(treeState);
-        if (typeof treeState.updaterParentSelectElement.focus === 'function') { treeState.updaterParentSelectElement.focus(); }
-        savePanelPlace();
-    });
-    headingRowElement.appendChild(treeState.updaterStructureHeadingElement);
-    headingRowElement.appendChild(changeParentElement);
-    structureElement.appendChild(headingRowElement);
+    treeState.updaterStructureHeadingElement = createElement('div', 'updaterStepHeading updaterStructureHeading');
+    structureElement.appendChild(treeState.updaterStructureHeadingElement);
 
-    treeState.updaterParentWhereNoteElement = createElement('div', 'updaterParentWhereNote muted');
-    structureElement.appendChild(treeState.updaterParentWhereNoteElement);
+    // WHICH PARENT AND WHERE THE RECORDS BELOW COME FROM, AND THE WAY BACK TO CHANGE THEM (#720)
+    const parentRowElement = createElement('div', 'updaterParentRow');
+    treeState.updaterParentChipElement = createElement('span', 'updaterParentChip');
+    const changeParentElement = createButton('primary', 'updaterChangeParent', RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL, 'compact');
+    treeState.updaterChangeParentElement = changeParentElement;
+    changeParentElement.addEventListener('click', function () { requestUpdaterParentChange(treeState); });
+    parentRowElement.appendChild(treeState.updaterParentChipElement);
+    parentRowElement.appendChild(changeParentElement);
+    structureElement.appendChild(parentRowElement);
 
     // THE FILTER, AND BESIDE IT "Retrieve latest metadata" (#445), WHICH CAN BE PRESSED AT ANY TIME NO RUN HOLDS THE WINDOW
     const filterRowElement = createElement('div', 'updaterFilterRow');
@@ -361,7 +360,7 @@ function drawUpdaterStructure(treeState: IAdapterTreeState): void {
     updaterObjectStates.forEach(function (updaterObjectState) { treeState.updaterObjectsElement.appendChild(updaterObjectState.element); });
 
     treeState.updaterStructureHeadingElement.textContent = RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX + parentObjectApiName;
-    drawUpdaterParentWhereNote(treeState);
+    drawUpdaterParentChip(treeState);
     drawUpdaterSummary(treeState);
     applyUpdaterFilter(treeState);
     drawUpdaterLoadButtons();
@@ -373,9 +372,31 @@ function drawUpdaterStructure(treeState: IAdapterTreeState): void {
 
 }
 
-function drawUpdaterParentWhereNote(treeState: IAdapterTreeState): void {
-    const whereText = treeState.updaterParentWhereText.trim();
-    treeState.updaterParentWhereNoteElement.textContent = whereText ? RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX + whereText : RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE;
+// STEP 1, WITH THE PARENT AND WHERE AS THEY ARE; THE STEP IS THE PANEL'S, KEPT IN THE PLACE
+export function showUpdaterParentStep(treeState: IAdapterTreeState): void {
+    treeState.updaterStep = 'parent';
+    drawUpdaterStep(treeState);
+    if (typeof treeState.updaterParentSelectElement.focus === 'function') { treeState.updaterParentSelectElement.focus(); }
+    savePanelPlace();
+}
+
+// "Parent: Account · WHERE Name LIKE 'Acme%' · 12 records": THE COUNT ONLY ONCE A LOAD READ THE PARENT
+export function drawUpdaterParentChip(treeState: IAdapterTreeState): void {
+
+    if (!treeState.updaterParentChipElement) { return; }
+
+    const parentObjectApiName = treeState.updaterParentObjectApiName;
+    const whereText = treeState.updaterParentWhereText.trim().replace(/^where\s+/i, '').trim();
+    const loadedObjects = treeState.updaterRecordsMessage && Array.isArray(treeState.updaterRecordsMessage.objects) ? treeState.updaterRecordsMessage.objects : [];
+    const loadedParent = loadedObjects.find(function (loadedObject) { return !!loadedObject && loadedObject.objectApiName === parentObjectApiName; });
+    const chipParts = [
+        RECIPE_COCKPIT_UPDATER_PARENT_CHIP_PREFIX + parentObjectApiName,
+        whereText ? RECIPE_COCKPIT_UPDATER_PARENT_CHIP_WHERE_PREFIX + whereText : RECIPE_COCKPIT_UPDATER_PARENT_CHIP_EVERY_RECORD
+    ];
+    if (loadedParent && !loadedParent.failureMessage && !loadedParent.skippedReason) { chipParts.push(pluralize(Number(loadedParent.recordCount) || 0, 'record', 'records')); }
+
+    treeState.updaterParentChipElement.textContent = chipParts.join(RECIPE_COCKPIT_UPDATER_PARENT_CHIP_SEPARATOR);
+
 }
 
 function buildUpdaterObjectState(treeState: IAdapterTreeState, treeObjectState: IAdapterTreeObjectState): IUpdaterObjectState {
@@ -405,6 +426,8 @@ function buildUpdaterObjectState(treeState: IAdapterTreeState, treeObjectState: 
         countText: '',
         // WHAT THE LAST LOAD READ FOR THIS OBJECT (#416), AND ITS SECTION ONCE THE BODY IS BUILT
         loadedRecords: null,
+        loadedRecordsPageIndex: 0,
+        requestedRecordsPageIndex: null,
         recordsElement: null,
         // WHAT THE LAST GENERATION MADE FOR THIS OBJECT (#417), AND ITS SECTION ONCE THE BODY IS BUILT
         generatedValues: null,
@@ -470,7 +493,7 @@ function setUpdaterObjectExpanded(treeState: IAdapterTreeState, updaterObjectSta
         }
         updaterObjectState.recordsElement = createElement('div', 'updaterRecords hidden');
         updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
-        drawUpdaterObjectRecords(updaterObjectState);
+        drawUpdaterObjectRecords(treeState, updaterObjectState);
         updaterObjectState.valuesElement = createElement('div', 'updaterValues hidden');
         updaterObjectState.bodyElement.appendChild(updaterObjectState.valuesElement);
         drawUpdaterObjectValues(updaterObjectState);

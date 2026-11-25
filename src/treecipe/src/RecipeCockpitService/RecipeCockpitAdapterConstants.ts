@@ -4,7 +4,7 @@
     the webview can reach vscode or Node; every importer reads its names here (#671).
 */
 
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
 
 /*
@@ -17,9 +17,13 @@ export const RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL = 'Parent object';
 export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER = 'WHERE for the parent records (optional), e.g. Name LIKE \'Acme%\'';
 export const RECIPE_COCKPIT_UPDATER_NEXT_LABEL = 'Next';
 export const RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX = '2. The treecipe under ';
-export const RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = 'Change parent';
-export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX = 'Parent records: WHERE ';
-export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE = 'Parent records: every record (no WHERE in step 1)';
+export const RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = 'Change parent object';
+// STEP 2'S PARENT CHIP (#720): "Parent: Account · WHERE Name LIKE 'Acme%' · 12 records", THE COUNT ONCE A LOAD READ THE PARENT
+export const RECIPE_COCKPIT_UPDATER_PARENT_CHIP_PREFIX = 'Parent: ';
+export const RECIPE_COCKPIT_UPDATER_PARENT_CHIP_WHERE_PREFIX = 'WHERE ';
+export const RECIPE_COCKPIT_UPDATER_PARENT_CHIP_EVERY_RECORD = 'every record';
+export const RECIPE_COCKPIT_UPDATER_PARENT_CHIP_SEPARATOR = ' · ';
+export const RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE = 'Go back to step 1 to choose another parent object or WHERE. Loaded records are let go, after asking.';
 export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL = 'Retrieve latest metadata';
 export const RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL = 'Retrieving…';
 export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE = 'Retrieve the latest metadata of these objects from the sandbox or scratch org chosen in Target Org Manager, into RunArtifacts in the tree folder, and mark the fields that are new or changed in the org. Nothing in the project changes.';
@@ -61,6 +65,10 @@ export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'S
 export const RECIPE_COCKPIT_UPDATER_LOAD_LABEL = 'Load records';
 export const RECIPE_COCKPIT_UPDATER_LOADING_LABEL = 'Loading…';
 export const RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER = 'WHERE (optional), e.g. CreatedDate = LAST_N_DAYS:30';
+// AN OBJECT'S RECORD TABLE (#720): ITS PAGES, AND THE RECIPE FIELDS THE ORG WOULD NOT ANSWER WITH
+export const RECIPE_COCKPIT_UPDATER_PREVIOUS_PAGE_LABEL = 'Previous';
+export const RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL = 'Next';
+export const RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON = 'the org does not have it, or does not let this user read it. Check the field and its field-level security in the org, then load again.';
 export const RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = 'The last load read 0 records: change the parent\'s WHERE in step 1, or the WHERE under an object, and load again.';
 
 // GENERATE VALUES (#417) AND THE PENCIL'S HINT

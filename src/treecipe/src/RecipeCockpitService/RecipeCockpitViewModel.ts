@@ -23,7 +23,9 @@ import type {
     IRecipeCockpitAdapterMetadataChangesMessage,
     IRecipeCockpitAdapterOrgOnlyField,
     IRecipeCockpitUpdaterLoadStateMessage,
+    IRecipeCockpitUpdaterParentChangeMessage,
     IRecipeCockpitUpdaterRecordsMessage,
+    IRecipeCockpitUpdaterRecordsPageMessage,
     IRecipeCockpitUpdaterSnapshotsMessage,
     IRecipeCockpitUpdaterValuesMessage,
     RecipeCockpitAdapterPanelAction
@@ -740,7 +742,7 @@ export interface IRecipeCockpitPanelMessage {
     queryKey?: unknown;
     queryText?: unknown;
     exportFormat?: unknown;
-    // THE TREECIPE UPDATER'S LOAD (#416): PER OBJECT, THE FIELDS CHOSEN AND THE READER'S WHERE
+    // THE TREECIPE UPDATER'S LOAD (#416): PER OBJECT, THE READER'S WHERE
     objects?: unknown;
     // THE TREECIPE ADAPTER'S LOAD (#444): THE PARENT STEP 1 CHOSE, WHOSE OBJECTS ARE THE ONLY ONES IT READS
     parentObjectApiName?: unknown;
@@ -754,6 +756,9 @@ export interface IRecipeCockpitPanelMessage {
     // A RECORD Id OPENED FROM A PREVIEW (#556): WHICH PREVIEW, AND WHICH OF ITS ROWS
     recordLinkSequence?: unknown;
     rowIndex?: unknown;
+    // AN ADAPTER RECORD TABLE'S PAGE AND, FOR A LOOKUP CELL, ITS COLUMN (#720)
+    pageIndex?: unknown;
+    columnIndex?: unknown;
     // THE UPDATER'S RESTORE (#419): A SNAPSHOT'S FILE NAME, AND THE LIST THE PANEL DREW IT FROM
     snapshotName?: unknown;
     snapshotsSequence?: unknown;
@@ -1128,6 +1133,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitCustomTreecipePreviewMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
+                                        | IRecipeCockpitUpdaterRecordsPageMessage
+                                        | IRecipeCockpitUpdaterParentChangeMessage
                                         | IRecipeCockpitAdapterMetadataChangesMessage
                                         | IRecipeCockpitObjectRefreshStateMessage
                                         | IRecipeCockpitAdapterChildBlockMessage

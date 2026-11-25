@@ -413,15 +413,15 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             await send({ command: 'retrieveAdapterMetadata', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), parentObjectApiName: 'Account' });
         };
 
-        const loadRequest = (accountFieldApiNames: string[]) => ({
+        const loadRequest = () => ({
             command: 'loadUpdaterRecords',
             parentObjectApiName: 'Account',
             treeKey: ACCOUNT_TREE_KEY,
             renderSequence: lastRenderSequence(),
             objects: [
-                { objectApiName: 'Account', fieldApiNames: accountFieldApiNames, whereClause: '' },
-                { objectApiName: 'Contact', fieldApiNames: [], whereClause: '' },
-                { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+                { objectApiName: 'Account', whereClause: '' },
+                { objectApiName: 'Contact', whereClause: '' },
+                { objectApiName: 'OtherChildObject__c', whereClause: '' }
             ]
         });
 
@@ -606,24 +606,27 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         });
 
-        it('loads an unlocked field only the org holds, refuses a locked one, and lets them go with a new model', async () => {
+        it('loads every unlocked field only the org holds after the recipe\'s own, never a locked one, and lets them go with a new model', async () => {
 
             await openCockpitAndRetrieve();
 
-            expect(RecipeCockpitService.routePanelMessage(loadRequest(['Score_Formula__c']), panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
+            const requestedAccountFields = () => (RecipeCockpitService.routePanelMessage(loadRequest(), panelState()) as any).requests[0].fieldApiNames;
+            expect(requestedAccountFields().slice(-2)).toEqual(['Hologram__c', 'Region_Code__c']);
+            expect(requestedAccountFields()).not.toContain('Score_Formula__c');
 
-            await send(loadRequest(['Legacy_Code__c', 'Region_Code__c']));
-            expect(queriedSoql.find(soql => /FROM Account/.test(soql))).toBe("SELECT Id, ParentId, Legacy_Code__c, Region_Code__c FROM Account");
+            // THE FAKED ORG DESCRIBES THREE ACCOUNT FIELDS, SO THE REST ARE LEFT OUT OF THE QUERY (#720)
+            await send(loadRequest());
+            expect(queriedSoql.find(soql => /FROM Account/.test(soql))).toBe('SELECT Id, Legacy_Code__c, Hologram__c, Region_Code__c FROM Account');
 
             panelState().adapterOrgOnlyFields = undefined;
-            expect(RecipeCockpitService.routePanelMessage(loadRequest(['Region_Code__c']), panelState())).toMatchObject({ kind: 'refuseUpdaterLoad' });
+            expect(requestedAccountFields()).not.toContain('Region_Code__c');
 
         });
 
         it('generates an org-only field from the backend\'s expression for the loaded records, says so, and refuses a typed expression for a fixed-value-only field', async () => {
 
             await openCockpitAndRetrieve();
-            await send(loadRequest(['Legacy_Code__c', 'Region_Code__c', 'Hologram__c']));
+            await send(loadRequest());
 
             await generate([{ objectApiName: 'Account', fieldApiName: 'Hologram__c', value: '${{ fake.Word }}' }]);
             expect(warnings().at(-1)).toBe(`No values were generated: Account.Hologram__c: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL}.`);
@@ -656,8 +659,9 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
             ORG_ONLY_FIELD_FILES['Tier__c'] = fieldXml('Tier__c', 'Picklist', '    <valueSet><valueSetDefinition><value><fullName>Gold</fullName><label>Gold</label></value></valueSetDefinition></valueSet>');
             try {
+                (describeAnswers.Account as any).fields.push({ name: 'Tier__c', type: 'picklist', updateable: true });
                 await openCockpitAndRetrieve();
-                await send(loadRequest(['Tier__c']));
+                await send(loadRequest());
 
                 await generate([{ objectApiName: 'Account', fieldApiName: 'Tier__c', value: 'Platinum' }]);
                 expect(warnings().at(-1)).toMatch(/^No values were generated: Account\.Tier__c: .*Platinum/);
@@ -696,7 +700,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             const accountChanges = postedNamed('adapterMetadataChanges')[0].objects.find((objectChanges: any) => objectChanges.objectApiName === 'Account');
             expect(accountChanges.fieldChanges.find((fieldChange: any) => fieldChange.fieldApiName === 'Region_Code__c').orgOnly.expression).toBe('${{ faker.lorem.text(80).substring(0, 80) }}');
 
-            await send(loadRequest(['Region_Code__c']));
+            await send(loadRequest());
             await generate([{ objectApiName: 'Account', fieldApiName: 'Region_Code__c' }]);
 
             const heldValues = RecipeCockpitAdapterState.readHeldUpdaterValues('Account')!;
@@ -711,7 +715,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         it('updates only the org the records were loaded from, after a snapshot that names the fields only the org held, and records them in the results', async () => {
 
             await openCockpitAndRetrieve();
-            await send(loadRequest(['Legacy_Code__c', 'Region_Code__c']));
+            await send(loadRequest());
             await generate([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, { objectApiName: 'Account', fieldApiName: 'Region_Code__c' }]);
 
             selectOrg(OTHER_SANDBOX_ORG);
@@ -745,7 +749,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         it('records no org-only fields in the results of an update that wrote none', async () => {
 
             await openCockpitAndRetrieve();
-            await send(loadRequest(['Legacy_Code__c']));
+            await send(loadRequest());
             await generate([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }]);
             await acknowledgeValuesAndUpdate();
 
@@ -758,7 +762,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         it('restores the values a field only the org held had, from a later model with no retrieve, and saves what it holds now first', async () => {
 
             await openCockpitAndRetrieve();
-            await send(loadRequest(['Region_Code__c']));
+            await send(loadRequest());
             await generate([{ objectApiName: 'Account', fieldApiName: 'Region_Code__c' }]);
             await acknowledgeValuesAndUpdate();
             const [updateSnapshotName] = attemptFiles().filter(fileName => fileName.endsWith('-before.json'));
@@ -893,7 +897,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         });
 
-        it('posts a chosen field only the org holds with the load and, with any value typed, with Generate values', () => {
+        it('posts no field list with the load, and a chosen field only the org holds, with any value typed, with Generate values', () => {
 
             const panel = runPanelScript();
             const { card, rowNamed } = openUpdaterTab(panel);
@@ -903,7 +907,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             panel.findAll(card, 'updaterLoad')[0].dispatch('click');
 
             const loadMessage = postedNamed(panel, 'loadUpdaterRecords').at(-1);
-            expect(loadMessage.objects.find((loadObject: any) => loadObject.objectApiName === 'Account').fieldApiNames).toEqual(['Region_Code__c', 'Hologram__c']);
+            expect(loadMessage.objects.find((loadObject: any) => loadObject.objectApiName === 'Account')).toEqual({ objectApiName: 'Account', whereClause: '' });
 
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
             panel.postToPanel({

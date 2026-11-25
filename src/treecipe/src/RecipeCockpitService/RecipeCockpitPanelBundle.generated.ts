@@ -531,16 +531,19 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   });
 
   // src/treecipe/src/RecipeCockpitService/RecipeCockpitAdapterConstants.ts
-  var RECIPE_COCKPIT_UPDATER_INTRO = "Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field's faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.";
+  var RECIPE_COCKPIT_UPDATER_INTRO = "Load records reads the parent records and only the records under them, with every field this treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field's faker expression or a value you type with the pencil. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.";
   var RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = "Filter by fields & objects to add";
   var RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING = "1. Choose the parent object, and query for the parent records you expect";
   var RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL = "Parent object";
   var RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER = "WHERE for the parent records (optional), e.g. Name LIKE 'Acme%'";
   var RECIPE_COCKPIT_UPDATER_NEXT_LABEL = "Next";
   var RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX = "2. The treecipe under ";
-  var RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = "Change parent";
-  var RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX = "Parent records: WHERE ";
-  var RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE = "Parent records: every record (no WHERE in step 1)";
+  var RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = "Change parent object";
+  var RECIPE_COCKPIT_UPDATER_PARENT_CHIP_PREFIX = "Parent: ";
+  var RECIPE_COCKPIT_UPDATER_PARENT_CHIP_WHERE_PREFIX = "WHERE ";
+  var RECIPE_COCKPIT_UPDATER_PARENT_CHIP_EVERY_RECORD = "every record";
+  var RECIPE_COCKPIT_UPDATER_PARENT_CHIP_SEPARATOR = " · ";
+  var RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE = "Go back to step 1 to choose another parent object or WHERE. Loaded records are let go, after asking.";
   var RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL = "Retrieve latest metadata";
   var RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL = "Retrieving…";
   var RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE = "Retrieve the latest metadata of these objects from the sandbox or scratch org chosen in Target Org Manager, into RunArtifacts in the tree folder, and mark the fields that are new or changed in the org. Nothing in the project changes.";
@@ -573,6 +576,9 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
   var RECIPE_COCKPIT_UPDATER_LOAD_LABEL = "Load records";
   var RECIPE_COCKPIT_UPDATER_LOADING_LABEL = "Loading…";
   var RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER = "WHERE (optional), e.g. CreatedDate = LAST_N_DAYS:30";
+  var RECIPE_COCKPIT_UPDATER_PREVIOUS_PAGE_LABEL = "Previous";
+  var RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL = "Next";
+  var RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON = "the org does not have it, or does not let this user read it. Check the field and its field-level security in the org, then load again.";
   var RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = "The last load read 0 records: change the parent's WHERE in step 1, or the WHERE under an object, and load again.";
   var RECIPE_COCKPIT_UPDATER_GENERATE_LABEL = "Generate values";
   var RECIPE_COCKPIT_UPDATER_GENERATING_LABEL = "Generating…";
@@ -9797,22 +9803,18 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     treeState.updaterParentStepElement = buildUpdaterParentStep(treeState);
     panelElement.appendChild(treeState.updaterParentStepElement);
     const structureElement = createElement("div", "updaterStructureStep hidden");
-    const headingRowElement = createElement("div", "updaterStepHeadingRow");
-    treeState.updaterStructureHeadingElement = createElement("div", "updaterStepHeading");
-    const changeParentElement = createButton("link", "updaterChangeParent", RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL);
+    treeState.updaterStructureHeadingElement = createElement("div", "updaterStepHeading updaterStructureHeading");
+    structureElement.appendChild(treeState.updaterStructureHeadingElement);
+    const parentRowElement = createElement("div", "updaterParentRow");
+    treeState.updaterParentChipElement = createElement("span", "updaterParentChip");
+    const changeParentElement = createButton("primary", "updaterChangeParent", RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL, "compact");
+    treeState.updaterChangeParentElement = changeParentElement;
     changeParentElement.addEventListener("click", function() {
-      treeState.updaterStep = "parent";
-      drawUpdaterStep(treeState);
-      if (typeof treeState.updaterParentSelectElement.focus === "function") {
-        treeState.updaterParentSelectElement.focus();
-      }
-      savePanelPlace();
+      requestUpdaterParentChange(treeState);
     });
-    headingRowElement.appendChild(treeState.updaterStructureHeadingElement);
-    headingRowElement.appendChild(changeParentElement);
-    structureElement.appendChild(headingRowElement);
-    treeState.updaterParentWhereNoteElement = createElement("div", "updaterParentWhereNote muted");
-    structureElement.appendChild(treeState.updaterParentWhereNoteElement);
+    parentRowElement.appendChild(treeState.updaterParentChipElement);
+    parentRowElement.appendChild(changeParentElement);
+    structureElement.appendChild(parentRowElement);
     const filterRowElement = createElement("div", "updaterFilterRow");
     const updaterSearch = buildTabSearch(treeState, "updater", RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER, applyUpdaterFilter);
     treeState.updaterSearch = updaterSearch;
@@ -10028,7 +10030,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       treeState.updaterObjectsElement.appendChild(updaterObjectState.element);
     });
     treeState.updaterStructureHeadingElement.textContent = RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX + parentObjectApiName;
-    drawUpdaterParentWhereNote(treeState);
+    drawUpdaterParentChip(treeState);
     drawUpdaterSummary(treeState);
     applyUpdaterFilter(treeState);
     drawUpdaterLoadButtons();
@@ -10043,9 +10045,32 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       buildAdapterChildBlock(treeState);
     }
   }
-  function drawUpdaterParentWhereNote(treeState) {
-    const whereText = treeState.updaterParentWhereText.trim();
-    treeState.updaterParentWhereNoteElement.textContent = whereText ? RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX + whereText : RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE;
+  function showUpdaterParentStep(treeState) {
+    treeState.updaterStep = "parent";
+    drawUpdaterStep(treeState);
+    if (typeof treeState.updaterParentSelectElement.focus === "function") {
+      treeState.updaterParentSelectElement.focus();
+    }
+    savePanelPlace();
+  }
+  function drawUpdaterParentChip(treeState) {
+    if (!treeState.updaterParentChipElement) {
+      return;
+    }
+    const parentObjectApiName = treeState.updaterParentObjectApiName;
+    const whereText = treeState.updaterParentWhereText.trim().replace(/^where\\s+/i, "").trim();
+    const loadedObjects = treeState.updaterRecordsMessage && Array.isArray(treeState.updaterRecordsMessage.objects) ? treeState.updaterRecordsMessage.objects : [];
+    const loadedParent = loadedObjects.find(function(loadedObject) {
+      return !!loadedObject && loadedObject.objectApiName === parentObjectApiName;
+    });
+    const chipParts = [
+      RECIPE_COCKPIT_UPDATER_PARENT_CHIP_PREFIX + parentObjectApiName,
+      whereText ? RECIPE_COCKPIT_UPDATER_PARENT_CHIP_WHERE_PREFIX + whereText : RECIPE_COCKPIT_UPDATER_PARENT_CHIP_EVERY_RECORD
+    ];
+    if (loadedParent && !loadedParent.failureMessage && !loadedParent.skippedReason) {
+      chipParts.push(pluralize(Number(loadedParent.recordCount) || 0, "record", "records"));
+    }
+    treeState.updaterParentChipElement.textContent = chipParts.join(RECIPE_COCKPIT_UPDATER_PARENT_CHIP_SEPARATOR);
   }
   function buildUpdaterObjectState(treeState, treeObjectState) {
     const object = treeObjectState.object;
@@ -10072,6 +10097,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       countText: "",
       // WHAT THE LAST LOAD READ FOR THIS OBJECT (#416), AND ITS SECTION ONCE THE BODY IS BUILT
       loadedRecords: null,
+      loadedRecordsPageIndex: 0,
+      requestedRecordsPageIndex: null,
       recordsElement: null,
       // WHAT THE LAST GENERATION MADE FOR THIS OBJECT (#417), AND ITS SECTION ONCE THE BODY IS BUILT
       generatedValues: null,
@@ -10129,7 +10156,7 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }
       updaterObjectState.recordsElement = createElement("div", "updaterRecords hidden");
       updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
-      drawUpdaterObjectRecords(updaterObjectState);
+      drawUpdaterObjectRecords(treeState, updaterObjectState);
       updaterObjectState.valuesElement = createElement("div", "updaterValues hidden");
       updaterObjectState.bodyElement.appendChild(updaterObjectState.valuesElement);
       drawUpdaterObjectValues(updaterObjectState);
@@ -10674,11 +10701,6 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       const objectApiName = updaterObjectState.object.objectApiName;
       return {
         objectApiName,
-        fieldApiNames: listUpdaterChoosableFieldStates(updaterObjectState).filter(function(fieldState) {
-          return hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
-        }).map(function(fieldState) {
-          return fieldState.field.fieldApiName;
-        }),
         whereClause: objectApiName === treeState.updaterParentObjectApiName ? treeState.updaterParentWhereText : hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : ""
       };
     });
@@ -10689,6 +10711,31 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     runLocks.updaterRunKind = "load";
     drawUpdaterLoadButtons();
     vscodeApi12.postMessage({ command: "loadUpdaterRecords", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects });
+  }
+  function requestUpdaterParentChange(treeState) {
+    if (runLocks.updaterLoadRunningTreeKey !== null) {
+      return;
+    }
+    if (!treeState.updaterRecordsMessage || renderedSequence === null) {
+      showUpdaterParentStep(treeState);
+      return;
+    }
+    vscodeApi12.postMessage({ command: "changeUpdaterParent", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+  }
+  function renderUpdaterParentChange(changeMessage) {
+    if (renderedSequence === null || changeMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(changeMessage.treeKey);
+    if (!treeState) {
+      return;
+    }
+    clearUpdaterRecords();
+    clearUpdaterValues();
+    clearAdapterChildren();
+    if (treeState.updaterObjectStates) {
+      showUpdaterParentStep(treeState);
+    }
   }
   function requestUpdaterValues(treeState) {
     if (renderedSequence === null || runLocks.updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) {
@@ -10878,10 +10925,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
         treeState.updaterApplyRetrievedElement.disabled = applyReason !== "";
         treeState.updaterApplyRetrievedElement.setAttribute("title", applyReason || RECIPE_COCKPIT_ADAPTER_APPLY_TITLE);
       }
+      if (treeState.updaterChangeParentElement) {
+        treeState.updaterChangeParentElement.disabled = runLocks.updaterLoadRunningTreeKey !== null;
+        treeState.updaterChangeParentElement.setAttribute("title", busyReason || RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_TITLE);
+      }
       drawActionCardState(
         treeState.updaterLoadCard,
         busyReason || (updaterObjectStates.length === 0 ? "This tree has no object to load." : ""),
-        "Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads."
+        "Read this tree’s records, with every field the treecipe lists, from the sandbox or scratch org chosen in Target Org Manager. It only reads."
       );
       (treeState.updaterSnapshotButtonElements || []).forEach(function(snapshotButton) {
         const isThisRestoring = isThisCardLoading && runLocks.updaterRunKind === "restore" && runLocks.updaterRestoringSnapshotName === snapshotButton.snapshotName;
@@ -10938,13 +10989,16 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       }) || null;
       updaterObjectState.loadedRecords = loadedRecords;
       updaterObjectState.loadedRecordsLinkSequence = recordsMessage.recordLinkSequence;
+      updaterObjectState.loadedRecordsPageIndex = 0;
+      updaterObjectState.requestedRecordsPageIndex = null;
       if (loadedRecords && !loadedRecords.failureMessage && !loadedRecords.skippedReason) {
         recordCount += Number(loadedRecords.recordCount) || 0;
       }
       drawUpdaterObjectCount(updaterObjectState);
-      drawUpdaterObjectRecords(updaterObjectState);
+      drawUpdaterObjectRecords(treeState, updaterObjectState);
     });
     treeState.updaterLoadNoteElement.textContent = "Loaded " + pluralize(recordCount, "record", "records") + " from " + String(recordsMessage.orgLabel || "the org");
+    drawUpdaterParentChip(treeState);
     drawUpdaterLoadButtons();
   }
   function clearUpdaterRecords() {
@@ -10959,18 +11013,52 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       treeState.updaterObjectStates.forEach(function(updaterObjectState) {
         updaterObjectState.loadedRecords = null;
         drawUpdaterObjectCount(updaterObjectState);
-        drawUpdaterObjectRecords(updaterObjectState);
+        drawUpdaterObjectRecords(treeState, updaterObjectState);
       });
       treeState.updaterLoadNoteElement.textContent = "";
+      drawUpdaterParentChip(treeState);
     });
     drawUpdaterLoadButtons();
   }
-  function drawUpdaterObjectRecords(updaterObjectState) {
+  function requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex) {
+    if (renderedSequence === null || updaterObjectState.requestedRecordsPageIndex !== null) {
+      return;
+    }
+    updaterObjectState.requestedRecordsPageIndex = pageIndex;
+    drawUpdaterObjectRecords(treeState, updaterObjectState);
+    vscodeApi12.postMessage({ command: "loadUpdaterRecordsPage", treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objectApiName: updaterObjectState.object.objectApiName, pageIndex });
+  }
+  function renderUpdaterRecordsPage(pageMessage) {
+    if (renderedSequence === null || pageMessage.renderSequence !== renderedSequence) {
+      return;
+    }
+    const treeState = findTreeState(pageMessage.treeKey);
+    const updaterObjectState = treeState && (treeState.updaterObjectStates || []).find(function(candidateObjectState) {
+      return candidateObjectState.object.objectApiName === pageMessage.objectApiName;
+    });
+    const pageIndex = Number(pageMessage.pageIndex);
+    if (!treeState || !updaterObjectState || !updaterObjectState.loadedRecords || !Number.isInteger(pageIndex) || pageIndex < 0) {
+      return;
+    }
+    updaterObjectState.loadedRecords = Object.assign({}, updaterObjectState.loadedRecords, { rows: pageMessage.rows, recordLinks: pageMessage.recordLinks, lookupLinks: pageMessage.lookupLinks });
+    const isMovingForward = pageIndex > updaterObjectState.loadedRecordsPageIndex;
+    updaterObjectState.loadedRecordsPageIndex = pageIndex;
+    updaterObjectState.requestedRecordsPageIndex = null;
+    drawUpdaterObjectRecords(treeState, updaterObjectState);
+    const pagerElements = updaterObjectState.recordsPagerElements;
+    if (!pagerElements) {
+      return;
+    }
+    const pressedElement = isMovingForward ? pagerElements.nextElement : pagerElements.previousElement;
+    focusElement(pressedElement.disabled ? isMovingForward ? pagerElements.previousElement : pagerElements.nextElement : pressedElement);
+  }
+  function drawUpdaterObjectRecords(treeState, updaterObjectState) {
     const recordsElement = updaterObjectState.recordsElement;
     if (!recordsElement) {
       return;
     }
     recordsElement.textContent = "";
+    updaterObjectState.recordsPagerElements = null;
     const loadedRecords = updaterObjectState.loadedRecords;
     if (!loadedRecords) {
       recordsElement.classList.add("hidden");
@@ -10981,26 +11069,55 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     } else if (loadedRecords.skippedReason) {
       recordsElement.appendChild(createElement("div", "updaterRecordsSkipped muted", String(loadedRecords.skippedReason)));
     } else {
+      const objectApiName = updaterObjectState.object.objectApiName;
       const columns = Array.isArray(loadedRecords.columns) ? loadedRecords.columns.map(String) : [];
       const rows = Array.isArray(loadedRecords.rows) ? loadedRecords.rows : [];
       const recordCount = Number(loadedRecords.recordCount) || 0;
-      const hiddenColumnCount = Number(loadedRecords.hiddenColumnCount) || 0;
+      const pageCount = Number(loadedRecords.pageCount) || 0;
+      const pageIndex = updaterObjectState.loadedRecordsPageIndex;
+      const unreadFieldApiNames = Array.isArray(loadedRecords.unreadFieldApiNames) ? loadedRecords.unreadFieldApiNames.map(String) : [];
       let summaryText = pluralize(recordCount, "record", "records");
       if (loadedRecords.isTruncated) {
         summaryText += ", the first of " + String(loadedRecords.totalSize) + " it matched";
       }
-      if (rows.length < recordCount) {
-        summaryText += ". Showing the first " + rows.length;
-      }
-      if (hiddenColumnCount > 0) {
-        summaryText += (rows.length < recordCount ? ", " : ". Showing ") + pluralize(columns.length, "column", "columns") + ", " + hiddenColumnCount + " more not shown";
-      }
       recordsElement.appendChild(createElement("div", "updaterRecordsSummary muted", summaryText));
-      if (columns.length > 0) {
-        recordsElement.appendChild(buildRecordTable(columns, rows, loadedRecords.recordLinks, updaterObjectState.loadedRecordsLinkSequence, updaterObjectState.object.objectApiName));
+      unreadFieldApiNames.forEach(function(fieldApiName) {
+        recordsElement.appendChild(createElement("div", "updaterRecordsUnread muted", objectApiName + "." + fieldApiName + " was not read: " + RECIPE_COCKPIT_UPDATER_UNREAD_FIELDS_REASON));
+      });
+      if (columns.length > 0 && recordCount > 0) {
+        recordsElement.appendChild(buildRecordTable(columns, rows, loadedRecords.recordLinks, updaterObjectState.loadedRecordsLinkSequence, objectApiName, { pageIndex, lookupLinks: loadedRecords.lookupLinks }));
+        recordsElement.appendChild(buildUpdaterRecordsPager(treeState, updaterObjectState, pageIndex, pageCount));
       }
     }
     recordsElement.classList.remove("hidden");
+  }
+  function buildUpdaterRecordsPager(treeState, updaterObjectState, pageIndex, pageCount) {
+    const objectApiName = updaterObjectState.object.objectApiName;
+    const pagerElement = createElement("div", "updaterRecordsPager");
+    const pageLabelElement = createElement("span", "updaterRecordsPageLabel muted", "Page " + (pageIndex + 1) + " of " + Math.max(pageCount, 1));
+    pageLabelElement.setAttribute("aria-live", "polite");
+    if (pageCount <= 1) {
+      pagerElement.appendChild(pageLabelElement);
+      return pagerElement;
+    }
+    const isPageRequested = updaterObjectState.requestedRecordsPageIndex !== null;
+    const previousElement = createButton("secondary", "updaterRecordsPrevious", RECIPE_COCKPIT_UPDATER_PREVIOUS_PAGE_LABEL, "compact");
+    const nextElement = createButton("secondary", "updaterRecordsNext", RECIPE_COCKPIT_UPDATER_NEXT_PAGE_LABEL, "compact");
+    previousElement.setAttribute("aria-label", "Previous page of " + objectApiName + " records");
+    nextElement.setAttribute("aria-label", "Next page of " + objectApiName + " records");
+    previousElement.disabled = isPageRequested || pageIndex === 0;
+    nextElement.disabled = isPageRequested || pageIndex >= pageCount - 1;
+    previousElement.addEventListener("click", function() {
+      requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex - 1);
+    });
+    nextElement.addEventListener("click", function() {
+      requestUpdaterRecordsPage(treeState, updaterObjectState, pageIndex + 1);
+    });
+    pagerElement.appendChild(previousElement);
+    pagerElement.appendChild(pageLabelElement);
+    pagerElement.appendChild(nextElement);
+    updaterObjectState.recordsPagerElements = { previousElement, nextElement };
+    return pagerElement;
   }
 
   // src/treecipe/src/RecipeCockpitService/panel/shell/PanelRender.ts
@@ -12646,10 +12763,20 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
 
   // src/treecipe/src/RecipeCockpitService/panel/RecipeCockpitRecordTable.ts
   var vscodeApi13 = vscodeApi;
-  function buildRecordTable(columns, rows, recordLinks, recordLinkSequence, objectApiName) {
+  function buildRecordTable(columns, rows, recordLinks, recordLinkSequence, objectApiName, tablePage) {
     const links = recordLinks;
     const linkColumnIndex = links && typeof recordLinkSequence === "number" && Number.isInteger(links.columnIndex) ? links.columnIndex : -1;
-    const linkedRowIndexes = new Set(linkColumnIndex !== -1 && links && Array.isArray(links.rowIndexes) ? links.rowIndexes : []);
+    const linkedRowIndexesByColumnIndex = /* @__PURE__ */ new Map();
+    if (linkColumnIndex !== -1 && links && Array.isArray(links.rowIndexes)) {
+      linkedRowIndexesByColumnIndex.set(linkColumnIndex, new Set(links.rowIndexes));
+    }
+    if (tablePage && typeof recordLinkSequence === "number" && Array.isArray(tablePage.lookupLinks)) {
+      tablePage.lookupLinks.forEach(function(lookupLinks) {
+        if (lookupLinks && Number.isInteger(lookupLinks.columnIndex) && Array.isArray(lookupLinks.rowIndexes)) {
+          linkedRowIndexesByColumnIndex.set(lookupLinks.columnIndex, new Set(lookupLinks.rowIndexes));
+        }
+      });
+    }
     const rowTable = buildRowTable({
       className: "treeQueryTable",
       columns: columns.map(function(column, columnIndex) {
@@ -12660,7 +12787,8 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
       const rowElement = createElement("tr", "treeQueryRow");
       columns.forEach(function(_column, columnIndex) {
         const cellText = Array.isArray(row) && row[columnIndex] !== void 0 ? String(row[columnIndex]) : "";
-        if (columnIndex !== linkColumnIndex || !linkedRowIndexes.has(rowIndex) || cellText === "") {
+        const linkedRowIndexes = linkedRowIndexesByColumnIndex.get(columnIndex);
+        if (!linkedRowIndexes || !linkedRowIndexes.has(rowIndex) || cellText === "") {
           rowElement.appendChild(createElement("td", "", cellText));
           return;
         }
@@ -12674,6 +12802,12 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
           const openMessage = { command: "openPreviewRecord", renderSequence: renderedSequence, recordLinkSequence, rowIndex };
           if (typeof objectApiName === "string") {
             openMessage.objectApiName = objectApiName;
+          }
+          if (tablePage) {
+            openMessage.pageIndex = tablePage.pageIndex;
+          }
+          if (columnIndex !== linkColumnIndex) {
+            openMessage.columnIndex = columnIndex;
           }
           vscodeApi13.postMessage(openMessage);
         });
@@ -13277,6 +13411,14 @@ export const RECIPE_COCKPIT_PANEL_BUNDLE_SCRIPT = `(() => {
     if (hostMessage.command === "updaterRecords") {
       renderUpdaterRecords(hostMessage);
       acknowledgeRecordLinks(hostMessage);
+      return;
+    }
+    if (hostMessage.command === "updaterRecordsPage") {
+      renderUpdaterRecordsPage(hostMessage);
+      return;
+    }
+    if (hostMessage.command === "updaterParentChange") {
+      renderUpdaterParentChange(hostMessage);
       return;
     }
     if (hostMessage.command === "adapterMetadataChanges") {
