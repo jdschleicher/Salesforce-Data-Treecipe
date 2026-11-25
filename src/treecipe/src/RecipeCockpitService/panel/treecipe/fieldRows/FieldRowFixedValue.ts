@@ -1,4 +1,4 @@
-import { createButton } from '../../../../CockpitKit/panel/CockpitPanelElements';
+import { createButton, setShown } from '../../../../CockpitKit/panel/CockpitPanelElements';
 import {
     RECIPE_COCKPIT_DERIVED_FIELD_REASON_PREFIX,
     RECIPE_COCKPIT_READ_ONLY_REASON_PREFIX,
@@ -157,6 +157,14 @@ export function drawFieldRowFixedValue(treeObjectState: ITreeObjectState, fieldS
     }
     if (fieldState.expressionElement) {
         if (isFixed) { fieldState.expressionElement.classList.add('hidden'); } else { fieldState.expressionElement.classList.remove('hidden'); }
+    }
+    // THE BUTTON TESTS THE EXPRESSION THE ROW SHOWS, SO AN EDIT IN ITS PLACE HIDES IT AND THE LAST EXAMPLE
+    if (fieldState.fakerValueTestElement) {
+        setShown(fieldState.fakerValueTestElement, !isFixed);
+    }
+    if (fieldState.fakerValueExampleElement && isFixed) {
+        fieldState.fakerValueExampleElement.textContent = '';
+        fieldState.fakerValueExampleElement.classList.add('hidden');
     }
     const buttonElement = fieldState.fixedValueButtonElement;
     if (!buttonElement) { return; }

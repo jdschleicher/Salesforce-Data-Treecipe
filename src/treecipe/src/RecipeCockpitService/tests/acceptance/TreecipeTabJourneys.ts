@@ -253,4 +253,26 @@ export const TREECIPE_TAB_JOURNEYS: Array<{ name: string; run(journey: RecipeCoc
         }
     },
 
+    {
+        name: 'test a field\'s faker value (#718): its expression runs once, the example shows under it, and nothing is written',
+        run: async journey => {
+
+            await journey.click('button', 'Show or hide the fields of Account');
+            const fileChangeCountBefore = journey.fileChanges.length;
+            await journey.click('button', 'Test the faker value of Account.AccountNumber');
+
+            await journey.step('an eight-digit example shows under the expression, and no file is written', () => {
+                const exampleNode = journey.screen().get('text', /^Example: /);
+                expectEqual(/^Example: \d{8}$/.test(exampleNode.name), true, `The example "${exampleNode.name}" is eight digits`);
+                expectEqual(fileChangesSince(journey, fileChangeCountBefore), [], 'Files written');
+                expectEqual(readWorkspaceFile(journey, RECIPE_RELATIVE_PATH), readFixtureFile(RECIPE_RELATIVE_PATH), 'The recipe file');
+            });
+
+            await journey.step('a lookup has no button to test', () => {
+                expectEqual(journey.screen().findAll('button', 'Test the faker value of Contact.AccountId').length, 0, 'Contact.AccountId\'s test button');
+            });
+
+        }
+    },
+
 ];

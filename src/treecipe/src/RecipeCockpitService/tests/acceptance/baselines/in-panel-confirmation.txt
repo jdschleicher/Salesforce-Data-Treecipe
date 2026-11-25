@@ -76,126 +76,147 @@ tabpanel "Treecipe"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.company.name()}}"
+  button "Test the faker value of Account.Name"
   checkbox "AccountNumber: Ticked — click to leave this field out" [checked]
   button "AccountNumber: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "AccountNumber"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.string.numeric(8)}}"
+  button "Test the faker value of Account.AccountNumber"
   checkbox "AnnualRevenue: Ticked — click to leave this field out" [checked]
   button "AnnualRevenue: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "AnnualRevenue"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.string.numeric(7)}}"
+  button "Test the faker value of Account.AnnualRevenue"
   checkbox "BillingStreet: Ticked — click to leave this field out" [checked]
   button "BillingStreet: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "BillingStreet"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.streetAddress()}}"
+  button "Test the faker value of Account.BillingStreet"
   checkbox "BillingCity: Ticked — click to leave this field out" [checked]
   button "BillingCity: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "BillingCity"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.city()}}"
+  button "Test the faker value of Account.BillingCity"
   checkbox "BillingState: Ticked — click to leave this field out" [checked]
   button "BillingState: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "BillingState"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.state()}}"
+  button "Test the faker value of Account.BillingState"
   checkbox "BillingPostalCode: Ticked — click to leave this field out" [checked]
   button "BillingPostalCode: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "BillingPostalCode"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.zipCode()}}"
+  button "Test the faker value of Account.BillingPostalCode"
   checkbox "BillingCountry: Ticked — click to leave this field out" [checked]
   button "BillingCountry: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "BillingCountry"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.country()}}"
+  button "Test the faker value of Account.BillingCountry"
   checkbox "Description: Ticked — click to leave this field out" [checked]
   button "Description: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Description"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.company.catchPhrase()}}"
+  button "Test the faker value of Account.Description"
   checkbox "Industry: Ticked — click to leave this field out" [checked]
   button "Industry: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Industry"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.helpers.arrayElement(['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education'])}}"
+  button "Test the faker value of Account.Industry"
   checkbox "NumberOfEmployees: Ticked — click to leave this field out" [checked]
   button "NumberOfEmployees: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "NumberOfEmployees"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.string.numeric(4)}}"
+  button "Test the faker value of Account.NumberOfEmployees"
   checkbox "Phone: Ticked — click to leave this field out" [checked]
   button "Phone: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Phone"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.phone.number({style:'national'})}}"
+  button "Test the faker value of Account.Phone"
   checkbox "Rating: Ticked — click to leave this field out" [checked]
   button "Rating: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Rating"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.helpers.arrayElement(['Hot', 'Warm', 'Cold'])}}"
+  button "Test the faker value of Account.Rating"
   checkbox "ShippingStreet: Ticked — click to leave this field out" [checked]
   button "ShippingStreet: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "ShippingStreet"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.streetAddress()}}"
+  button "Test the faker value of Account.ShippingStreet"
   checkbox "ShippingCity: Ticked — click to leave this field out" [checked]
   button "ShippingCity: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "ShippingCity"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.city()}}"
+  button "Test the faker value of Account.ShippingCity"
   checkbox "ShippingState: Ticked — click to leave this field out" [checked]
   button "ShippingState: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "ShippingState"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.state()}}"
+  button "Test the faker value of Account.ShippingState"
   checkbox "ShippingPostalCode: Ticked — click to leave this field out" [checked]
   button "ShippingPostalCode: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "ShippingPostalCode"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.zipCode()}}"
+  button "Test the faker value of Account.ShippingPostalCode"
   checkbox "ShippingCountry: Ticked — click to leave this field out" [checked]
   button "ShippingCountry: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "ShippingCountry"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.location.country()}}"
+  button "Test the faker value of Account.ShippingCountry"
   checkbox "Sic: Ticked — click to leave this field out" [checked]
   button "Sic: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Sic"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.string.numeric(4)}}"
+  button "Test the faker value of Account.Sic"
   checkbox "Type: Ticked — click to leave this field out" [checked]
   button "Type: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Type"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.helpers.arrayElement(['Customer', 'Partner', 'Prospect'])}}"
+  button "Test the faker value of Account.Type"
   checkbox "Website: Ticked — click to leave this field out" [checked]
   button "Website: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Website"
   text "read from the recipe file"
   button "↗ yml"
   text "${{faker.internet.domainName()}}"
+  button "Test the faker value of Account.Website"
   checkbox "Rating__c: Ticked — click to leave this field out" [checked]
   button "Rating__c: Edit the faker expression, or give the field a fixed value" [collapsed]
   text "Rating__c"
@@ -207,6 +228,7 @@ tabpanel "Treecipe"
   text "TODO in the value above (line 37)"
   button "↗ yml"
   text "${{ faker.helpers.arrayElement([`Hot`,`Warm`,`Cold`]) }} ### TODO: -- RecordType Options -- Business -- Below is the faker recipe for the record type Business for the field Rating__c # ${{ faker.helpers.arrayElement([`Hot`,`Warm`]) }} ### TODO: -- RecordType Options -- Partner -- Below is the faker recipe for the record type Partner for the field Rating__c # ${{ faker.helpers.arrayElement([`Cold`]) }}"
+  button "Test the faker value of Account.Rating__c"
   button "Edit values of Rating__c" [collapsed]
   checkbox "Region__c: Ticked — click to leave this field out" [checked]
   button "Region__c: Edit the faker expression, or give the field a fixed value" [expanded]
@@ -214,6 +236,7 @@ tabpanel "Treecipe"
   text "Text(40)"
   button "↗ yml"
   text "${{ faker.lorem.text(40).substring(0, 40) }}"
+  button "Test the faker value of Account.Region__c"
   group "Edit Account.Region__c"
     textbox "Value or faker expression for Account.Region__c" = "EMEA"
     text "Saved as a fixed value. Type the text every record gets. Start with ${{ to save a faker expression instead. Save writes it into the recipe file; Clear puts back the lines the field had."

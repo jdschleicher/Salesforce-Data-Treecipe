@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Connection } from '@salesforce/core';
@@ -12,8 +11,7 @@ import {
 } from '../RecipeWriter/RecipeCockpitRecipeWriter';
 import { CollectionsApiService } from '../CollectionsApiService/CollectionsApiService';
 import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
-import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
-import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
+import { RecipeCockpitFakerValueGeneration } from './RecipeCockpitFakerValueGeneration';
 import {
     IAdaptedObjectRecords,
     RecipeCockpitAdaptedDataset,
@@ -446,7 +444,7 @@ export class RecipeCockpitAdapterRecords {
 
     // THE ONE PROCESSOR PER BACKEND THE UPDATER GENERATES WITH, SO A TEST CAN STAND ONE IN
     static createUpdaterRecipeProcessor(fakerService: 'faker-js' | 'snowfakery'): IFakerRecipeProcessor {
-        return fakerService === 'faker-js' ? new FakerJSRecipeProcessor() : new SnowfakeryRecipeProcessor();
+        return RecipeCockpitFakerValueGeneration.createRecipeProcessor(fakerService);
     }
 
     /*
@@ -1814,28 +1812,8 @@ export class RecipeCockpitAdapterRecords {
             return { refusal: recipeBuild.refusal };
         }
 
-        let temporaryFolderPath: string | undefined;
-        try {
-            temporaryFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-updater-values-'));
-            const temporaryRecipePath = path.join(temporaryFolderPath, `${recipeKind}-${objectApiName}.yml`);
-            fs.writeFileSync(temporaryRecipePath, recipeBuild.recipeText, { encoding: 'utf8', flag: 'wx' });
-
-            const processor = this.createUpdaterRecipeProcessor(fakerService);
-            const generatedJson = await processor.generateFakeDataBySelectedRecipeFile(temporaryRecipePath) as string;
-            const generatedRecords = processor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(generatedJson).get(objectApiName)?.records ?? [];
-
-            if ( generatedRecords.length !== recordCount ) {
-                return { refusal: `${fakerService} generated ${generatedRecords.length} ${objectApiName} ${generatedRecords.length === 1 ? 'record' : 'records'} for ${recordCount} asked for.` };
-            }
-
-            return { records: generatedRecords as Record<string, unknown>[] };
-        } catch (generationError) {
-            return { refusal: `${fakerService} could not generate the values of ${objectApiName}: ${RecipeCockpitUntrustedValue.describeThrown(generationError)}` };
-        } finally {
-            if ( temporaryFolderPath ) {
-                fs.rmSync(temporaryFolderPath, { recursive: true, force: true });
-            }
-        }
+        return RecipeCockpitFakerValueGeneration.generateObjectRecords(this.createUpdaterRecipeProcessor(fakerService), fakerService, objectApiName, recordCount,
+                                                                       recipeBuild.recipeText, `${recipeKind}-${objectApiName}.yml`);
 
     }
 

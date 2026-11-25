@@ -1,5 +1,25 @@
 # Change Log
 
+## [3.209.0] - Recipe Cockpit: a "Test faker value" button beside each field's faker expression shows an example of what it generates (#718)
+
+A field row on the Treecipe tab shows its faker expression, such as `${{faker.string.numeric(8)}}`, but not what it produces. Seeing a value meant running Run Faker on the whole recipe and opening the data set.
+
+### Treecipe tab
+
+- **▶ at the right of a field's faker expression** runs that expression once, with the recipe's own backend (faker-js or snowfakery), and shows **Example: 48213.07** under it. Clicking again replaces it with a new value. The button is disabled while the run lasts, and a screen reader hears its name ("Test the faker value of Account.AccountNumber") and the example.
+- **It runs the expression the row shows:** the rules' unconstrained one while the field's validation-rule box is unticked. An example of the other expression is cleared when the box changes.
+- **No button where one field cannot be run alone, or where there is nothing to run:** a lookup, a dependent picklist, a read-only or derived field, and a field whose fixed value or edit takes the expression's place. Clearing the edit brings the button back.
+- **Nothing is written to the recipe or an org.** The one-field recipe is run from a temporary folder outside the workspace, which is removed afterwards, and the recipe and its sidecar files stay as they were. A failed run leaves the same error capture file in the workspace's errors folder that a failed Run Faker leaves.
+- **It runs the recipe's own code on one click.** Run Faker by Recipe runs the same expressions after its confirmation. Here the expression is printed beside the button, and VS Code's workspace trust is what allows it, as for every Treecipe command.
+- **A failure is one notification** naming the object, the field and why, for example an expression that throws, or snowfakery not installed (with how to fix it). The row keeps its last example and its button is pressable again.
+
+### Under the hood
+
+- `RecipeCockpitFakerValueGeneration.ts` (new) holds the temporary-folder run that `RecipeCockpitAdapterRecords.generateUpdaterChunk` used to hold, so the Adapter's values and the new button share one copy. The Adapter suites pass unchanged.
+- `RecipeCockpitFakerValueExample.ts` (new, host-free) holds the rules for which rows get the button. The panel draws by them and the Treecipe host checks them again. Its expression test repeats the writer's `findFirstExpressionLine`, because the writer is too large to bundle into the panel; a test holds the two to the same answer on every golden recipe line.
+- `RecipeCockpitTreecipeHost` gains the `testFakerValue` router case and action, which check the drawn model's allow-list and read the expression from the model, never from the post. `fakerValueExample` is the answer. The panel's `fieldRows/FieldRowFakerValueTest.ts` draws the button and the example line with `textContent`.
+- **Tests.** `RecipeCockpitFakerValueTest.test.ts` covers the rules, the writer parity, the panel row (shown, hidden, busy, answered, stale answers ignored, fixed value), the router's refusals, real faker-js runs (a currency gives two decimals, a date gives `yyyy-MM-dd` with no line break, a picklist gives one of its values), a snowfakery run, the failure notifications, one run per row, and the temporary folder removed on success and on throw. A Treecipe tab acceptance journey clicks the button and reads an eight-digit example, with no file written. The rendered baselines for the field editor, the picklist tiles and the in-panel confirmation now list the new buttons.
+
 ## [3.208.14] - Recipe Cockpit: a removed object in the Customize modal opens, and ↺ on one of its fields brings back what links it to the tree (#715)
 
 ### Customize and create new recipe

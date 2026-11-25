@@ -880,6 +880,21 @@ export interface IRecipeCockpitRunSwitchCancelledMessage {
 }
 
 // ONE PICKLIST ROW'S VALUES, ANSWERING THE PANEL'S loadPicklistValues FOR THE MODEL renderSequence NAMES
+/*
+    A field row's "Test faker value" answer (#718): the example its expression generated, or no
+    exampleText when it could not -- the one notification says why -- so the row's button is
+    pressable again either way. Dropped by a panel that has drawn another model since.
+*/
+export interface IRecipeCockpitFakerValueExampleMessage {
+    command: 'fakerValueExample';
+    renderSequence: number;
+    treeKey: string;
+    objectApiName: string;
+    nickname?: string;
+    fieldApiName: string;
+    exampleText?: string;
+}
+
 export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPicklistDisplayValues {
     command: 'picklistValues';
     objectApiName: string;
@@ -1125,6 +1140,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitRunSwitchCancelledMessage
                                         | IRecipeCockpitPicklistValuesMessage
+                                        | IRecipeCockpitFakerValueExampleMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
                                         | IRecipeCockpitFocusTreeMessage
                                         | IRecipeCockpitDataOrgListMessage

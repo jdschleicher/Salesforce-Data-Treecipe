@@ -65,3 +65,13 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_SOURCE_LINK_PREFIX = '↗ ';
 export const RECIPE_COCKPIT_NO_FIELDS_SELECTED_MESSAGE = 'NO FIELDS SELECTED SO NO RECORDS WILL BE GENERATED';
 
 export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset Selections';
+
+/*
+    "Test faker value" (#718): a button at the right of a field's faker expression that runs it once
+    and shows the value under it. The words name the field, so a screen reader tells rows apart.
+*/
+export const RECIPE_COCKPIT_FAKER_VALUE_TEST_GLYPH = '▶';
+export const RECIPE_COCKPIT_FAKER_VALUE_TEST_LABEL_PREFIX = 'Test the faker value of ';
+export const RECIPE_COCKPIT_FAKER_VALUE_TEST_TITLE = 'Generate one example value from this expression';
+export const RECIPE_COCKPIT_FAKER_VALUE_TEST_BUSY_TITLE = 'Generating an example…';
+export const RECIPE_COCKPIT_FAKER_VALUE_EXAMPLE_PREFIX = 'Example: ';

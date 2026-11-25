@@ -13,6 +13,7 @@ import { buildLookupDecisionElement, buildWireLookupElement, findEmptyLookup, fi
 import { drawPicklistValueEditor, requestPicklistValues } from '../fieldEditor/PicklistTiles';
 import { buildTodoListElement } from '../recordTypes/TodosToggles';
 import { buildFieldFixedValueElement } from './FieldRowFixedValue';
+import { buildFakerValueTestElements, canTestFakerValue } from './FieldRowFakerValueTest';
 import { buildFieldValidationRuleElement, buildValidationRuleNotAppliedElement, hasSwitchableValidationRules } from './FieldRowValidationRule';
 import { drawObjectFieldSelection } from './FieldScope';
 import { drawObjectSelection } from './SelectionCascade';
@@ -288,6 +289,13 @@ export function buildTreeFieldRow(treeObjectState: IFieldRowObjectState, fieldSt
         fieldState.expressionElement = createElement('pre', 'expression', field.recipeValue);
         expressionRowElement.appendChild(fieldState.expressionElement);
         fieldRowElement.appendChild(expressionRowElement);
+        if (canTestFakerValue(treeObjectState, fieldState)) {
+            const fakerValueTestElements = buildFakerValueTestElements(treeObjectState, fieldState);
+            fieldState.fakerValueTestElement = fakerValueTestElements.buttonElement;
+            fieldState.fakerValueExampleElement = fakerValueTestElements.exampleElement;
+            expressionRowElement.appendChild(fakerValueTestElements.buttonElement);
+            fieldRowElement.appendChild(fakerValueTestElements.exampleElement);
+        }
     }
 
     fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');

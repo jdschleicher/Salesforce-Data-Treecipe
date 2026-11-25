@@ -214,6 +214,8 @@ export function buildTreeFieldState(field: ITreecipeField): ITreeFieldState {
         fixedValueBadgeElement: null,
         fixedValueElement: null,
         expressionElement: null,
+        fakerValueTestElement: null,
+        fakerValueExampleElement: null,
         picklistSectionElement: null,
         validationRuleElement: null,
         isValidationRuleApplied: true,
